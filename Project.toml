@@ -1,0 +1,18 @@
+name = "BallArithmetic"
+uuid = "77e4f72b-b5a4-4fb0-ac2a-dcc32095a072"
+authors = ["Luca Ferranti"]
+version = "0.1.0"
+
+[deps]
+MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
+RoundingEmulator = "5eaf0fd0-dfba-4ccb-bf02-d820a40db705"
+SetRounding = "3cc68bcd-71a2-5612-b932-767ffbe40ab0"
+
+[compat]
+julia = "1.8"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

@@ -1,0 +1,3 @@
+[deps]
+BallArithmetic = "77e4f72b-b5a4-4fb0-ac2a-dcc32095a072"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
