@@ -23,7 +23,22 @@ function Base.setindex!(M::BallMatrix, x, inds...)
 end
 Base.copy(M::BallMatrix) = BallMatrix(copy(M.c), copy(M.r))
 
+# TODO, add adjoint
+
 # Operations
+for op in (:+, :-)
+    @eval function Base.$op(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
+        mA, rA = mid(A), rad(A)
+        mB, rB = mid(B), rad(B)
+    
+        C = $op(mA, mB) 
+        R = setrounding(T, RoundUp) do
+            R = (ϵp * abs.(C) + rA) + rB
+        end
+        BallMatrix(C, R)
+    end
+end
+
 function Base.:*(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
     mA, rA = mid(A), rad(A)
     mB, rB = mid(B), rad(B)
@@ -33,3 +48,4 @@ function Base.:*(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
     end
     BallMatrix(C, R)
 end
+
