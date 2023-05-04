@@ -25,6 +25,10 @@ Base.copy(M::BallMatrix) = BallMatrix(copy(M.c), copy(M.r))
 
 # TODO, add adjoint
 
+function LinearAlgebra.adjoint(M::BallMatrix)
+    return BallMatrix(mid(M)', rad(M)')
+end
+
 # Operations
 for op in (:+, :-)
     @eval function Base.$op(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
@@ -49,3 +53,14 @@ function Base.:*(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
     BallMatrix(C, R)
 end
 
+function MMul3(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
+    m, k = size(A.c)
+    mA, rA = mid(A), rad(A)
+    mB, rB = mid(B), rad(B)
+    mC = mA * mB
+    rC = setrounding(T, RoundUp) do
+        rprimeB = ((k+2)*ϵp*abs.(mB)+rB)
+        rC = abs.(mA) * rprimeB + rA * (abs.(mB) + rB).+η/ϵp
+    end
+    BallMatrix(mC, rC)
+end
