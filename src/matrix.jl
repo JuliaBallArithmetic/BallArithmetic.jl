@@ -53,11 +53,14 @@ function Base.:*(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
     BallMatrix(C, R)
 end
 
+# TODO: Optimize algorithms w.r.t. allocation, probably 
+# it is possible to avoid calling abs.(mA) so often,
+# but maybe the compiler is smart
+
 # As in Revol-Theveny
 # Parallel Implementation of Interval Matrix Multiplication
 # pag. 4
 # please check the values of u and η
-
 function MMul3(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
     m, k = size(A.c)
     mA, rA = mid(A), rad(A)
