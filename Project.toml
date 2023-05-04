@@ -1,6 +1,6 @@
 name = "BallArithmetic"
 uuid = "77e4f72b-b5a4-4fb0-ac2a-dcc32095a072"
-authors = ["Luca Ferranti"]
+authors = ["Luca Ferranti and Isaia Nisoli"]
 version = "0.1.0"
 
 [deps]
