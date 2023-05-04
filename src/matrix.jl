@@ -95,7 +95,7 @@ end
 # pag. 4
 # please check the values of u and η
 function MMul3(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
-    m, k = size(A.c)
+    m, k = size(A)
     mA, rA = mid(A), rad(A)
     mB, rB = mid(B), rad(B)
     mC = mA * mB
@@ -111,7 +111,7 @@ end
 # pag. 4
 # please check the values of u and η
 function MMul5(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
-    m, k = size(A.c)
+    m, k = size(A)
     mA, rA = mid(A), rad(A)
     mB, rB = mid(B), rad(B)
     ρA = sign.(mA) .* min.(abs.(mA), rA)
