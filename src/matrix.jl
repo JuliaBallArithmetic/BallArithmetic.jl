@@ -120,7 +120,7 @@ function MMul5(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
     mC = mA * mB + ρA*ρB
     Γ = abs.(mA)*abs.(mB)+abs.(ρA)*abs.(ρB)
     rC = setrounding(T, RoundUp) do
-        γ = (k+1)*eps.(Γ).+0.5*η/ϵp
+        γ = (k + 1) * eps.(Γ) .+ 0.5 * η / ϵp
         rC = (abs.(mA)+rA) * (abs.(mB) + rB)-Γ+2γ
     end
     BallMatrix(mC, rC)
