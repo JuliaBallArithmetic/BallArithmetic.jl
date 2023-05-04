@@ -23,11 +23,18 @@ function Base.setindex!(M::BallMatrix, x, inds...)
 end
 Base.copy(M::BallMatrix) = BallMatrix(copy(M.c), copy(M.r))
 
-# TODO, add adjoint
+# TODO: Conversion
+# function convert(::Type{BallMatrix}, A::Matrix)
+#     rA = zeros(size(A))
+#     return BallMatrix(A, rA)
+# end
 
+# LinearAlgebra functions
 function LinearAlgebra.adjoint(M::BallMatrix)
     return BallMatrix(mid(M)', rad(M)')
 end
+
+
 
 # Operations
 for op in (:+, :-)
@@ -43,19 +50,45 @@ for op in (:+, :-)
     end
 end
 
-function Base.:*(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
-    mA, rA = mid(A), rad(A)
-    mB, rB = mid(B), rad(B)
-    C = mA * mB
-    R = setrounding(T, RoundUp) do
-        R = abs.(mA) * rB + rA * (abs.(mB) + rB)
+# TODO: maybe it is worth to define a convert function
+for op in (:+, :-)
+    @eval function Base.$op(A::BallMatrix{T}, B::Matrix{T}) where {T<:AbstractFloat}
+        rB = zeros(size(B))
+        $op(A, BallMatrix(B, rB)) 
     end
-    BallMatrix(C, R)
+    # + and - are commutative
+    @eval function Base.$op(B::Matrix{T}, A::BallMatrix{T}) where {T<:AbstractFloat}
+        rB = zeros(size(B))
+        $op(A, BallMatrix(B, rB)) 
+    end
 end
 
-# TODO: Optimize algorithms w.r.t. allocation, probably 
-# it is possible to avoid calling abs.(mA) so often,
-# but maybe the compiler is smart
+function Base.:*(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
+    # mA, rA = mid(A), rad(A)
+    # mB, rB = mid(B), rad(B)
+    # C = mA * mB
+    # R = setrounding(T, RoundUp) do
+    #     R = abs.(mA) * rB + rA * (abs.(mB) + rB)
+    # end
+    # BallMatrix(C, R)
+    MMul3(A, B)
+end
+
+function Base.:*(A::BallMatrix{T}, B::Matrix{T}) where {T<:AbstractFloat}
+    rB = zeros(size(B))
+    return A*BallMatrix(B, rB)
+end
+
+function Base.:*(B::Matrix{T}, A::BallMatrix{T}) where {T<:AbstractFloat}
+    rB = zeros(size(B))
+    return BallMatrix(B, rB)*A
+end
+
+# TODO: Should we implement this?
+# From Theveny https://theses.hal.science/tel-01126973/en
+function MMul2(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
+    @warn "Not Implemented"
+end
 
 # As in Revol-Theveny
 # Parallel Implementation of Interval Matrix Multiplication
