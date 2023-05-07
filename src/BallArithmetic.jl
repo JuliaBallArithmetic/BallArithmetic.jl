@@ -44,5 +44,7 @@ export Ball, BallMatrix, ±
 include("rounding.jl")
 include("ball.jl")
 include("matrix.jl")
+include("svd/svd.jl")
+
 
 end

@@ -34,8 +34,6 @@ function LinearAlgebra.adjoint(M::BallMatrix)
     return BallMatrix(mid(M)', rad(M)')
 end
 
-
-
 # Operations
 for op in (:+, :-)
     @eval function Base.$op(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
@@ -53,15 +51,40 @@ end
 # TODO: maybe it is worth to define a convert function
 for op in (:+, :-)
     @eval function Base.$op(A::BallMatrix{T}, B::Matrix{T}) where {T<:AbstractFloat}
-        rB = zeros(size(B))
-        $op(A, BallMatrix(B, rB)) 
+        mA, rA = mid(A), rad(A)
+        
+        C = $op(mA, B) 
+
+        R = setrounding(T, RoundUp) do
+            R = (ϵp * abs.(C) + rA)
+        end
+        BallMatrix(C, R) 
     end
     # + and - are commutative
     @eval function Base.$op(B::Matrix{T}, A::BallMatrix{T}) where {T<:AbstractFloat}
-        rB = zeros(size(B))
-        $op(A, BallMatrix(B, rB)) 
+        $op(A, B) 
     end
 end
+
+function Base.:+(A::BallMatrix{T}, J::UniformScaling) where {T}
+    LinearAlgebra.checksquare(A)
+    B = copy(A.c)
+    R = copy(A.r)
+    @inbounds for i in axes(A, 1)
+        B[i, i] += J
+    end
+
+    R = setrounding(T, RoundUp) do
+        @inbounds for i in axes(A, 1)
+            R[i, i] += ϵp * abs(B[i,i])
+        end
+        return R
+    end
+    return BallMatrix(B, R)
+end
+
+
+
 
 function Base.:*(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
     # mA, rA = mid(A), rad(A)
@@ -75,13 +98,12 @@ function Base.:*(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
 end
 
 function Base.:*(A::BallMatrix{T}, B::Matrix{T}) where {T<:AbstractFloat}
-    rB = zeros(size(B))
-    return A*BallMatrix(B, rB)
+    return MMul3(A, B)
 end
 
 function Base.:*(B::Matrix{T}, A::BallMatrix{T}) where {T<:AbstractFloat}
     rB = zeros(size(B))
-    return BallMatrix(B, rB)*A
+    return MMul3(A, B)
 end
 
 # TODO: Should we implement this?
@@ -94,6 +116,7 @@ end
 # Parallel Implementation of Interval Matrix Multiplication
 # pag. 4
 # please check the values of u and η
+
 function MMul3(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
     m, k = size(A)
     mA, rA = mid(A), rad(A)
@@ -102,6 +125,38 @@ function MMul3(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
     rC = setrounding(T, RoundUp) do
         rprimeB = ((k+2)*ϵp*abs.(mB)+rB)
         rC = abs.(mA) * rprimeB + rA * (abs.(mB) + rB).+η/ϵp
+    end
+    BallMatrix(mC, rC)
+end
+
+function MMul3(A::BallMatrix{T}, B::Matrix{T}) where {T<:AbstractFloat}
+    m, k = size(A)
+    mA, rA = mid(A), rad(A)
+    mC = mA * B
+    rC = setrounding(T, RoundUp) do
+        rprimeB = ((k+2)*ϵp*abs.(B))
+        rC = abs.(mA) * rprimeB + rA * (abs.(B)) .+η/ϵp
+    end
+    BallMatrix(mC, rC)
+end
+
+function MMul3(A::Matrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
+    m, k = size(A)
+    mB, rB = mid(B), rad(B)
+    mC = A * mB
+    rC = setrounding(T, RoundUp) do
+        rprimeB = ((k+2)*ϵp*abs.(mB)+rB)
+        rC = abs.(A) * rprimeB .+ η/ϵp
+    end
+    BallMatrix(mC, rC)
+end
+
+function MMul3(A::Matrix{T}, B::Matrix{T}) where {T<:AbstractFloat}
+    m, k = size(A)
+    mC = A * B
+    rC = setrounding(T, RoundUp) do
+        rprimeB = ((k+2)*ϵp*abs.(B))
+        rC = abs.(A) * rprimeB .+ η/ϵp
     end
     BallMatrix(mC, rC)
 end
