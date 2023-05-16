@@ -16,6 +16,7 @@ function upper_bound_norm(A::BallMatrix{T}; iterates = 10) where {T}
     absA = upper_abs(A)
     #@info opnorm(absA, Inf)
 
+    # using Collatz theorem
     lam = setrounding(T, RoundUp) do
         for _ in 1:iterates
             x_old = x_new
@@ -29,6 +30,7 @@ end
 
 function svdbox(A::BallMatrix{T}) where {T}
     svdA  = svd(A.c)
+    
     U = BallMatrix(svdA.U, zeros(size(svdA.U)))
     Vt = BallMatrix(svdA.Vt, zeros(size(svdA.Vt)))
     Σ = BallMatrix(Diagonal(svdA.S), Diagonal(zeros(size(svdA.S))))
