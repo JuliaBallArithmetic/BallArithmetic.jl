@@ -9,6 +9,8 @@ struct BallMatrix{T<:AbstractFloat,NT<:Union{T,Complex{T}},BT<:Ball{T,NT},CM<:Ab
     end
 end
 
+BallMatrix(M::AbstractMatrix) = BallMatrix(mid.(M), rad.(M))
+
 mid(A::BallMatrix) = map(mid, A)
 rad(A::BallMatrix) = map(rad, A)
 
@@ -23,16 +25,19 @@ function Base.setindex!(M::BallMatrix, x, inds...)
 end
 Base.copy(M::BallMatrix) = BallMatrix(copy(M.c), copy(M.r))
 
-# TODO: Conversion
-# function convert(::Type{BallMatrix}, A::Matrix)
-#     rA = zeros(size(A))
-#     return BallMatrix(A, rA)
-# end
+function Base.zeros(::Type{B}, dims::NTuple{N, Integer}) where {B<:Ball,N}
+    BallMatrix(zeros(midtype(B), dims), zeros(radtype(B), dims))
+end
+
+function Base.ones(::Type{B}, dims::NTuple{N, Integer}) where {B<:Ball,N}
+    BallMatrix(ones(midtype(B), dims), zeros(radtype(B), dims))
+end
 
 # LinearAlgebra functions
 function LinearAlgebra.adjoint(M::BallMatrix)
     return BallMatrix(mid(M)', rad(M)')
 end
+
 
 # Operations
 for op in (:+, :-)
