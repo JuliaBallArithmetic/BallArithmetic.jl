@@ -1,10 +1,13 @@
 name = "BallArithmetic"
 uuid = "77e4f72b-b5a4-4fb0-ac2a-dcc32095a072"
-authors = ["Luca Ferranti"]
+authors = ["Luca Ferranti and Isaia Nisoli"]
 version = "0.1.0"
 
 [deps]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
+OpenBLASConsistentFPCSR_jll = "6cdc7f73-28fd-5e50-80fb-958a8875b1af"
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 RoundingEmulator = "5eaf0fd0-dfba-4ccb-bf02-d820a40db705"
 SetRounding = "3cc68bcd-71a2-5612-b932-767ffbe40ab0"
 
