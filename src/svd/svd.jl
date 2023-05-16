@@ -3,8 +3,10 @@ function upper_abs(A::BallMatrix)
     return abs.(A.c)+A.r
 end
 
-# we use Perron theory here: if two positive matrices 
-# A <= B we have ρ(A)<=ρ(B)
+# we use Perron theory here: if for two matrices with B positive 
+# |A| < B we have ρ(A)<=ρ(B)
+# Wielandt's theorem 
+# https://mathworld.wolfram.com/WielandtsTheorem.html
 
 function upper_bound_norm(A::BallMatrix{T}; iterates = 10) where {T}
     m, k = size(A)
