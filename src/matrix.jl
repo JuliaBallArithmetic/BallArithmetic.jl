@@ -9,6 +9,8 @@ struct BallMatrix{T<:AbstractFloat,NT<:Union{T,Complex{T}},BT<:Ball{T,NT},CM<:Ab
     end
 end
 
+BallMatrix(M::AbstractMatrix{<:Ball}) = BallMatrix(mid.(M), rad.(M))
+
 mid(A::BallMatrix) = map(mid, A)
 rad(A::BallMatrix) = map(rad, A)
 
@@ -22,6 +24,16 @@ function Base.setindex!(M::BallMatrix, x, inds...)
   setindex!(M.r, rad(x), inds...) 
 end
 Base.copy(M::BallMatrix) = BallMatrix(copy(M.c), copy(M.r))
+
+
+function Base.zeros(::Type{B}, dims::NTuple{N, Integer}) where {B<:Ball,N}
+    BallMatrix(zeros(midtype(B), dims), zeros(radtype(B), dims))
+end
+
+function Base.ones(::Type{B}, dims::NTuple{N, Integer}) where {B<:Ball,N}
+    BallMatrix(ones(midtype(B), dims), zeros(radtype(B), dims))
+end
+
 
 # Operations
 function Base.:*(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
