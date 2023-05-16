@@ -9,7 +9,7 @@ struct BallMatrix{T<:AbstractFloat,NT<:Union{T,Complex{T}},BT<:Ball{T,NT},CM<:Ab
     end
 end
 
-BallMatrix(M::AbstractMatrix{<:Ball}) = BallMatrix(mid.(M), rad.(M))
+BallMatrix(M::AbstractMatrix) = BallMatrix(mid.(M), rad.(M))
 
 mid(A::BallMatrix) = map(mid, A)
 rad(A::BallMatrix) = map(rad, A)
