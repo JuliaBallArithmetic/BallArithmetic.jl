@@ -73,7 +73,7 @@ end
 
 function Base.:+(A::BallMatrix{T}, J::UniformScaling) where {T}
     LinearAlgebra.checksquare(A)
-    B = copy(A.c)
+    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c), typeof(J)}))
     R = copy(A.r)
     @inbounds for i in axes(A, 1)
         B[i, i] += J
@@ -87,6 +87,7 @@ function Base.:+(A::BallMatrix{T}, J::UniformScaling) where {T}
     end
     return BallMatrix(B, R)
 end
+
 
 
 
