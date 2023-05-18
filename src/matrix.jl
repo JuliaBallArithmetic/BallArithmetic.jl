@@ -88,6 +88,22 @@ function Base.:+(A::BallMatrix{T}, J::UniformScaling) where {T}
     return BallMatrix(B, R)
 end
 
+function Base.:+(A::BallMatrix{T}, J::UniformScaling{Ball{T, NT}}) where {T, NT<:Union{T,Complex{T}}}
+    LinearAlgebra.checksquare(A)
+    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c), NT}))
+    R = copy(A.r)
+    @inbounds for i in axes(A, 1)
+        B[i, i] += J.λ.c
+    end
+
+    R = setrounding(T, RoundUp) do
+        @inbounds for i in axes(A, 1)
+            R[i, i] += ϵp * abs(B[i,i])+J.λ.r
+        end
+        return R
+    end
+    return BallMatrix(B, R)
+end
 
 
 
