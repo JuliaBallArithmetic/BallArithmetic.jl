@@ -20,16 +20,16 @@ Base.IndexStyle(::Type{<:BallMatrix}) = IndexLinear()
 Base.size(M::BallMatrix, i...) = size(M.c, i...)
 Base.getindex(M::BallMatrix, i::Int) = Ball(getindex(M.c, i), getindex(M.r, i))
 function Base.setindex!(M::BallMatrix, x, inds...)
-  setindex!(M.c, mid(x), inds...)
-  setindex!(M.r, rad(x), inds...) 
+    setindex!(M.c, mid(x), inds...)
+    setindex!(M.r, rad(x), inds...)
 end
 Base.copy(M::BallMatrix) = BallMatrix(copy(M.c), copy(M.r))
 
-function Base.zeros(::Type{B}, dims::NTuple{N, Integer}) where {B<:Ball,N}
+function Base.zeros(::Type{B}, dims::NTuple{N,Integer}) where {B<:Ball,N}
     BallMatrix(zeros(midtype(B), dims), zeros(radtype(B), dims))
 end
 
-function Base.ones(::Type{B}, dims::NTuple{N, Integer}) where {B<:Ball,N}
+function Base.ones(::Type{B}, dims::NTuple{N,Integer}) where {B<:Ball,N}
     BallMatrix(ones(midtype(B), dims), zeros(radtype(B), dims))
 end
 
@@ -44,8 +44,8 @@ for op in (:+, :-)
     @eval function Base.$op(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
         mA, rA = mid(A), rad(A)
         mB, rB = mid(B), rad(B)
-    
-        C = $op(mA, mB) 
+
+        C = $op(mA, mB)
         R = setrounding(T, RoundUp) do
             R = (ϵp * abs.(C) + rA) + rB
         end
@@ -54,26 +54,51 @@ for op in (:+, :-)
 end
 
 # TODO: maybe it is worth to define a convert function
+
+function Base.:*(lam::Ball{T,NT}, A::BallMatrix{T}) where {T, NT<:Union{T,Complex{T}}}
+    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c),typeof(mid(lam))}))
+
+    B = mid(lam) * A.c
+
+    R = setrounding(T, RoundUp) do
+        return (η .+ ϵp * abs.(B)) + ((abs.(A.c) + A.r) * rad(lam) + A.r * abs(mid(lam)))
+    end
+
+    return BallMatrix(B, R)
+end
+
+function Base.:*(lam::NT, A::BallMatrix{T}) where {T, NT<:Union{T,Complex{T}}}
+    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c),typeof(mid(lam))}))
+
+    B = lam * A.c
+
+    R = setrounding(T, RoundUp) do
+        return (η .+ ϵp * abs.(B)) + (A.r * abs(mid(lam)))
+    end
+
+    return BallMatrix(B, R)
+end
+
 for op in (:+, :-)
     @eval function Base.$op(A::BallMatrix{T}, B::Matrix{T}) where {T<:AbstractFloat}
         mA, rA = mid(A), rad(A)
-        
-        C = $op(mA, B) 
+
+        C = $op(mA, B)
 
         R = setrounding(T, RoundUp) do
             R = (ϵp * abs.(C) + rA)
         end
-        BallMatrix(C, R) 
+        BallMatrix(C, R)
     end
     # + and - are commutative
     @eval function Base.$op(B::Matrix{T}, A::BallMatrix{T}) where {T<:AbstractFloat}
-        $op(A, B) 
+        $op(A, B)
     end
 end
 
 function Base.:+(A::BallMatrix{T}, J::UniformScaling) where {T}
     LinearAlgebra.checksquare(A)
-    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c), typeof(J)}))
+    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c),typeof(J)}))
     R = copy(A.r)
     @inbounds for i in axes(A, 1)
         B[i, i] += J
@@ -81,16 +106,16 @@ function Base.:+(A::BallMatrix{T}, J::UniformScaling) where {T}
 
     R = setrounding(T, RoundUp) do
         @inbounds for i in axes(A, 1)
-            R[i, i] += ϵp * abs(B[i,i])
+            R[i, i] += ϵp * abs(B[i, i])
         end
         return R
     end
     return BallMatrix(B, R)
 end
 
-function Base.:+(A::BallMatrix{T}, J::UniformScaling{Ball{T, NT}}) where {T, NT<:Union{T,Complex{T}}}
+function Base.:+(A::BallMatrix{T}, J::UniformScaling{Ball{T,NT}}) where {T,NT<:Union{T,Complex{T}}}
     LinearAlgebra.checksquare(A)
-    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c), NT}))
+    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c),NT}))
     R = copy(A.r)
     @inbounds for i in axes(A, 1)
         B[i, i] += J.λ.c
@@ -98,7 +123,7 @@ function Base.:+(A::BallMatrix{T}, J::UniformScaling{Ball{T, NT}}) where {T, NT<
 
     R = setrounding(T, RoundUp) do
         @inbounds for i in axes(A, 1)
-            R[i, i] += ϵp * abs(B[i,i])+J.λ.r
+            R[i, i] += ϵp * abs(B[i, i]) + J.λ.r
         end
         return R
     end
@@ -145,8 +170,8 @@ function MMul3(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
     mB, rB = mid(B), rad(B)
     mC = mA * mB
     rC = setrounding(T, RoundUp) do
-        rprimeB = ((k+2)*ϵp*abs.(mB)+rB)
-        rC = abs.(mA) * rprimeB + rA * (abs.(mB) + rB).+η/ϵp
+        rprimeB = ((k + 2) * ϵp * abs.(mB) + rB)
+        rC = abs.(mA) * rprimeB + rA * (abs.(mB) + rB) .+ η / ϵp
     end
     BallMatrix(mC, rC)
 end
@@ -156,8 +181,8 @@ function MMul3(A::BallMatrix{T}, B::Matrix{T}) where {T<:AbstractFloat}
     mA, rA = mid(A), rad(A)
     mC = mA * B
     rC = setrounding(T, RoundUp) do
-        rprimeB = ((k+2)*ϵp*abs.(B))
-        rC = abs.(mA) * rprimeB + rA * (abs.(B)) .+η/ϵp
+        rprimeB = ((k + 2) * ϵp * abs.(B))
+        rC = abs.(mA) * rprimeB + rA * (abs.(B)) .+ η / ϵp
     end
     BallMatrix(mC, rC)
 end
@@ -167,8 +192,8 @@ function MMul3(A::Matrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
     mB, rB = mid(B), rad(B)
     mC = A * mB
     rC = setrounding(T, RoundUp) do
-        rprimeB = ((k+2)*ϵp*abs.(mB)+rB)
-        rC = abs.(A) * rprimeB .+ η/ϵp
+        rprimeB = ((k + 2) * ϵp * abs.(mB) + rB)
+        rC = abs.(A) * rprimeB .+ η / ϵp
     end
     BallMatrix(mC, rC)
 end
@@ -177,8 +202,8 @@ function MMul3(A::Matrix{T}, B::Matrix{T}) where {T<:AbstractFloat}
     m, k = size(A)
     mC = A * B
     rC = setrounding(T, RoundUp) do
-        rprimeB = ((k+2)*ϵp*abs.(B))
-        rC = abs.(A) * rprimeB .+ η/ϵp
+        rprimeB = ((k + 2) * ϵp * abs.(B))
+        rC = abs.(A) * rprimeB .+ η / ϵp
     end
     BallMatrix(mC, rC)
 end
@@ -193,12 +218,12 @@ function MMul5(A::BallMatrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
     mB, rB = mid(B), rad(B)
     ρA = sign.(mA) .* min.(abs.(mA), rA)
     ρB = sign.(mB) .* min.(abs.(mB), rB)
-    
-    mC = mA * mB + ρA*ρB
-    Γ = abs.(mA)*abs.(mB)+abs.(ρA)*abs.(ρB)
+
+    mC = mA * mB + ρA * ρB
+    Γ = abs.(mA) * abs.(mB) + abs.(ρA) * abs.(ρB)
     rC = setrounding(T, RoundUp) do
         γ = (k + 1) * eps.(Γ) .+ 0.5 * η / ϵp
-        rC = (abs.(mA)+rA) * (abs.(mB) + rB)-Γ+2γ
+        rC = (abs.(mA) + rA) * (abs.(mB) + rB) - Γ + 2γ
     end
     BallMatrix(mC, rC)
 end

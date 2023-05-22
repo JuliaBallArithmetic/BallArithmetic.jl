@@ -2,5 +2,6 @@ using BallArithmetic
 using Test
 
 @testset "BallArithmetic.jl" begin
-    # Write your tests here.
+    include("test_eigen/test_eigen.jl")
+    include("test_svd/test_svd.jl")
 end
