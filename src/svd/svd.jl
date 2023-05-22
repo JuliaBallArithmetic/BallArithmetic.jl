@@ -1,33 +1,3 @@
-
-function upper_abs(A::BallMatrix)
-    return abs.(A.c) + A.r
-end
-
-# we use Perron theory here: if for two matrices with B positive 
-# |A| < B we have ρ(A)<=ρ(B)
-# Wielandt's theorem 
-# https://mathworld.wolfram.com/WielandtsTheorem.html
-
-function upper_bound_norm(A::BallMatrix{T}; iterates=10) where {T}
-    m, k = size(A)
-    x_old = ones(m)
-    x_new = x_old
-
-    absA = upper_abs(A)
-    #@info opnorm(absA, Inf)
-
-    # using Collatz theorem
-    lam = setrounding(T, RoundUp) do
-        for _ in 1:iterates
-            x_old = x_new
-            x_new = absA' * absA * x_old
-            #@info maximum(x_new ./ x_old)
-        end
-        lam = maximum(x_new ./ x_old)
-    end
-    return lam
-end
-
 function svdbox(A::BallMatrix{T}) where {T}
     svdA = svd(A.c)
 
@@ -37,15 +7,15 @@ function svdbox(A::BallMatrix{T}) where {T}
     V = BallMatrix(svdA.V)
 
     E = U * Σ * Vt - A
-    normE = sqrt_up(upper_bound_norm(E))
+    normE = sqrt_up(collatz_upper_bound_L2_norm(E))
     @debug "norm E" normE
 
     F = Vt * V - I
-    normF = sqrt_up(upper_bound_norm(F))
+    normF = sqrt_up(collatz_upper_bound_L2_norm(F))
     @debug "norm F" normF
 
     G = U' * U - I
-    normG = sqrt_up(upper_bound_norm(G))
+    normG = sqrt_up(collatz_upper_bound_L2_norm(G))
     @debug "norm G" normG
 
     @assert normF < 1 "It is not possible to verify the singular values with this precision"

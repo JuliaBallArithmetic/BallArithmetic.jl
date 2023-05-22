@@ -44,6 +44,8 @@ export Ball, BallMatrix, ±
 include("rounding.jl")
 include("ball.jl")
 include("matrix.jl")
+include("norm_bounds/rigorous_norm_bounds.jl")
+include("eigenvalues/gev.jl")
 include("svd/svd.jl")
 
 
