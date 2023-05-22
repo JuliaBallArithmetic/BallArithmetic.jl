@@ -33,14 +33,14 @@ using LinearAlgebra
 
 function upper_bound_L1_norm(A::BallMatrix{T}) where {T}
     norm = setrounding(T, RoundUp) do
-        return opnorm(A.c, 1)+opnorm(A.r, 1)        
+        return opnorm(A.c, 1) + opnorm(A.r, 1)
     end
     return norm
 end
 
 function upper_bound_L_inf_norm(A::BallMatrix{T}) where {T}
     norm = setrounding(T, RoundUp) do
-        return opnorm(A.c, Inf)+opnorm(A.r, Inf)        
+        return opnorm(A.c, Inf) + opnorm(A.r, Inf)
     end
     return norm
 end
@@ -48,7 +48,7 @@ end
 function upper_bound_L2_norm(A::BallMatrix{T}) where {T}
     norm1 = upper_bound_L1_norm(A)
     norminf = upper_bound_L_inf_norm(A)
-    norm_prod = @up norm1*norminf
-    
+    norm_prod = @up norm1 * norminf
+
     return min(collatz_upper_bound_L2_norm(A), sqrt_up(norm_prod))
 end
