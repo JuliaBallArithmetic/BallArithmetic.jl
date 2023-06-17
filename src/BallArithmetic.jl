@@ -39,7 +39,7 @@ end
 
 using RoundingEmulator, MacroTools, SetRounding
 
-export Ball, BallMatrix, ±
+export Ball, BallMatrix, ±, mid, rad
 
 include("rounding.jl")
 include("ball.jl")

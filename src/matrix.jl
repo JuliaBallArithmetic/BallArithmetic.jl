@@ -10,15 +10,19 @@ struct BallMatrix{T<:AbstractFloat,NT<:Union{T,Complex{T}},BT<:Ball{T,NT},CM<:Ab
 end
 
 BallMatrix(M::AbstractMatrix) = BallMatrix(mid.(M), rad.(M))
+mid(A::AbstractMatrix) = A
+rad(A::AbstractMatrix) = zeros(eltype(A), size(A))
 
-mid(A::BallMatrix) = map(mid, A)
-rad(A::BallMatrix) = map(rad, A)
+# mid(A::BallMatrix) = map(mid, A)
+# rad(A::BallMatrix) = map(rad, A)
+mid(A::BallMatrix) = A.c
+rad(A::BallMatrix) = A.r
 
 # Array interface
 Base.eltype(::BallMatrix{T,NT,BT}) where {T,NT,BT} = BT
 Base.IndexStyle(::Type{<:BallMatrix}) = IndexLinear()
 Base.size(M::BallMatrix, i...) = size(M.c, i...)
-Base.getindex(M::BallMatrix, i::Int) = Ball(getindex(M.c, i), getindex(M.r, i))
+Base.getindex(M::BallMatrix, inds...) = Ball(getindex(M.c, inds...), getindex(M.r, inds...))
 function Base.setindex!(M::BallMatrix, x, inds...)
     setindex!(M.c, mid(x), inds...)
     setindex!(M.r, rad(x), inds...)
@@ -53,7 +57,17 @@ for op in (:+, :-)
     end
 end
 
-# TODO: maybe it is worth to define a convert function
+function Base.:*(lam::Number, A::BallMatrix{T}) where {T}
+    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c),typeof(lam)}))
+
+    B = lam * A.c
+
+    R = setrounding(T, RoundUp) do
+        return (η .+ ϵp * abs.(B)) + (A.r * abs(mid(lam)))
+    end
+
+    return BallMatrix(B, R)
+end
 
 function Base.:*(lam::Ball{T,NT}, A::BallMatrix{T}) where {T, NT<:Union{T,Complex{T}}}
     B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c),typeof(mid(lam))}))
@@ -67,17 +81,17 @@ function Base.:*(lam::Ball{T,NT}, A::BallMatrix{T}) where {T, NT<:Union{T,Comple
     return BallMatrix(B, R)
 end
 
-function Base.:*(lam::NT, A::BallMatrix{T}) where {T, NT<:Union{T,Complex{T}}}
-    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c),typeof(mid(lam))}))
+# function Base.:*(lam::NT, A::BallMatrix{T}) where {T, NT<:Union{T,Complex{T}}}
+#     B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c),typeof(mid(lam))}))
 
-    B = lam * A.c
+#     B = lam * A.c
 
-    R = setrounding(T, RoundUp) do
-        return (η .+ ϵp * abs.(B)) + (A.r * abs(mid(lam)))
-    end
+#     R = setrounding(T, RoundUp) do
+#         return (η .+ ϵp * abs.(B)) + (A.r * abs(mid(lam)))
+#     end
 
-    return BallMatrix(B, R)
-end
+#     return BallMatrix(B, R)
+# end
 
 for op in (:+, :-)
     @eval function Base.$op(A::BallMatrix{T}, B::Matrix{T}) where {T<:AbstractFloat}
