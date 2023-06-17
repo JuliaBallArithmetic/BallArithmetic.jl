@@ -66,3 +66,5 @@ Base.:/(x::Ball, y::Ball) = x * inv(y)
 Base.abs(x::Ball) = Ball(max(0, sub_down(abs(mid(x)), rad(x))), add_up(abs(mid(x)), rad(x)))
 
 Base.conj(x::Ball) = Ball(conj(mid(x)), rad(x))
+
+Base.in(x::Number, B::Ball) = abs(B.c-x) <= B.r

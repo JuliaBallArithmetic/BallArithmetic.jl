@@ -162,8 +162,7 @@ function Base.:*(A::BallMatrix{T}, B::Matrix{T}) where {T<:AbstractFloat}
     return MMul3(A, B)
 end
 
-function Base.:*(B::Matrix{T}, A::BallMatrix{T}) where {T<:AbstractFloat}
-    rB = zeros(size(B))
+function Base.:*(A::Matrix{T}, B::BallMatrix{T}) where {T<:AbstractFloat}
     return MMul3(A, B)
 end
 
