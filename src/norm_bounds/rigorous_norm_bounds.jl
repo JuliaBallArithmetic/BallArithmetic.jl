@@ -52,3 +52,23 @@ function upper_bound_L2_norm(A::BallMatrix{T}) where {T}
 
     return min(collatz_upper_bound_L2_norm(A), sqrt_up(norm_prod))
 end
+
+function svd_bound_L2_norm(A::BallMatrix{T}) where {T}
+    σ = svdbox(A)
+
+    top = σ[1]
+    
+    return @up top.c + top.r 
+end
+
+function svd_bound_L2_norm_inverse(A::BallMatrix)
+    σ = svdbox(A)
+
+    inv_inf = Ball(1.0) / σ[end]
+
+
+    return @up inv_inf.c + inv_inf.r
+end
+
+using LinearAlgebra
+svd_bound_L2_resolvent(A::BallMatrix, lam::Ball) = svd_bound_L2_norm_inverse(A - lam * I)
