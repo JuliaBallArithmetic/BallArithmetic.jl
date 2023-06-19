@@ -74,7 +74,9 @@ function Base.abs(x::Ball)
     end
 end  
 
-# Conjugation is essentially inversion...
-Base.conj(x::Ball) = (abs(x)^2)/x
-
+Base.conj(x::Ball) = Ball(conj(x.c), x.r)
 Base.in(x::Number, B::Ball) = abs(B.c-x) <= B.r
+
+function Base.inv(x::Ball{T, Complex{T}}) where {T<:AbstractFloat}
+    return conj(x)/(abs(x)^2)
+end
