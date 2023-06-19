@@ -63,8 +63,18 @@ end
 
 Base.:/(x::Ball, y::Ball) = x * inv(y)
 
-Base.abs(x::Ball) = Ball(max(0, sub_down(abs(mid(x)), rad(x))), add_up(abs(mid(x)), rad(x)))
+# Base.abs(x::Ball) = Ball(max(0, sub_down(abs(mid(x)), rad(x))), add_up(abs(mid(x)), rad(x)))
+#
+function Base.abs(x::Ball) 
+    if abs(x.c) > x.r
+        return Ball(abs(x.c), x.r)
+    else
+        val = add_up(abs(x.c), x.r)/2
+        return Ball(val, val)
+    end
+end  
 
-Base.conj(x::Ball) = Ball(conj(mid(x)), rad(x))
+# Conjugation is essentially inversion...
+Base.conj(x::Ball) = (abs(x)^2)/x
 
 Base.in(x::Number, B::Ball) = abs(B.c-x) <= B.r
