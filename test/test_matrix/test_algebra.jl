@@ -1,5 +1,4 @@
 @testset "Test Matrix Algebra" begin
-
     import IntervalArithmetic
 
     A = rand(4, 4)
@@ -54,7 +53,7 @@
 
     using LinearAlgebra
 
-    A = zeros(Ball{Float64,Float64}, (16, 16))
+    A = zeros(Ball{Float64, Float64}, (16, 16))
     lam = Ball(1 / 8, 1 / 8)
 
     B = A - lam * I
@@ -67,6 +66,4 @@
     B = A - lam * I
     @test all(-lam.c .== diag(B.c))
     @test all(lam.r .<= diag(B.r))
-
-
 end

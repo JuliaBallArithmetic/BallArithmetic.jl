@@ -18,8 +18,8 @@ function svdbox(A::BallMatrix{T}) where {T}
     normG = sqrt_up(collatz_upper_bound_L2_norm(G))
     @debug "norm G" normG
 
-    @assert normF < 1 "It is not possible to verify the singular values with this precision"
-    @assert normG < 1 "It is not possible to verify the singular values with this precision"
+    @assert normF<1 "It is not possible to verify the singular values with this precision"
+    @assert normG<1 "It is not possible to verify the singular values with this precision"
 
     den_down = @up (1.0 + normF) * (1.0 + normG)
     den_up = @down (1.0 - normF) * (1.0 - normG)
@@ -34,7 +34,8 @@ function svdbox(A::BallMatrix{T}) where {T}
 
     midpoints = (svdbounds_down + svdbounds_up) / 2
     rad = setrounding(T, RoundUp) do
-        [max(svdbounds_up[i] - midpoints[i], midpoints[i] - svdbounds_down[i]) for i in 1:length(midpoints)]
+        [max(svdbounds_up[i] - midpoints[i], midpoints[i] - svdbounds_down[i])
+         for i in 1:length(midpoints)]
     end
 
     return [Ball(midpoints[i], rad[i]) for i in 1:length(midpoints)]
