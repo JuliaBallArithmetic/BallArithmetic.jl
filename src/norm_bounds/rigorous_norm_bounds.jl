@@ -110,8 +110,9 @@ implemented in svd/svd.jl
 function svd_bound_L2_norm_inverse(A::BallMatrix)
     σ = svdbox(A)
 
+    in(0, σ[end]) && return +Inf
+    
     inv_inf = Ball(1.0) / σ[end]
-
     return @up inv_inf.c + inv_inf.r
 end
 

@@ -46,6 +46,8 @@ include("ball.jl")
 include("matrix.jl")
 include("norm_bounds/rigorous_norm_bounds.jl")
 include("eigenvalues/gev.jl")
+include("eigenvalues/upper_bound_spectral.jl")
 include("svd/svd.jl")
+include("matrix_classifiers/is_M_matrix.jl")
 
 end
