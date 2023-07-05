@@ -13,7 +13,7 @@ function gevbox(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
     S = bY * B * bX - I
     normS = upper_bound_L_inf_norm(S)
     @debug "norm S" normS
-    @assert normS < 1 "It is not possible to verify the eigenvalues with this precision"
+    @assert normS<1 "It is not possible to verify the eigenvalues with this precision"
 
     bD = BallMatrix(Diagonal(gev.values))
 
@@ -39,7 +39,7 @@ function evbox(A::BallMatrix{T}) where {T}
     S = bY * bX - I
     normS = upper_bound_L_inf_norm(S)
     @debug "norm S" normS
-    @assert normS < 1 "It is not possible to verify the eigenvalues with this precision"
+    @assert normS<1 "It is not possible to verify the eigenvalues with this precision"
 
     bD = BallMatrix(Diagonal(gev.values))
 

@@ -1,5 +1,5 @@
-export collatz_upper_bound_L2_norm, upper_bound_L1_norm, upper_bound_L_inf_norm, upper_bound_L2_norm
-
+export collatz_upper_bound_L2_norm, upper_bound_L1_norm, upper_bound_L_inf_norm,
+       upper_bound_L2_norm
 
 """
     upper_abs(A)
@@ -25,7 +25,7 @@ The keyword argument `iterates` is used to establish how many
 times we are iterating the vector of ones before we use Collatz's 
 estimate.
 """
-function collatz_upper_bound_L2_norm(A::BallMatrix{T}; iterates=10) where {T}
+function collatz_upper_bound_L2_norm(A::BallMatrix{T}; iterates = 10) where {T}
     m, k = size(A)
     x_old = ones(m)
     x_new = x_old
@@ -96,8 +96,8 @@ function svd_bound_L2_norm(A::BallMatrix{T}) where {T}
     σ = svdbox(A)
 
     top = σ[1]
-    
-    return @up top.c + top.r 
+
+    return @up top.c + top.r
 end
 
 """
@@ -110,12 +110,9 @@ implemented in svd/svd.jl
 function svd_bound_L2_norm_inverse(A::BallMatrix)
     σ = svdbox(A)
 
-    if in(0, σ[end])
-        return +Inf
-    end
-
+    in(0, σ[end]) && return +Inf
+    
     inv_inf = Ball(1.0) / σ[end]
-
     return @up inv_inf.c + inv_inf.r
 end
 

@@ -1,33 +1,34 @@
-struct Ball{T<:AbstractFloat,CT<:Union{T,Complex{T}}} <: Number
+struct Ball{T <: AbstractFloat, CT <: Union{T, Complex{T}}} <: Number
     c::CT
     r::T
 end
 ±(c, r) = Ball(c, r)
 Ball(c, r) = Ball(float(c), float(r))
-Ball(c::T) where {T<:Number} = Ball(float(c), zero(float(real(T))))
+Ball(c::T) where {T <: Number} = Ball(float(c), zero(float(real(T))))
 Ball(x::Ball) = x
 
 mid(x::Ball) = x.c
 rad(x::Ball) = x.r
 mid(x::Number) = x
-rad(::T) where {T<:Number} = zero(float(real(T)))
+rad(::T) where {T <: Number} = zero(float(real(T)))
 
-midtype(::Ball{T,CT}) where {T,CT} = CT
-radtype(::Ball{T,CT}) where {T,CT} = CT
-midtype(::Type{Ball{T,CT}}) where {T,CT} = CT
-radtype(::Type{Ball{T,CT}}) where {T,CT} = T
+midtype(::Ball{T, CT}) where {T, CT} = CT
+radtype(::Ball{T, CT}) where {T, CT} = CT
+midtype(::Type{Ball{T, CT}}) where {T, CT} = CT
+radtype(::Type{Ball{T, CT}}) where {T, CT} = T
 midtype(::Type{Ball}) = Float64
-radtype(::Type{Ball}) = Float64 
+radtype(::Type{Ball}) = Float64
 
-Base.show(io::IO,  ::MIME"text/plain", x::Ball) = print(io, x.c, " ± ", x.r)
-
+Base.show(io::IO, ::MIME"text/plain", x::Ball) = print(io, x.c, " ± ", x.r)
 
 ###############
 # CONVERSIONS #
 ###############
 
-Base.convert(::Type{Ball{T,CT}}, x::Ball) where {T,CT} = Ball(convert(CT, mid(x)), convert(T, rad(x)))
-Base.convert(::Type{Ball{T,CT}}, c::Number) where {T,CT} = Ball(convert(CT, c), zero(T))
+function Base.convert(::Type{Ball{T, CT}}, x::Ball) where {T, CT}
+    Ball(convert(CT, mid(x)), convert(T, rad(x)))
+end
+Base.convert(::Type{Ball{T, CT}}, c::Number) where {T, CT} = Ball(convert(CT, c), zero(T))
 Base.convert(::Type{Ball}, c::Number) = Ball(c)
 
 #########################
@@ -46,7 +47,7 @@ end
 
 function Base.:*(x::Ball, y::Ball)
     c = mid(x) * mid(y)
-    r = @up (η +  ϵp * abs(c)) + ((abs(mid(x)) + rad(x)) * rad(y) + rad(x) * abs(mid(y))) 
+    r = @up (η + ϵp * abs(c)) + ((abs(mid(x)) + rad(x)) * rad(y) + rad(x) * abs(mid(y)))
     Ball(c, r)
 end
 
@@ -65,18 +66,18 @@ Base.:/(x::Ball, y::Ball) = x * inv(y)
 
 # Base.abs(x::Ball) = Ball(max(0, sub_down(abs(mid(x)), rad(x))), add_up(abs(mid(x)), rad(x)))
 #
-function Base.abs(x::Ball) 
+function Base.abs(x::Ball)
     if abs(x.c) > x.r
         return Ball(abs(x.c), x.r)
     else
-        val = add_up(abs(x.c), x.r)/2
+        val = add_up(abs(x.c), x.r) / 2
         return Ball(val, val)
     end
-end  
+end
 
 Base.conj(x::Ball) = Ball(conj(x.c), x.r)
-Base.in(x::Number, B::Ball) = abs(B.c-x) <= B.r
+Base.in(x::Number, B::Ball) = abs(B.c - x) <= B.r
 
-function Base.inv(x::Ball{T, Complex{T}}) where {T<:AbstractFloat}
-    return conj(x)/(abs(x)^2)
+function Base.inv(x::Ball{T, Complex{T}}) where {T <: AbstractFloat}
+    return conj(x) / (abs(x)^2)
 end

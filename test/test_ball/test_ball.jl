@@ -1,9 +1,8 @@
 @testset "Ball Arithmetic" begin
-
     x = Ball(0.0, 0.5)
     @test in(0, x) == true
 
-    x = Ball(1.0+im, 2.0)
+    x = Ball(1.0 + im, 2.0)
     @test in(0, x) == true
 
     import IntervalArithmetic
@@ -16,11 +15,11 @@
     iw = IntervalArithmetic.Interval.(w)
     bw = Ball.(w)
 
-    isum = iv+iw
+    isum = iv + iw
     lower = [x.lo for x in isum]
     higher = [x.hi for x in isum]
 
-    bsum = bv+bw
+    bsum = bv + bw
 
     @test all(in.(lower, bsum))
     @test all(in.(higher, bsum))
@@ -33,12 +32,11 @@
     @test all(in.(lower, bprod))
     @test all(in.(higher, bprod))
 
-    x = Ball(1.0, 1/4) #interval [3/4, 5/4]
+    x = Ball(1.0, 1 / 4) #interval [3/4, 5/4]
     t = inv(x) # the inverse is [4/5, 4/3]
-    @test 4/5 ∈ t
-    @test 4/3 ∈ t
-    
+    @test 4 / 5 ∈ t
+    @test 4 / 3 ∈ t
 
-    x = Ball(rand()+im*rand())
-    @test 1.0 ∈ x*inv(x)
+    x = Ball(rand() + im * rand())
+    @test 1.0 ∈ x * inv(x)
 end
