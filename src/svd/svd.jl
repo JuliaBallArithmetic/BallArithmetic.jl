@@ -1,6 +1,10 @@
+
 function svdbox(A::BallMatrix{T}) where {T}
     svdA = svd(A.c)
+    return _certify_svd(A, svdA)
+end
 
+function _certify_svd(A::BallMatrix{T}, svdA::SVD) where {T}
     U = BallMatrix(svdA.U)
     Vt = BallMatrix(svdA.Vt)
     Σ = BallMatrix(Diagonal(svdA.S))

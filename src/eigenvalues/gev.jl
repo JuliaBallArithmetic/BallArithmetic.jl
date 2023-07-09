@@ -3,7 +3,10 @@
 # Numerical enclosure for each eigenvalue in generalized eigenvalue problem
 function gevbox(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
     gev = eigen(A.c, B.c)
+    return _certify_gev(A, B, gev)
+end
 
+function _certify_gev(A::BallMatrix{T}, B::BallMatrix{T}, gev::GeneralizedEigen) where {T}
     X = gev.vectors
     Y = inv(B.c * X)
 
@@ -29,7 +32,10 @@ end
 
 function evbox(A::BallMatrix{T}) where {T}
     gev = eigen(A.c)
+    return _certify_evbox(A, gev)
+end
 
+function _certify_evbox(A::BallMatrix{T}, gev::Eigen) where {T}
     X = gev.vectors
     Y = inv(X)
 
@@ -39,7 +45,7 @@ function evbox(A::BallMatrix{T}) where {T}
     S = bY * bX - I
     normS = upper_bound_L_inf_norm(S)
     @debug "norm S" normS
-    @assert normS < 1 "It is not possible to verify the eigenvalues with this precision"
+    @assert normS < 1 "It is not possible to verify the eigenvalues with this precision", normS, norm(X, 2), norm(Y,2)
 
     bD = BallMatrix(Diagonal(gev.values))
 
