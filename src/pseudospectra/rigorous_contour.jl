@@ -31,6 +31,10 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 100, 
     max_steps=Int64(ceil(4π / τ)))
     F = schur(Complex{Float64}.(A.c))
 
+    bZ = BallMatrix(F.Z)
+    errF = svd_bound_L2_norm(bZ'*bZ-I)
+    @info errF
+
     eigvals = diag(F.T)[[r1 < abs(x) < r2 for x in diag(F.T)]]
 
     @info "Certifying around", eigvals
