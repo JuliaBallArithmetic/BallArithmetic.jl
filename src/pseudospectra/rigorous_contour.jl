@@ -28,7 +28,7 @@ end
 
 
 function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton=100, τ=ϵ / 16,
-    max_steps=Int64(ceil(8 * π * ϵ / τ)))
+    max_steps=Int64(ceil(64 * π * ϵ / τ)))
     F = schur(Complex{Float64}.(A.c))
 
     bZ = BallMatrix(F.Z)
@@ -69,6 +69,8 @@ function _compute_enclosure_triangular(T, λ, ϵ; max_initial_newton, τ,
         end
     end
 
+    z0 = z
+
     for t_step in 1:max_steps
 
         #@info t_step, max_steps
@@ -82,9 +84,13 @@ function _compute_enclosure_triangular(T, λ, ϵ; max_initial_newton, τ,
         push!(out_z, z)
 
         z_ball = Ball(z_old, 1.5 * abs(z_old - z))
-
         bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
         push!(out_bound, bound)
+
+        if t_step > 10 && abs(z-z0) < 1.5 * abs(z_old - z)
+            @info t_step, "Loop closure"
+            break
+        end
     end
     return out_z, out_bound
 end
