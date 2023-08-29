@@ -27,12 +27,12 @@ function newton_level_set(z, T, ϵ; τ=ϵ / 16)
 end
 
 
-function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 100, τ=ϵ / 16,
-    max_steps=Int64(ceil(4π / τ)))
+function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton=100, τ=ϵ / 16,
+    max_steps=Int64(ceil(8 * π * ϵ / τ)))
     F = schur(Complex{Float64}.(A.c))
 
     bZ = BallMatrix(F.Z)
-    errF = svd_bound_L2_norm(bZ'*bZ-I)
+    errF = svd_bound_L2_norm(bZ' * bZ - I)
     @info errF
 
     eigvals = diag(F.T)[[r1 < abs(x) < r2 for x in diag(F.T)]]
@@ -61,15 +61,18 @@ function _compute_enclosure_triangular(T, λ, ϵ; max_initial_newton, τ,
 
     # we first use the newton method to approach the level set
     for j in 1:max_initial_newton
-        K = svd(T- z*I)
+        K = svd(T - z * I)
         z, σ = _newton_step(z, K, ϵ, ϵ)
-        
+
         if (σ - ϵ) < ϵ / 256
             break
         end
     end
 
-    for _ in 1:max_steps
+    for t_step in 1:max_steps
+
+        #@info t_step, max_steps
+
         z_old = z
 
         K = svd(T - z * I)
@@ -79,8 +82,8 @@ function _compute_enclosure_triangular(T, λ, ϵ; max_initial_newton, τ,
         push!(out_z, z)
 
         z_ball = Ball(z_old, 1.5 * abs(z_old - z))
- 
-        bound = _certify_svd(BallMatrix(T) - z_ball*I, K)[end]
+
+        bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
         push!(out_bound, bound)
     end
     return out_z, out_bound
