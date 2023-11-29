@@ -1,4 +1,4 @@
-export collatz_upper_bound_L2_norm, upper_bound_L1_norm, upper_bound_L_inf_norm, upper_bound_L2_norm
+export collatz_upper_bound_L2_opnorm, upper_bound_L1_opnorm, upper_bound_L_inf_opnorm, upper_bound_L2_opnorm
 
 
 """
@@ -12,7 +12,7 @@ function upper_abs(A::BallMatrix)
 end
 
 """
-    collatz_upper_bound_L2_norm(A::BallMatrix; iterates=10)
+    collatz_upper_bound_L2_opnorm(A::BallMatrix; iterates=10)
 
 Give a rigorous upper bound on the ℓ² norm of the matrix `A`
 by using the Collatz theorem.
@@ -25,7 +25,7 @@ The keyword argument `iterates` is used to establish how many
 times we are iterating the vector of ones before we use Collatz's 
 estimate.
 """
-function collatz_upper_bound_L2_norm(A::BallMatrix{T}; iterates=10) where {T}
+function collatz_upper_bound_L2_opnorm(A::BallMatrix{T}; iterates=10) where {T}
     m, k = size(A)
     x_old = ones(m)
     x_new = x_old
@@ -40,19 +40,19 @@ function collatz_upper_bound_L2_norm(A::BallMatrix{T}; iterates=10) where {T}
             x_new = absA' * absA * x_old
             #@info maximum(x_new ./ x_old)
         end
-        lam = maximum(x_new ./ x_old)
+        return maximum(x_new ./ x_old)
     end
-    return lam
+    return sqrt_up(lam)
 end
 
 using LinearAlgebra
 
 """
-    upper_bound_L1_norm(A::BallMatrix{T})
+    upper_bound_L1_opnorm(A::BallMatrix{T})
 
 Returns a rigorous upper bound on the ℓ¹-norm of the ball matrix `A`
 """
-function upper_bound_L1_norm(A::BallMatrix{T}) where {T}
+function upper_bound_L1_opnorm(A::BallMatrix{T}) where {T}
     norm = setrounding(T, RoundUp) do
         return opnorm(A.c, 1) + opnorm(A.r, 1)
     end
@@ -60,11 +60,11 @@ function upper_bound_L1_norm(A::BallMatrix{T}) where {T}
 end
 
 """
-    upper_bound_L_inf_norm(A::BallMatrix{T})
+    upper_bound_L_inf_opnorm(A::BallMatrix{T})
 
 Returns a rigorous upper bound on the ℓ-∞-norm of the ball matrix `A`
 """
-function upper_bound_L_inf_norm(A::BallMatrix{T}) where {T}
+function upper_bound_L_inf_opnorm(A::BallMatrix{T}) where {T}
     norm = setrounding(T, RoundUp) do
         return opnorm(A.c, Inf) + opnorm(A.r, Inf)
     end
@@ -72,42 +72,42 @@ function upper_bound_L_inf_norm(A::BallMatrix{T}) where {T}
 end
 
 """
-    upper_bound_L_inf_norm(A::BallMatrix{T})
+    upper_bound_L_inf_opnorm(A::BallMatrix{T})
 
 Returns a rigorous upper bound on the ℓ²-norm of the ball matrix `A`
 using the best between the Collatz bound and the interpolation bound
 """
-function upper_bound_L2_norm(A::BallMatrix{T}) where {T}
-    norm1 = upper_bound_L1_norm(A)
-    norminf = upper_bound_L_inf_norm(A)
+function upper_bound_L2_opnorm(A::BallMatrix{T}) where {T}
+    norm1 = upper_bound_L1_opnorm(A)
+    norminf = upper_bound_L_inf_opnorm(A)
     norm_prod = @up norm1 * norminf
 
-    return min(collatz_upper_bound_L2_norm(A), sqrt_up(norm_prod))
+    return min(collatz_upper_bound_L2_opnorm(A), sqrt_up(norm_prod))
 end
 
 """
-    svd_bound_L2_norm(A::BallMatrix{T})
+    svd_bound_L2_opnorm(A::BallMatrix{T})
 
 Returns a rigorous upper bound on the ℓ²-norm of the ball matrix `A`
 using the rigorous enclosure for the singular values implemented in 
 svd/svd.jl
 """
-function svd_bound_L2_norm(A::BallMatrix{T}) where {T}
+function svd_bound_L2_opnorm(A::BallMatrix{T}) where {T}
     σ = svdbox(A)
 
     top = σ[1]
-    
-    return @up top.c + top.r 
+
+    return @up top.c + top.r
 end
 
 """
-    svd_bound_L2_norm_inverse(A::BallMatrix)
+    svd_bound_L2_opnorm_inverse(A::BallMatrix)
 
 Returns a rigorous upper bound on the ℓ²-norm of the inverse of the 
 ball matrix `A` using the rigorous enclosure for the singular values 
 implemented in svd/svd.jl
 """
-function svd_bound_L2_norm_inverse(A::BallMatrix)
+function svd_bound_L2_opnorm_inverse(A::BallMatrix)
     σ = svdbox(A)
 
     if in(0, σ[end])
@@ -126,4 +126,4 @@ using LinearAlgebra
 Returns a rigorous upper bound on the ℓ²-norm of the resolvent 
 of `A` at `λ`, i.e., ||(A-λ)^{-1}||_{ℓ²}
 """
-svd_bound_L2_resolvent(A::BallMatrix, λ::Ball) = svd_bound_L2_norm_inverse(A - λ * I)
+svd_bound_L2_resolvent(A::BallMatrix, λ::Ball) = svd_bound_L2_opnorm_inverse(A - λ * I)

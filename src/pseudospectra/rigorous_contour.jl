@@ -198,10 +198,10 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton=30,
     F = schur(Complex{Float64}.(A.c))
 
     bZ = BallMatrix(F.Z)
-    errF = svd_bound_L2_norm(bZ' * bZ - I)
+    errF = svd_bound_L2_opnorm(bZ' * bZ - I)
     
     bT = BallMatrix(F.T)
-    errT = svd_bound_L2_norm(bZ*bT*bZ'-A)
+    errT = svd_bound_L2_opnorm(bZ*bT*bZ'-A)
     
     @info "Schur unitary error", errF
     @info "Schur reconstruction error", errT
