@@ -44,12 +44,14 @@ export Ball, BallMatrix, ±, mid, rad
 include("rounding.jl")
 include("ball.jl")
 include("matrix.jl")
+include("norm_bounds/rigorous_norm.jl")
 include("norm_bounds/rigorous_opnorm_bounds.jl")
 include("eigenvalues/gev.jl")
 include("eigenvalues/upper_bound_spectral.jl")
 include("svd/svd.jl")
 include("pseudospectra/rigorous_contour.jl")
 include("matrix_classifiers/is_M_matrix.jl")
+include("fft/fft.jl")
 
 
 end
