@@ -34,5 +34,4 @@ function rounding_test(n,k)
     return all([B[i,i]==nextfloat(1.0) for i in 1:k-1])
 end
 
-
 end

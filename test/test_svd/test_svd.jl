@@ -1,6 +1,6 @@
 @testset "verify singular value perron frobenius " begin
     A = [0.5 0.5; 0.3 0.7]
-    ρ = BallArithmetic.collatz_upper_bound_L2_norm(BallMatrix(A))
+    ρ = BallArithmetic.collatz_upper_bound_L2_opnorm(BallMatrix(A))
     @test  1 ≤ ρ
 end
 
