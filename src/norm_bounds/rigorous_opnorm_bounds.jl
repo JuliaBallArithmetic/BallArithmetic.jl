@@ -1,10 +1,10 @@
-export collatz_upper_bound_L2_opnorm, upper_bound_L1_opnorm, upper_bound_L_inf_opnorm, upper_bound_L2_opnorm
-
+export collatz_upper_bound_L2_opnorm,
+    upper_bound_L1_opnorm, upper_bound_L_inf_opnorm, upper_bound_L2_opnorm
 
 """
     upper_abs(A)
 
-Return a floating point matrix `B` whose entries are bigger 
+Return a floating point matrix `B` whose entries are bigger
 or equal (componentwise) any of the entries of `A`
 """
 function upper_abs(A::BallMatrix)
@@ -17,15 +17,15 @@ end
 Give a rigorous upper bound on the ℓ² norm of the matrix `A`
 by using the Collatz theorem.
 
-We use Perron theory here: if for two matrices with `B` positive 
-`|A| < B` we have ρ(A)<=ρ(B) by Wielandt's theorem 
+We use Perron theory here: if for two matrices with `B` positive
+`|A| < B` we have ρ(A)<=ρ(B) by Wielandt's theorem
 [Wielandt's theorem](https://mathworld.wolfram.com/WielandtsTheorem.html)
 
-The keyword argument `iterates` is used to establish how many 
-times we are iterating the vector of ones before we use Collatz's 
+The keyword argument `iterates` is used to establish how many
+times we are iterating the vector of ones before we use Collatz's
 estimate.
 """
-function collatz_upper_bound_L2_opnorm(A::BallMatrix{T}; iterates=10) where {T}
+function collatz_upper_bound_L2_opnorm(A::BallMatrix{T}; iterates = 10) where {T}
     m, k = size(A)
     x_old = ones(m)
     x_new = x_old
@@ -89,7 +89,7 @@ end
     svd_bound_L2_opnorm(A::BallMatrix{T})
 
 Returns a rigorous upper bound on the ℓ²-norm of the ball matrix `A`
-using the rigorous enclosure for the singular values implemented in 
+using the rigorous enclosure for the singular values implemented in
 svd/svd.jl
 """
 function svd_bound_L2_opnorm(A::BallMatrix{T}) where {T}
@@ -103,8 +103,8 @@ end
 """
     svd_bound_L2_opnorm_inverse(A::BallMatrix)
 
-Returns a rigorous upper bound on the ℓ²-norm of the inverse of the 
-ball matrix `A` using the rigorous enclosure for the singular values 
+Returns a rigorous upper bound on the ℓ²-norm of the inverse of the
+ball matrix `A` using the rigorous enclosure for the singular values
 implemented in svd/svd.jl
 """
 function svd_bound_L2_opnorm_inverse(A::BallMatrix)
@@ -123,7 +123,7 @@ using LinearAlgebra
 """
     svd_bound_L2_resolvent(A::BallMatrix, lam::Ball)
 
-Returns a rigorous upper bound on the ℓ²-norm of the resolvent 
+Returns a rigorous upper bound on the ℓ²-norm of the resolvent
 of `A` at `λ`, i.e., ||(A-λ)^{-1}||_{ℓ²}
 """
 svd_bound_L2_resolvent(A::BallMatrix, λ::Ball) = svd_bound_L2_opnorm_inverse(A - λ * I)
