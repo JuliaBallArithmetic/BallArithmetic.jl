@@ -4,11 +4,11 @@ CurrentModule = BallArithmetic
 
 # BallArithmetic
 
-Documentation for [BallArithmetic](https://github.com/lucaferranti/BallArithmetic.jl).
+Documentation for [BallArithmetic](https://github.com/JuliaBallArithmetic/BallArithmetic.jl).
 
 ```@index
 ```
 
 ```@autodocs
-Modules = [BallArithmetic]
+Modules = [BallArithmetic, NumericalTest]
 ```

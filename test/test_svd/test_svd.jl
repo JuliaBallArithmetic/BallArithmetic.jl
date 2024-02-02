@@ -1,6 +1,6 @@
 @testset "verify singular value perron frobenius " begin
     A = [0.5 0.5; 0.3 0.7]
-    ρ = BallArithmetic.collatz_upper_bound_L2_norm(BallMatrix(A))
+    ρ = BallArithmetic.collatz_upper_bound_L2_opnorm(BallMatrix(A))
     @test 1 ≤ ρ
 end
 
@@ -21,8 +21,8 @@ end
     A = im * A
 
     # Σ = IntervalLinearAlgebra.svdbox(A, IntervalLinearAlgebra.R1())
-    # @test all([abs(3-Σ[1].c)< Σ[1].r; 
-    #             sqrt(abs(5-(Σ[2].c)^2)< Σ[2].r); 
+    # @test all([abs(3-Σ[1].c)< Σ[1].r;
+    #             sqrt(abs(5-(Σ[2].c)^2)< Σ[2].r);
     #             abs(2-Σ[3].c)< Σ[3].r;
     #             abs(Σ[4].c)< Σ[4].r;
     #             abs(Σ[5].c)< Σ[5].r])
