@@ -9,4 +9,5 @@ using Test
     include("test_fft/test_fft.jl")
     include("test_norm_bounds/test_norm_bounds.jl")
     include("test_svd/test_svd.jl")
+    include("test_numerical_test/test_numerical_test.jl")
 end
