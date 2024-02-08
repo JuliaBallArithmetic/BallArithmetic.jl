@@ -226,7 +226,7 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
         bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
 
         if bound < 0.0
-            @warn "Smaller rel_step required"
+            @warn "Smaller rel_step required", bounds[i].c, bounds[i].r
         end
 
         @info "resolvent upper bound", bound
