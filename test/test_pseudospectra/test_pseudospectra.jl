@@ -21,5 +21,8 @@
     @test enc[1][2] >= 1.0
     @test all(abs.((enc[1][3])) .- 2.0 .<= 0.02)
 
-    #enc = BallArithmetic.compute_enclosure(bA, 0.0, 0.1, 0.01)
+    enc = BallArithmetic.compute_enclosure(bA, 0.0, 0.1, 0.01)
+    @test enc[1][1] == 1.0
+    @test enc[1][2] >= 1.0
+    @test all(abs.((enc[1][3])) .- 0.1 .<= 0.02)
 end

@@ -181,6 +181,25 @@ end
 #     return (out_z, out_bound)
 # end
 
+"""
+    compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
+            max_steps = Int64(ceil(256 * π)), rel_steps = 16)
+
+    Given a BallMatrix `A`, this method follows the level lines of level `ϵ`
+around the eigenvalues with modulus bound between `r1` and `r2`.
+
+The keyword arguments
+    - max_initial_newton: maximum number of newton steps to reach the level lines
+    - max_steps: maximum number of steps following the contour
+    - rel_steps: relative integration step for the Euler method
+
+The method outputs an array of truples:
+    - the first element is the eigenvalue we are enclosing
+    (in the case of the excluding circles, it is 0.0 or the maximum modulus of the eigenvalues)
+    - the second element is an upper bound on the resolvent norm
+    - the third element is a list of points on the enclosing line; the resolvent is rigorously
+    bound on circles centered at each point and of radius 5/8 the distance to the previous point
+"""
 function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
         max_steps = Int64(ceil(256 * π)), rel_steps = 16)
     F = schur(Complex{Float64}.(A.c))
@@ -214,7 +233,7 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
     # encloses the eigenvalues inside r1
     eigvals_smaller_than_r1 = diag(F.T)[[abs(x) < r1 for x in diag(F.T)]]
 
-    if !isempty(eigvals_smaller_than_r1) > 0
+    if !isempty(eigvals_smaller_than_r1)
         @info "Computing exclusion circle ", r1
 
         curve, bounds = _compute_exclusion_set(F.T, r1; max_steps, rel_steps)
@@ -228,7 +247,7 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
     # # encloses the eigenvalues outside r2
     eigvals_bigger_than_r2 = diag(F.T)[[abs(x) > r2 for x in diag(F.T)]]
 
-    if !isempty(eigvals_bigger_than_r2) > 0
+    if !isempty(eigvals_bigger_than_r2)
         @info "Computing exclusion circle ", r2
 
         curve, bounds = _compute_exclusion_set(F.T, r2; max_steps, rel_steps)
