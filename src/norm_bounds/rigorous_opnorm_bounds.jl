@@ -7,8 +7,11 @@ export collatz_upper_bound_L2_opnorm,
 Return a floating point matrix `B` whose entries are bigger
 or equal (componentwise) any of the entries of `A`
 """
-function upper_abs(A::BallMatrix)
-    return abs.(A.c) + A.r
+function upper_abs(A::BallMatrix{T}) where {T}
+    absA = setrounding(T, RoundUp) do
+        return abs.(A.c) + A.r
+    end
+    return absA
 end
 
 """

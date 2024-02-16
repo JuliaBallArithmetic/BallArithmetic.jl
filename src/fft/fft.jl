@@ -1,6 +1,11 @@
 import AbstractFFTs
 import FFTW
 
+"""
+TODO: Add citation from Higham
+"""
+
+
 function fft(A::BallMatrix{T}, dims = (1, 2)) where {T}
     if all([!ispow2(size(A.c)[i]) for i in dims])
         @warn "The rigorous error estimate works for power of two sizes"

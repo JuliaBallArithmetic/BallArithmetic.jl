@@ -8,7 +8,11 @@ if Sys.ARCH == :x86_64
     using OpenBLASConsistentFPCSR_jll
 else
     @warn "The behaviour of multithreaded OpenBlas on this architecture is unclear,
-    we will fallback to single threaded OpenBLAS"
+    we will fallback to single threaded OpenBLAS
+
+    We refer to
+    https://www.tuhh.de/ti3/rump/intlab/Octave/INTLAB_for_GNU_Octave.shtml
+    "
 end
 
 function __init__()
