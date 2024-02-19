@@ -6,7 +6,6 @@ function _follow_level_set(z::ComplexF64, τ::Float64, K::SVD)
     # follow the level set
     grad = v' * u
     ort = im * grad
-
     z = z + τ * ort / abs(ort)
 
     return z, σ
@@ -27,20 +26,13 @@ end
 #     return _newton_step(z, K, ϵ, τ)
 # end
 
-function _compute_enclosure_eigval(T,
-        λ,
-        ϵ;
-        max_initial_newton,
-        max_steps,
-        rel_steps,
-        max_adaptive)
+function _compute_enclosure_eigval(T, λ, ϵ; max_initial_newton, max_steps, rel_steps)
     @info "Enclosing ", λ
     @info "Level set", ϵ
 
     eigvals = diag(T)
 
     out_z = []
-    log_z = []
     out_bound = []
 
     z = λ + 4 * sign(real(λ)) * ϵ
@@ -55,8 +47,6 @@ function _compute_enclosure_eigval(T,
         end
     end
 
-    r_guaranteed = abs(z - λ) / rel_steps
-
     # for j in 1:max_initial_newton
     #     K = svd(T - z * I)
     #     τ = minimum(abs.(eigvals .- z))/rel_steps
@@ -65,86 +55,44 @@ function _compute_enclosure_eigval(T,
     # end
 
     z0 = z
+    r_guaranteed_1 = 0.0
 
     push!(out_z, z)
-    push!(log_z, log(z - λ))
-
-    K = svd(T - z * I)
-
-    # we start by adaptively searching a radius for which our
-    # rigorous estimate works
-
-    bound = Inf
-
-    for _ in 1:max_adaptive
-        z_ball = Ball(z, r_guaranteed)
-        bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
-        if bound.c - bound.r < 0.0
-            r_guaranteed = r_guaranteed / 2
-        else
-            break
-        end
-    end
-    r_guaranteed_0 = r_guaranteed
-
-    @info "The guaranteed radius at step 0 is", r_guaranteed_0
-    @info "with bound", bound
 
     for t_step in 1:max_steps
+
+        #@info t_step, max_steps
+
         z_old = z
-        r_old = r_guaranteed
-        τ = r_old
+
+        K = svd(T - z * I)
+
+        τ = minimum(abs.(eigvals .- z)) / rel_steps
 
         z, σ = _follow_level_set(z, τ, K)
         z, σ = _newton_step(z, K, ϵ, τ)
 
-        @info z, σ
-        if abs(z_old - z) == 0.0
-            z, σ = _follow_level_set(z, τ, K)
-        end
+        #        @info σ
+        push!(out_z, z)
 
         r_guaranteed = 5 * abs(z_old - z) / 8
-        if r_guaranteed == 0.0
-            @warn "Stopped"
+
+        if t_step == 1
+            r_guaranteed_1 = r_guaranteed
         end
 
-        K = svd(T - z * I)
+        # we certify the SVD on a ball around z_old
 
-        z_ball = Ball(z, r_guaranteed)
+        z_ball = Ball(z_old, r_guaranteed)
         bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
+        push!(out_bound, bound)
 
-        if bound.c - bound.r < 0.0
-            @warn "The bound is not working"
-            z = z_old
-            r_old = r_guaranteed / 2
-        else
-            push!(out_z, z)
-            push!(out_bound, bound)
-            push!(log_z, log(z - λ))
-        end
+        # if the first point is inside the certification ball, we have found a loop closure
+        #@info "r_guaranteed+r_guaranteed_1", r_guaranteed+r_guaranteed_1, "dist to start", abs(z_old-z0)
 
-        # if t_step == 1
-        #     r_guaranteed_1 = r_guaranteed
-        # end
+        check_loop_closure = abs(z_old - z0) < (r_guaranteed + r_guaranteed_1)
 
-        # # we certify the SVD on a ball around z_old
-
-        #
-        #
-
-        # # if the first point is inside the certification ball, we have found a loop closure
-        # #@info "r_guaranteed+r_guaranteed_1", r_guaranteed+r_guaranteed_1, "dist to start", abs(z_old-z0)
-        angle = 0.0
-
-        if length(log_z) > 1
-            #@info out_z[end], log_z[end] - log_z[1]
-            angle = imag(sum(log_z[2:end]) - sum(log_z[1:(end - 1)]))
-            #@info angle
-        end
-
-        check_loop_closure = abs(z - z0) < (r_guaranteed + r_guaranteed_0)
-
-        if t_step > 64 && check_loop_closure
+        if t_step > 10 && check_loop_closure
             @info t_step, "Loop closure"
             break
         end
@@ -253,7 +201,7 @@ The method outputs an array of truples:
     bound on circles centered at each point and of radius 5/8 the distance to the previous point
 """
 function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
-        max_steps = Int64(ceil(256 * π)), rel_steps = 16, max_adaptive = 10)
+        max_steps = Int64(ceil(256 * π)), rel_steps = 16)
     F = schur(Complex{Float64}.(A.c))
 
     bZ = BallMatrix(F.Z)
@@ -273,12 +221,12 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
 
     for λ in eigvals
         curve, bounds = _compute_enclosure_eigval(F.T, λ, ϵ; max_initial_newton,
-            max_steps, rel_steps, max_adaptive)
+            max_steps, rel_steps)
 
         bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
 
         if bound < 0.0
-            @warn "Smaller rel_step required", bounds[i].c, bounds[i].r
+            @warn "Smaller rel_step required"
         end
 
         @info "resolvent upper bound", bound
