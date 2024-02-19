@@ -6,6 +6,7 @@ function _follow_level_set(z::ComplexF64, τ::Float64, K::SVD)
     # follow the level set
     grad = v' * u
     ort = im * grad
+
     z = z + τ * ort / abs(ort)
 
     return z, σ
@@ -39,6 +40,7 @@ function _compute_enclosure_eigval(T,
     eigvals = diag(T)
 
     out_z = []
+    log_z = []
     out_bound = []
 
     z = λ + 4 * sign(real(λ)) * ϵ
@@ -65,6 +67,7 @@ function _compute_enclosure_eigval(T,
     z0 = z
 
     push!(out_z, z)
+    push!(log_z, log(z - λ))
 
     K = svd(T - z * I)
 
@@ -90,13 +93,20 @@ function _compute_enclosure_eigval(T,
     for t_step in 1:max_steps
         z_old = z
         r_old = r_guaranteed
-
         τ = r_old
 
         z, σ = _follow_level_set(z, τ, K)
         z, σ = _newton_step(z, K, ϵ, τ)
 
+        @info z, σ
+        if abs(z_old - z) == 0.0
+            z, σ = _follow_level_set(z, τ, K)
+        end
+
         r_guaranteed = 5 * abs(z_old - z) / 8
+        if r_guaranteed == 0.0
+            @warn "Stopped"
+        end
 
         K = svd(T - z * I)
 
@@ -104,11 +114,13 @@ function _compute_enclosure_eigval(T,
         bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
 
         if bound.c - bound.r < 0.0
+            @warn "The bound is not working"
             z = z_old
             r_old = r_guaranteed / 2
         else
             push!(out_z, z)
             push!(out_bound, bound)
+            push!(log_z, log(z - λ))
         end
 
         # if t_step == 1
@@ -122,6 +134,13 @@ function _compute_enclosure_eigval(T,
 
         # # if the first point is inside the certification ball, we have found a loop closure
         # #@info "r_guaranteed+r_guaranteed_1", r_guaranteed+r_guaranteed_1, "dist to start", abs(z_old-z0)
+        angle = 0.0
+
+        if length(log_z) > 1
+            #@info out_z[end], log_z[end] - log_z[1]
+            angle = imag(sum(log_z[2:end]) - sum(log_z[1:(end - 1)]))
+            #@info angle
+        end
 
         check_loop_closure = abs(z - z0) < (r_guaranteed + r_guaranteed_0)
 
