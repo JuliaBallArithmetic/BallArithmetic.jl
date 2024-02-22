@@ -1,4 +1,7 @@
+export Enclosure, bound_enclosure
+
 struct Enclosure
+    λ::Any
     points::Vector{ComplexF64}
     bounds::Vector{Ball{Float64, Float64}}
     radiuses::Vector{Float64}
@@ -9,7 +12,7 @@ function _compute_exclusion_circle(T, λ, r; max_steps, rel_steps)
     return _compute_exclusion_set(T, r; max_steps, rel_steps, λ)
 end
 
-function _compute_exclusion_circle_level_set_1(T,
+function _compute_exclusion_circle_level_set_ode(T,
         λ,
         ϵ;
         max_steps,
@@ -88,7 +91,30 @@ function _compute_exclusion_circle_level_set_priori(T,
 
     N = ceil(8 * r / dist_points)
 
-    @info N
+    # @info N
+    # for j in 0:(N - 1)
+    #     z = λ + r * exp(2 * π * im * j / N)
+    #     push!(out_z, z)
+
+    #     K = svd(T - z * I)
+    #     z_ball = Ball(z, pearl_radius)
+
+    #     bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
+    #     push!(out_bound, bound)
+    #     push!(out_radiuses, pearl_radius)
+    # end
+
+    #return Enclosure(λ, out_z, out_bound, out_radiuses, true)
+    return _certify_circle(T, λ, r, N)
+end
+
+function _certify_circle(T, λ, r, N)
+    out_z = []
+    out_bound = []
+    out_radiuses = []
+
+    pearl_radius = 5 * (r * 2 * π / N) / 8
+
     for j in 0:(N - 1)
         z = λ + r * exp(2 * π * im * j / N)
         push!(out_z, z)
@@ -100,8 +126,7 @@ function _compute_exclusion_circle_level_set_priori(T,
         push!(out_bound, bound)
         push!(out_radiuses, pearl_radius)
     end
-
-    return Enclosure(out_z, out_bound, out_radiuses, true)
+    return Enclosure(λ, out_z, out_bound, out_radiuses, true)
 end
 
 function _compute_exclusion_set(T, r; max_steps, rel_steps, λ = 0 + im * 0)
@@ -161,10 +186,29 @@ function _compute_exclusion_set(T, r; max_steps, rel_steps, λ = 0 + im * 0)
             break
         end
     end
-    return Enclosure(out_z, out_bound, out_radiuses, loop_closure)
+    return Enclosure(λ, out_z, out_bound, out_radiuses, loop_closure)
 end
 
-#bound(Enc::Enclosure) = max()
+function bound_resolvent(E::Enclosure)
+    min_sing_val = minimum([@down x.c - x.r for x in E.bounds])
+    return @up 1.0 / min_sing_val
+end
+
+function check_enclosure(E::Enclosure)
+    check_overlap = true
+    for i in 1:(length(E.points) - 1)
+        check_overlap = abs(E.points[i + 1] - E.points[i]) <
+                        E.radiuses[i] + E.radiuses[i + 1]
+        if check_overlap == false
+            return false
+        end
+    end
+    check_overlap = abs(E.points[1] - E.points[end]) < E.radiuses[1] + E.radiuses[end]
+    return check_overlap
+end
+
+function check_loop(λ, E::Enclosure)
+end
 
 function _follow_level_set(z::ComplexF64, τ::Float64, K::SVD)
     u = K.U[:, end]
@@ -202,6 +246,7 @@ function _compute_enclosure_eigval(T, λ, ϵ; max_initial_newton, max_steps, rel
 
     out_z = []
     out_bound = []
+    radiuses = []
     log_z = []
 
     z = λ + 4 * sign(real(λ)) * ϵ
@@ -226,8 +271,8 @@ function _compute_enclosure_eigval(T, λ, ϵ; max_initial_newton, max_steps, rel
     z0 = z
     r_guaranteed_1 = 0.0
 
-    push!(out_z, z)
-    push!(log_z, log(z - λ))
+    #push!(out_z, z)
+    #push!(log_z, log(z - λ))
 
     for t_step in 1:max_steps
 
@@ -257,6 +302,7 @@ function _compute_enclosure_eigval(T, λ, ϵ; max_initial_newton, max_steps, rel
         z_ball = Ball(z_old, r_guaranteed)
         bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
         push!(out_bound, bound)
+        push!(radiuses, r_guaranteed)
 
         # if the first point is inside the certification ball, we have found a loop closure
         #@info "r_guaranteed+r_guaranteed_1", r_guaranteed+r_guaranteed_1, "dist to start", abs(z_old-z0)
@@ -276,7 +322,7 @@ function _compute_enclosure_eigval(T, λ, ϵ; max_initial_newton, max_steps, rel
             break
         end
     end
-    return out_z, out_bound
+    return Enclosure(λ, out_z, out_bound, radiuses, true)
 end
 
 # function _certify_circle(T, r1, r, ϵ)
@@ -347,19 +393,19 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
     output = []
 
     for λ in eigvals
-        curve, bounds = _compute_enclosure_eigval(F.T, λ, ϵ; max_initial_newton,
+        E = _compute_enclosure_eigval(F.T, λ, ϵ; max_initial_newton,
             max_steps, rel_steps)
 
-        bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
+        # bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
 
-        if bound < 0.0
-            @warn "Smaller rel_step required"
-        end
+        # if bound < 0.0
+        #     @warn "Smaller rel_step required"
+        # end
 
-        @info "resolvent upper bound", bound
-        @info "σ", bounds[i]
+        # @info "resolvent upper bound", bound
+        # @info "σ", bounds[i]
 
-        push!(output, (λ, bound, curve, bounds))
+        push!(output, E)
     end
 
     # encloses the eigenvalues inside r1
@@ -368,12 +414,13 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
     if !isempty(eigvals_smaller_than_r1)
         @info "Computing exclusion circle ", r1
 
-        curve, bounds = _compute_exclusion_set(F.T, r1; max_steps, rel_steps)
-        bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
-        @info bound, i
-        @info "σ", bounds[i]
+        E = _compute_exclusion_set(F.T, r1; max_steps, rel_steps)
+        #bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
+        #@info bound, i
+        #@info "σ", bounds[i]
+        @info bound_resolvent(E)
 
-        push!(output, (0.0, bound, curve, bounds))
+        push!(output, E)
     end
 
     # # encloses the eigenvalues outside r2
@@ -382,13 +429,13 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
     if !isempty(eigvals_bigger_than_r2)
         @info "Computing exclusion circle ", r2
 
-        curve, bounds = _compute_exclusion_set(F.T, r2; max_steps, rel_steps)
-        max_abs_eigenvalue = maximum(abs.(diag(F.T)))
-        bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
-        @info bound, i
-        @info "σ", bounds[i]
+        E = _compute_exclusion_set(F.T, r2; max_steps, rel_steps)
+        #max_abs_eigenvalue = maximum(abs.(diag(F.T)))
+        #bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
+        #@info bound, i
+        #@info "σ", bounds[i]
 
-        push!(output, (max_abs_eigenvalue, bound, curve, bounds))
+        push!(output, E)
         #     r = minimum([abs(λ)-r2 for λ in eigvals_bigger_than_r2])/5
         #     @info "Gap between r2, $r2 and smallest eigenvalue outside, $r"
         #     curve, bound = _certify_circle(F.T, r2, r, ϵ)

@@ -9,20 +9,36 @@
 
     enc = BallArithmetic.compute_enclosure(bA, 0.0, 2.0, 0.01)
 
-    @test enc[1][1] == 1.0 + 0.0 * im
-    @test enc[1][2] >= 100
-    @test all(abs.(enc[1][3] .- 1.0) .<= 0.02)
+    @test enc[1].λ == 1.0 + 0.0 * im
+    @test BallArithmetic.bound_resolvent(enc[1]) >= 100
+    @test all(abs.(enc[1].points .- 1.0) .<= 0.02)
 
     A = [1.0 0.0; 0.0 -1.0]
     bA = BallMatrix(A)
 
     enc = BallArithmetic.compute_enclosure(bA, 2.0, 3.0, 0.01)
-    @test enc[1][1] == 0.0
-    @test enc[1][2] >= 1.0
-    @test all(abs.((enc[1][3])) .- 2.0 .<= 0.02)
+    @test enc[1].λ == 0.0
+    @test BallArithmetic.bound_resolvent(enc[1]) >= 1
+    @test all(abs.(enc[1].points) .- 2.0 .<= 0.02)
 
     enc = BallArithmetic.compute_enclosure(bA, 0.0, 0.1, 0.01)
-    @test enc[1][1] == 1.0
-    @test enc[1][2] >= 1.0
-    @test all(abs.((enc[1][3])) .- 0.1 .<= 0.02)
+    @test enc[1].λ == 0.0
+    @test BallArithmetic.bound_resolvent(enc[1]) >= 1.0
+    @test all(abs.((enc[1].points)) .- 0.1 .<= 0.02)
+
+    E = BallArithmetic._compute_exclusion_circle_level_set_priori(A,
+        1.0,
+        0.01;
+        rel_pearl_size = 1 / 64,
+        max_initial_newton = 16)
+    @test all([abs(E.points[i + 1] - E.points[i]) for i in 1:(length(E.points) - 1)] .<
+              2 * E.radiuses[1])
+    @test BallArithmetic.bound_resolvent(E) > 100
+
+    E = BallArithmetic._compute_exclusion_circle_level_set_ode(A,
+        1.0,
+        0.01; max_initial_newton = 16,
+        max_steps = 1000,
+        rel_steps = 16)
+    @test BallArithmetic.bound_resolvent(E) > 100
 end
