@@ -444,3 +444,75 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
 
     return output
 end
+
+function compute_enclosure_circles(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
+        max_steps = Int64(ceil(256 * π)), rel_steps = 16, rel_pearl_size = 1 / 32)
+    F = schur(Complex{Float64}.(A.c))
+
+    bZ = BallMatrix(F.Z)
+    errF = svd_bound_L2_opnorm(bZ' * bZ - I)
+
+    bT = BallMatrix(F.T)
+    errT = svd_bound_L2_opnorm(bZ * bT * bZ' - A)
+
+    @info "Schur unitary error", errF
+    @info "Schur reconstruction error", errT
+
+    eigvals = diag(F.T)[[r1 < abs(x) < r2 for x in diag(F.T)]]
+
+    @info "Certifying around", eigvals
+
+    output = []
+
+    for λ in eigvals
+        E = _compute_exclusion_circle_level_set_priori(
+            F.T, λ, ϵ; rel_pearl_size, max_initial_newton)
+
+        # bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
+
+        # if bound < 0.0
+        #     @warn "Smaller rel_step required"
+        # end
+
+        # @info "resolvent upper bound", bound
+        # @info "σ", bounds[i]
+
+        push!(output, E)
+    end
+
+    # encloses the eigenvalues inside r1
+    eigvals_smaller_than_r1 = diag(F.T)[[abs(x) < r1 for x in diag(F.T)]]
+
+    if !isempty(eigvals_smaller_than_r1)
+        @info "Computing exclusion circle ", r1
+
+        E = _compute_exclusion_set(F.T, r1; max_steps, rel_steps)
+        #bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
+        #@info bound, i
+        #@info "σ", bounds[i]
+        @info bound_resolvent(E)
+
+        push!(output, E)
+    end
+
+    # # encloses the eigenvalues outside r2
+    eigvals_bigger_than_r2 = diag(F.T)[[abs(x) > r2 for x in diag(F.T)]]
+
+    if !isempty(eigvals_bigger_than_r2)
+        @info "Computing exclusion circle ", r2
+
+        E = _compute_exclusion_set(F.T, r2; max_steps, rel_steps)
+        #max_abs_eigenvalue = maximum(abs.(diag(F.T)))
+        #bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
+        #@info bound, i
+        #@info "σ", bounds[i]
+
+        push!(output, E)
+        #     r = minimum([abs(λ)-r2 for λ in eigvals_bigger_than_r2])/5
+        #     @info "Gap between r2, $r2 and smallest eigenvalue outside, $r"
+        #     curve, bound = _certify_circle(F.T, r2, r, ϵ)
+        #     push!(output, (max_abs_eigenvalue, curve, bound))
+    end
+
+    return output, errF, errT
+end
