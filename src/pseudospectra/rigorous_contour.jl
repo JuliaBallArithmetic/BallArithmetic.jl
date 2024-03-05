@@ -209,15 +209,15 @@ function compute_enclosure_circles(A::BallMatrix, r1, r2, ϵ; max_initial_newton
         @info "Computing exclusion circle ", r1
         @info "to optimize, we take a circle equidistant from the eigenvalues", r1tent
 
-        #E = _compute_exclusion_set(F.T, r1tent; max_steps, rel_steps)
+        E = _compute_exclusion_set(F.T, r1tent; max_steps, rel_steps)
 
-        dist = (min_abs_validated_eigenvalues - max_abs_eigvals_smaller_than_r1) *
-               rel_pearl_size_r1
-        N = ceil(8 * r1tent / dist)
-        @info N
+        # dist = (min_abs_validated_eigenvalues - max_abs_eigvals_smaller_than_r1) *
+        #        rel_pearl_size_r1
+        # N = ceil(8 * r1tent / dist)
+        # @info N
 
-        E = _certify_circle(F.T, 0.0, r1tent, N)
-        #bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
+        # E = _certify_circle(F.T, 0.0, r1tent, N)
+        # #bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
         #@info bound, i
         #@info "σ", bounds[i]
         #@info bound_resolvent(E)
@@ -236,14 +236,14 @@ function compute_enclosure_circles(A::BallMatrix, r1, r2, ϵ; max_initial_newton
         @info "Computing exclusion circle ", r2
         @info "to optimize, we take a circle equidistant from the eigenvalues", r2tent
 
-        #E = _compute_exclusion_set(F.T, r1tent; max_steps, rel_steps)
+        E = _compute_exclusion_set(F.T, r2tent; max_steps, rel_steps)
 
-        dist = (min_abs_eigvals_bigger_than_r2 - max_abs_validated_eigenvalues) *
-               rel_pearl_size_r2
-        N = ceil(8 * r1tent / dist)
-        @info N
+        # dist = (min_abs_eigvals_bigger_than_r2 - max_abs_validated_eigenvalues) *
+        #        rel_pearl_size_r2
+        # N = ceil(8 * r1tent / dist)
+        # @info N
 
-        E = _certify_circle(F.T, 0.0, r2tent, N)
+        # E = _certify_circle(F.T, 0.0, r2tent, N)
         #bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
         #@info bound, i
         #@info "σ", bounds[i]
