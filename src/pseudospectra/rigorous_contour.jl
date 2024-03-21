@@ -9,6 +9,7 @@ struct Enclosure
 end
 
 include("contour_strategies.jl")
+include("refine_enclosure.jl")
 
 function bound_resolvent(E::Enclosure, errF, errT, norm_Z, norm_Z_inv)
     N = length(E.points)
@@ -119,7 +120,7 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
         #bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
         #@info bound, i
         #@info "σ", bounds[i]
-        @info bound_resolvent(E)
+        #@info bound_resolvent(E)
 
         push!(output, E)
     end
@@ -147,8 +148,7 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
 end
 
 function compute_enclosure_circles(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
-        max_steps = Int64(ceil(256 * π)), rel_steps = 16, rel_pearl_size = 1 / 32,
-        rel_pearl_size_r1 = 1 / 32, rel_pearl_size_r2 = 1 / 32)
+        max_steps = Int64(ceil(256 * π)), rel_steps = 16, rel_pearl_size = 1 / 32)
     F = schur(Complex{Float64}.(A.c))
 
     bZ = BallMatrix(F.Z)
