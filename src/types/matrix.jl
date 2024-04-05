@@ -1,13 +1,13 @@
 struct BallMatrix{T <: AbstractFloat, NT <: Union{T, Complex{T}}, BT <: Ball{T, NT},
-                  CM <: AbstractMatrix{NT}, RM <: AbstractMatrix{T}} <: AbstractMatrix{BT}
+    CM <: AbstractMatrix{NT}, RM <: AbstractMatrix{T}} <: AbstractMatrix{BT}
     c::CM
     r::RM
     function BallMatrix(c::AbstractMatrix{T},
-                        r::AbstractMatrix{T}) where {T <: AbstractFloat}
+            r::AbstractMatrix{T}) where {T <: AbstractFloat}
         new{T, T, Ball{T, T}, typeof(c), typeof(r)}(c, r)
     end
     function BallMatrix(c::AbstractMatrix{Complex{T}},
-                        r::AbstractMatrix{T}) where {T <: AbstractFloat}
+            r::AbstractMatrix{T}) where {T <: AbstractFloat}
         new{T, Complex{T}, Ball{T, Complex{T}}, typeof(c), typeof(r)}(c, r)
     end
 end
@@ -25,7 +25,25 @@ rad(A::BallMatrix) = A.r
 Base.eltype(::BallMatrix{T, NT, BT}) where {T, NT, BT} = BT
 Base.IndexStyle(::Type{<:BallMatrix}) = IndexLinear()
 Base.size(M::BallMatrix, i...) = size(M.c, i...)
-Base.getindex(M::BallMatrix, inds...) = Ball(getindex(M.c, inds...), getindex(M.r, inds...))
+
+# function Base.getindex(M::BallMatrix, i1:Int64, i2:Int64)
+#     return Ball(getindex(M.c, i1, i2), getindex(M.r, i1, i2))
+# end
+
+function Base.getindex(M::BallMatrix, inds...)
+    return BallMatrix(getindex(M.c, inds...), getindex(M.r, inds...))
+end
+
+function Base.show(io::IO,
+        ::MIME{Symbol("text/plain")},
+        X::BallMatrix{
+            Float64, Float64, Ball{Float64, Float64}, Matrix{Float64}, Matrix{Float64}})
+    #@info "test"
+    m, n = size(X)
+    B = [Ball(X.c[i, j], X.r[i, j]) for i in 1:m, j in 1:n]
+    display(B)
+end
+
 function Base.setindex!(M::BallMatrix, x, inds...)
     setindex!(M.c, mid(x), inds...)
     setindex!(M.r, rad(x), inds...)
@@ -61,8 +79,8 @@ end
 
 function Base.:*(lam::Number, A::BallMatrix{T}) where {T}
     B = LinearAlgebra.copymutable_oftype(A.c,
-                                         Base._return_type(+,
-                                                           Tuple{eltype(A.c), typeof(lam)}))
+        Base._return_type(+,
+            Tuple{eltype(A.c), typeof(lam)}))
 
     B = lam * A.c
 
@@ -75,9 +93,9 @@ end
 
 function Base.:*(lam::Ball{T, NT}, A::BallMatrix{T}) where {T, NT <: Union{T, Complex{T}}}
     B = LinearAlgebra.copymutable_oftype(A.c,
-                                         Base._return_type(+,
-                                                           Tuple{eltype(A.c),
-                                                                 typeof(mid(lam))}))
+        Base._return_type(+,
+            Tuple{eltype(A.c),
+                typeof(mid(lam))}))
 
     B = mid(lam) * A.c
 
@@ -120,8 +138,8 @@ end
 function Base.:+(A::BallMatrix{T}, J::UniformScaling) where {T}
     LinearAlgebra.checksquare(A)
     B = LinearAlgebra.copymutable_oftype(A.c,
-                                         Base._return_type(+,
-                                                           Tuple{eltype(A.c), typeof(J)}))
+        Base._return_type(+,
+            Tuple{eltype(A.c), typeof(J)}))
     R = copy(A.r)
     @inbounds for i in axes(A, 1)
         B[i, i] += J
@@ -137,7 +155,7 @@ function Base.:+(A::BallMatrix{T}, J::UniformScaling) where {T}
 end
 
 function Base.:+(A::BallMatrix{T},
-                 J::UniformScaling{Ball{T, NT}}) where {T, NT <: Union{T, Complex{T}}}
+        J::UniformScaling{Ball{T, NT}}) where {T, NT <: Union{T, Complex{T}}}
     LinearAlgebra.checksquare(A)
     B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c), NT}))
     R = copy(A.r)
