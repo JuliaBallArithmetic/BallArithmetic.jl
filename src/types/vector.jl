@@ -102,8 +102,14 @@ function Base.:*(lam::Ball{T, NT}, A::BallVector{T}) where {T, NT <: Union{T, Co
 end
 
 function Base.:*(A::BallMatrix{T}, v::Vector) where {T <: AbstractFloat}
-    bV = BallVector(v)
-    return A * bV
+    n = length(v)
+    bV = reshape(mid(v), (n, 1))
+
+    w = A * bV
+    wc = vec(mid(w))
+    wr = vec(rad(w))
+
+    return BallVector(wc, wr)
 end
 
 function Base.:*(A::BallMatrix{T}, v::BallVector{S}) where {S, T <: AbstractFloat}
