@@ -34,10 +34,9 @@ function Base.getindex(M::BallMatrix, inds...)
     return BallMatrix(getindex(M.c, inds...), getindex(M.r, inds...))
 end
 
-function Base.show(io::IO,
-        ::MIME{Symbol("text/plain")},
-        X::BallMatrix{
-            Float64, Float64, Ball{Float64, Float64}, Matrix{Float64}, Matrix{Float64}})
+function Base.display(X::BallMatrix{
+        T, NT, Ball{T, NT}, Matrix{NT},
+        Matrix{T}}) where {T <: AbstractFloat, NT <: Union{T, Complex{T}}}
     #@info "test"
     m, n = size(X)
     B = [Ball(X.c[i, j], X.r[i, j]) for i in 1:m, j in 1:n]
