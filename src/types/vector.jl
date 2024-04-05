@@ -12,7 +12,7 @@ struct BallVector{T <: AbstractFloat, NT <: Union{T, Complex{T}}, BT <: Ball{T, 
     end
 end
 
-BallMatrix(M::AbstractVector) = BallVector(mid.(M), rad.(M))
+BallVector(M::AbstractVector) = BallVector(mid.(M), rad.(M))
 mid(A::AbstractVector) = A
 rad(A::AbstractVector) = zeros(eltype(A), size(A))
 
@@ -24,7 +24,8 @@ rad(A::BallVector) = A.r
 # Array interface
 Base.eltype(::BallVector{T, NT, BT}) where {T, NT, BT} = BT
 Base.IndexStyle(::Type{<:BallVector}) = IndexLinear()
-Base.size(M::BallVector, i...) = size(M.c, i...)
+Base.size(v::BallVector, i...) = size(v.c, i...)
+Base.length(v::BallVector) = length(v.c)
 function Base.getindex(M::BallVector, inds...)
     return BallVector(getindex(M.c, inds...), getindex(M.r, inds...))
 end
@@ -58,44 +59,62 @@ end
 # end
 
 # # Operations
-# for op in (:+, :-)
-#     @eval function Base.$op(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
-#         mA, rA = mid(A), rad(A)
-#         mB, rB = mid(B), rad(B)
+for op in (:+, :-)
+    @eval function Base.$op(A::BallVector{T}, B::BallVector{T}) where {T <: AbstractFloat}
+        mA, rA = mid(A), rad(A)
+        mB, rB = mid(B), rad(B)
 
-#         C = $op(mA, mB)
-#         R = setrounding(T, RoundUp) do
-#             R = (ϵp * abs.(C) + rA) + rB
-#         end
-#         BallMatrix(C, R)
-#     end
-# end
+        C = $op(mA, mB)
+        R = setrounding(T, RoundUp) do
+            R = (ϵp * abs.(C) + rA) + rB
+        end
+        BallVector(C, R)
+    end
+end
 
-# function Base.:*(lam::Number, A::BallMatrix{T}) where {T}
-#     B = LinearAlgebra.copymutable_oftype(A.c,
-#         Base._return_type(+,
-#             Tuple{eltype(A.c), typeof(lam)}))
+function Base.:*(lam::Number, A::BallVector{T}) where {T}
+    B = LinearAlgebra.copymutable_oftype(A.c,
+        Base._return_type(+,
+            Tuple{eltype(A.c), typeof(lam)}))
 
-#     B = lam * A.c
+    B = lam * A.c
 
-#     R = setrounding(T, RoundUp) do
-#         return (η .+ ϵp * abs.(B)) + (A.r * abs(mid(lam)))
-#     end
+    R = setrounding(T, RoundUp) do
+        return (η .+ ϵp * abs.(B)) + (A.r * abs(mid(lam)))
+    end
 
-#     return BallMatrix(B, R)
-# end
+    return BallVector(B, R)
+end
 
-# function Base.:*(lam::Ball{T, NT}, A::BallMatrix{T}) where {T, NT <: Union{T, Complex{T}}}
-#     B = LinearAlgebra.copymutable_oftype(A.c,
-#         Base._return_type(+,
-#             Tuple{eltype(A.c),
-#                 typeof(mid(lam))}))
+function Base.:*(lam::Ball{T, NT}, A::BallVector{T}) where {T, NT <: Union{T, Complex{T}}}
+    B = LinearAlgebra.copymutable_oftype(A.c,
+        Base._return_type(+,
+            Tuple{eltype(A.c),
+                typeof(mid(lam))}))
 
-#     B = mid(lam) * A.c
+    B = mid(lam) * A.c
 
-#     R = setrounding(T, RoundUp) do
-#         return (η .+ ϵp * abs.(B)) + ((abs.(A.c) + A.r) * rad(lam) + A.r * abs(mid(lam)))
-#     end
+    R = setrounding(T, RoundUp) do
+        return (η .+ ϵp * abs.(B)) + ((abs.(A.c) + A.r) * rad(lam) + A.r * abs(mid(lam)))
+    end
 
-#     return BallMatrix(B, R)
-# end
+    return BallVector(B, R)
+end
+
+function Base.:*(A::BallMatrix{T}, v::Vector) where {T <: AbstractFloat}
+    bV = BallVector(v)
+    return A * bV
+end
+
+function Base.:*(A::BallMatrix{T}, v::BallVector{S}) where {S, T <: AbstractFloat}
+    n = length(v)
+    vc = reshape(mid(v), (n, 1))
+    vr = reshape(rad(v), (n, 1))
+    B = BallMatrix(vc, vr)
+    w = MMul3(A, B)
+
+    wc = vec(mid(w))
+    wr = vec(rad(w))
+
+    return BallVector(wc, wr)
+end

@@ -179,7 +179,7 @@ function Base.:*(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
     #     R = abs.(mA) * rB + rA * (abs.(mB) + rB)
     # end
     # BallMatrix(C, R)
-    MMul3(A, B)
+    return MMul3(A, B)
 end
 
 function Base.:*(A::BallMatrix{T}, B::Matrix{T}) where {T <: AbstractFloat}
