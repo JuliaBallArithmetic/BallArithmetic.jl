@@ -93,4 +93,13 @@
     B = A - lam * I
     @test all(-lam.c .== diag(B.c))
     @test all(lam.r .<= diag(B.r))
+
+    A = rand(4, 4)
+    B = rand(4, 4)
+
+    bC = BallArithmetic.MMul3(A, B)
+
+    bC2 = BallMatrix(A) * BallMatrix(B)
+
+    @test bC.c == bC2.c && bC.r == bC2.r
 end
