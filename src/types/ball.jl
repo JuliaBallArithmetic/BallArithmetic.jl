@@ -2,6 +2,10 @@ struct Ball{T <: AbstractFloat, CT <: Union{T, Complex{T}}} <: Number
     c::CT
     r::T
 end
+
+BallF64 = Ball{Float64, Float64}
+BallComplexF64 = Ball{Float64, ComplexF64}
+
 ±(c, r) = Ball(c, r)
 Ball(c, r) = Ball(float(c), float(r))
 Ball(c::T) where {T <: Number} = Ball(float(c), zero(float(real(T))))

@@ -26,9 +26,13 @@ Base.eltype(::BallMatrix{T, NT, BT}) where {T, NT, BT} = BT
 Base.IndexStyle(::Type{<:BallMatrix}) = IndexLinear()
 Base.size(M::BallMatrix, i...) = size(M.c, i...)
 
-# function Base.getindex(M::BallMatrix, i1:Int64, i2:Int64)
-#     return Ball(getindex(M.c, i1, i2), getindex(M.r, i1, i2))
-# end
+function Base.getindex(M::BallMatrix, i::Int64, j::Int64)
+    return Ball(getindex(M.c, i, j), getindex(M.r, i, j))
+end
+
+function Base.getindex(M::BallMatrix, I::CartesianIndex{2})
+    return Ball(getindex(M.c, I), getindex(M.r, I))
+end
 
 function Base.getindex(M::BallMatrix, inds...)
     return BallMatrix(getindex(M.c, inds...), getindex(M.r, inds...))

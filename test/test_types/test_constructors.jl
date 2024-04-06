@@ -10,6 +10,10 @@
     @test bA.c == A
     @test bA.r == zeros(1024, 1024)
 
+    reduced = bA[2:end, 2:end]
+
+    @test reduced.c == A[2:end, 2:end]
+
     bA = BallMatrix(A, A)
     @test bA.c == A
     @test bA.r == A

@@ -12,9 +12,9 @@ struct BallVector{T <: AbstractFloat, NT <: Union{T, Complex{T}}, BT <: Ball{T, 
     end
 end
 
-BallVector(M::AbstractVector) = BallVector(mid.(M), rad.(M))
-mid(A::AbstractVector) = A
-rad(A::AbstractVector) = zeros(eltype(A), size(A))
+BallVector(v::AbstractVector) = BallVector(mid.(v), rad.(v))
+mid(v::AbstractVector) = v
+rad(v::AbstractVector) = zeros(eltype(v), length(v))
 
 # mid(A::BallMatrix) = map(mid, A)
 # rad(A::BallMatrix) = map(rad, A)
@@ -26,6 +26,11 @@ Base.eltype(::BallVector{T, NT, BT}) where {T, NT, BT} = BT
 Base.IndexStyle(::Type{<:BallVector}) = IndexLinear()
 Base.size(v::BallVector, i...) = size(v.c, i...)
 Base.length(v::BallVector) = length(v.c)
+
+function Base.getindex(M::BallVector, I::S) where {S <: Union{Int64, CartesianIndex{1}}}
+    return Ball(getindex(M.c, I), getindex(M.r, I))
+end
+
 function Base.getindex(M::BallVector, inds...)
     return BallVector(getindex(M.c, inds...), getindex(M.r, inds...))
 end
@@ -124,3 +129,5 @@ function Base.:*(A::BallMatrix, v::BallVector)
 
     return BallVector(wc, wr)
 end
+
+Base.:*(A::AbstractMatrix, v::BallVector) = BallMatrix(A) * v

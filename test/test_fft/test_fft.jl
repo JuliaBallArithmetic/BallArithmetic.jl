@@ -1,10 +1,10 @@
-dims = (1024, 1)
+dims = 1024
 
 v = ones(dims)
 
-v_rad = ones(dims)/2^20
+v_rad = ones(dims) / 2^20
 
-v = BallMatrix(v, v_rad)
+v = BallVector(v, v_rad)
 
 fft_v = BallArithmetic.fft(v)
 
