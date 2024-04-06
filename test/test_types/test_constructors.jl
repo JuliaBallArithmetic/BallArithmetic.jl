@@ -25,4 +25,17 @@
     @test bA.c == A + im * A
     @test bA.r == A
     @test Base.eltype(bA) == Ball{Float64, Complex{Float64}}
+
+    A = zeros(BallF64, (16, 8))
+    @test A.c == zeros(Float64, (16, 8))
+    @test A.r == zeros(Float64, (16, 8))
+
+    B = ones(BallF64, (8, 4))
+
+    @test B.c == ones(Float64, (8, 4))
+    @test B.r == zeros(Float64, (8, 4))
+
+    A[1:8, 1:4] = B
+    @test A.c[1:8, 1:4] == ones((8, 4))
+    @test A.r[1:8, 1:4] == zeros((8, 4))
 end

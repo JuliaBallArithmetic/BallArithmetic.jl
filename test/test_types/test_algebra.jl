@@ -9,6 +9,18 @@
     iA = IntervalArithmetic.Interval.(A) .+ ierr
     bA = BallMatrix(A, rA)
 
+    Iλ = 1 + 2^(-10) * IntervalArithmetic.Interval(-1, 1)
+    bλ = Ball(1, 2^(-10))
+
+    IB = Iλ * iA
+    bB = bλ * bA
+
+    lower = [x.lo for x in IB]
+    higher = [x.hi for x in IB]
+
+    @test all(in.(lower, bB))
+    @test all(in.(higher, bB))
+
     B = rand(4, 4)
 
     iB = IntervalArithmetic.Interval.(B)
@@ -22,6 +34,21 @@
 
     @test all(in.(lower, bsum))
     @test all(in.(higher, bsum))
+
+    B = rand(4, 4)
+
+    iB = IntervalArithmetic.Interval.(B)
+
+    isum = iA + iB
+    lower = [x.lo for x in isum]
+    higher = [x.hi for x in isum]
+
+    bsum = bA + B
+
+    @test all(in.(lower, bsum))
+    @test all(in.(higher, bsum))
+
+    bB = BallMatrix(B)
 
     iprod = iA * iB
     bprod = bA * bB

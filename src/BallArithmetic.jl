@@ -43,16 +43,21 @@ end
 
 using RoundingEmulator, MacroTools, SetRounding
 
-export Ball, BallF64, BallComplexF64, BallMatrix, BallVector, ±, mid, rad
+export ±, mid, rad
 
 include("rounding/rounding.jl")
 include("types/ball.jl")
+export Ball, BallF64, BallComplexF64
 include("types/matrix.jl")
+export BallMatrix
 include("types/vector.jl")
+export BallVector
 include("types/array.jl")
 include("types/convertpromote.jl")
 include("norm_bounds/rigorous_norm.jl")
+export upper_bound_norm
 include("norm_bounds/rigorous_opnorm_bounds.jl")
+export upper_bound_L1_opnorm, upper_bound_L2_opnorm, upper_bound_L_inf_opnorm
 include("eigenvalues/gev.jl")
 include("eigenvalues/upper_bound_spectral.jl")
 include("svd/svd.jl")

@@ -8,7 +8,10 @@ function upper_bound_norm(center, radius, p::Real = 2)
     return norm
 end
 
+function upper_bound_norm(A::BallMatrix, p::Real = 2)
+    return upper_bound_norm(A.c, A.r, p)
+end
 
-function upper_bound_norm(A::BallMatrix{T}, p::Real = 2) where {T}
-    return upper_bound_norm(A.c, A.r)
+function upper_bound_norm(v::BallVector, p::Real = 2)
+    return upper_bound_norm(v.c, v.r, p)
 end
