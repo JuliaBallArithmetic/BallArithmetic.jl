@@ -4,12 +4,12 @@
     @test rad(v) == zeros(128)
 
     bv = ones(BallF64, 128)
-    @test mid(v) == v
-    @test rad(v) == zeros(128)
+    @test mid(bv) == v
+    @test rad(bv) == zeros(128)
 
     bv = zeros(BallF64, 128)
-    @test mid(v) == zeros(128)
-    @test rad(v) == zeros(128)
+    @test mid(bv) == zeros(128)
+    @test rad(bv) == zeros(128)
 
     vr = 2^(-10) * ones(128)
 
@@ -27,5 +27,5 @@
 
     w = rand(5)
     bv[1:5] = BallVector(w)
-    @test bv.c[1:5].c == w
+    @test bv.c[1:5] == w
 end

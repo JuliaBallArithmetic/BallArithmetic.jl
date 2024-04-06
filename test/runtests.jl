@@ -7,6 +7,7 @@ using Test
     include("test_matrix_classifier/test_matrix_classifier.jl")
     include("test_types/test_algebra.jl")
     include("test_types/test_vector.jl")
+    include("test_types/test_vector_operations.jl")
     include("test_eigen/test_eigen.jl")
     include("test_pseudospectra/test_pseudospectra.jl")
     include("test_fft/test_fft.jl")
