@@ -14,8 +14,19 @@ RigorousInvariantMeasures = "6103b61f-200f-420b-b397-2cbeef157920"
 RoundingEmulator = "5eaf0fd0-dfba-4ccb-bf02-d820a40db705"
 SetRounding = "3cc68bcd-71a2-5612-b932-767ffbe40ab0"
 
+[weakdeps]
+IntervalArithmetic = "d1acc4aa-44c8-5952-acd4-ba5d80a2a253"
+
+
 [compat]
-julia = "1.8"
+julia = "1.9"
+
+[extensions]
+# name of extension to the left
+# extension dependencies required to load the extension to the right
+# use a list for multiple extension dependencies
+IntervalArithmeticExt = "IntervalArithmetic"
+
 
 [extras]
 IntervalArithmetic = "d1acc4aa-44c8-5952-acd4-ba5d80a2a253"
