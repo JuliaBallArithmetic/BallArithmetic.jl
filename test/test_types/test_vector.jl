@@ -7,7 +7,7 @@
     @test mid(v) == v
     @test rad(v) == zeros(128)
 
-    bv = zeros(BallFloat64, 128)
+    bv = zeros(BallF64, 128)
     @test mid(v) == zeros(128)
     @test rad(v) == zeros(128)
 
