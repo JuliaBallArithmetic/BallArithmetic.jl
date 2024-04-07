@@ -13,12 +13,12 @@ DocMeta.setdocmeta!(BallArithmetic, :DocTestSetup, :(using BallArithmetic);
 makedocs(;
     plugins = [bib],
     modules = [BallArithmetic],
-    authors = "Luca Ferranti",
-    repo = "https://github.com/lucaferranti/BallArithmetic.jl/blob/{commit}{path}#{line}",
+    authors = "Luca Ferranti, Isaia Nisoli",
+    repo = GitHub("JuliaBallArithmetic", "BallArithmetic.jl"),
     sitename = "BallArithmetic.jl",
     format = Documenter.HTML(;
         prettyurls = get(ENV, "CI", "false") == "true",
-        canonical = "https://lucaferranti.github.io/BallArithmetic.jl",
+        canonical = "https://juliaballarithmetic.github.io/BallArithmetic.jl/",
         edit_link = "main",
         assets = String["assets/citations.css"]),
     pages = [
@@ -26,5 +26,5 @@ makedocs(;
     ])
 
 deploydocs(;
-    repo = "github.com/lucaferranti/BallArithmetic.jl",
+    repo = "github.com/JuliaBallArithmetic/BallArithmetic.jl.git",
     devbranch = "main")

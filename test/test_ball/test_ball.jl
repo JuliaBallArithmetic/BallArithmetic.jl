@@ -2,6 +2,12 @@
     x = Ball(0.0, 0.5)
     @test in(0, x) == true
 
+    x = abs(x)
+    @test x.c == 0.25 && x.r == 0.25
+
+    x = 0.0 ± 1.0
+    @test x.c == 0.0 && x.r == 1.0
+
     x = Ball(1.0 + im, 2.0)
     @test in(0, x) == true
 
