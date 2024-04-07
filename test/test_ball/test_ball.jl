@@ -8,29 +8,27 @@
     import IntervalArithmetic
 
     v = rand(Float64, 1024)
-    iv = IntervalArithmetic.Interval.(v)
+    iv = IntervalArithmetic.interval.(v)
     bv = Ball.(v)
 
     w = rand(1024)
-    iw = IntervalArithmetic.Interval.(w)
+    iw = IntervalArithmetic.interval.(w)
     bw = Ball.(w)
 
     isum = iv + iw
-    lower = [x.lo for x in isum]
-    higher = [x.hi for x in isum]
+    lower = [IntervalArithmetic.inf(x) for x in isum]
+    higher = [IntervalArithmetic.sup(x) for x in isum]
 
     bsum = bv + bw
 
-    @test all(in.(lower, bsum))
-    @test all(in.(higher, bsum))
+    @test all(in.(lower, bsum)) && all(in.(higher, bsum))
 
     iprod = iv .* iw
-    lower = [x.lo for x in iprod]
-    higher = [x.hi for x in iprod]
+    lower = [IntervalArithmetic.inf(x) for x in iprod]
+    higher = [IntervalArithmetic.sup(x) for x in iprod]
 
     bprod = bv .* bw
-    @test all(in.(lower, bprod))
-    @test all(in.(higher, bprod))
+    @test all(in.(lower, bprod)) && all(in.(higher, bprod))
 
     x = Ball(1.0, 1 / 4) #interval [3/4, 5/4]
     t = inv(x) # the inverse is [4/5, 4/3]
