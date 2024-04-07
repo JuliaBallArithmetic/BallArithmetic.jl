@@ -3,10 +3,10 @@
 
     A = rand(4, 4)
     err = rand(4, 4)
-    ierr = IntervalArithmetic.Interval(-2^-16, 2^-16) * err
+    ierr = IntervalArithmetic.interval(-2^-16, 2^-16) * err
     rA = 2^16 * err
 
-    iA = IntervalArithmetic.Interval.(A) .+ ierr
+    iA = IntervalArithmetic.interval.(A) .+ ierr
     bA = BallMatrix(A, rA)
 
     v = ones(4)
@@ -14,25 +14,24 @@
     iProd = iA * v
     bProd = bA * v
 
-    lower = [x.lo for x in iProd]
-    higher = [x.hi for x in iProd]
+    lower = [IntervalArithmetic.inf(x) for x in iProd]
+    higher = [IntervalArithmetic.sup(x) for x in iProd]
 
-    @test all(in.(lower, bProd))
-    @test all(in.(higher, bProd))
+    @test all(in.(lower, bProd)) && all(in.(higher, bProd))
 
     v = rand(4)
     err = rand(4)
-    ierr = IntervalArithmetic.Interval(-2^-16, 2^-16) * err
+    ierr = IntervalArithmetic.interval(-2^-16, 2^-16) * err
     rv = 2^16 * err
 
-    iv = IntervalArithmetic.Interval.(v) + ierr
+    iv = IntervalArithmetic.interval.(v) + ierr
     bv = BallVector(v, rv)
 
     iProd = iA * iv
     bProd = bA * bv
 
-    lower = [x.lo for x in iProd]
-    higher = [x.hi for x in iProd]
+    lower = [IntervalArithmetic.inf(x) for x in iProd]
+    higher = [IntervalArithmetic.sup(x) for x in iProd]
 
     @test all(in.(lower, bProd))
     @test all(in.(higher, bProd))
@@ -40,8 +39,8 @@
     iProd = A * iv
     bProd = A * bv
 
-    lower = [x.lo for x in iProd]
-    higher = [x.hi for x in iProd]
+    lower = [IntervalArithmetic.inf(x) for x in iProd]
+    higher = [IntervalArithmetic.sup(x) for x in iProd]
 
     @test all(in.(lower, bProd))
     @test all(in.(higher, bProd))
@@ -49,15 +48,15 @@
     vA = rand(4)
     vB = rand(4)
 
-    iA = IntervalArithmetic.Interval.(vA)
+    iA = IntervalArithmetic.interval.(vA)
     bA = BallVector(vA)
 
-    iB = IntervalArithmetic.Interval.(vB)
+    iB = IntervalArithmetic.interval.(vB)
     bB = BallVector(vB)
 
     isum = iA + iB
-    lower = [x.lo for x in isum]
-    higher = [x.hi for x in isum]
+    lower = [IntervalArithmetic.inf(x) for x in isum]
+    higher = [IntervalArithmetic.sup(x) for x in isum]
 
     bsum = bA + bB
 
@@ -69,27 +68,27 @@
     IB = λ * iA
     bB = λ * bA
 
-    lower = [x.lo for x in IB]
-    higher = [x.hi for x in IB]
+    lower = [IntervalArithmetic.inf(x) for x in IB]
+    higher = [IntervalArithmetic.sup(x) for x in IB]
 
     @test all(in.(lower, bB))
     @test all(in.(higher, bB))
 
-    Iλ = 1 + 2^(-10) * IntervalArithmetic.Interval(-1, 1)
+    Iλ = 1 + 2^(-10) * IntervalArithmetic.interval(-1, 1)
     bλ = Ball(1, 2^(-10))
 
     IB = Iλ * iA
     bB = bλ * bA
 
-    lower = [x.lo for x in IB]
-    higher = [x.hi for x in IB]
+    lower = [IntervalArithmetic.inf(x) for x in IB]
+    higher = [IntervalArithmetic.sup(x) for x in IB]
 
     @test all(in.(lower, bB))
     @test all(in.(higher, bB))
 
     # B = rand(4, 4)
 
-    # iB = IntervalArithmetic.Interval.(B)
+    # iB = IntervalArithmetic.interval.(B)
 
     # isum = iA + iB
     # lower = [x.lo for x in isum]

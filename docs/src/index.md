@@ -12,3 +12,8 @@ Documentation for [BallArithmetic](https://github.com/JuliaBallArithmetic/BallAr
 ```@autodocs
 Modules = [BallArithmetic, NumericalTest]
 ```
+
+# References
+
+```@bibliography
+```
