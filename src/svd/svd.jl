@@ -4,8 +4,10 @@ function svdbox(A::BallMatrix{T}) where {T}
 end
 
 """
-    This follows Theorem 3.1 in Rump
-    VERIFIED BOUNDS FOR SINGULAR VALUES, IN PARTICULAR FOR THE SPECTRAL NORM OF A MATRIX AND ITS INVERSE
+    This follows Theorem 3.1 in Ref. [RumpSVD2011](@cite)
+
+    # References
+    * [RumpSVD2011](@cite)Rump, BIT 51, 2 (2011)
 """
 function _certify_svd(A::BallMatrix{T}, svdA::SVD) where {T}
     U = BallMatrix(svdA.U)
