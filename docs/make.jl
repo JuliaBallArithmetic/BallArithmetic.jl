@@ -14,7 +14,7 @@ makedocs(;
     plugins = [bib],
     modules = [BallArithmetic],
     authors = "Luca Ferranti, Isaia Nisoli",
-    repo = GitHub("JuliaBallArithmetic", "BallArithmetic.jl"),
+    repo = Documenter.Remotes.GitHub("JuliaBallArithmetic", "BallArithmetic.jl"),
     sitename = "BallArithmetic.jl",
     format = Documenter.HTML(;
         prettyurls = get(ENV, "CI", "false") == "true",
