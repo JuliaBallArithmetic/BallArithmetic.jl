@@ -2,7 +2,7 @@ module NumericalTest
 
 export rounding_test
 
-function test_matrix(k)
+function _test_matrix(k)
     A = zeros(Float64, (k, k))
     A[:, end] = fill(2^(-53), k)
     for i in 1:(k - 1)
@@ -24,7 +24,7 @@ running BLAS on `n` threads
 """
 function rounding_test(n, k)
     BLAS.set_num_threads(n)
-    A = test_matrix(k)
+    A = _test_matrix(k)
     B = setrounding(Float64, RoundUp) do
         BLAS.gemm('N', 'T', 1.0, A, A)
     end

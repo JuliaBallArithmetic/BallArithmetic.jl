@@ -1,14 +1,17 @@
+"""
+    svdbox
+
+This follows Theorem 3.1 in Ref. [Rump2011](@cite)
+
+# References
+
+* [Rump2011](@cite) Rump S., BIT 51, 2 (2011)
+"""
 function svdbox(A::BallMatrix{T}) where {T}
     svdA = svd(A.c)
     return _certify_svd(A, svdA)
 end
 
-"""
-    This follows Theorem 3.1 in Ref. [RumpSVD2011](@cite)
-
-    # References
-    * [RumpSVD2011](@cite) Rump, BIT 51, 2 (2011)
-"""
 function _certify_svd(A::BallMatrix{T}, svdA::SVD) where {T}
     U = BallMatrix(svdA.U)
     Vt = BallMatrix(svdA.Vt)
