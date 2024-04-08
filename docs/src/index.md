@@ -12,20 +12,15 @@ to implement a rigorous matrix product in mid-radius arithmetic.
 This allows to implement numerous algorithms developed by Rump, Miyajima,
 Ogita and collaborators to obtain a posteriori guaranteed bounds.
 
-```@index
-```
+The main object are BallMatrices, i.e., a couple containing a center matrix and a radius matrix.
 
 
 
-```@autodocs
-Modules = [BallArithmetic, NumericalTest]
-```
 
-# References
 
-```@bibliography
-```
 
-```@bibliography
-*
-```
+
+
+
+
+

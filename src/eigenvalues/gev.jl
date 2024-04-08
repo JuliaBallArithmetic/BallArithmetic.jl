@@ -2,7 +2,7 @@
 # Implementing Theorem 2 Miyajima
 # Numerical enclosure for each eigenvalue in generalized eigenvalue problem
 """
-    gevbox
+    gevbox(A::BallMatrix{T}, B::BallMatrix{T})
 
 Compute rigorous enclosure of each eigenvalue in generalized eigenvalue problem
 following Ref. [Miyajima2012](@cite)
@@ -41,7 +41,7 @@ function _certify_gev(A::BallMatrix{T}, B::BallMatrix{T}, gev::GeneralizedEigen)
 end
 
 """
-    eevbox
+    evbox(A::BallMatrix{T})
 
 Compute rigorous enclosure of each eigenvalue following Ref. [Miyajima2012](@cite)
 TODO: Using Miyajima's algorithm is overkill, may be worth using
