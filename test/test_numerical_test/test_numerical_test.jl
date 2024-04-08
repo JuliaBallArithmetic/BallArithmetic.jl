@@ -1,5 +1,5 @@
 @testset "Test Numerical Test" begin
-    A = BallArithmetic.NumericalTest.test_matrix(4)
+    A = BallArithmetic.NumericalTest._test_matrix(4)
     @test A == [1.0 0 0 2^(-53);
                 0 1.0 0 2^(-53);
                 0 0 1.0 2^(-53);
