@@ -21,6 +21,10 @@ bA = BallMatrix(A, A/128)
 bA^2
 ```
 
+```@autodocs
+Modules = [BallArithmetic, NumericalTest]
+```
+
 
 
 
