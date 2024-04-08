@@ -18,7 +18,7 @@ Ogita and collaborators to obtain a posteriori guaranteed bounds.
 
 
 ```@autodocs
-Modules = [BallArithmetic, NumericalTest, IntervalArithmeticExt]
+Modules = [BallArithmetic, NumericalTest]
 ```
 
 # References
