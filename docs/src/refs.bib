@@ -32,6 +32,25 @@
  Zbl = {1307.65044}
 }
 
+@Article{RumpFP1999,
+  author   = {Rump, Siegfried M.},
+  journal  = {BIT Numerical Mathematics},
+  title    = {Fast and {Parallel} {Interval} {Arithmetic}},
+  year     = {1999},
+  issn     = {1572-9125},
+  month    = sep,
+  number   = {3},
+  pages    = {534--554},
+  volume   = {39},
+  abstract = {Infimum-supremum interval arithmetic is widely used because of ease of implementation and narrow results. In this note we show that the overestimation of midpoint-radius interval arithmetic compared to power set operations is uniformly bounded by a factor 1.5 in radius. This is true for the four basic operations as well as for vector and matrix operations, over real and over complex numbers. Moreover, we describe an implementation of midpoint-radius interval arithmetic entirely using BLAS. Therefore, in particular, matrix operations are very fast on almost any computer, with minimal effort for the implementation. Especially, with the new definition it is seemingly the first time that full advantage can be taken of the speed of vector and parallel architectures. The algorithms have been implemented in the Matlab interval toolbox INTLAB.},
+  doi      = {10.1023/A:1022374804152},
+  file     = {Full Text PDF:Rump1999 - Fast and Parallel Interval Arithmetic.html:URL:https\://link.springer.com/content/pdf/10.1023%2FA%3A1022374804152.pdf},
+  keywords = {Interval arithmetic, parallel computer, BLAS, midpoint-radius, infimum-supremum},
+  language = {en},
+  url      = {https://doi.org/10.1023/A:1022374804152},
+  urldate  = {2024-04-08},
+}
+
 @Article{RumpSVD2011,
   author       = {Rump, Siegfried M.},
   journal      = {BIT Numerical Mathematics},
@@ -54,3 +73,36 @@
   url          = {https://doi.org/10.1007/s10543-010-0294-0},
   urldate      = {2024-04-07},
 }
+
+@Article{Revol2013,
+  author   = {Revol, Nathalie and Théveny, Philippe},
+  journal  = {Reliable Computing},
+  title    = {Parallel {Implementation} of {Interval} {Matrix} {Multiplication}},
+  year     = {2013},
+  number   = {1},
+  pages    = {91},
+  volume   = {19},
+  abstract = {Two main and not necessarily compatible objectives when implementing the product of two dense matrices with interval coefficients are accuracy and efficiency. In this work, we focus on an implementation on multicore architectures. One direction successfully explored to gain performance in execution time is the representation of intervals by their midpoints and radii rather than the classical representation by endpoints. Computing with the midpoint-radius representation enables the use of optimized floating-point BLAS and consequently the performances benefit from the performances of the BLAS routines. Several variants of interval matrix multiplication have been proposed, that correspond to various trade-offs between accuracy and efficiency, including some efficient ones proposed by Rump in 2012. However, in order to guarantee that the computed result encloses the exact one, these efficient algorithms rely on an assumption on the order of execution of floating-point operations which is not verified by most implementations of BLAS. In this paper, an algorithm for interval matrix product is proposed that verifies this assumption. Furthermore, several optimizations are proposed and the implementation on a multicore architecture compares reasonably well with a non-guaranteed implementation based on MKL, the optimized BLAS of Intel: the overhead is most of the time less than 2 and never exceeds 3. This implementation also exhibits a good scalability.},
+  file     = {Full Text PDF:Revol2013 - Parallel Implementation of Interval Matrix Multiplication.pdf:PDF:https\://inria.hal.science/hal-00801890/document},
+  language = {en},
+  url      = {https://inria.hal.science/hal-00801890},
+  urldate  = {2024-04-08},
+}
+
+@Article{Miyajima2012,
+  author   = {Miyajima, Shinya},
+  journal  = {Journal of Computational and Applied Mathematics},
+  title    = {Numerical enclosure for each eigenvalue in generalized eigenvalue problem},
+  year     = {2012},
+  issn     = {0377-0427},
+  month    = mar,
+  number   = {9},
+  pages    = {2545--2552},
+  volume   = {236},
+  abstract = {An algorithm for enclosing all eigenvalues in generalized eigenvalue problem Ax=@lBx is proposed. This algorithm is applicable even if A@?C{\textasciicircum}n{\textasciicircum}x{\textasciicircum}n is not Hermitian and/or B@?C{\textasciicircum}n{\textasciicircum}x{\textasciicircum}n is not Hermitian positive definite, and supplies nerror bounds while the algorithm previously developed by the author supplies a single error bound. It is proved that the error bounds obtained by the proposed algorithm are equal or smaller than that by the previous algorithm. Computational cost for the proposed algorithm is similar to that for the previous algorithm. Numerical results show the property of the proposed algorithm.},
+  doi      = {10.1016/j.cam.2011.12.013},
+  keywords = {65F15, 65G20, 65G50, Generalized eigenvalue problem, Non-Hermitian matrices, Numerical enclosure},
+  url      = {https://doi.org/10.1016/j.cam.2011.12.013},
+  urldate  = {2024-04-08},
+}
+

@@ -1,6 +1,13 @@
 
 # Implementing Theorem 2 Miyajima
 # Numerical enclosure for each eigenvalue in generalized eigenvalue problem
+"""
+    Compute rigorous enclosure of each eigenvalue in generalized eigenvalue problem
+    following Ref. [Miyajima2012](@cite)
+
+    # References
+    * [Miyajima2012](@cite) Miyajima, JCAM 246, 9 (2012)
+"""
 function gevbox(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
     gev = eigen(A.c, B.c)
     return _certify_gev(A, B, gev)

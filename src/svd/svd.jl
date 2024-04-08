@@ -7,7 +7,7 @@ end
     This follows Theorem 3.1 in Ref. [RumpSVD2011](@cite)
 
     # References
-    * [RumpSVD2011](@cite)Rump, BIT 51, 2 (2011)
+    * [RumpSVD2011](@cite) Rump, BIT 51, 2 (2011)
 """
 function _certify_svd(A::BallMatrix{T}, svdA::SVD) where {T}
     U = BallMatrix(svdA.U)
