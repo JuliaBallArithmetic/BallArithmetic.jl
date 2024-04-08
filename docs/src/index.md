@@ -25,3 +25,7 @@ Modules = [BallArithmetic, NumericalTest]
 
 ```@bibliography
 ```
+
+```@bibliography
+*
+```
