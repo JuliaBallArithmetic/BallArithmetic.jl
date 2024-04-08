@@ -14,6 +14,15 @@ Ogita and collaborators to obtain a posteriori guaranteed bounds.
 
 The main object are BallMatrices, i.e., a couple containing a center matrix and a radius matrix.
 
+```@repl
+using BallArithmetic
+A = ones((2, 2))
+bA = BallMatrix(A, A/128)
+bA^2
+```
+
+
+
 
 
 
