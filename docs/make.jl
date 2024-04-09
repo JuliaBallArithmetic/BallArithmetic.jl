@@ -22,7 +22,10 @@ makedocs(;
         edit_link = "main",
         assets = String["assets/citations.css"]),
     pages = [
-        "Home" => "index.md"
+        "Home" => "index.md",
+        "API" => "API.md",
+        "Eigenvalues" => "eigenvalues.md",
+        "References" => "references.md"
     ])
 
 deploydocs(;

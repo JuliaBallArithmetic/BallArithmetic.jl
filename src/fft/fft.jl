@@ -2,7 +2,14 @@ import AbstractFFTs
 import FFTW
 
 """
-TODO: Add citation from Higham
+    fft
+
+Computes the FFT of a BallMatrix using the a priori error bound in
+Ref. [Higham1996](@cite)
+
+# References
+
+* [Higham1996](@cite) Higham, Siam (1996)
 """
 
 function fft(A::BallMatrix{T}, dims = (1, 2)) where {T}
@@ -41,6 +48,16 @@ function fft(A::BallMatrix{T}, dims = (1, 2)) where {T}
     return BallMatrix(FFTAc, err_M)
 end
 
+"""
+    fft
+
+Computes the FFT of a BallVector using the a priori error bound in
+Ref. [Higham1996](@cite)
+
+# References
+
+* [Higham1996](@cite) Higham, Siam (1996)
+"""
 function fft(v::BallVector{T}) where {T}
     if !ispow2(length(v))
         @warn "The rigorous error estimate works for power of two sizes"

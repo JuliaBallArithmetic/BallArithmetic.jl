@@ -17,7 +17,7 @@ mid(x::Number) = x
 rad(::T) where {T <: Number} = zero(float(real(T)))
 
 midtype(::Ball{T, CT}) where {T, CT} = CT
-radtype(::Ball{T, CT}) where {T, CT} = CT
+radtype(::Ball{T, CT}) where {T, CT} = T
 midtype(::Type{Ball{T, CT}}) where {T, CT} = CT
 radtype(::Type{Ball{T, CT}}) where {T, CT} = T
 midtype(::Type{Ball}) = Float64
