@@ -20,7 +20,8 @@ makedocs(;
         prettyurls = get(ENV, "CI", "false") == "true",
         canonical = "https://juliaballarithmetic.github.io/BallArithmetic.jl/",
         edit_link = "main",
-        assets = String["assets/citations.css"]),
+        assets = String["assets/citations.css"]
+    ),
     pages = [
         "Home" => "index.md",
         "API" => "API.md",
