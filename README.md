@@ -1,5 +1,10 @@
 # BallArithmetic
 
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://JuliaBallArithmetic.github.io/BallArithmetic.jl/stable/)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://JuliaBallArithmetic.github.io/BallArithmetic.jl/dev/)
+[![Build Status](https://github.com/JuliaBallArithmetic/BallArithmetic.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/JuliaBallArithmetic/BallArithmetic.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Coverage](https://codecov.io/gh/JuliaBallArithmetic/BallArithmetic.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaBallArithmetic/BallArithmetic.jl)
+
 This package implements Ball Arithmetic, with a focus on Numerical Linear Algebra.
 
 Ball Arithmetic introduces a type, called `Ball`, 
@@ -27,7 +32,3 @@ The implementation then guarantees that the result of a matrix-matrix
 product or a matrix vector product is contained in the set defined by the 
 resulting BallMatrix or BallVector.
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://JuliaBallArithmetic.github.io/BallArithmetic.jl/stable/)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://JuliaBallArithmetic.github.io/BallArithmetic.jl/dev/)
-[![Build Status](https://github.com/JuliaBallArithmetic/BallArithmetic.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/JuliaBallArithmetic/BallArithmetic.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![Coverage](https://codecov.io/gh/JuliaBallArithmetic/BallArithmetic.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaBallArithmetic/BallArithmetic.jl)
