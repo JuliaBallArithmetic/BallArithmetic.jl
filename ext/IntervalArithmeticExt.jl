@@ -31,6 +31,8 @@ function BallArithmetic.BallMatrix(x::Matrix{IntervalArithmetic.Interval{Float64
     return BallMatrix(C, R)
 end
 
+#TODO: add 
+
 """
 Construct a BallMatrix from a matrix of Complex{Interval{Float64}}, remark
 that the radius may be bigger, to ensure mathematical consistency, i.e.,
