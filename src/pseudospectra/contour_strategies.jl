@@ -51,17 +51,15 @@ function _compute_exclusion_circle_level_set_priori(T,
         ϵ;
         rel_pearl_size,
         max_initial_newton)
-    out_z = []
-    out_bound = []
-    out_radiuses = []
-
     z = λ + ϵ
 
     for j in 1:max_initial_newton
-        #@info "Newton step $j"
+        @debug "Newton step $j"
         K = svd(T - z * I)
-        z, σ = _newton_step(z, K, ϵ)
-        #@info σ
+        z = _newton_step(z, K, ϵ)
+        σ = K.S[end]
+
+        @info σ
 
         if (σ - ϵ) / ϵ < 1 / 256
             break
@@ -70,18 +68,20 @@ function _compute_exclusion_circle_level_set_priori(T,
 
     r = abs(λ - z)
 
+    @info "radius" r
+
     pearl_radius = r * rel_pearl_size
-    #@info "pearl radius" pearl_radius
+    @debug "pearl radius" pearl_radius
 
     dist_points = (pearl_radius * 8) / 5
 
-    #@info "distance between points" dist_points
+    @debug "distance between points" dist_points
     # this N bounds from above 2π/dist_points , i.e., the number of equispaced
     # points on the circumference
 
     N = ceil(8 * r / dist_points)
 
-    # @info N
+    @info "number  of steps" N
     # for j in 0:(N - 1)
     #     z = λ + r * exp(2 * π * im * j / N)
     #     push!(out_z, z)
@@ -102,24 +102,33 @@ function _certify_circle(T, λ, r, N)
     out_z = []
     out_bound = []
     out_radiuses = []
+    out_gradient = []
 
-    pearl_radius = 5 * (r * 2 * π / N) / 8
+    θ = 2 * pi / N
+    l = r * sqrt(sin(θ)^2 + (1 - cos(θ))^2)
+    @info l
+
+    pearl_radius = (513 / 1024) * l
 
     for j in 0:(N - 1)
-        z = λ + r * exp(2 * π * im * j / N)
+        z = λ + r * exp(im * j * θ)
         push!(out_z, z)
 
         K = svd(T - z * I)
         z_ball = Ball(z, pearl_radius)
 
+        u = K.U[:, end]
+        v = K.V[:, end]
+
         bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
         push!(out_bound, bound)
         push!(out_radiuses, pearl_radius)
+        push!(out_gradient, (u' * v))
     end
-    return Enclosure(λ, out_z, out_bound, out_radiuses, true)
+    return Enclosure(λ, out_z, out_bound, out_radiuses, out_gradient, true)
 end
 
-function _compute_exclusion_set(T, r; max_steps, rel_steps, λ = 0 + im * 0)
+function _compute_central_exclusion_circle(T, r; max_steps, rel_steps, λ = 0 + im * 0)
     eigvals = diag(T)
 
     out_z = []
@@ -162,12 +171,6 @@ function _compute_exclusion_set(T, r; max_steps, rel_steps, λ = 0 + im * 0)
         bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
         push!(out_bound, bound)
         push!(out_radiuses, r_guaranteed)
-        #print("test")
-
-        #@info "test"
-        #@info "r_guarantee", r_guaranteed
-        #@info "r_guarantee_1", r_guaranteed_1
-        #@info "dist to start", abs(z_old-z0)
 
         loop_closure = abs(z_old - z0) < r_guaranteed + r_guaranteed_1
 
@@ -179,38 +182,7 @@ function _compute_exclusion_set(T, r; max_steps, rel_steps, λ = 0 + im * 0)
     return Enclosure(λ, out_z, out_bound, out_radiuses, loop_closure)
 end
 
-function _follow_level_set(z::ComplexF64, τ::Float64, K::SVD)
-    u = K.U[:, end]
-    v = K.V[:, end]
-    σ = K.S[end]
-
-    # follow the level set
-    grad = v' * u
-    ort = im * grad
-    z = z + τ * ort / abs(ort)
-
-    return z, σ
-end
-
-function _newton_step(z, K::SVD, ϵ)
-    u = K.U[:, end]
-    v = K.V[:, end]
-    σ = K.S[end]
-
-    # gradient descent, better estimate
-    z = z + (σ - ϵ) / (u' * v)
-    return z, σ
-end
-
-# function newton_level_set(z, T, ϵ; τ=ϵ / 16)
-#     K = svd(z * I - T)
-#     return _newton_step(z, K, ϵ, τ)
-# end
-
 function _compute_enclosure_eigval(T, λ, ϵ; max_initial_newton, max_steps, rel_steps)
-    #@info "Enclosing ", λ
-    #@info "Level set", ϵ
-
     eigvals = diag(T)
 
     out_z = []
@@ -294,31 +266,138 @@ function _compute_enclosure_eigval(T, λ, ϵ; max_initial_newton, max_steps, rel
     return Enclosure(λ, out_z, out_bound, radiuses, true)
 end
 
-# function _certify_circle(T, r1, r, ϵ)
+function _compute_enclosure_ode(T, λ, ϵ;
+        max_initial_newton,
+        max_steps,
+        max_adaptive = 10,
+        target = 128 * ϵ,
+        α = 1.1)
+    out_z = [] # contains the center of the pearl_necklace
+    out_radius = [] # contains the radiuses of the pearl necklace
+    out_sing = [] # contains the enclosure of the minimum singular value
 
-#     out_z = []
-#     out_bound = []
+    cross_x = 0
+    cross_y = 0
 
-#     N = ceil(2*π*r1/(r*ϵ))
+    up = 0
+    right = 0
 
-#     @info N
+    z0 = λ + 2 * sign(real(λ)) * target
 
-#     dθ = 2*π/N
+    @info z0, abs(z0 - λ) / target
 
-#     z = r1*exp(0)
+    K = svd(T - z0 * I)
+    σ = K.S[end]
 
-#     for i in 0:N
-#         z_old = z
-#         z = r1*exp(im*i*dθ)
+    for _ in 1:max_initial_newton
+        if abs(σ - target) < target / 256
+            break
+        end
 
-#         K = svd(T - z * I)
+        z0 = _newton_step(z0, K, target)
+        K = svd(T - z0 * I)
+        σ = K.S[end]
+        @info z0, σ, abs(z0 - λ) / target
+    end
 
-#         push!(out_z, z)
+    up0 = imag(z0 - λ) > 0
+    right0 = real(z0 - λ) > 0
 
-#         z_ball = Ball(z_old, 1.5 * abs(z_old - z))
-#         bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
-#         push!(out_bound, bound)
-#     end
+    R = abs(z0 - λ)
+    L = σ - ϵ
 
-#     return (out_z, out_bound)
-# end
+    r0 = L
+    @info "We start at $z0 with σ $σ and target $target, r0 $r0"
+
+    @info R / r0
+
+    # we start by finding a r0 that makes possible to certify
+    # the initial ball
+    for _ in 1:max_initial_newton
+        z_ball = Ball(z0, r0)
+        σ_cert = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
+
+        if σ_cert.c - σ_cert.r > ϵ
+            push!(out_z, z0)
+            push!(out_radius, r0)
+            push!(out_sing, σ_cert)
+            break
+        end
+        r0 = r0 / 2
+    end
+
+    @warn "Expected steps" (2 * pi * R)/r0
+
+    z = z0
+    r = r0
+
+    up = up0
+    right = right0
+
+    @info "z0 $z0 r0 $r0, $(2*π*abs(z0-λ)/r0), $σ,  "
+
+    for i in 1:max_steps
+        if i % 10 == 0
+            @info i
+        end
+        # this block computes the next point adaptively
+        # we first try the new radius can be taken bigger than the actual radius
+        # r_new = α * r
+        r_new = r
+        for _ in 1:max_adaptive
+            τ = 0.75 * (r + r_new)
+            #@info "r, r0", r, r0
+            #@info τ, 0.75 * (2 * r0)
+            z_new = _follow_level_set(z, τ, K)
+            K = svd(T - z_new * I)
+            z_new = _newton_step(z_new, K, target)
+
+            K = svd(T - z_new * I)
+            σ = K.S[end]
+
+            z_ball = Ball(z_new, r_new)
+            σ_cert = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
+            if σ_cert.c - σ_cert.r > ϵ && abs(z_new - z) < r_new + r
+                #@info (z_new - λ) / abs(z_new - λ), r_new, abs(σ_cert.c - target)
+                #@info abs(z_new - λ)
+                #@info i, (2 * π * R) / abs(z - z_new)
+
+                push!(out_z, z_new)
+                push!(out_radius, r_new)
+                push!(out_sing, σ_cert)
+
+                up_new = imag(z_new - λ) > 0
+                right_new = real(z_new - λ) > 0
+
+                if right_new == true
+                    if up_new != up
+                        cross_x += sign(imag(z_new - z))
+                        #@info cross_x
+                    end
+                end
+
+                if up_new == true
+                    if right_new != right
+                        cross_y += sign(imag(z_new - z))
+                        #@info cross_y
+                    end
+                end
+
+                z = z_new
+                r = r_new
+                up = up_new
+                right = right_new
+
+                break
+            end
+            #@info "adaptive, smaller radius"
+            r_new = r_new / α
+        end
+
+        if abs(z - z0) < r + r0 && abs(cross_x) == 1 && abs(cross_y) == 1
+            @info "Loop closure"
+            break
+        end
+    end
+    return Enclosure(λ, out_z, out_sing, out_radius, true)
+end
