@@ -1,3 +1,115 @@
+function _refine_enclosure_newton_flow(T, enc, ϵ; rel_err = 1 / 256, τ = 1.0)
+    out_z = []
+    out_bound = []
+    out_radiuses = []
+    out_gradient = []
+    for i in 1:length(enc.points)
+        σ = enc.bounds[i].c
+        if abs((σ - ϵ) / ϵ) < rel_err
+            push!(out_z, enc.points[i])
+            push!(out_bound, enc.bounds[i])
+            push!(out_radiuses, enc.radiuses[i])
+            push!(out_gradient, enc.gradient[i])
+        else
+            z = enc.points[i]
+            grad = enc.gradient[i]
+            z_new = z + τ * (σ - ϵ) / grad
+            if i > 1
+                # Remark that the radius is built so that
+                # the new sequence is a pearl necklace
+                z_old = out_z[i - 1]
+                r_old = out_radiuses[i - 1]
+                r_new = max(
+                    65 * (abs(z_old - z_new) - r_old) / 128,
+                    abs(z_old - z_new) / 2)
+            else
+                r_new = enc.radiuses[i]
+            end
+            push!(out_z, z_new)
+            push!(out_radiuses, r_new)
+
+            K = svd(T - z_new * I)
+            z_ball = Ball(z_new, r_new)
+
+            u = K.U[:, end]
+            v = K.V[:, end]
+
+            bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
+            push!(out_bound, bound)
+            push!(out_gradient, (u' * v))
+        end
+    end
+    return Enclosure(enc.λ, out_z, out_bound, out_radiuses, out_gradient, true)
+end
+
+function _refine_enclosure_guarantee(T, enc, ϵ)
+    out_z = []
+    out_bound = []
+    out_radiuses = []
+    out_gradient = []
+    for i in 1:length(enc.points)
+        σ = @down enc.bounds[i].c - enc.bounds[i].r
+        if σ > ϵ
+            push!(out_z, enc.points[i])
+            push!(out_bound, enc.bounds[i])
+            push!(out_radiuses, enc.radiuses[i])
+            push!(out_gradient, enc.gradient[i])
+        else
+            if i != 1
+                z_new = enc.points[i] +
+                        (2 / 3) * enc.radiuses[i] * (enc.points[i - 1] - enc.points[i]) /
+                        abs(enc.points[i - 1] - enc.points[i])
+                r_new = 43 * enc.radiuses[i] / 128
+                push!(out_z, z_new)
+                push!(out_radiuses, r_new)
+
+                K = svd(T - z_new * I)
+                z_ball = Ball(z_new, r_new)
+
+                u = K.U[:, end]
+                v = K.V[:, end]
+
+                bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
+                push!(out_bound, bound)
+                push!(out_gradient, (u' * v))
+            end
+            z_new = enc.points[i] / 2
+            r_new = 43 * enc.radiuses[i] / 128
+            push!(out_z, z_new)
+            push!(out_radiuses, r_new)
+
+            K = svd(T - z_new * I)
+            z_ball = Ball(z_new, r_new)
+
+            u = K.U[:, end]
+            v = K.V[:, end]
+
+            bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
+            push!(out_bound, bound)
+            push!(out_gradient, (u' * v))
+            if i != length(enc.points)
+                z_new = enc.points[i] +
+                        (2 / 3) * enc.radiuses[i] * (enc.points[i + 1] - enc.points[i]) /
+                        abs(enc.points[i + 1] - enc.points[i])
+                r_new = 43 * enc.radiuses[i] / 128
+                push!(out_z, z_new)
+                push!(out_radiuses, r_new)
+
+                K = svd(T - z_new * I)
+                z_ball = Ball(z_new, r_new)
+
+                u = K.U[:, end]
+                v = K.V[:, end]
+
+                bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
+                push!(out_bound, bound)
+                push!(out_gradient, (u' * v))
+            end
+        end
+    end
+    return Enclosure(enc.λ, out_z, out_bound, out_radiuses, out_gradient, true)
+end
+
 function refine_enclosure_svd(enc)
     out_z = []
     out_bound = []

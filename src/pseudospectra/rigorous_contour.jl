@@ -19,6 +19,7 @@ function Enclosure(λ, points, bounds, radiuses, loop_closure)
 end
 
 include("utilities.jl")
+include("priori_circle_strategy.jl")
 include("contour_strategies.jl")
 include("refine_enclosure.jl")
 include("full_strategy.jl")
