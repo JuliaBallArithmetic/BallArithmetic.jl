@@ -49,7 +49,7 @@ of the pearl necklace
 function _compute_exclusion_circle_level_set_priori(T,
         λ,
         ϵ;
-        rel_pearl_size,
+        N,
         max_initial_newton)
     z = λ + ϵ
 
@@ -69,32 +69,7 @@ function _compute_exclusion_circle_level_set_priori(T,
     r = abs(λ - z)
 
     @info "radius" r
-
-    pearl_radius = r * rel_pearl_size
-    @debug "pearl radius" pearl_radius
-
-    dist_points = (pearl_radius * 8) / 5
-
-    @debug "distance between points" dist_points
-    # this N bounds from above 2π/dist_points , i.e., the number of equispaced
-    # points on the circumference
-
-    N = ceil(8 * r / dist_points)
-
     @info "number  of steps" N
-    # for j in 0:(N - 1)
-    #     z = λ + r * exp(2 * π * im * j / N)
-    #     push!(out_z, z)
-
-    #     K = svd(T - z * I)
-    #     z_ball = Ball(z, pearl_radius)
-
-    #     bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
-    #     push!(out_bound, bound)
-    #     push!(out_radiuses, pearl_radius)
-    # end
-
-    #return Enclosure(λ, out_z, out_bound, out_radiuses, true)
     return _certify_circle(T, λ, r, N)
 end
 

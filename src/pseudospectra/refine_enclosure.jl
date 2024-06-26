@@ -55,10 +55,17 @@ function _refine_enclosure_guarantee(T, enc, ϵ)
             push!(out_radiuses, enc.radiuses[i])
             push!(out_gradient, enc.gradient[i])
         else
+            # need to check last and first point!!!
             if i != 1
-                z_new = enc.points[i] +
-                        (2 / 3) * enc.radiuses[i] * (enc.points[i - 1] - enc.points[i]) /
-                        abs(enc.points[i - 1] - enc.points[i])
+                z_old = enc.points[i]
+                r_old = enc.radiuses[i]
+
+                # this is a length 1 vector
+                n = (enc.points[i - 1] - enc.points[i]) /
+                    abs(enc.points[i - 1] - enc.points[i])
+
+                z_new = z_old + (2 / 3) * r_old * n
+
                 r_new = 43 * enc.radiuses[i] / 128
                 push!(out_z, z_new)
                 push!(out_radiuses, r_new)
@@ -73,7 +80,7 @@ function _refine_enclosure_guarantee(T, enc, ϵ)
                 push!(out_bound, bound)
                 push!(out_gradient, (u' * v))
             end
-            z_new = enc.points[i] / 2
+            z_new = enc.points[i]
             r_new = 43 * enc.radiuses[i] / 128
             push!(out_z, z_new)
             push!(out_radiuses, r_new)
@@ -88,9 +95,13 @@ function _refine_enclosure_guarantee(T, enc, ϵ)
             push!(out_bound, bound)
             push!(out_gradient, (u' * v))
             if i != length(enc.points)
-                z_new = enc.points[i] +
-                        (2 / 3) * enc.radiuses[i] * (enc.points[i + 1] - enc.points[i]) /
-                        abs(enc.points[i + 1] - enc.points[i])
+                z_old = enc.points[i]
+                r_old = enc.radiuses[i]
+
+                n = (enc.points[i + 1] - z_old) / abs(enc.points[i + 1] - z_old)
+
+                z_new = z_old + (2 / 3) * r_old * n
+
                 r_new = 43 * enc.radiuses[i] / 128
                 push!(out_z, z_new)
                 push!(out_radiuses, r_new)
