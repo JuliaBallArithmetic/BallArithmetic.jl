@@ -1,4 +1,4 @@
-@testset "pseudospectra" begin
+@testset "Pseudospectra" begin
     A = [1.0 0.0; 0.0 -1.0]
     bA = BallMatrix(A)
 

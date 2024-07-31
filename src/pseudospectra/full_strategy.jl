@@ -119,10 +119,12 @@ function compute_enclosure_circles(A::BallMatrix, r1, r2, ϵ; max_initial_newton
 
     output = []
 
+    N = max_steps * rel_steps
+
     for λ in eigvals
         @info "Certifying around", λ
         E = _compute_exclusion_circle_level_set_priori(
-            F.T, λ, ϵ; rel_pearl_size, max_initial_newton)
+            F.T, λ, ϵ; N, max_initial_newton)
 
         # bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
 
