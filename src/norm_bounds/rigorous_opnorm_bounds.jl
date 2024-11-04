@@ -1,5 +1,5 @@
 export collatz_upper_bound_L2_opnorm,
-    upper_bound_L1_opnorm, upper_bound_L_inf_opnorm, upper_bound_L2_opnorm
+       upper_bound_L1_opnorm, upper_bound_L_inf_opnorm, upper_bound_L2_opnorm
 
 """
     upper_abs(A)
@@ -43,7 +43,13 @@ function collatz_upper_bound_L2_opnorm(A::BallMatrix{T}; iterates = 10) where {T
             x_new = absA' * absA * x_old
             #@info maximum(x_new ./ x_old)
         end
-        return maximum(x_new ./ x_old)
+        lam = 0.0
+        for i in 1:m
+            if x_old[i] != 0.0
+                lam = max(lam, x_new[i] / x_old[i])
+            end
+        end
+        return lam
     end
     return sqrt_up(lam)
 end

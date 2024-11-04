@@ -21,6 +21,20 @@ rad(A::AbstractMatrix) = zeros(eltype(A), size(A))
 mid(A::BallMatrix) = A.c
 rad(A::BallMatrix) = A.r
 
+function Base.real(A::BallMatrix{T, T}) where {T <: AbstractFloat}
+    return A
+end
+function Base.imag(A::BallMatrix{T, T}) where {T <: AbstractFloat}
+    BallMatrix(zeros(size(A)), zeros(size(A)))
+end
+
+function Base.real(A::BallMatrix{T, Complex{T}}) where {T <: AbstractFloat}
+    BallMatrix(real.(A.c), A.r)
+end
+function Base.imag(A::BallMatrix{T, Complex{T}}) where {T <: AbstractFloat}
+    BallMatrix(imag.(A.c), A.r)
+end
+
 # Array interface
 Base.eltype(::BallMatrix{T, NT, BT}) where {T, NT, BT} = BT
 Base.IndexStyle(::Type{<:BallMatrix}) = IndexLinear()
@@ -183,195 +197,37 @@ function Base.:+(A::BallMatrix{T},
     return BallMatrix(B, R)
 end
 
-function Base.:*(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
-    # mA, rA = mid(A), rad(A)
-    # mB, rB = mid(B), rad(B)
-    # C = mA * mB
-    # R = setrounding(T, RoundUp) do
-    #     R = abs.(mA) * rB + rA * (abs.(mB) + rB)
-    # end
-    # BallMatrix(C, R)
-    return MMul3(A, B)
+include("MMul/MMul2.jl")
+include("MMul/MMul3.jl")
+include("MMul/MMul4.jl")
+include("MMul/MMul5.jl")
+
+function Base.:*(A::BallMatrix{T, S}, B::BallMatrix{T, S}) where {S, T <: AbstractFloat}
+    return MMul4(A, B)
 end
 
-function Base.:*(A::BallMatrix{T}, B::Matrix{T}) where {T <: AbstractFloat}
-    return MMul3(A, B)
+function Base.:*(A::BallMatrix{T, S}, B::Matrix{S}) where {S, T <: AbstractFloat}
+    return MMul4(A, B)
 end
 
-function Base.:*(A::Matrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
-    return MMul3(A, B)
+function Base.:*(A::Matrix{S}, B::BallMatrix{T, S}) where {S, T <: AbstractFloat}
+    return MMul4(A, B)
 end
 
-# TODO: Should we implement this?
-# From Theveny https://theses.hal.science/tel-01126973/en
-function MMul2(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
-    @warn "Not Implemented"
+function Base.:*(
+        A::BallMatrix{T, Complex{T}},
+        B::BallMatrix{T, T}) where {T <: AbstractFloat}
+    return real(A) * B + im * (imag(A) * B)
 end
 
-# As in Revol-Theveny
-# Parallel Implementation of Interval Matrix Multiplication
-# pag. 4
-# please check the values of u and η
-
-function MMul3(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
-    m, k = size(A)
-    mA, rA = mid(A), rad(A)
-    mB, rB = mid(B), rad(B)
-    mC = mA * mB
-    rC = setrounding(T, RoundUp) do
-        rprimeB = ((k + 2) * ϵp * abs.(mB) + rB)
-        rC = abs.(mA) * rprimeB + rA * (abs.(mB) + rB) .+ η / ϵp
-    end
-    BallMatrix(mC, rC)
+function Base.:*(
+        A::BallMatrix{T, T},
+        B::BallMatrix{T, Complex{T}}) where {T <: AbstractFloat}
+    return A * real(B) + im * (A * imag(B))
 end
 
-function MMul3(A::BallMatrix{T}, B::Matrix{T}) where {T <: AbstractFloat}
-    m, k = size(A)
-    mA, rA = mid(A), rad(A)
-    mC = mA * B
-    rC = setrounding(T, RoundUp) do
-        rprimeB = ((k + 2) * ϵp * abs.(B))
-        rC = abs.(mA) * rprimeB + rA * (abs.(B)) .+ η / ϵp
-    end
-    BallMatrix(mC, rC)
-end
-
-function MMul3(A::Matrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
-    m, k = size(A)
-    mB, rB = mid(B), rad(B)
-    mC = A * mB
-    rC = setrounding(T, RoundUp) do
-        rprimeB = ((k + 2) * ϵp * abs.(mB) + rB)
-        rC = abs.(A) * rprimeB .+ η / ϵp
-    end
-    BallMatrix(mC, rC)
-end
-
-function MMul3(A::Matrix{T}, B::Matrix{T}) where {T <: AbstractFloat}
-    m, k = size(A)
-    mC = A * B
-    rC = setrounding(T, RoundUp) do
-        rprimeB = ((k + 2) * ϵp * abs.(B))
-        rC = abs.(A) * rprimeB .+ η / ϵp
-    end
-    BallMatrix(mC, rC)
-end
-
-function MMul4(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
-    m, k = size(A)
-    mA, rA = mid(A), rad(A)
-    mB, rB = mid(B), rad(B)
-
-    C2, rC = setrounding(T, RoundUp) do
-        rC = abs.(mA) * rB + rA * (abs.(mB) + rB)
-        C2 = mA * mB + rC
-        return C2, rC
-    end
-
-    C1 = setrounding(T, RoundDown) do
-        C1 = mA * mB - rC
-        return C1
-    end
-
-    mC, rC = setrounding(T, RoundUp) do
-        mC = (C1 + C2) / 2
-        rC = mC - C1
-        return mC, rC
-    end
-
-    BallMatrix(mC, rC)
-end
-
-function MMul4(A::Matrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
-    m, k = size(A)
-    mA = mid(A)
-    mB, rB = mid(B), rad(B)
-
-    C2, rC = setrounding(T, RoundUp) do
-        rC = abs.(mA) * rB
-        C2 = mA * mB + rC
-        return C2, rC
-    end
-
-    C1 = setrounding(T, RoundDown) do
-        C1 = mA * mB - rC
-        return C1
-    end
-
-    mC, rC = setrounding(T, RoundUp) do
-        mC = (C1 + C2) / 2
-        rC = mC - C1
-        return mC, rC
-    end
-
-    BallMatrix(mC, rC)
-end
-
-function MMul4(A::BallMatrix{T}, B::Matrix{T}) where {T <: AbstractFloat}
-    m, k = size(A)
-    mA, rA = mid(A), rad(A)
-    mB = mid(B)
-
-    C2, rC = setrounding(T, RoundUp) do
-        rC = rA * abs.(mB)
-        C2 = mA * mB + rC
-        return C2, rC
-    end
-
-    C1 = setrounding(T, RoundDown) do
-        C1 = mA * mB - rC
-        return C1
-    end
-
-    mC, rC = setrounding(T, RoundUp) do
-        mC = (C1 + C2) / 2
-        rC = mC - C1
-        return mC, rC
-    end
-
-    BallMatrix(mC, rC)
-end
-
-function MMul4(A::Matrix{T}, B::Matrix{T}) where {T <: AbstractFloat}
-    m, k = size(A)
-    mA = mid(A)
-    mB = mid(B)
-
-    C2 = setrounding(T, RoundUp) do
-        C2 = mA * mB
-        return C2
-    end
-
-    C1 = setrounding(T, RoundDown) do
-        C1 = mA * mB
-        return C1
-    end
-
-    mC, rC = setrounding(T, RoundUp) do
-        mC = (C1 + C2) / 2
-        rC = mC - C1
-        return mC, rC
-    end
-
-    BallMatrix(mC, rC)
-end
-
-# As in Revol-Theveny
-# Parallel Implementation of Interval Matrix Multiplication
-# pag. 4
-# please check the values of u and η
-function MMul5(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
-    m, k = size(A)
-    mA, rA = mid(A), rad(A)
-    mB, rB = mid(B), rad(B)
-    ρA = sign.(mA) .* min.(abs.(mA), rA)
-    ρB = sign.(mB) .* min.(abs.(mB), rB)
-
-    mC = mA * mB + ρA * ρB
-    Γ = abs.(mA) * abs.(mB) + abs.(ρA) * abs.(ρB)
-    rC = setrounding(T, RoundUp) do
-        γ = (k + 1) * eps.(Γ) .+ 0.5 * η / ϵp
-        rC = (abs.(mA) + rA) * (abs.(mB) + rB) - Γ + 2γ
-    end
-    BallMatrix(mC, rC)
+function Base.:*(
+        A::BallMatrix{T, Complex{T}},
+        B::BallMatrix{T, Complex{T}}) where {T <: AbstractFloat}
+    return A * real(B) + im * (A * imag(B))
 end

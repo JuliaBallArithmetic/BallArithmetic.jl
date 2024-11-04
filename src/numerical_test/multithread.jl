@@ -25,11 +25,20 @@ running BLAS on `n` threads
 function rounding_test(n, k)
     BLAS.set_num_threads(n)
     A = _test_matrix(k)
+
+    test_up = false
     B = setrounding(Float64, RoundUp) do
         BLAS.gemm('N', 'T', 1.0, A, A)
     end
+    test_up = all([B[i, i] == nextfloat(1.0) for i in 1:(k - 1)])
 
-    return all([B[i, i] == nextfloat(1.0) for i in 1:(k - 1)])
+    test_down = false
+    B = setrounding(Float64, RoundDown) do
+        BLAS.gemm('N', 'T', 1.0, A, A)
+    end
+    test_down = all([B[i, i] == 1.0 for i in 1:(k - 1)])
+
+    return test_up && test_down
 end
 
 end

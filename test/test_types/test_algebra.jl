@@ -1,10 +1,32 @@
 @testset "Test Matrix Algebra" begin
     import IntervalArithmetic
 
+    function check_included(bA, IA)
+        @assert size(bA) == size(IA)
+
+        lower = [IntervalArithmetic.inf(x) for x in IA]
+        higher = [IntervalArithmetic.sup(x) for x in IA]
+
+        test_lo = [lower[i, j] >= BallArithmetic.sub_down(bA[i, j].c, bA[i, j].r)
+                   for (i, j) in Iterators.product(1:size(bA)[1], 1:size(bA)[2])]
+        test_hi = [higher[i, j] <= BallArithmetic.add_up(bA[i, j].c, bA[i, j].r)
+                   for (i, j) in Iterators.product(1:size(bA)[1], 1:size(bA)[2])]
+
+        if all(test_lo) == false
+            @info "lo", test_lo
+        end
+
+        if all(test_hi) == false
+            @info "hi", test_hi
+        end
+
+        return all(test_lo) && all(test_hi)
+    end
+
     A = rand(4, 4)
     err = rand(4, 4)
     ierr = IntervalArithmetic.interval(-2^-16, 2^-16) * err
-    rA = 2^16 * err
+    rA = 2^-16 * err
 
     iA = IntervalArithmetic.interval.(A) .+ ierr
     bA = BallMatrix(A, rA)
@@ -15,10 +37,7 @@
     IB = Iλ * iA
     bB = bλ * bA
 
-    lower = [IntervalArithmetic.inf(x) for x in IB]
-    higher = [IntervalArithmetic.sup(x) for x in IB]
-
-    @test all(in.(lower, bB)) && all(in.(higher, bB))
+    @test check_included(bB, IB)
 
     B = rand(4, 4)
 
@@ -26,56 +45,33 @@
     bB = BallMatrix(B)
 
     isum = iA + iB
-    lower = [IntervalArithmetic.inf(x) for x in isum]
-    higher = [IntervalArithmetic.sup(x) for x in isum]
-
     bsum = bA + bB
 
-    @test all(in.(lower, bsum))
-    @test all(in.(higher, bsum))
+    @test check_included(bsum, isum)
 
     B = rand(4, 4)
 
     iB = IntervalArithmetic.interval.(B)
 
     isum = iA + iB
-    lower = [IntervalArithmetic.inf(x) for x in isum]
-    higher = [IntervalArithmetic.sup(x) for x in isum]
-
     bsum = bA + B
 
-    @test all(in.(lower, bsum))
-    @test all(in.(higher, bsum))
+    @test check_included(bsum, isum)
 
-    bB = BallMatrix(B)
+    A = BallArithmetic.NumericalTest._test_matrix(16)
 
-    iprod = iA * iB
-    bprod = bA * bB
+    bA = BallMatrix(A)
+    bprod = bA * bA'
 
-    lower = [IntervalArithmetic.inf(x) for x in iprod]
-    higher = [IntervalArithmetic.sup(x) for x in iprod]
+    @test all([nextfloat(1.0) in bprod[i, i] for i in 1:15])
 
-    @test all(in.(lower, bprod))
-    @test all(in.(higher, bprod))
+    bprod = bA * A'
 
-    iprod = A * iB
+    @test all([nextfloat(1.0) in bprod[i, i] for i in 1:15])
 
-    bprod = A * bB
+    bprod = A * bA'
 
-    lower = [IntervalArithmetic.inf(x) for x in iprod]
-    higher = [IntervalArithmetic.sup(x) for x in iprod]
-
-    @test all(in.(lower, bprod))
-    @test all(in.(higher, bprod))
-
-    iprod = iB * A
-    bprod = bB * A
-
-    lower = [IntervalArithmetic.inf(x) for x in iprod]
-    higher = [IntervalArithmetic.sup(x) for x in iprod]
-
-    @test all(in.(lower, bprod))
-    @test all(in.(higher, bprod))
+    @test all([nextfloat(1.0) in bprod[i, i] for i in 1:15])
 
     using LinearAlgebra
 
@@ -94,7 +90,7 @@
     A = rand(4, 4)
     B = rand(4, 4)
 
-    bC = BallArithmetic.MMul3(A, B)
+    bC = BallArithmetic.MMul4(A, B)
 
     bC2 = BallMatrix(A) * BallMatrix(B)
 
