@@ -1,11 +1,8 @@
 module FFTExt
 
-using BallArithmetic
-import AbstractFFTs
+using BallArithmetic, LinearAlgebra, RoundingEmulator
+import BallArithmetic: @up, div_up, add_up, sub_up, mul_up
 import FFTW
-import BallArithmetic: @up, fft
-
-export fft
 
 """
     fft
@@ -18,7 +15,7 @@ Ref. [Higham1996](@cite)
 * [Higham1996](@cite) Higham, Siam (1996)
 """
 
-function BallArithmetic.fft(A::BallMatrix{T}, dims = (1, 2)) where {T}
+function FFTW.fft(A::BallMatrix{T}, dims = (1, 2)) where {T}
     if all([!ispow2(size(A.c)[i]) for i in dims])
         @warn "The rigorous error estimate works for power of two sizes"
     end
@@ -64,7 +61,7 @@ Ref. [Higham1996](@cite)
 
 * [Higham1996](@cite) Higham, Siam (1996)
 """
-function BallArithmetic.fft(v::BallVector{T}) where {T}
+function FFTW.fft(v::BallVector{T}) where {T}
     if !ispow2(length(v))
         @warn "The rigorous error estimate works for power of two sizes"
     end
