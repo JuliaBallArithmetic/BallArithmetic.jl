@@ -5,7 +5,6 @@ version = "0.1.0"
 
 [deps]
 AbstractFFTs = "621f4979-c628-5d54-868e-fcf4e3e8185c"
-FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 OpenBLASConsistentFPCSR_jll = "6cdc7f73-28fd-5e50-80fb-958a8875b1af"
@@ -16,19 +15,12 @@ SetRounding = "3cc68bcd-71a2-5612-b932-767ffbe40ab0"
 IntervalArithmetic = "d1acc4aa-44c8-5952-acd4-ba5d80a2a253"
 
 [extensions]
+FFTExt = "FFTW"
 IntervalArithmeticExt = "IntervalArithmetic"
 
 [compat]
-julia = "^1.9"
 AbstractFFTs = "1.5"
-FFTW = "1.8"
 MacroTools = "0.5"
 RoundingEmulator = "0.2"
 SetRounding = "0.2"
-
-[extras]
-IntervalArithmetic = "d1acc4aa-44c8-5952-acd4-ba5d80a2a253"
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-
-[targets]
-test = ["IntervalArithmetic", "Test"]
+julia = "^1.9"
