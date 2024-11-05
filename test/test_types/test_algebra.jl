@@ -58,6 +58,10 @@
 
     @test check_included(bsum, isum)
 
+    bsum = B + bA
+
+    @test check_included(bsum, isum)
+
     A = BallArithmetic.NumericalTest._test_matrix(16)
 
     bA = BallMatrix(A)
