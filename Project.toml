@@ -1,7 +1,7 @@
 name = "BallArithmetic"
 uuid = "77e4f72b-b5a4-4fb0-ac2a-dcc32095a072"
 authors = ["Luca Ferranti and Isaia Nisoli"]
-version = "0.1.0"
+version = "0.1.1"
 
 [deps]
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
