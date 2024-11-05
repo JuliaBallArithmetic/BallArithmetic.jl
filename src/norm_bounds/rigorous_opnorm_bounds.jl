@@ -30,7 +30,7 @@ estimate.
 """
 function collatz_upper_bound_L2_opnorm(A::BallMatrix{T}; iterates = 10) where {T}
     m, k = size(A)
-    x_old = ones(m)
+    x_old = ones(k)
     x_new = x_old
 
     absA = upper_abs(A)
@@ -44,7 +44,7 @@ function collatz_upper_bound_L2_opnorm(A::BallMatrix{T}; iterates = 10) where {T
             #@info maximum(x_new ./ x_old)
         end
         lam = 0.0
-        for i in 1:m
+        for i in 1:k
             if x_old[i] != 0.0
                 lam = max(lam, x_new[i] / x_old[i])
             end
