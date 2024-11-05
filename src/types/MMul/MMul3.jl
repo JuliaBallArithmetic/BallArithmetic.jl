@@ -11,38 +11,42 @@ function MMul3(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
     rC = setrounding(T, RoundUp) do
         rprimeB = ((k + 2) * ϵp * abs.(mB) + rB)
         rC = abs.(mA) * rprimeB + rA * (abs.(mB) + rB) .+ η / ϵp
+        return rC
     end
     BallMatrix(mC, rC)
 end
 
-function MMul3(A::BallMatrix{T}, B::Matrix{T}) where {T <: AbstractFloat}
+function MMul3(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
     m, k = size(A)
     mA, rA = mid(A), rad(A)
     mC = mA * B
     rC = setrounding(T, RoundUp) do
         rprimeB = ((k + 2) * ϵp * abs.(B))
         rC = abs.(mA) * rprimeB + rA * (abs.(B)) .+ η / ϵp
+        return rC
     end
     BallMatrix(mC, rC)
 end
 
-function MMul3(A::Matrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
+function MMul3(A::AbstractMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
     m, k = size(A)
     mB, rB = mid(B), rad(B)
     mC = A * mB
     rC = setrounding(T, RoundUp) do
         rprimeB = ((k + 2) * ϵp * abs.(mB) + rB)
         rC = abs.(A) * rprimeB .+ η / ϵp
+        return rC
     end
     BallMatrix(mC, rC)
 end
 
-function MMul3(A::Matrix{T}, B::Matrix{T}) where {T <: AbstractFloat}
+function MMul3(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
     m, k = size(A)
     mC = A * B
     rC = setrounding(T, RoundUp) do
         rprimeB = ((k + 2) * ϵp * abs.(B))
         rC = abs.(A) * rprimeB .+ η / ϵp
+        return rC
     end
     BallMatrix(mC, rC)
 end

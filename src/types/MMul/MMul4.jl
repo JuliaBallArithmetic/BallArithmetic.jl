@@ -22,7 +22,7 @@ function MMul4(A::BallMatrix{T, T}, B::BallMatrix{T, T}) where {T <: AbstractFlo
     return BallMatrix(mC, rC)
 end
 
-function MMul4(A::Matrix{T}, B::BallMatrix{T, T}) where {T <: AbstractFloat}
+function MMul4(A::AbstractMatrix{T}, B::BallMatrix{T, T}) where {T <: AbstractFloat}
     mA = mid(A)
     mB, rB = mid(B), rad(B)
 
@@ -45,7 +45,7 @@ function MMul4(A::Matrix{T}, B::BallMatrix{T, T}) where {T <: AbstractFloat}
     BallMatrix(mC, rC)
 end
 
-function MMul4(A::BallMatrix{T, T}, B::Matrix{T}) where {T <: AbstractFloat}
+function MMul4(A::BallMatrix{T, T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
     mA, rA = mid(A), rad(A)
     mB = mid(B)
 
@@ -68,7 +68,7 @@ function MMul4(A::BallMatrix{T, T}, B::Matrix{T}) where {T <: AbstractFloat}
     return BallMatrix(mC, rC)
 end
 
-function MMul4(A::Matrix{T}, B::Matrix{T}) where {T <: AbstractFloat}
+function MMul4(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
     mA = mid(A)
     mB = mid(B)
 

@@ -74,6 +74,9 @@
     bprod = A * bA'
     @test all([nextfloat(1.0) in bprod[i, i] for i in 1:15])
 
+    bprod = BallArithmetic.MMul4(A, A')
+    @test all([nextfloat(1.0) in bprod[i, i] for i in 1:15])
+
     bprod = BallArithmetic.MMul3(bA, bA')
     @test all([nextfloat(1.0) in bprod[i, i] for i in 1:15])
 
@@ -81,6 +84,9 @@
     @test all([nextfloat(1.0) in bprod[i, i] for i in 1:15])
 
     bprod = BallArithmetic.MMul3(A, bA')
+    @test all([nextfloat(1.0) in bprod[i, i] for i in 1:15])
+
+    bprod = BallArithmetic.MMul3(A, A')
     @test all([nextfloat(1.0) in bprod[i, i] for i in 1:15])
 
     using LinearAlgebra
