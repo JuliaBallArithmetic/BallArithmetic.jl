@@ -197,6 +197,85 @@ function Base.:+(A::BallMatrix{T},
     return BallMatrix(B, R)
 end
 
+function Base.:+(J::UniformScaling, A::BallMatrix)
+    return A + J
+end
+
+function Base.:-(A::BallMatrix{T}, J::UniformScaling) where {T}
+    LinearAlgebra.checksquare(A)
+    B = LinearAlgebra.copymutable_oftype(A.c,
+        Base._return_type(-,
+            Tuple{eltype(A.c), typeof(J)}))
+    R = copy(A.r)
+    @inbounds for i in axes(A, 1)
+        B[i, i] -= J
+    end
+
+    R = setrounding(T, RoundUp) do
+        @inbounds for i in axes(A, 1)
+            R[i, i] += ϵp * abs(B[i, i])
+        end
+        return R
+    end
+    return BallMatrix(B, R)
+end
+
+function Base.:-(A::BallMatrix{T},
+        J::UniformScaling{Ball{T, NT}}) where {T, NT <: Union{T, Complex{T}}}
+    LinearAlgebra.checksquare(A)
+    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c), NT}))
+    R = copy(A.r)
+    @inbounds for i in axes(A, 1)
+        B[i, i] -= J.λ.c
+    end
+
+    R = setrounding(T, RoundUp) do
+        @inbounds for i in axes(A, 1)
+            R[i, i] += ϵp * abs(B[i, i]) + J.λ.r
+        end
+        return R
+    end
+    return BallMatrix(B, R)
+end
+
+function Base.:-(J::UniformScaling, A::BallMatrix{T}) where {T}
+    LinearAlgebra.checksquare(A)
+    B = LinearAlgebra.copymutable_oftype(A.c,
+        Base._return_type(-,
+            Tuple{eltype(A.c), typeof(J)}))
+    R = copy(A.r)
+    @inbounds for i in axes(A, 1)
+        B[i, i] = J - B[i, i]
+    end
+
+    R = setrounding(T, RoundUp) do
+        @inbounds for i in axes(A, 1)
+            R[i, i] += ϵp * abs(B[i, i])
+        end
+        return R
+    end
+    return BallMatrix(B, R)
+end
+
+function Base.:-(J::UniformScaling{Ball{T, NT}},
+        A::BallMatrix{T}
+) where {T, NT <: Union{T, Complex{T}}}
+    LinearAlgebra.checksquare(A)
+    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c), NT}))
+    R = copy(A.r)
+    @inbounds for i in axes(A, 1)
+        B[i, i] = J.λ.c - B[i, i]
+    end
+
+    R = setrounding(T, RoundUp) do
+        @inbounds for i in axes(A, 1)
+            R[i, i] += ϵp * abs(B[i, i]) + J.λ.r
+        end
+        return R
+    end
+    return BallMatrix(B, R)
+end
+
 include("MMul/MMul2.jl")
 include("MMul/MMul3.jl")
 include("MMul/MMul4.jl")

@@ -99,9 +99,15 @@
     #TODO diag does not seem to work on BallMatrices
     @test all(-lam.c .== diag(B.c)) && all(lam.r .<= diag(B.r))
 
+    B = lam * I - A
+    @test all(lam.c .== diag(B.c)) && all(lam.r .<= diag(B.r))
+
     lam = Ball(im * 1 / 8, 1 / 8)
     B = A - lam * I
     @test all(-lam.c .== diag(B.c)) && all(lam.r .<= diag(B.r))
+
+    B = lam * I - A
+    @test all(lam.c .== diag(B.c)) && all(lam.r .<= diag(B.r))
 
     A = rand(4, 4)
     B = rand(4, 4)
