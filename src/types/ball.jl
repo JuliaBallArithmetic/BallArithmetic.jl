@@ -82,6 +82,26 @@ end
 Base.conj(x::Ball) = Ball(conj(x.c), x.r)
 Base.in(x::Number, B::Ball) = abs(B.c - x) <= B.r
 
+function Base.in(B1::Ball{T, T}, B2::Ball{T, T}) where {T <: AbstractFloat}
+    upper = (@up B1.c + B1.r) <= (@down B2.c + B2.r)
+    lower = (@up B2.c - B2.r) <= (@down B1.c - B1.r)
+    return lower && upper
+end
+
+function Base.in(
+        B1::Ball{T, Complex{T}}, B2::Ball{T, Complex{T}}) where {T <: AbstractFloat}
+    center1 = Ball(B1.c)
+    center2 = Ball(B2.c)
+
+    d = abs(center2 - center1)
+
+    if B2.r >= add_up(add_up(d.c, d.r), B1.r)
+        return true
+    else
+        return false
+    end
+end
+
 function Base.inv(x::Ball{T, Complex{T}}) where {T <: AbstractFloat}
     return conj(x) / (abs(x)^2)
 end
