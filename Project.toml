@@ -19,6 +19,7 @@ FFTExt = "FFTW"
 IntervalArithmeticExt = "IntervalArithmetic"
 
 [compat]
+FFTW = "1"
 IntervalArithmetic = "0.20.9"
 MacroTools = "0.5"
 OpenBLASConsistentFPCSR_jll = "0.3.21"
