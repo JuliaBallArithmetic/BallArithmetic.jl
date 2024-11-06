@@ -55,7 +55,7 @@ very tiny intervals. For interval linear systems with wider intervals, see the
 function epsilon_inflation(A::BallMatrix{T}, b::BallVector{T};
         r = 0.1, ϵ = 1e-20, iter_max = 20) where {T <: AbstractFloat}
     r1 = Ball(1, r)
-    ϵ1 = Ball(0, ϵ)
+    ϵ1 = fill(Ball(0, ϵ), length(b))
     R = inv(mid(A))
 
     C = I - R * A
@@ -64,7 +64,7 @@ function epsilon_inflation(A::BallMatrix{T}, b::BallVector{T};
     x = z
 
     for _ in 1:iter_max
-        y = r1 * x .+ ϵ1
+        y = r1 * x + ϵ1
         x = z + C * y
         if all(in.(x, y))
             return xs + x, true
@@ -76,7 +76,7 @@ end
 function epsilon_inflation(A::BallMatrix{T}, B::BallMatrix{T};
         r = 0.1, ϵ = 1e-20, iter_max = 20) where {T <: AbstractFloat}
     r1 = Ball(1, r)
-    ϵ1 = Ball(0, ϵ)
+    ϵ1 = fill(Ball(0, ϵ), length(b))
     R = inv(mid(A))
 
     C = I - R * A
@@ -85,7 +85,7 @@ function epsilon_inflation(A::BallMatrix{T}, B::BallMatrix{T};
     x = z
 
     for _ in 1:iter_max
-        y = r1 * x .+ ϵ1
+        y = r1 * x + ϵ1
         x = z + C * y
         if all(in.(x, y))
             return xs + x, true
