@@ -1,87 +1,26 @@
-struct BallMatrix{T <: AbstractFloat, NT <: Union{T, Complex{T}}, BT <: Ball{T, NT},
-    CM <: AbstractMatrix{NT}, RM <: AbstractMatrix{T}} <: AbstractMatrix{BT}
-    c::CM
-    r::RM
-    function BallMatrix(c::AbstractMatrix{T},
-            r::AbstractMatrix{T}) where {T <: AbstractFloat}
-        new{T, T, Ball{T, T}, typeof(c), typeof(r)}(c, r)
-    end
-    function BallMatrix(c::AbstractMatrix{Complex{T}},
-            r::AbstractMatrix{T}) where {T <: AbstractFloat}
-        new{T, Complex{T}, Ball{T, Complex{T}}, typeof(c), typeof(r)}(c, r)
-    end
-end
+# struct BallMatrix{T <: AbstractFloat, NT <: Union{T, Complex{T}}, BT <: Ball{T, NT},
+#     CM <: AbstractMatrix{NT}, RM <: AbstractMatrix{T}} <: AbstractMatrix{BT}
+#     c::CM
+#     r::RM
+#     function BallMatrix(c::AbstractMatrix{T},
+#             r::AbstractMatrix{T}) where {T <: AbstractFloat}
+#         new{T, T, Ball{T, T}, typeof(c), typeof(r)}(c, r)
+#     end
+#     function BallMatrix(c::AbstractMatrix{Complex{T}},
+#             r::AbstractMatrix{T}) where {T <: AbstractFloat}
+#         new{T, Complex{T}, Ball{T, Complex{T}}, typeof(c), typeof(r)}(c, r)
+#     end
+# end
 
-BallMatrix(M::AbstractMatrix) = BallMatrix(mid.(M), rad.(M))
+const BallMatrix{T, NT, BT, CM, RM} = BallArray{T, 2, NT, BT, CM, RM}
+
+# unclear why this need to be specified
+BallMatrix(M::AbstractMatrix) = BallArray(mid(M), rad(M))
+BallMatrix(c::AbstractMatrix, r::AbstractMatrix) = BallArray(c, r)
+
 mid(A::AbstractMatrix) = A
-rad(A::AbstractMatrix) = zeros(eltype(A), size(A))
-
-# mid(A::BallMatrix) = map(mid, A)
-# rad(A::BallMatrix) = map(rad, A)
-mid(A::BallMatrix) = A.c
-rad(A::BallMatrix) = A.r
-
-function Base.real(A::BallMatrix{T, T}) where {T <: AbstractFloat}
-    return A
-end
-function Base.imag(A::BallMatrix{T, T}) where {T <: AbstractFloat}
-    BallMatrix(zeros(size(A)), zeros(size(A)))
-end
-
-function Base.real(A::BallMatrix{T, Complex{T}}) where {T <: AbstractFloat}
-    BallMatrix(real.(A.c), A.r)
-end
-function Base.imag(A::BallMatrix{T, Complex{T}}) where {T <: AbstractFloat}
-    BallMatrix(imag.(A.c), A.r)
-end
-
-# Array interface
-Base.eltype(::BallMatrix{T, NT, BT}) where {T, NT, BT} = BT
-Base.IndexStyle(::Type{<:BallMatrix}) = IndexLinear()
-Base.size(M::BallMatrix, i...) = size(M.c, i...)
-
-function Base.getindex(M::BallMatrix, i::Int64)
-    return Ball(getindex(M.c, i), getindex(M.r, i))
-end
-
-function Base.getindex(M::BallMatrix, I::CartesianIndex{1})
-    return Ball(getindex(M.c, I), getindex(M.r, I))
-end
-
-function Base.getindex(M::BallMatrix, i::Int64, j::Int64)
-    return Ball(getindex(M.c, i, j), getindex(M.r, i, j))
-end
-
-function Base.getindex(M::BallMatrix, I::CartesianIndex{2})
-    return Ball(getindex(M.c, I), getindex(M.r, I))
-end
-
-function Base.getindex(M::BallMatrix, inds...)
-    return BallMatrix(getindex(M.c, inds...), getindex(M.r, inds...))
-end
-
-function Base.display(X::BallMatrix{
-        T, NT, Ball{T, NT}, Matrix{NT},
-        Matrix{T}}) where {T <: AbstractFloat, NT <: Union{T, Complex{T}}}
-    #@info "test"
-    m, n = size(X)
-    B = [Ball(X.c[i, j], X.r[i, j]) for i in 1:m, j in 1:n]
-    display(B)
-end
-
-function Base.setindex!(M::BallMatrix, x, inds...)
-    setindex!(M.c, mid(x), inds...)
-    setindex!(M.r, rad(x), inds...)
-end
-Base.copy(M::BallMatrix) = BallMatrix(copy(M.c), copy(M.r))
-
-function Base.zeros(::Type{B}, dims::NTuple{N, Integer}) where {B <: Ball, N}
-    BallMatrix(zeros(midtype(B), dims), zeros(radtype(B), dims))
-end
-
-function Base.ones(::Type{B}, dims::NTuple{N, Integer}) where {B <: Ball, N}
-    BallMatrix(ones(midtype(B), dims), zeros(radtype(B), dims))
-end
+rad(A::AbstractMatrix{T}) where {T <: AbstractFloat} = zeros(T, size(A))
+rad(A::AbstractMatrix{Complex{T}}) where {T <: AbstractFloat} = zeros(T, size(A))
 
 # LinearAlgebra functions
 function LinearAlgebra.adjoint(M::BallMatrix)

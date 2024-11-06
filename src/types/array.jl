@@ -4,18 +4,19 @@ struct BallArray{T <: AbstractFloat, N, NT <: Union{T, Complex{T}},
     c::CA
     r::RA
     function BallArray(c::AbstractArray{T, N},
-            r::Array{T, N}) where {T <: AbstractFloat, N}
+            r::AbstractArray{T, N}) where {T <: AbstractFloat, N}
         new{T, N, T, Ball{T, T}, typeof(c), typeof(r)}(c, r)
     end
     function BallArray(c::AbstractArray{Complex{T}, N},
-            r::Array{T, N}) where {T <: AbstractFloat, N}
+            r::AbstractArray{T, N}) where {T <: AbstractFloat, N}
         new{T, N, Complex{T}, Ball{T, Complex{T}}, typeof(c), typeof(r)}(c, r)
     end
 end
 
 BallArray(M::AbstractArray) = BallArray(mid(M), rad(M))
 mid(A::AbstractArray) = A
-rad(A::AbstractArray) = zeros(eltype(A), Base.size(A))
+rad(A::AbstractArray{T}) where {T <: AbstractFloat} = zeros(T, Base.size(A))
+rad(A::AbstractArray{Complex{T}}) where {T <: AbstractFloat} = zeros(T, Base.size(A))
 
 Base.size(A::BallArray) = Base.size(A.c)
 Base.length(A::BallArray) = Base.length(A.c)
@@ -57,14 +58,14 @@ function Base.imag(A::BallArray{T, N, Complex{T}}) where {T <: AbstractFloat, N}
     BallArray(imag.(A.c), A.r)
 end
 
-# function Base.zeros(::Type{B}, dims::NTuple{N, Integer}) where {B <: Ball, N}
-#     BallArray(zeros(midtype(B), dims), zeros(radtype(B), dims))
-# end
+function Base.zeros(::Type{B}, dims::NTuple{N, Integer}) where {B <: Ball, N}
+    BallArray(zeros(midtype(B), dims), zeros(radtype(B), dims))
+end
 
-# function Base.ones(::Type{B}, dims::NTuple{N, Integer}) where {B <: Ball, N}
-#     BallArray(ones(midtype(B), dims), zeros(radtype(B), dims))
-# end
+function Base.ones(::Type{B}, dims::NTuple{N, Integer}) where {B <: Ball, N}
+    BallArray(ones(midtype(B), dims), zeros(radtype(B), dims))
+end
 
-# function Base.fill(x::Ball, I::Vararg{Int, N}) where {N}
-#     BallArray(fill(mid(x), I...), fill(rad(x), I...))
-# end
+function Base.fill(x::Ball, I::Vararg{Int, N}) where {N}
+    BallArray(fill(mid(x), I...), fill(rad(x), I...))
+end
