@@ -8,7 +8,7 @@
                       r=0.1, ϵ=1e-20, iter_max=20) where {T<:AbstractFloat}
 
 Gives an enclosure of the solution of the square linear system ``Ax=b``
-using the ϵ-inflation algorithm,  see algorithm 10.7 of [[Rump2010]](@ref)
+using the ϵ-inflation algorithm,  see algorithm 10.7 of
 
 ### Input
 
