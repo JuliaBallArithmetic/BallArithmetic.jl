@@ -48,11 +48,15 @@ export ±, mid, rad
 include("rounding/rounding.jl")
 include("types/ball.jl")
 export Ball, BallF64, BallComplexF64
+
+include("types/array.jl")
+export BallArray
+
 include("types/matrix.jl")
 export BallMatrix
 include("types/vector.jl")
 export BallVector
-include("types/array.jl")
+
 include("types/convertpromote.jl")
 include("norm_bounds/rigorous_norm.jl")
 export upper_bound_norm
@@ -64,5 +68,8 @@ include("eigenvalues/upper_bound_spectral.jl")
 include("svd/svd.jl")
 include("pseudospectra/rigorous_contour.jl")
 include("matrix_classifiers/is_M_matrix.jl")
+
+include("linear_system/inflation.jl")
+include("linear_system/backward_substitution.jl")
 
 end

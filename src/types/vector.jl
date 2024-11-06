@@ -1,67 +1,12 @@
-struct BallVector{T <: AbstractFloat, NT <: Union{T, Complex{T}}, BT <: Ball{T, NT},
-    CV <: AbstractVector{NT}, RV <: AbstractVector{T}} <: AbstractVector{BT}
-    c::CV
-    r::RV
-    function BallVector(c::AbstractVector{T},
-            r::AbstractVector{T}) where {T <: AbstractFloat}
-        new{T, T, Ball{T, T}, typeof(c), typeof(r)}(c, r)
-    end
-    function BallVector(c::AbstractVector{Complex{T}},
-            r::AbstractVector{T}) where {T <: AbstractFloat}
-        new{T, Complex{T}, Ball{T, Complex{T}}, typeof(c), typeof(r)}(c, r)
-    end
-end
+const BallVector{T, NT, BT, CM, RM} = BallArray{T, 1, NT, BT, CM, RM}
 
-BallVector(v::AbstractVector) = BallVector(mid.(v), rad.(v))
-mid(v::AbstractVector) = v
-rad(v::AbstractVector) = zeros(eltype(v), length(v))
+# unclear why this need to be specified
+BallVector(M::AbstractVector) = BallArray(mid(M), rad(M))
+BallVector(c::AbstractVector, r::AbstractVector) = BallArray(c, r)
 
-# mid(A::BallMatrix) = map(mid, A)
-# rad(A::BallMatrix) = map(rad, A)
-mid(A::BallVector) = A.c
-rad(A::BallVector) = A.r
-
-# Array interface
-Base.eltype(::BallVector{T, NT, BT}) where {T, NT, BT} = BT
-Base.IndexStyle(::Type{<:BallVector}) = IndexLinear()
-Base.size(v::BallVector, i...) = size(v.c, i...)
-Base.length(v::BallVector) = length(v.c)
-
-function Base.getindex(M::BallVector, I::S) where {S <: Union{Int64, CartesianIndex{1}}}
-    return Ball(getindex(M.c, I), getindex(M.r, I))
-end
-
-function Base.getindex(M::BallVector, inds...)
-    return BallVector(getindex(M.c, inds...), getindex(M.r, inds...))
-end
-
-function Base.display(v::BallVector{
-        T, NT, Ball{T, NT}, Vector{NT},
-        Vector{T}}) where {T <: AbstractFloat, NT <: Union{T, Complex{T}}}
-    #@info "test"
-    m = length(v)
-    V = [Ball(v.c[i], v.r[i]) for i in 1:m]
-    display(V)
-end
-
-function Base.setindex!(M::BallVector, x, inds...)
-    setindex!(M.c, mid(x), inds...)
-    setindex!(M.r, rad(x), inds...)
-end
-Base.copy(M::BallVector) = BallVector(copy(M.c), copy(M.r))
-
-function Base.zeros(::Type{B}, n::Integer) where {B <: Ball}
-    BallVector(zeros(midtype(B), n), zeros(radtype(B), n))
-end
-
-function Base.ones(::Type{B}, n::Integer) where {B <: Ball}
-    BallVector(ones(midtype(B), n), zeros(radtype(B), n))
-end
-
-# # LinearAlgebra functions
-# function LinearAlgebra.adjoint(M::BallMatrix)
-#     return BallMatrix(mid(M)', rad(M)')
-# end
+mid(A::AbstractVector) = A
+rad(A::AbstractVector{T}) where {T <: AbstractVector} = zeros(T, size(A))
+rad(A::AbstractVector{Complex{T}}) where {T <: AbstractFloat} = zeros(T, size(A))
 
 # # Operations
 for op in (:+, :-)

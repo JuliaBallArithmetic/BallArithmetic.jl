@@ -8,6 +8,7 @@ using Test
     include("test_types/test_algebra.jl")
     include("test_types/test_vector.jl")
     include("test_types/test_matrix.jl")
+    include("test_types/test_array.jl")
     include("test_types/test_vector_operations.jl")
     include("test_eigen/test_eigen.jl")
     include("test_interval_arithmetic_ext/test_interval_arithmetic_ext.jl")
@@ -16,4 +17,5 @@ using Test
     include("test_norm_bounds/test_norm_bounds.jl")
     include("test_svd/test_svd.jl")
     include("test_numerical_test/test_numerical_test.jl")
+    include("test_linear_solvers/test_solvers.jl")
 end
