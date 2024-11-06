@@ -29,7 +29,7 @@ function backward_substitution(A::BallMatrix, B::BallMatrix)
     for i in m:-1:1
         sol[i, :] = B[i, :]
         for j in m:-1:(i + 1)
-            sol[i] -= A[i, j] * sol[j, :]
+            sol[i, :] -= A[i, j] * sol[j, :]
         end
         sol[i, :] /= Ball(A[i, i])
     end
