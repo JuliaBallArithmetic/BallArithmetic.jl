@@ -8,7 +8,7 @@
                       r=0.1, ϵ=1e-20, iter_max=20) where {T<:AbstractFloat}
 
 Gives an enclosure of the solution of the square linear system ``Ax=b``
-using the ϵ-inflation algorithm,  see algorithm 10.7 of [[RUM10]](@ref)
+using the ϵ-inflation algorithm,  see algorithm 10.7 of [[Rump2010]](@ref)
 
 ### Input
 
@@ -44,10 +44,6 @@ could not prove that the enclosure contains the true solution. For interval syst
 ``̃x`` is obtained considering the midpoint of ``A`` and ``b``.
 
 ### Notes
-
-- This algorithm is meant for *real* linear systems, or interval systems with
-very tiny intervals. For interval linear systems with wider intervals, see the
-[`solve`](@ref) function.
 
 ### Examples
 
