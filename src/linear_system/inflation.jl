@@ -76,7 +76,10 @@ end
 function epsilon_inflation(A::BallMatrix{T}, B::BallMatrix{T};
         r = 0.1, ϵ = 1e-20, iter_max = 20) where {T <: AbstractFloat}
     r1 = Ball(1, r)
-    ϵ1 = fill(Ball(0, ϵ), length(b))
+
+    m, k = size(B)
+
+    ϵ1 = fill(Ball(0, ϵ), length(k))
     R = inv(mid(A))
 
     C = I - R * A
