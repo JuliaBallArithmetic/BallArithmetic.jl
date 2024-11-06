@@ -79,7 +79,7 @@ function epsilon_inflation(A::BallMatrix{T}, B::BallMatrix{T};
 
     m, k = size(B)
 
-    ϵ1 = fill(Ball(0, ϵ), length(k))
+    ϵ1 = fill(Ball(0, ϵ), k)
     R = inv(mid(A))
 
     C = I - R * A
