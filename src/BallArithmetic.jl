@@ -56,11 +56,13 @@ include("types/matrix.jl")
 export BallMatrix
 include("types/vector.jl")
 export BallVector
+include("types/triangularize.jl")
 
 include("types/convertpromote.jl")
 include("norm_bounds/rigorous_norm.jl")
 export upper_bound_norm
 include("norm_bounds/rigorous_opnorm_bounds.jl")
+include("norm_bounds/oishi.jl")
 
 export upper_bound_L1_opnorm, upper_bound_L2_opnorm, upper_bound_L_inf_opnorm
 include("eigenvalues/gev.jl")

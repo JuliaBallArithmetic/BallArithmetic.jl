@@ -28,7 +28,7 @@ The keyword argument `iterates` is used to establish how many
 times we are iterating the vector of ones before we use Collatz's
 estimate.
 """
-function collatz_upper_bound_L2_opnorm(A::BallMatrix{T}; iterates = 10) where {T}
+function collatz_upper_bound_L2_opnorm(A::BallMatrix{T}; iterates = 5) where {T}
     m, k = size(A)
     x_old = ones(k)
     x_new = x_old
@@ -36,12 +36,16 @@ function collatz_upper_bound_L2_opnorm(A::BallMatrix{T}; iterates = 10) where {T
     absA = upper_abs(A)
     #@info opnorm(absA, Inf)
 
+    # @info absA
+
     # using Collatz theorem
     lam = setrounding(T, RoundUp) do
         for _ in 1:iterates
             x_old = x_new
             x_new = absA' * absA * x_old
-            #@info maximum(x_new ./ x_old)
+            # @info x_new
+            # @info x_old
+            # @info maximum(x_new ./ x_old)
         end
         lam = 0.0
         for i in 1:k

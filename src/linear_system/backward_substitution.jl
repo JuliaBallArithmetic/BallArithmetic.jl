@@ -33,5 +33,5 @@ function backward_substitution(A::BallMatrix, B::BallMatrix)
         end
         sol[i, :] /= Ball(A[i, i])
     end
-    return sol
+    return BallMatrix(mid.(sol), rad.(sol))
 end

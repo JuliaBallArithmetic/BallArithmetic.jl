@@ -68,6 +68,16 @@ end
 
 Base.:/(x::Ball, y::Ball) = x * inv(y)
 
+function Base.sqrt(y::Ball{<:AbstractFloat}) where {T}
+    my, ry = mid(y), rad(y)
+    ry < my || throw(DomainError("Ball $y contains zero."))
+    c1 = sqrt_down(@down my - ry)
+    c2 = sqrt_up(@up my + ry)
+    c = @up c1 + 0.5 * (c2 - c1)
+    r = @up c - c1
+    Ball(c, r)
+end
+
 # Base.abs(x::Ball) = Ball(max(0, sub_down(abs(mid(x)), rad(x))), add_up(abs(mid(x)), rad(x)))
 #
 function Base.abs(x::Ball)
