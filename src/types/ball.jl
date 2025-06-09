@@ -23,6 +23,9 @@ radtype(::Type{Ball{T, CT}}) where {T, CT} = T
 midtype(::Type{Ball}) = Float64
 radtype(::Type{Ball}) = Float64
 
+sup(x::Ball) = @up x.c + x.r
+inf(x::Ball) = @down x.c - x.r
+
 Base.show(io::IO, ::MIME"text/plain", x::Ball) = print(io, x.c, " ± ", x.r)
 
 ###############
