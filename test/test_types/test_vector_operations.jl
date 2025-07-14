@@ -86,11 +86,41 @@
     @test all(in.(lower, bB))
     @test all(in.(higher, bB))
 
-    v = BallVector(rand(2))
     A = BallMatrix([0.0 1.0; 1.0 0.0])
 
+    v = BallVector(rand(2))
     w = A * v
     @test (v[1] ∈ w[2] && v[2] ∈ w[1])
+
+    v = rand(2)
+    w = A * v
+    @test (v[1] ∈ w[2] && v[2] ∈ w[1])
+
+    v = BallVector(rand(2) + im * rand(2))
+    w = A * v
+    @test (v[1] ∈ w[2] && v[2] ∈ w[1])
+
+    v = rand(2) + im * rand(2)
+    w = A * v
+    @test (v[1] ∈ w[2] && v[2] ∈ w[1])
+
+    A = BallMatrix([0.0 im; im 0.0])
+
+    v = BallVector(rand(2))
+    w = A * v
+    @test (im * v[1] ∈ w[2] && im * v[2] ∈ w[1])
+
+    v = rand(2)
+    w = A * v
+    @test (im * v[1] ∈ w[2] && im * v[2] ∈ w[1])
+
+    v = BallVector(rand(2) + im * rand(2))
+    w = A * v
+    @test (im * v[1] ∈ w[2] && im * v[2] ∈ w[1])
+
+    v = rand(2) + im * rand(2)
+    w = A * v
+    @test (im * v[1] ∈ w[2] && im * v[2] ∈ w[1])
 
     # B = rand(4, 4)
 
