@@ -86,6 +86,12 @@
     @test all(in.(lower, bB))
     @test all(in.(higher, bB))
 
+    v = BallVector(rand(2))
+    A = BallMatrix([0.0 1.0; 1.0 0.0])
+
+    w = A * v
+    @test (v[1] ∈ w[2] && v[2] ∈ w[1])
+
     # B = rand(4, 4)
 
     # iB = IntervalArithmetic.interval.(B)
