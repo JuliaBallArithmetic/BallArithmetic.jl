@@ -13,6 +13,11 @@
 # end
 
 const BallMatrix{T, NT, BT, CM, RM} = BallArray{T, 2, NT, BT, CM, RM}
+# T radius type
+# NT element type
+# BT Ball type
+# CM type of the center matrix
+# RM type of the radius matrix
 
 # unclear why this need to be specified
 BallMatrix(M::AbstractMatrix) = BallArray(mid(M), rad(M))

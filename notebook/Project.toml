@@ -1,0 +1,4 @@
+[deps]
+BallArithmetic = "77e4f72b-b5a4-4fb0-ac2a-dcc32095a072"
+IntervalArithmetic = "d1acc4aa-44c8-5952-acd4-ba5d80a2a253"
+RigorousInvariantMeasures = "6103b61f-200f-420b-b397-2cbeef157920"

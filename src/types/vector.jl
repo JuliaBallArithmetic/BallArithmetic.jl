@@ -67,7 +67,7 @@ function Base.:*(A::BallMatrix, v::BallVector)
     vc = reshape(mid(v), (n, 1))
     vr = reshape(rad(v), (n, 1))
     B = BallMatrix(vc, vr)
-    w = MMul4(A, B)
+    w = A * B
 
     wc = vec(mid(w))
     wr = vec(rad(w))

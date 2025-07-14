@@ -1,7 +1,7 @@
 import LinearAlgebra
 
 function _upper_bound_norm(center, radius, p::Real = 2)
-    T = eltype(center)
+    T = eltype(radius)
     norm = setrounding(T, RoundUp) do
         return LinearAlgebra.norm(center, p) + LinearAlgebra.norm(radius, p)
     end

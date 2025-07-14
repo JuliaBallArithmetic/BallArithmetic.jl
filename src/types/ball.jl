@@ -71,7 +71,7 @@ end
 
 Base.:/(x::Ball, y::Ball) = x * inv(y)
 
-function Base.sqrt(y::Ball{<:AbstractFloat}) where {T}
+function Base.sqrt(y::Ball{Float64}) where {T}
     my, ry = mid(y), rad(y)
     ry < my || throw(DomainError("Ball $y contains zero."))
     c1 = sqrt_down(@down my - ry)
