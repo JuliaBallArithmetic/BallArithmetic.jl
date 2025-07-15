@@ -53,7 +53,7 @@ end
 
 function Base.:*(A::BallMatrix, v::Vector)
     n = length(v)
-    bV = reshape(mid(v), (n, 1))
+    bV = BallMatrix(reshape(mid(v), (n, 1)))
 
     w = A * bV
     wc = vec(mid(w))
