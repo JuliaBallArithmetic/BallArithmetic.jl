@@ -47,7 +47,7 @@ export ±, mid, rad
 
 include("rounding/rounding.jl")
 include("types/ball.jl")
-export Ball, BallF64, BallComplexF64
+export Ball, BallF64, BallComplexF64, inf, sup
 
 include("types/array.jl")
 export BallArray
