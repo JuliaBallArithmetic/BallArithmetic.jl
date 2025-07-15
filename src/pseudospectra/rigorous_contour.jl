@@ -19,13 +19,13 @@ function _compute_exclusion_circle_level_set_ode(T,
         rel_steps,
         max_initial_newton)
     z = λ + ϵ
-    @info z
+    #@info z
 
     for j in 1:max_initial_newton
-        @info "Newton step $j"
+        #@info "Newton step $j"
         K = svd(T - z * I)
         z, σ = _newton_step(z, K, ϵ)
-        @info σ
+        #@info σ
 
         if (σ - ϵ) / ϵ < 1 / 256
             break
@@ -68,10 +68,10 @@ function _compute_exclusion_circle_level_set_priori(T,
     z = λ + ϵ
 
     for j in 1:max_initial_newton
-        @info "Newton step $j"
+        #@info "Newton step $j"
         K = svd(T - z * I)
         z, σ = _newton_step(z, K, ϵ)
-        @info σ
+        #@info σ
 
         if (σ - ϵ) / ϵ < 1 / 256
             break
@@ -81,17 +81,17 @@ function _compute_exclusion_circle_level_set_priori(T,
     r = abs(λ - z)
 
     pearl_radius = r * rel_pearl_size
-    @info "pearl radius" pearl_radius
+    #@info "pearl radius" pearl_radius
 
     dist_points = (pearl_radius * 8) / 5
 
-    @info "distance between points" dist_points
+    #@info "distance between points" dist_points
     # this N bounds from above 2π/dist_points , i.e., the number of equispaced
     # points on the circumference
 
     N = ceil(8 * r / dist_points)
 
-    # @info N
+    # #@info N
     # for j in 0:(N - 1)
     #     z = λ + r * exp(2 * π * im * j / N)
     #     push!(out_z, z)
@@ -174,15 +174,15 @@ function _compute_exclusion_set(T, r; max_steps, rel_steps, λ = 0 + im * 0)
         push!(out_radiuses, r_guaranteed)
         #print("test")
 
-        #@info "test"
-        #@info "r_guarantee", r_guaranteed
-        #@info "r_guarantee_1", r_guaranteed_1
-        #@info "dist to start", abs(z_old-z0)
+        ##@info "test"
+        ##@info "r_guarantee", r_guaranteed
+        ##@info "r_guarantee_1", r_guaranteed_1
+        ##@info "dist to start", abs(z_old-z0)
 
         loop_closure = abs(z_old - z0) < r_guaranteed + r_guaranteed_1
 
         if t_step > 10 && loop_closure
-            @info t_step, "Loop closure"
+            #@info t_step, "Loop closure"
             break
         end
     end
@@ -239,8 +239,8 @@ end
 # end
 
 function _compute_enclosure_eigval(T, λ, ϵ; max_initial_newton, max_steps, rel_steps)
-    @info "Enclosing ", λ
-    @info "Level set", ϵ
+    #@info "Enclosing ", λ
+    #@info "Level set", ϵ
 
     eigvals = diag(T)
 
@@ -313,12 +313,12 @@ function _compute_enclosure_eigval(T, λ, ϵ; max_initial_newton, max_steps, rel
 
             angle = imag(sum(test))
         end
-        @info angle
+        #@info angle
 
         check_loop_closure = abs(z_old - z0) < (r_guaranteed + r_guaranteed_1)
 
         if t_step > 10 && check_loop_closure
-            @info t_step, "Loop closure"
+            #@info t_step, "Loop closure"
             break
         end
     end
@@ -383,12 +383,12 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
     bT = BallMatrix(F.T)
     errT = svd_bound_L2_opnorm(bZ * bT * bZ' - A)
 
-    @info "Schur unitary error", errF
-    @info "Schur reconstruction error", errT
+    #@info "Schur unitary error", errF
+    #@info "Schur reconstruction error", errT
 
     eigvals = diag(F.T)[[r1 < abs(x) < r2 for x in diag(F.T)]]
 
-    @info "Certifying around", eigvals
+    #@info "Certifying around", eigvals
 
     output = []
 
@@ -418,7 +418,7 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
         #bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
         #@info bound, i
         #@info "σ", bounds[i]
-        @info bound_resolvent(E)
+        #@info bound_resolvent(E)
 
         push!(output, E)
     end
@@ -427,7 +427,7 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
     eigvals_bigger_than_r2 = diag(F.T)[[abs(x) > r2 for x in diag(F.T)]]
 
     if !isempty(eigvals_bigger_than_r2)
-        @info "Computing exclusion circle ", r2
+        #@info "Computing exclusion circle ", r2
 
         E = _compute_exclusion_set(F.T, r2; max_steps, rel_steps)
         #max_abs_eigenvalue = maximum(abs.(diag(F.T)))

@@ -46,13 +46,13 @@ function oishi_rump_bound(T::BallMatrix, k::Int)
     # Final bound
 
     α = Ball(Ainv_norm, 0.0)
-    @info α
+    #@info α
 
     β = Ball(BDinv_norm, 0.0)
-    @info β
+    #@info β
 
     γ = Dinv_norm
-    @info γ
+    #@info γ
 
     return max(sup(α * (1 + β)), γ)
 end

@@ -6,6 +6,7 @@ using Test
     include("test_types/test_constructors.jl")
     include("test_matrix_classifier/test_matrix_classifier.jl")
     include("test_types/test_algebra.jl")
+    include("test_types/test_convert_promote.jl")
     include("test_types/test_vector.jl")
     include("test_types/test_matrix.jl")
     include("test_types/test_array.jl")
