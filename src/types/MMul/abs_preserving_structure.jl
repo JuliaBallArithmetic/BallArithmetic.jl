@@ -5,12 +5,14 @@ end
 
 function abs_preserving_structure(A::LinearAlgebra.Symmetric)
     data = abs_preserving_structure(LinearAlgebra.parent(A))
-    return LinearAlgebra.Symmetric(data, A.uplo)
+    uplo = A.uplo isa Symbol ? A.uplo : Symbol(A.uplo)
+    return LinearAlgebra.Symmetric(data, uplo)
 end
 
 function abs_preserving_structure(A::LinearAlgebra.Hermitian)
     data = abs_preserving_structure(LinearAlgebra.parent(A))
-    return LinearAlgebra.Hermitian(data, A.uplo)
+    uplo = A.uplo isa Symbol ? A.uplo : Symbol(A.uplo)
+    return LinearAlgebra.Hermitian(data, uplo)
 end
 
 function abs_preserving_structure(A::LinearAlgebra.Adjoint{<:Any, <:AbstractMatrix})

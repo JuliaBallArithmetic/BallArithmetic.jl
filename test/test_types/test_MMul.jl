@@ -70,9 +70,11 @@
             BallMatrix(Matrix(Diagonal(diag_vals_B)), Matrix(Diagonal(rad_vals_B))),
         )
 
-        @test Cd_struct.c == Cd_dense.c && Cd_struct.r == Cd_dense.r
+        @test Matrix(Cd_struct.c) == Matrix(Cd_dense.c)
+        @test Matrix(Cd_struct.r) == Matrix(Cd_dense.r)
         Cd_mul = Ad * Bd
-        @test Cd_mul.c == Cd_struct.c && Cd_mul.r == Cd_struct.r
+        @test Matrix(Cd_mul.c) == Matrix(Cd_struct.c)
+        @test Matrix(Cd_mul.r) == Matrix(Cd_struct.r)
 
         UA = UpperTriangular(rand(4, 4))
         UB = UpperTriangular(rand(4, 4))
@@ -88,23 +90,26 @@
             BallMatrix(Matrix(UB), Matrix(rUB)),
         )
 
-        @test Ctri_struct.c == Ctri_dense.c && Ctri_struct.r == Ctri_dense.r
+        @test Matrix(Ctri_struct.c) == Matrix(Ctri_dense.c)
+        @test Matrix(Ctri_struct.r) == Matrix(Ctri_dense.r)
         Ctri_mul = Atri * Btri
-        @test Ctri_mul.c == Ctri_struct.c && Ctri_mul.r == Ctri_struct.r
+        @test Matrix(Ctri_mul.c) == Matrix(Ctri_struct.c)
+        @test Matrix(Ctri_mul.r) == Matrix(Ctri_struct.r)
 
         Cmix_left = BallArithmetic.MMul4(UA, Btri)
         Cmix_left_dense = BallArithmetic.MMul4(
             Matrix(UA),
             BallMatrix(Matrix(UB), Matrix(rUB)),
         )
-        @test Cmix_left.c == Cmix_left_dense.c && Cmix_left.r == Cmix_left_dense.r
+        @test Matrix(Cmix_left.c) == Matrix(Cmix_left_dense.c)
+        @test Matrix(Cmix_left.r) == Matrix(Cmix_left_dense.r)
 
         Cmix_right = BallArithmetic.MMul4(Atri, UB)
         Cmix_right_dense = BallArithmetic.MMul4(
             BallMatrix(Matrix(UA), Matrix(rUA)),
             Matrix(UB),
         )
-
-        @test Cmix_right.c == Cmix_right_dense.c && Cmix_right.r == Cmix_right_dense.r
+        @test Matrix(Cmix_right.c) == Matrix(Cmix_right_dense.c)
+        @test Matrix(Cmix_right.r) == Matrix(Cmix_right_dense.r)
     end
 end
