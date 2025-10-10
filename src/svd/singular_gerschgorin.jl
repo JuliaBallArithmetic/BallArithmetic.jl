@@ -66,8 +66,11 @@ function qi_sqrt_intervals(A::BallMatrix)
         uc = sup(sqrt(Δc) + Ball(ci) / 2)
         ur = sup(sqrt(Δr) + Ball(ri) / 2)
 
-        l = max(min(lc, lr), 0)
-        u = max(uc, ur)
+        l = max(lc, lr, zero(lc))
+        u = min(uc, ur)
+        if u < l
+            u = l
+        end
 
         c = (l + u) / 2
         r = @up (u - l) / 2.0
@@ -81,15 +84,8 @@ end
 Rebalanced (Theorem 2).
 """
 function qi_intervals_rebalanced(A::BallMatrix)
-    norm_r = [norm(v, 1) for v in rows(A.c)]
-    norm_c = [norm(v, 1) for v in cols(A.c)]
-    k = norm_c ./ norm_r
-
-    D = Diagonal(k)
-    Dinv = Diagonal(1 ./ k)
-
+    D, Dinv = _balancing_diagonals(A)
     resA = Dinv * (A * D)
-
     return qi_intervals(resA)
 end
 
@@ -97,14 +93,20 @@ end
 Rebalanced (Theorem 3).
 """
 function qi_sqrt_intervals_rebalanced(A::BallMatrix)
-    norm_r = [norm(v, 1) for v in eachrow(A.c)]
-    norm_c = [norm(v, 1) for v in eachcol(A.c)]
-    k = norm_c ./ norm_r
-
-    D = Diagonal(k)
-    Dinv = Diagonal(1 ./ k)
-
-    resA = (Dinv * A) * D
-
+    D, Dinv = _balancing_diagonals(A)
+    resA = Dinv * (A * D)
     return qi_sqrt_intervals(resA)
+end
+
+function _balancing_diagonals(A::BallMatrix)
+    row_norms = [norm(row, 1) for row in eachrow(A.c)]
+    col_norms = [norm(col, 1) for col in eachcol(A.c)]
+
+    real_type = promote_type(eltype(row_norms), eltype(col_norms))
+    ratios = col_norms ./ row_norms
+
+    k = collect(real_type.(ratios))
+    inv_k = collect(real_type.(1 ./ ratios))
+
+    return Diagonal(k), Diagonal(inv_k)
 end

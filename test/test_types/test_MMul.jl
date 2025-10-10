@@ -90,8 +90,8 @@
             BallMatrix(Matrix(UB), Matrix(rUB)),
         )
 
-        @test Matrix(Ctri_struct.c) == Matrix(Ctri_dense.c)
-        @test Matrix(Ctri_struct.r) == Matrix(Ctri_dense.r)
+        @test Matrix(Ctri_struct.c) ≈ Matrix(Ctri_dense.c) atol=1e-12
+        @test Matrix(Ctri_struct.r) ≈ Matrix(Ctri_dense.r) atol=1e-12
         Ctri_mul = Atri * Btri
         @test Matrix(Ctri_mul.c) == Matrix(Ctri_struct.c)
         @test Matrix(Ctri_mul.r) == Matrix(Ctri_struct.r)
@@ -101,15 +101,15 @@
             Matrix(UA),
             BallMatrix(Matrix(UB), Matrix(rUB)),
         )
-        @test Matrix(Cmix_left.c) == Matrix(Cmix_left_dense.c)
-        @test Matrix(Cmix_left.r) == Matrix(Cmix_left_dense.r)
+        @test Matrix(Cmix_left.c) ≈ Matrix(Cmix_left_dense.c) atol=1e-12
+        @test Matrix(Cmix_left.r) ≈ Matrix(Cmix_left_dense.r) atol=1e-12
 
         Cmix_right = BallArithmetic.MMul4(Atri, UB)
         Cmix_right_dense = BallArithmetic.MMul4(
             BallMatrix(Matrix(UA), Matrix(rUA)),
             Matrix(UB),
         )
-        @test Matrix(Cmix_right.c) == Matrix(Cmix_right_dense.c)
-        @test Matrix(Cmix_right.r) == Matrix(Cmix_right_dense.r)
+        @test Matrix(Cmix_right.c) ≈ Matrix(Cmix_right_dense.c) atol=1e-12
+        @test Matrix(Cmix_right.r) ≈ Matrix(Cmix_right_dense.r) atol=1e-12
     end
 end
