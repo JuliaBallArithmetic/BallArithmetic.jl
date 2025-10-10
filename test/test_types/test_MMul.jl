@@ -1,0 +1,115 @@
+@testset "Test MMul structure support" begin
+    using LinearAlgebra
+
+    import BallArithmetic: abs_preserving_structure
+
+    @testset "abs_preserving_structure" begin
+        # AbstractTriangular inputs preserve their type and zeroed structure
+        upper_data = [1.0 -2.0 3.0; -4.0 5.0 -6.0; 7.0 -8.0 9.0]
+        lower_data = copy(upper_data)
+        UA = UpperTriangular(upper_data)
+        LA = LowerTriangular(lower_data)
+
+        abs_UA = abs_preserving_structure(UA)
+        abs_LA = abs_preserving_structure(LA)
+
+        @test abs_UA isa UpperTriangular
+        @test abs_LA isa LowerTriangular
+        @test Matrix(abs_UA) == abs.(Matrix(UA))
+        @test Matrix(abs_LA) == abs.(Matrix(LA))
+        @test istriu(Matrix(abs_UA))
+        @test istril(Matrix(abs_LA))
+
+        # Symmetric and Hermitian parents are preserved
+        S = Symmetric([1.0 -2.0; -2.0 3.0], :U)
+        H = Hermitian([1.0 2.0 + 3.0im; 2.0 - 3.0im 4.0], :U)
+
+        abs_S = abs_preserving_structure(S)
+        abs_H = abs_preserving_structure(H)
+
+        @test abs_S isa Symmetric
+        @test abs_H isa Hermitian
+        @test abs_S.uplo == S.uplo
+        @test abs_H.uplo == H.uplo
+        @test Matrix(abs_S) == abs.(Matrix(S))
+        @test Matrix(abs_H) == abs.(Matrix(H))
+
+        # Diagonal, adjoint and transpose fall back to dense absolute values while
+        # maintaining their wrappers
+        D = Diagonal([-1.0, 2.0, -3.0])
+        abs_D = abs_preserving_structure(D)
+        @test abs_D isa Diagonal
+        @test diag(abs_D) == abs.(diag(D))
+
+        dense = [1.0 -2.0im; -3.0im 4.0]
+        adj = adjoint(dense)
+        trans = transpose(dense)
+
+        abs_adj = abs_preserving_structure(adj)
+        abs_trans = abs_preserving_structure(trans)
+
+        @test abs_adj == adjoint(abs.(dense))
+        @test abs_trans == transpose(abs.(dense))
+
+        # Generic matrices use component-wise absolute values
+        @test abs_preserving_structure(dense) == abs.(dense)
+    end
+
+    @testset "MMul structured operands" begin
+        diag_vals_A = rand(4)
+        diag_vals_B = rand(4)
+        rad_vals_A = rand(4)
+        rad_vals_B = rand(4)
+
+        Ad = BallMatrix(Diagonal(diag_vals_A), Diagonal(rad_vals_A))
+        Bd = BallMatrix(Diagonal(diag_vals_B), Diagonal(rad_vals_B))
+
+        Cd_struct = BallArithmetic.MMul4(Ad, Bd)
+        Cd_dense = BallArithmetic.MMul4(
+            BallMatrix(Matrix(Diagonal(diag_vals_A)), Matrix(Diagonal(rad_vals_A))),
+            BallMatrix(Matrix(Diagonal(diag_vals_B)), Matrix(Diagonal(rad_vals_B))),
+        )
+
+        @test Matrix(Cd_struct.c) == Matrix(Cd_dense.c)
+        @test Matrix(Cd_struct.r) == Matrix(Cd_dense.r)
+        Cd_mul = Ad * Bd
+        @test Matrix(Cd_mul.c) == Matrix(Cd_struct.c)
+        @test Matrix(Cd_mul.r) == Matrix(Cd_struct.r)
+
+        UA = UpperTriangular(rand(4, 4))
+        UB = UpperTriangular(rand(4, 4))
+        rUA = UpperTriangular(rand(4, 4))
+        rUB = UpperTriangular(rand(4, 4))
+
+        Atri = BallMatrix(UA, rUA)
+        Btri = BallMatrix(UB, rUB)
+
+        Ctri_struct = BallArithmetic.MMul4(Atri, Btri)
+        Ctri_dense = BallArithmetic.MMul4(
+            BallMatrix(Matrix(UA), Matrix(rUA)),
+            BallMatrix(Matrix(UB), Matrix(rUB)),
+        )
+
+        @test Matrix(Ctri_struct.c) == Matrix(Ctri_dense.c)
+        @test Matrix(Ctri_struct.r) == Matrix(Ctri_dense.r)
+        Ctri_mul = Atri * Btri
+        @test Matrix(Ctri_mul.c) == Matrix(Ctri_struct.c)
+        @test Matrix(Ctri_mul.r) == Matrix(Ctri_struct.r)
+
+        Cmix_left = BallArithmetic.MMul4(UA, Btri)
+        Cmix_left_dense = BallArithmetic.MMul4(
+            Matrix(UA),
+            BallMatrix(Matrix(UB), Matrix(rUB)),
+        )
+        @test Matrix(Cmix_left.c) == Matrix(Cmix_left_dense.c)
+        @test Matrix(Cmix_left.r) == Matrix(Cmix_left_dense.r)
+
+        Cmix_right = BallArithmetic.MMul4(Atri, UB)
+        Cmix_right_dense = BallArithmetic.MMul4(
+            BallMatrix(Matrix(UA), Matrix(rUA)),
+            Matrix(UB),
+        )
+        @test Matrix(Cmix_right.c) == Matrix(Cmix_right_dense.c)
+        @test Matrix(Cmix_right.r) == Matrix(Cmix_right_dense.r)
+    end
+end

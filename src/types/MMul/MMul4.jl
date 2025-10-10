@@ -4,7 +4,9 @@ function MMul4(A::BallMatrix{T, T}, B::BallMatrix{T, T}) where {T <: AbstractFlo
     mB, rB = mid(B), rad(B)
 
     C2, rC = setrounding(T, RoundUp) do
-        rC = abs.(mA) * rB + rA * (abs.(mB) + rB)
+        abs_mA = abs_preserving_structure(mA)
+        abs_mB = abs_preserving_structure(mB)
+        rC = abs_mA * rB + rA * (abs_mB + rB)
         C2 = mA * mB + rC
         return C2, rC
     end
@@ -27,7 +29,8 @@ function MMul4(A::AbstractMatrix{T}, B::BallMatrix{T, T}) where {T <: AbstractFl
     mB, rB = mid(B), rad(B)
 
     C2, rC = setrounding(T, RoundUp) do
-        rC = abs.(mA) * rB
+        abs_mA = abs_preserving_structure(mA)
+        rC = abs_mA * rB
         C2 = mA * mB + rC
         return C2, rC
     end
@@ -50,7 +53,8 @@ function MMul4(A::BallMatrix{T, T}, B::AbstractMatrix{T}) where {T <: AbstractFl
     mB = mid(B)
 
     C2, rC = setrounding(T, RoundUp) do
-        rC = rA * abs.(mB)
+        abs_mB = abs_preserving_structure(mB)
+        rC = rA * abs_mB
         C2 = mA * mB + rC
         return C2, rC
     end
