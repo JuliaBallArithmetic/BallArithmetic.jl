@@ -146,14 +146,6 @@ Base.:-(x::Ball) = Ball(-x.c, x.r)
 
 for op in (:+, :-)
     @eval begin
-        """
-            Base.$(op)(x::Ball, y::Ball)
-
-        Combine two balls using elementwise $op and enlarge the radius so
-        that the result remains a rigorous enclosure. The midpoint is the
-        rounded arithmetic combination, and the radius accounts for both
-        operands plus floating-point roundoff.
-        """
         function Base.$op(x::Ball, y::Ball)
             c = $op(mid(x), mid(y))
             r = @up (ϵp * abs(c) + rad(x)) + rad(y)

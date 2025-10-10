@@ -39,12 +39,6 @@ rad(A::AbstractVector{Complex{T}}) where {T <: AbstractFloat} = zeros(T, size(A)
 # # Operations
 for op in (:+, :-)
     @eval begin
-        """
-            Base.$(op)(A::BallVector, B::BallVector)
-
-        Combine two ball vectors elementwise, enlarging the radius to
-        include roundoff and the uncertainties of both operands.
-        """
         function Base.$op(A::BallVector{T}, B::BallVector{T}) where {T <: AbstractFloat}
             mA, rA = mid(A), rad(A)
             mB, rB = mid(B), rad(B)

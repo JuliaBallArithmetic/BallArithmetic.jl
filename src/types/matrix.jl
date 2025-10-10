@@ -104,14 +104,6 @@ end
 # Operations
 for op in (:+, :-)
     @eval begin
-        """
-            Base.$(op)(A::BallMatrix, B::BallMatrix)
-
-        Combine two `BallMatrix` values elementwise using `$(op)` while
-        tracking floating-point and enclosure errors. The midpoint
-        operation is performed directly and the radii are enlarged using
-        outward rounding to maintain a rigorous enclosure.
-        """
         function Base.$op(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
             mA, rA = mid(A), rad(A)
             mB, rB = mid(B), rad(B)
@@ -201,14 +193,6 @@ end
 
 for op in (:+, :-)
     @eval begin
-        """
-            Base.$(op)(A::BallMatrix, B::AbstractMatrix)
-
-        Apply `$(op)` elementwise between a `BallMatrix` and a standard
-        matrix, enlarging the stored radii so that the result remains a
-        rigorous enclosure. The same implementation also supports the
-        reversed argument order.
-        """
         function Base.$op(A::BallMatrix{T}, B::Matrix{T}) where {T <: AbstractFloat}
             mA, rA = mid(A), rad(A)
 
