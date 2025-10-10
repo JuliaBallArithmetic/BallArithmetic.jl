@@ -144,22 +144,31 @@ result encloses the additive inverse of the represented set.
 """
 Base.:-(x::Ball) = Ball(-x.c, x.r)
 
-for op in (:+, :-)
-    @eval begin
-        """
-            Base.$(op)(x::Ball, y::Ball)
+"""
+    Base.:+(x::Ball, y::Ball)
 
-        Combine two balls using elementwise $op and enlarge the radius so
-        that the result remains a rigorous enclosure. The midpoint is the
-        rounded arithmetic combination, and the radius accounts for both
-        operands plus floating-point roundoff.
-        """
-        function Base.$op(x::Ball, y::Ball)
-            c = $op(mid(x), mid(y))
-            r = @up (ϵp * abs(c) + rad(x)) + rad(y)
-            Ball(c, r)
-        end
-    end
+Combine two balls using addition and enlarge the radius so that the
+result remains a rigorous enclosure. The midpoint is the rounded sum and
+the radius accounts for both operands plus floating-point roundoff.
+"""
+function Base.:+(x::Ball, y::Ball)
+    c = mid(x) + mid(y)
+    r = @up (ϵp * abs(c) + rad(x)) + rad(y)
+    Ball(c, r)
+end
+
+"""
+    Base.:-(x::Ball, y::Ball)
+
+Combine two balls using subtraction and enlarge the radius so that the
+result remains a rigorous enclosure. The midpoint is the rounded
+difference and the radius accounts for both operands plus floating-point
+roundoff.
+"""
+function Base.:-(x::Ball, y::Ball)
+    c = mid(x) - mid(y)
+    r = @up (ϵp * abs(c) + rad(x)) + rad(y)
+    Ball(c, r)
 end
 
 """
