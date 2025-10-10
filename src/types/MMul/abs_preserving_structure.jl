@@ -1,5 +1,6 @@
 function abs_preserving_structure(A::LinearAlgebra.AbstractTriangular)
-    return typeof(A)(abs_preserving_structure(LinearAlgebra.parent(A)))
+    data = abs_preserving_structure(Matrix(A))
+    return typeof(A)(data)
 end
 
 function abs_preserving_structure(A::LinearAlgebra.Symmetric)
