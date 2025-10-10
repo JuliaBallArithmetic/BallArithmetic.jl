@@ -1,17 +1,22 @@
 function abs_preserving_structure(A::LinearAlgebra.AbstractTriangular)
-    data = abs_preserving_structure(Matrix(A))
+    data = abs.(Matrix(A))
+    if LinearAlgebra.istriu(A)
+        LinearAlgebra.triu!(data)
+    else
+        LinearAlgebra.tril!(data)
+    end
     return typeof(A)(data)
 end
 
 function abs_preserving_structure(A::LinearAlgebra.Symmetric)
     data = abs_preserving_structure(LinearAlgebra.parent(A))
-    uplo = A.uplo isa Symbol ? A.uplo : Symbol(A.uplo)
+    uplo = A.uplo isa Symbol ? A.uplo : Symbol(String(A.uplo))
     return LinearAlgebra.Symmetric(data, uplo)
 end
 
 function abs_preserving_structure(A::LinearAlgebra.Hermitian)
     data = abs_preserving_structure(LinearAlgebra.parent(A))
-    uplo = A.uplo isa Symbol ? A.uplo : Symbol(A.uplo)
+    uplo = A.uplo isa Symbol ? A.uplo : Symbol(String(A.uplo))
     return LinearAlgebra.Hermitian(data, uplo)
 end
 
