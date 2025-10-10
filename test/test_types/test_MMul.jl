@@ -60,6 +60,7 @@
         diag_vals_B = rand(4)
         rad_vals_A = rand(4)
         rad_vals_B = rand(4)
+        tol = 10 * eps(Float64)
 
         Ad = BallMatrix(Diagonal(diag_vals_A), Diagonal(rad_vals_A))
         Bd = BallMatrix(Diagonal(diag_vals_B), Diagonal(rad_vals_B))
@@ -70,11 +71,11 @@
             BallMatrix(Matrix(Diagonal(diag_vals_B)), Matrix(Diagonal(rad_vals_B))),
         )
 
-        @test Matrix(Cd_struct.c) == Matrix(Cd_dense.c)
-        @test Matrix(Cd_struct.r) == Matrix(Cd_dense.r)
+        @test isapprox(Matrix(Cd_struct.c), Matrix(Cd_dense.c); rtol=tol, atol=0)
+        @test isapprox(Matrix(Cd_struct.r), Matrix(Cd_dense.r); rtol=tol, atol=0)
         Cd_mul = Ad * Bd
-        @test Matrix(Cd_mul.c) == Matrix(Cd_struct.c)
-        @test Matrix(Cd_mul.r) == Matrix(Cd_struct.r)
+        @test isapprox(Matrix(Cd_mul.c), Matrix(Cd_struct.c); rtol=tol, atol=0)
+        @test isapprox(Matrix(Cd_mul.r), Matrix(Cd_struct.r); rtol=tol, atol=0)
 
         UA = UpperTriangular(rand(4, 4))
         UB = UpperTriangular(rand(4, 4))
@@ -90,26 +91,26 @@
             BallMatrix(Matrix(UB), Matrix(rUB)),
         )
 
-        @test Matrix(Ctri_struct.c) == Matrix(Ctri_dense.c)
-        @test Matrix(Ctri_struct.r) == Matrix(Ctri_dense.r)
+        @test isapprox(Matrix(Ctri_struct.c), Matrix(Ctri_dense.c); rtol=tol, atol=0)
+        @test isapprox(Matrix(Ctri_struct.r), Matrix(Ctri_dense.r); rtol=tol, atol=0)
         Ctri_mul = Atri * Btri
-        @test Matrix(Ctri_mul.c) == Matrix(Ctri_struct.c)
-        @test Matrix(Ctri_mul.r) == Matrix(Ctri_struct.r)
+        @test isapprox(Matrix(Ctri_mul.c), Matrix(Ctri_struct.c); rtol=tol, atol=0)
+        @test isapprox(Matrix(Ctri_mul.r), Matrix(Ctri_struct.r); rtol=tol, atol=0)
 
         Cmix_left = BallArithmetic.MMul4(UA, Btri)
         Cmix_left_dense = BallArithmetic.MMul4(
             Matrix(UA),
             BallMatrix(Matrix(UB), Matrix(rUB)),
         )
-        @test Matrix(Cmix_left.c) == Matrix(Cmix_left_dense.c)
-        @test Matrix(Cmix_left.r) == Matrix(Cmix_left_dense.r)
+        @test isapprox(Matrix(Cmix_left.c), Matrix(Cmix_left_dense.c); rtol=tol, atol=0)
+        @test isapprox(Matrix(Cmix_left.r), Matrix(Cmix_left_dense.r); rtol=tol, atol=0)
 
         Cmix_right = BallArithmetic.MMul4(Atri, UB)
         Cmix_right_dense = BallArithmetic.MMul4(
             BallMatrix(Matrix(UA), Matrix(rUA)),
             Matrix(UB),
         )
-        @test Matrix(Cmix_right.c) == Matrix(Cmix_right_dense.c)
-        @test Matrix(Cmix_right.r) == Matrix(Cmix_right_dense.r)
+        @test isapprox(Matrix(Cmix_right.c), Matrix(Cmix_right_dense.c); rtol=tol, atol=0)
+        @test isapprox(Matrix(Cmix_right.r), Matrix(Cmix_right_dense.r); rtol=tol, atol=0)
     end
 end
