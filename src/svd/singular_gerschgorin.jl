@@ -16,7 +16,7 @@ end
 Qi1984 intervals for singular values (Theorem 2).
 Returns intervals B_i as a Vector{Ball}.
 """
-function qi_intervals(A::AbstractMatrix)
+function qi_intervals(A::BallMatrix)
     m, n = size(A)
     N = min(m, n)
     B = Ball[]
@@ -40,7 +40,7 @@ end
 """
 Sharper square-root intervals (Theorem 3).
 """
-function qi_sqrt_intervals(A::AbstractMatrix)
+function qi_sqrt_intervals(A::BallMatrix)
     m, n = size(A)
     N = min(m, n)
     G = Ball[]
@@ -75,4 +75,36 @@ function qi_sqrt_intervals(A::AbstractMatrix)
         push!(G, Ball(c, r))
     end
     return G
+end
+
+"""
+Rebalanced (Theorem 2).
+"""
+function qi_intervals_rebalanced(A::BallMatrix)
+    norm_r = [norm(v, 1) for v in rows(A.c)]
+    norm_c = [norm(v, 1) for v in cols(A.c)]
+    k = norm_c ./ norm_r
+
+    D = Matrix(Diagonal(k))
+    Dinv = Matrix(Diagonal(1 ./ k))
+
+    resA = Dinv * (A * D)
+
+    return qi_intervals(resA)
+end
+
+"""
+Rebalanced (Theorem 3).
+"""
+function qi_sqrt_intervals_rebalanced(A::BallMatrix)
+    norm_r = [norm(v, 1) for v in eachrow(A.c)]
+    norm_c = [norm(v, 1) for v in eachcol(A.c)]
+    k = norm_c ./ norm_r
+
+    D = Matrix(Diagonal(k))
+    Dinv = Matrix(Diagonal(1 ./ k))
+
+    resA = (Dinv * A) * D
+
+    return qi_sqrt_intervals(resA)
 end
