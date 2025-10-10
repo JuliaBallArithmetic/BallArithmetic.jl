@@ -1,6 +1,8 @@
 using BallArithmetic
 export qi_intervals, qi_sqrt_intervals
 
+using Base.Rounding: RoundDown, RoundUp
+
 function helper_i(v::BallVector, i)::BallVector
     if i == 1
         return BallVector(v.c[2:end], v.r[2:end])
@@ -43,40 +45,73 @@ Sharper square-root intervals (Theorem 3).
 function qi_sqrt_intervals(A::BallMatrix)
     m, n = size(A)
     N = min(m, n)
-    G = Ball[]
+    outer = qi_intervals(A)
+    G = Vector{Ball}(undef, N)
+
     for i in 1:N
         ai = abs(A[i, i])
         ri = upper_bound_norm(helper_i(A[i, :], i), 1)
         ci = upper_bound_norm(helper_i(A[:, i], i), 1)
 
-        Δc = ai^2 - ai * ci + (ci^2) / 4
-        Δr = ai^2 - ai * ri + (ri^2) / 4
+        ci_ball = Ball(ci)
+        ri_ball = Ball(ri)
+        T = typeof(ri)
 
-        if inf(Δc) < 0
-            Δc = 0
+        Δc_lower = ai^2 - ai * ci_ball + (ci_ball^2) / 4
+        Δr_lower = ai^2 - ai * ri_ball + (ri_ball^2) / 4
+
+        lc = setrounding(T, RoundDown) do
+            sqrt(max(inf(Δc_lower), zero(T))) - ci / 2
         end
-        if inf(Δr) < 0
-            Δr = 0
-        end
-        lc = inf(sqrt(Δc) - Ball(ci) / 2)
-        lr = inf(sqrt(Δr) - Ball(ri) / 2)
-
-        Δc = ai^2 + ai * ci + (ci^2) / 4
-        Δr = ai^2 + ai * ri + (ri^2) / 4
-        uc = sup(sqrt(Δc) + Ball(ci) / 2)
-        ur = sup(sqrt(Δr) + Ball(ri) / 2)
-
-        l = max(lc, lr, zero(lc))
-        u = min(uc, ur)
-        if u < l
-            u = l
+        lr = setrounding(T, RoundDown) do
+            sqrt(max(inf(Δr_lower), zero(T))) - ri / 2
         end
 
-        c = (l + u) / 2
-        r = @up (u - l) / 2.0
+        Δc_upper = ai^2 + ai * ci_ball + (ci_ball^2) / 4
+        Δr_upper = ai^2 + ai * ri_ball + (ri_ball^2) / 4
 
-        push!(G, Ball(c, r))
+        uc = setrounding(T, RoundUp) do
+            sqrt(max(sup(Δc_upper), zero(T))) + ci / 2
+        end
+        ur = setrounding(T, RoundUp) do
+            sqrt(max(sup(Δr_upper), zero(T))) + ri / 2
+        end
+
+        outer_lower = @up outer[i].c - outer[i].r
+        outer_upper = @down outer[i].c + outer[i].r
+
+        lower = max(lc, lr, zero(T), outer_lower)
+        upper = min(uc, ur, outer_upper)
+
+        if upper < lower
+            upper = lower
+        end
+
+        # Pull the upper bound slightly inside the containing Qi interval to
+        # compensate for subsequent outward rounding when forming the ball.
+        clamped_upper = if isfinite(outer_upper) && upper == outer_upper
+            prevfloat(outer_upper)
+        else
+            upper
+        end
+        clamped_lower = lower
+
+        if clamped_upper < clamped_lower
+            clamped_upper = clamped_lower
+        end
+
+        center = T((clamped_lower + clamped_upper) / 2)
+        radius = setrounding(T, RoundUp) do
+            max(clamped_upper - center, center - clamped_lower)
+        end
+
+        if radius < zero(T)
+            radius = zero(T)
+        end
+
+        G[i] = Ball(center, radius)
     end
+
     return G
 end
 
