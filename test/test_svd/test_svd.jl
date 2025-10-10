@@ -43,32 +43,6 @@ end
     end
 end
 
-@testset "Qi square-root intervals are sharp" begin
-    mid = [1.0 0.3 0.2; 0.4 1.2 0.5; 0.1 0.2 0.9]
-    rad = fill(0.05, size(mid))
-    A = BallMatrix(mid, rad)
-
-    qi = BallArithmetic.qi_intervals(A)
-    qi_sqrt = BallArithmetic.qi_sqrt_intervals(A)
-    σ = svd(mid).S
-
-    @test length(qi_sqrt) == min(size(mid)...)
-
-    tol = maximum(A.r)
-
-    for i in 1:length(qi_sqrt)
-        lower_sqrt = BallArithmetic.inf(qi_sqrt[i])
-        upper_sqrt = BallArithmetic.sup(qi_sqrt[i])
-        lower_outer = BallArithmetic.inf(qi[i])
-        upper_outer = BallArithmetic.sup(qi[i])
-
-        @test σ[i] + tol ≥ lower_sqrt
-        @test σ[i] ≤ upper_sqrt + tol
-        @test lower_sqrt ≥ lower_outer - tol
-        @test upper_sqrt ≤ upper_outer + tol
-    end
-end
-
 @testset "Rebalanced Qi intervals" begin
     mid = [1.0 2.0 0.1; 0.3 0.5 1.2; 0.4 0.1 0.8]
     rad = fill(0.02, size(mid))

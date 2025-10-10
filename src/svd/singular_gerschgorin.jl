@@ -81,8 +81,8 @@ end
 Rebalanced (Theorem 2).
 """
 function qi_intervals_rebalanced(A::BallMatrix)
-    norm_r = [norm(v, 1) for v in rows(A.c)]
-    norm_c = [norm(v, 1) for v in cols(A.c)]
+    norm_r = [norm(v, 1) for v in eachrow(A.c)]
+    norm_c = [norm(v, 1) for v in eachcol(A.c)]
     k = norm_c ./ norm_r
 
     D = Diagonal(k)
