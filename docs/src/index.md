@@ -35,7 +35,8 @@ BallMatrix
 BallMatrix(::AbstractMatrix)
 BallMatrix(::AbstractMatrix, ::AbstractMatrix)
 mid(::AbstractMatrix)
-rad(::AbstractMatrix)
+rad(::AbstractMatrix{<:AbstractFloat})
+rad(::AbstractMatrix{Complex{<:AbstractFloat}})
 ```
 
 ### Arithmetic
@@ -47,14 +48,15 @@ detail.
 
 ```@docs
 Base.:+(::BallMatrix, ::BallMatrix)
-Base.:+(::BallMatrix, ::Matrix)
+Base.:+(::BallMatrix, ::AbstractMatrix)
 Base.:+(::BallMatrix, ::UniformScaling)
+Base.:-(::BallMatrix, ::AbstractMatrix)
 Base.:-(::BallMatrix, ::UniformScaling)
-Base.:-(::UniformScaling, ::BallMatrix)
+Base.:-(::AbstractMatrix, ::BallMatrix)
 Base.:*(::Number, ::BallMatrix)
 Base.:*(::BallMatrix, ::BallMatrix)
-Base.:*(::BallMatrix, ::Matrix)
-Base.:*(::Matrix, ::BallMatrix)
+Base.:*(::BallMatrix, ::AbstractMatrix)
+Base.:*(::AbstractMatrix, ::BallMatrix)
 ```
 
 ```@repl
@@ -65,7 +67,7 @@ bA^2
 ```
 
 ```@autodocs
-Modules = [BallArithmetic, NumericalTest]
+Modules = [BallArithmetic]
 ```
 
 
