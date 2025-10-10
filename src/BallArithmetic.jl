@@ -1,3 +1,18 @@
+"""
+    BallArithmetic
+
+Tools for rigorous linear algebra with floating-point balls. The
+package builds on [`Ball`](@ref) numbers—midpoint/radius pairs that
+track rounding error—to provide array, matrix, and vector types with
+propagated uncertainty. High-level routines such as norm bounds,
+eigenvalue certification, and singular value enclosures are exposed via
+this module after it has been loaded.
+
+Most functionality is available through exported symbols documented in
+the respective source files. Loading the module also enables auxiliary
+utilities such as rigorous rounding macros and promotion rules that let
+`Ball` values interact seamlessly with base Julia numeric types.
+"""
 module BallArithmetic
 
 include("numerical_test/multithread.jl")

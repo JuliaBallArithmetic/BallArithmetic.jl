@@ -1,3 +1,9 @@
+"""
+Promotion rules ensuring that `Ball` values interact smoothly with
+integers, reals, and complex numbers. These follow Julia's promotion
+conventions by preferring complex enclosures whenever one of the
+arguments is complex-valued.
+"""
 #promote_type(Type{Ball{T, T}}, Type{Ball{T, Complex{T}}) where{T} = Ball{T, Complex{T}}
 
 Base.promote_rule(::Type{Ball{T, T}}, ::Type{Int64}) where {T} = Ball{T, T}
