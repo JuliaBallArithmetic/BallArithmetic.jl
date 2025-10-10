@@ -68,6 +68,7 @@ include("norm_bounds/oishi_triangular.jl")
 export upper_bound_L1_opnorm, upper_bound_L2_opnorm, upper_bound_L_inf_opnorm
 include("eigenvalues/gev.jl")
 include("eigenvalues/upper_bound_spectral.jl")
+include("svd/singular_gerschgorin.jl")
 include("svd/svd.jl")
 include("pseudospectra/rigorous_contour.jl")
 include("matrix_classifiers/is_M_matrix.jl")
