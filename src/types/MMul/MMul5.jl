@@ -10,10 +10,15 @@ function MMul5(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
     ρB = sign.(mB) .* min.(abs.(mB), rB)
 
     mC = mA * mB + ρA * ρB
-    Γ = abs.(mA) * abs.(mB) + abs.(ρA) * abs.(ρB)
+    abs_mA = abs_preserving_structure(mA)
+    abs_mB = abs_preserving_structure(mB)
+    abs_rhoA = abs_preserving_structure(ρA)
+    abs_rhoB = abs_preserving_structure(ρB)
+
+    Γ = abs_mA * abs_mB + abs_rhoA * abs_rhoB
     rC = setrounding(T, RoundUp) do
         γ = (k + 1) * eps.(Γ) .+ 0.5 * η / ϵp
-        rC = (abs.(mA) + rA) * (abs.(mB) + rB) - Γ + 2γ
+        rC = (abs_mA + rA) * (abs_mB + rB) - Γ + 2γ
         return rC
     end
     BallMatrix(mC, rC)

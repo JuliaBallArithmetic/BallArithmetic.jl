@@ -9,8 +9,10 @@ function MMul3(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
     mB, rB = mid(B), rad(B)
     mC = mA * mB
     rC = setrounding(T, RoundUp) do
-        rprimeB = ((k + 2) * ϵp * abs.(mB) + rB)
-        rC = abs.(mA) * rprimeB + rA * (abs.(mB) + rB) .+ η / ϵp
+        abs_mB = abs_preserving_structure(mB)
+        abs_mA = abs_preserving_structure(mA)
+        rprimeB = ((k + 2) * ϵp * abs_mB + rB)
+        rC = abs_mA * rprimeB + rA * (abs_mB + rB) .+ η / ϵp
         return rC
     end
     BallMatrix(mC, rC)
@@ -21,8 +23,10 @@ function MMul3(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat
     mA, rA = mid(A), rad(A)
     mC = mA * B
     rC = setrounding(T, RoundUp) do
-        rprimeB = ((k + 2) * ϵp * abs.(B))
-        rC = abs.(mA) * rprimeB + rA * (abs.(B)) .+ η / ϵp
+        abs_B = abs_preserving_structure(B)
+        abs_mA = abs_preserving_structure(mA)
+        rprimeB = ((k + 2) * ϵp * abs_B)
+        rC = abs_mA * rprimeB + rA * abs_B .+ η / ϵp
         return rC
     end
     BallMatrix(mC, rC)
@@ -33,8 +37,10 @@ function MMul3(A::AbstractMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat
     mB, rB = mid(B), rad(B)
     mC = A * mB
     rC = setrounding(T, RoundUp) do
-        rprimeB = ((k + 2) * ϵp * abs.(mB) + rB)
-        rC = abs.(A) * rprimeB .+ η / ϵp
+        abs_mB = abs_preserving_structure(mB)
+        abs_A = abs_preserving_structure(A)
+        rprimeB = ((k + 2) * ϵp * abs_mB + rB)
+        rC = abs_A * rprimeB .+ η / ϵp
         return rC
     end
     BallMatrix(mC, rC)
@@ -44,8 +50,10 @@ function MMul3(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractF
     m, k = size(A)
     mC = A * B
     rC = setrounding(T, RoundUp) do
-        rprimeB = ((k + 2) * ϵp * abs.(B))
-        rC = abs.(A) * rprimeB .+ η / ϵp
+        abs_B = abs_preserving_structure(B)
+        abs_A = abs_preserving_structure(A)
+        rprimeB = ((k + 2) * ϵp * abs_B)
+        rC = abs_A * rprimeB .+ η / ϵp
         return rC
     end
     BallMatrix(mC, rC)
