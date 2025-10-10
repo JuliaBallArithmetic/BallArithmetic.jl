@@ -12,7 +12,50 @@ to implement a rigorous matrix product in mid-radius arithmetic.
 This allows to implement numerous algorithms developed by Rump, Miyajima,
 Ogita and collaborators to obtain a posteriori guaranteed bounds.
 
-The main object are BallMatrices, i.e., a couple containing a center matrix and a radius matrix.
+The main object are BallMatrices, i.e., midpoint matrices equipped with
+non-negative radii that provide rigorous entrywise enclosures.
+
+## `BallMatrix`
+
+`BallMatrix` is the midpoint-radius companion of the scalar [`Ball`](@ref)
+type.  The midpoint matrix stores the approximation we would normally
+compute in floating-point arithmetic, whereas the radius matrix captures
+all sources of uncertainty (input radii, floating-point error, subnormal
+padding, …).  Each method documented below updates both components so the
+result remains a rigorous enclosure.
+
+### Constructors and accessors
+
+The constructors delegate to the underlying [`BallArray`](@ref) to perform
+shape and type validation.  Working through them in order provides a tour
+of how the storage is organised:
+
+```@docs
+BallMatrix
+BallMatrix(::AbstractMatrix)
+BallMatrix(::AbstractMatrix, ::AbstractMatrix)
+mid(::AbstractMatrix)
+rad(::AbstractMatrix)
+```
+
+### Arithmetic
+
+Binary operations follow a common pattern: operate on the midpoint data as
+if the values were exact, then grow the radius using outward rounding.
+The comments inside `src/types/matrix.jl` walk through the steps in more
+detail.
+
+```@docs
+Base.:+(::BallMatrix, ::BallMatrix)
+Base.:+(::BallMatrix, ::Matrix)
+Base.:+(::BallMatrix, ::UniformScaling)
+Base.:-(::BallMatrix, ::UniformScaling)
+Base.:-(::UniformScaling, ::BallMatrix)
+Base.:*(::Number, ::BallMatrix)
+Base.:*(::BallMatrix, ::BallMatrix)
+Base.:*(::BallMatrix, ::Matrix)
+Base.:*(::Matrix, ::BallMatrix)
+```
 
 ```@repl
 using BallArithmetic

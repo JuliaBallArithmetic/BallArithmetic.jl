@@ -1,5 +1,13 @@
 import LinearAlgebra
 
+"""
+    _upper_bound_norm(center, radius, p)
+
+Internal helper that computes a rigorous upper bound on the p-norm of an
+array represented by separate midpoint `center` and radius `radius`
+arrays. The function evaluates the norm of both parts with rounding
+directed upward and adds the results to preserve an enclosure.
+"""
 function _upper_bound_norm(center, radius, p::Real = 2)
     T = eltype(radius)
     norm = setrounding(T, RoundUp) do
@@ -11,7 +19,9 @@ end
 """
     upper_bound_norm(A::BallMatrix, p::Real = 2)
 
-Compute a rigorous upper bound for the Frobenius p-norm of a BallMatrix
+Compute a rigorous upper bound for the p-norm of a `BallMatrix` by
+delegating to [`_upper_bound_norm`](@ref) on the stored midpoint and
+radius arrays. The default `p = 2` corresponds to the Frobenius norm.
 """
 function upper_bound_norm(A::BallMatrix, p::Real = 2)
     return _upper_bound_norm(A.c, A.r, p)
@@ -20,7 +30,7 @@ end
 """
     upper_bound_norm(v::BallVector, p::Real = 2)
 
-Compute a rigorous upper bound for the p-norm of a BallVector
+Compute a rigorous upper bound for the p-norm of a `BallVector`.
 """
 function upper_bound_norm(v::BallVector, p::Real = 2)
     return _upper_bound_norm(v.c, v.r, p)
