@@ -102,32 +102,42 @@ function LinearAlgebra.adjoint(M::BallMatrix)
 end
 
 # Operations
-for op in (:+, :-)
-    @eval begin
-        """
-            Base.$(op)(A::BallMatrix, B::BallMatrix)
+"""
+    Base.:+(A::BallMatrix, B::BallMatrix)
 
-        Combine two `BallMatrix` values elementwise using `$(op)` while
-        tracking floating-point and enclosure errors. The midpoint
-        operation is performed directly and the radii are enlarged using
-        outward rounding to maintain a rigorous enclosure.
-        """
-        function Base.$op(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
-            mA, rA = mid(A), rad(A)
-            mB, rB = mid(B), rad(B)
+Combine two `BallMatrix` values elementwise using addition while tracking
+floating-point and enclosure errors. The midpoint matrices are added
+directly and the radii are enlarged using outward rounding to maintain a
+rigorous enclosure.
+"""
+function Base.:+(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
+    mA, rA = mid(A), rad(A)
+    mB, rB = mid(B), rad(B)
 
-            # Combine the midpoint matrices elementwise using the plain
-            # arithmetic operation.
-            C = $op(mA, mB)
-            R = setrounding(T, RoundUp) do
-                # Floating-point errors are bounded by the proportional term
-                # `ϵp * abs.(C)`, while each operand contributes its stored
-                # radius to the enclosure.
-                R = (ϵp * abs.(C) + rA) + rB
-            end
-            BallMatrix(C, R)
-        end
+    C = mA + mB
+    R = setrounding(T, RoundUp) do
+        (ϵp * abs.(C) + rA) + rB
     end
+    BallMatrix(C, R)
+end
+
+"""
+    Base.:-(A::BallMatrix, B::BallMatrix)
+
+Combine two `BallMatrix` values elementwise using subtraction while
+tracking floating-point and enclosure errors. The midpoint matrices are
+subtracted directly and the radii are enlarged using outward rounding to
+maintain a rigorous enclosure.
+"""
+function Base.:-(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
+    mA, rA = mid(A), rad(A)
+    mB, rB = mid(B), rad(B)
+
+    C = mA - mB
+    R = setrounding(T, RoundUp) do
+        (ϵp * abs.(C) + rA) + rB
+    end
+    BallMatrix(C, R)
 end
 
 """

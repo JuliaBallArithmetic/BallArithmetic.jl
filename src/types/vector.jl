@@ -37,25 +37,38 @@ rad(A::AbstractVector{T}) where {T <: AbstractFloat} = zeros(T, size(A))
 rad(A::AbstractVector{Complex{T}}) where {T <: AbstractFloat} = zeros(T, size(A))
 
 # # Operations
-for op in (:+, :-)
-    @eval begin
-        """
-            Base.$(op)(A::BallVector, B::BallVector)
+"""
+    Base.:+(A::BallVector, B::BallVector)
 
-        Combine two ball vectors elementwise, enlarging the radius to
-        include roundoff and the uncertainties of both operands.
-        """
-        function Base.$op(A::BallVector{T}, B::BallVector{T}) where {T <: AbstractFloat}
-            mA, rA = mid(A), rad(A)
-            mB, rB = mid(B), rad(B)
+Combine two ball vectors elementwise using addition, enlarging the radius
+to include roundoff and the uncertainties of both operands.
+"""
+function Base.:+(A::BallVector{T}, B::BallVector{T}) where {T <: AbstractFloat}
+    mA, rA = mid(A), rad(A)
+    mB, rB = mid(B), rad(B)
 
-            C = $op(mA, mB)
-            R = setrounding(T, RoundUp) do
-                R = (ϵp * abs.(C) + rA) + rB
-            end
-            BallVector(C, R)
-        end
+    C = mA + mB
+    R = setrounding(T, RoundUp) do
+        (ϵp * abs.(C) + rA) + rB
     end
+    BallVector(C, R)
+end
+
+"""
+    Base.:-(A::BallVector, B::BallVector)
+
+Combine two ball vectors elementwise using subtraction, enlarging the
+radius to include roundoff and the uncertainties of both operands.
+"""
+function Base.:-(A::BallVector{T}, B::BallVector{T}) where {T <: AbstractFloat}
+    mA, rA = mid(A), rad(A)
+    mB, rB = mid(B), rad(B)
+
+    C = mA - mB
+    R = setrounding(T, RoundUp) do
+        (ϵp * abs.(C) + rA) + rB
+    end
+    BallVector(C, R)
 end
 
 """
