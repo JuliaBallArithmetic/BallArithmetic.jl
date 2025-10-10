@@ -432,21 +432,22 @@ end
 """
     *(A::BallMatrix, B::AbstractMatrix)
 
-Multiply a `BallMatrix` by a standard matrix, propagating the midpoint
-product and rigorously bounding the resulting radii.
+Multiply a `BallMatrix` by an arbitrary dense or structured matrix,
+propagating the midpoint product and rigorously bounding the resulting
+radii.
 """
-function Base.:*(A::BallMatrix{T, S}, B::Matrix{S}) where {S, T <: AbstractFloat}
+function Base.:*(A::BallMatrix{T, S}, B::AbstractMatrix{S}) where {S, T <: AbstractFloat}
     return MMul4(A, B)
 end
 
 """
     *(A::AbstractMatrix, B::BallMatrix)
 
-Multiply a standard matrix with a `BallMatrix`. The enclosure of the
-result is obtained using the same rigorous matrix multiplication kernel
-as in the purely ball-valued case.
+Multiply an arbitrary dense or structured matrix with a `BallMatrix`.
+The enclosure of the result is obtained using the same rigorous matrix
+multiplication kernel as in the purely ball-valued case.
 """
-function Base.:*(A::Matrix{S}, B::BallMatrix{T, S}) where {S, T <: AbstractFloat}
+function Base.:*(A::AbstractMatrix{S}, B::BallMatrix{T, S}) where {S, T <: AbstractFloat}
     # Symmetric case of the mixed overload above.
     return MMul4(A, B)
 end
