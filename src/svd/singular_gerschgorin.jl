@@ -1,8 +1,6 @@
 using BallArithmetic
 export qi_intervals, qi_sqrt_intervals
 
-using Base.Rounding: RoundDown, RoundUp
-
 function helper_i(v::BallVector, i)::BallVector
     if i == 1
         return BallVector(v.c[2:end], v.r[2:end])
@@ -45,73 +43,37 @@ Sharper square-root intervals (Theorem 3).
 function qi_sqrt_intervals(A::BallMatrix)
     m, n = size(A)
     N = min(m, n)
-    outer = qi_intervals(A)
-    G = Vector{Ball}(undef, N)
-
+    G = Ball[]
     for i in 1:N
         ai = abs(A[i, i])
         ri = upper_bound_norm(helper_i(A[i, :], i), 1)
         ci = upper_bound_norm(helper_i(A[:, i], i), 1)
 
-        ci_ball = Ball(ci)
-        ri_ball = Ball(ri)
-        T = typeof(ri)
+        Δc = ai^2 - ai * ci + (ci^2) / 4
+        Δr = ai^2 - ai * ri + (ri^2) / 4
 
-        Δc_lower = ai^2 - ai * ci_ball + (ci_ball^2) / 4
-        Δr_lower = ai^2 - ai * ri_ball + (ri_ball^2) / 4
-
-        lc = setrounding(T, RoundDown) do
-            sqrt(max(inf(Δc_lower), zero(T))) - ci / 2
+        if inf(Δc) < 0
+            Δc = 0
         end
-        lr = setrounding(T, RoundDown) do
-            sqrt(max(inf(Δr_lower), zero(T))) - ri / 2
+        if inf(Δr) < 0
+            Δr = 0
         end
+        lc = inf(sqrt(Δc) - Ball(ci) / 2)
+        lr = inf(sqrt(Δr) - Ball(ri) / 2)
 
-        Δc_upper = ai^2 + ai * ci_ball + (ci_ball^2) / 4
-        Δr_upper = ai^2 + ai * ri_ball + (ri_ball^2) / 4
+        Δc = ai^2 + ai * ci + (ci^2) / 4
+        Δr = ai^2 + ai * ri + (ri^2) / 4
+        uc = sup(sqrt(Δc) + Ball(ci) / 2)
+        ur = sup(sqrt(Δr) + Ball(ri) / 2)
 
-        uc = setrounding(T, RoundUp) do
-            sqrt(max(sup(Δc_upper), zero(T))) + ci / 2
-        end
-        ur = setrounding(T, RoundUp) do
-            sqrt(max(sup(Δr_upper), zero(T))) + ri / 2
-        end
+        l = max(min(lc, lr), 0)
+        u = max(uc, ur)
 
-        outer_lower = @up outer[i].c - outer[i].r
-        outer_upper = @down outer[i].c + outer[i].r
+        c = (l + u) / 2
+        r = @up (u - l) / 2.0
 
-        lower = max(lc, lr, zero(T), outer_lower)
-        upper = min(uc, ur, outer_upper)
-
-        if upper < lower
-            upper = lower
-        end
-
-        # Pull the upper bound slightly inside the containing Qi interval to
-        # compensate for subsequent outward rounding when forming the ball.
-        clamped_upper = if isfinite(outer_upper) && upper == outer_upper
-            prevfloat(outer_upper)
-        else
-            upper
-        end
-        clamped_lower = lower
-
-        if clamped_upper < clamped_lower
-            clamped_upper = clamped_lower
-        end
-
-        center = T((clamped_lower + clamped_upper) / 2)
-        radius = setrounding(T, RoundUp) do
-            max(clamped_upper - center, center - clamped_lower)
-        end
-
-        if radius < zero(T)
-            radius = zero(T)
-        end
-
-        G[i] = Ball(center, radius)
+        push!(G, Ball(c, r))
     end
-
     return G
 end
 
@@ -119,8 +81,15 @@ end
 Rebalanced (Theorem 2).
 """
 function qi_intervals_rebalanced(A::BallMatrix)
-    D, Dinv = _balancing_diagonals(A)
+    norm_r = [norm(v, 1) for v in rows(A.c)]
+    norm_c = [norm(v, 1) for v in cols(A.c)]
+    k = norm_c ./ norm_r
+
+    D = Diagonal(k)
+    Dinv = Diagonal(1 ./ k)
+
     resA = Dinv * (A * D)
+
     return qi_intervals(resA)
 end
 
@@ -128,20 +97,14 @@ end
 Rebalanced (Theorem 3).
 """
 function qi_sqrt_intervals_rebalanced(A::BallMatrix)
-    D, Dinv = _balancing_diagonals(A)
-    resA = Dinv * (A * D)
+    norm_r = [norm(v, 1) for v in eachrow(A.c)]
+    norm_c = [norm(v, 1) for v in eachcol(A.c)]
+    k = norm_c ./ norm_r
+
+    D = Diagonal(k)
+    Dinv = Diagonal(1 ./ k)
+
+    resA = (Dinv * A) * D
+
     return qi_sqrt_intervals(resA)
-end
-
-function _balancing_diagonals(A::BallMatrix)
-    row_norms = [norm(row, 1) for row in eachrow(A.c)]
-    col_norms = [norm(col, 1) for col in eachcol(A.c)]
-
-    real_type = promote_type(eltype(row_norms), eltype(col_norms))
-    ratios = col_norms ./ row_norms
-
-    k = collect(real_type.(ratios))
-    inv_k = collect(real_type.(1 ./ ratios))
-
-    return Diagonal(k), Diagonal(inv_k)
 end

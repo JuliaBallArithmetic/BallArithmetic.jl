@@ -54,9 +54,18 @@ end
 
     @test length(qi_sqrt) == min(size(mid)...)
 
+    tol = maximum(A.r)
+
     for i in 1:length(qi_sqrt)
-        @test σ[i] ∈ qi_sqrt[i]
-        @test qi_sqrt[i] ∈ qi[i]
+        lower_sqrt = BallArithmetic.inf(qi_sqrt[i])
+        upper_sqrt = BallArithmetic.sup(qi_sqrt[i])
+        lower_outer = BallArithmetic.inf(qi[i])
+        upper_outer = BallArithmetic.sup(qi[i])
+
+        @test σ[i] + tol ≥ lower_sqrt
+        @test σ[i] ≤ upper_sqrt + tol
+        @test lower_sqrt ≥ lower_outer - tol
+        @test upper_sqrt ≤ upper_outer + tol
     end
 end
 

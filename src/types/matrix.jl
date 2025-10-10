@@ -435,7 +435,7 @@ end
 Multiply a `BallMatrix` by a standard matrix, propagating the midpoint
 product and rigorously bounding the resulting radii.
 """
-function Base.:*(A::BallMatrix{T, T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
+function Base.:*(A::BallMatrix{T, S}, B::Matrix{S}) where {S, T <: AbstractFloat}
     return MMul4(A, B)
 end
 
@@ -446,7 +446,7 @@ Multiply a standard matrix with a `BallMatrix`. The enclosure of the
 result is obtained using the same rigorous matrix multiplication kernel
 as in the purely ball-valued case.
 """
-function Base.:*(A::AbstractMatrix{T}, B::BallMatrix{T, T}) where {T <: AbstractFloat}
+function Base.:*(A::Matrix{S}, B::BallMatrix{T, S}) where {S, T <: AbstractFloat}
     # Symmetric case of the mixed overload above.
     return MMul4(A, B)
 end
@@ -492,20 +492,4 @@ function Base.:*(
     # Fall back to the mixed overloads so each component uses the same
     # rigorous kernels as the purely real case.
     return A * real(B) + im * (A * imag(B))
-end
-
-function Base.:*(A::BallMatrix{T, Complex{T}}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
-    return real(A) * B + im * (imag(A) * B)
-end
-
-function Base.:*(A::AbstractMatrix{T}, B::BallMatrix{T, Complex{T}}) where {T <: AbstractFloat}
-    return A * real(B) + im * (A * imag(B))
-end
-
-function Base.:*(A::BallMatrix{T, Complex{T}}, B::AbstractMatrix{Complex{T}}) where {T <: AbstractFloat}
-    return A * real(B) + im * (A * imag(B))
-end
-
-function Base.:*(A::AbstractMatrix{Complex{T}}, B::BallMatrix{T, Complex{T}}) where {T <: AbstractFloat}
-    return real(A) * B + im * (imag(A) * B)
 end
