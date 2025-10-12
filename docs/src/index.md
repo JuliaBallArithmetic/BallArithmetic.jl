@@ -46,7 +46,7 @@ bA^2
 ```
 
 ```@autodocs
-Modules = [BallArithmetic, NumericalTest]
+Modules = [BallArithmetic]
 ```
 
 

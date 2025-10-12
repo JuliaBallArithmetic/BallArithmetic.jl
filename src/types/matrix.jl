@@ -85,6 +85,13 @@ is overloaded to provide the stored uncertainty information.
 rad(A::AbstractMatrix{T}) where {T <: AbstractFloat} = zeros(T, size(A))
 # Complex matrices still report a real-valued radius since the uncertainty
 # is measured in the underlying real field.
+"""
+    rad(A::AbstractMatrix{Complex{T}})
+
+Return a matrix of real radii matching the size of the complex matrix `A`.
+Even for complex entries the radius is measured over the underlying real
+field, hence the resulting matrix has element type `T`.
+"""
 rad(A::AbstractMatrix{Complex{T}}) where {T <: AbstractFloat} = zeros(T, size(A))
 
 # LinearAlgebra functions
@@ -209,28 +216,79 @@ end
 #     return BallMatrix(B, R)
 # end
 
-for op in (:+, :-)
-    @eval begin
-        function Base.$op(A::BallMatrix{T}, B::Matrix{T}) where {T <: AbstractFloat}
-            mA, rA = mid(A), rad(A)
+"""
+    Base.:+(A::BallMatrix, B::AbstractMatrix)
 
-            # Apply the operation directly to the midpoint data.
-            C = $op(mA, B)
+Add a plain matrix to a `BallMatrix` by combining the midpoints directly
+and inflating the radii to account for the existing uncertainty in `A`
+and the floating-point error introduced by the addition.
+"""
+function Base.:+(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
+    mA, rA = mid(A), rad(A)
 
-            R = setrounding(T, RoundUp) do
-                # Only the `BallMatrix` contributes an existing radius, but
-                # we still need to compensate for floating-point error in the
-                # combined midpoint.
-                R = (ϵp * abs.(C) + rA)
-            end
-            BallMatrix(C, R)
-        end
-        # + and - are commutative
-        function Base.$op(B::Matrix{T}, A::BallMatrix{T}) where {T <: AbstractFloat}
-            # Swap the arguments so both orders share the same code path.
-            $op(A, B)
-        end
+    # Apply the operation directly to the midpoint data.
+    C = mA + B
+
+    R = setrounding(T, RoundUp) do
+        # Only the `BallMatrix` contributes an existing radius, but
+        # we still need to compensate for floating-point error in the
+        # combined midpoint.
+        return (ϵp * abs.(C) + rA)
     end
+    BallMatrix(C, R)
+end
+
+"""
+    Base.:+(B::AbstractMatrix, A::BallMatrix)
+
+Commutative counterpart of [`+(::BallMatrix, ::AbstractMatrix)`](@ref),
+allowing the plain matrix to appear on the left-hand side.
+"""
+function Base.:+(B::AbstractMatrix{T}, A::BallMatrix{T}) where {T <: AbstractFloat}
+    # Swap the arguments so both orders share the same code path.
+    return A + B
+end
+
+"""
+    Base.:-(A::BallMatrix, B::AbstractMatrix)
+
+Subtract a plain matrix from a `BallMatrix`. The midpoint subtraction is
+performed elementwise while the radius is enlarged to remain enclosure
+safe.
+"""
+function Base.:-(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
+    mA, rA = mid(A), rad(A)
+
+    # Subtract the midpoint data directly.
+    C = mA - B
+
+    R = setrounding(T, RoundUp) do
+        # Only `A` carries an existing radius; nevertheless we must still
+        # compensate for floating-point roundoff in the midpoint result.
+        return (ϵp * abs.(C) + rA)
+    end
+    BallMatrix(C, R)
+end
+
+"""
+    Base.:-(B::AbstractMatrix, A::BallMatrix)
+
+Subtract a `BallMatrix` from a plain matrix, reusing the implementation
+of [`-(::BallMatrix, ::AbstractMatrix)`](@ref) by swapping the argument
+order.
+"""
+function Base.:-(B::AbstractMatrix{T}, A::BallMatrix{T}) where {T <: AbstractFloat}
+    mA, rA = mid(A), rad(A)
+
+    # Compute the midpoint part of `B - A` directly.
+    C = B - mA
+
+    R = setrounding(T, RoundUp) do
+        # The stored radii of `A` still drive the enclosure, with additional
+        # padding for floating-point roundoff in the midpoint subtraction.
+        return (ϵp * abs.(C) + rA)
+    end
+    BallMatrix(C, R)
 end
 
 """
