@@ -30,15 +30,6 @@ The constructors delegate to the underlying [`BallArray`](@ref) to perform
 shape and type validation.  Working through them in order provides a tour
 of how the storage is organised:
 
-```@docs
-BallMatrix
-BallMatrix(::AbstractMatrix)
-BallMatrix(::AbstractMatrix, ::AbstractMatrix)
-mid(::AbstractMatrix)
-rad(::AbstractMatrix{<:AbstractFloat})
-rad(::AbstractMatrix{Complex{<:AbstractFloat}})
-```
-
 ### Arithmetic
 
 Binary operations follow a common pattern: operate on the midpoint data as
@@ -46,18 +37,6 @@ if the values were exact, then grow the radius using outward rounding.
 The comments inside `src/types/matrix.jl` walk through the steps in more
 detail.
 
-```@docs
-Base.:+(::BallMatrix, ::BallMatrix)
-Base.:+(::BallMatrix, ::AbstractMatrix)
-Base.:+(::BallMatrix, ::UniformScaling)
-Base.:-(::BallMatrix, ::AbstractMatrix)
-Base.:-(::BallMatrix, ::UniformScaling)
-Base.:-(::AbstractMatrix, ::BallMatrix)
-Base.:*(::Number, ::BallMatrix)
-Base.:*(::BallMatrix, ::BallMatrix)
-Base.:*(::BallMatrix, ::AbstractMatrix)
-Base.:*(::AbstractMatrix, ::BallMatrix)
-```
 
 ```@repl
 using BallArithmetic
