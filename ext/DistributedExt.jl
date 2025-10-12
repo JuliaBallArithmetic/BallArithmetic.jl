@@ -151,6 +151,7 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
             try
                 fetch(task)
             catch err
+                bt = catch_backtrace()
                 inner = err
                 while true
                     if inner isa InvalidStateException
@@ -169,9 +170,15 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
                     break
                 end
                 if inner isa InvalidStateException
+                    reason = inner
+                    message = sprint(showerror, reason)
+                    @info "certification worker stopped after channels closed" reason=reason reason_message=message exception=(reason, bt)
                     continue
                 end
-                @warn "certification worker terminated with an error" exception=(err, catch_backtrace())
+
+                reason = inner === nothing ? err : inner
+                message = sprint(showerror, reason)
+                @warn "certification worker terminated with an error" exception=(err, bt) reason=reason reason_message=message
             end
         end
 
