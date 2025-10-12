@@ -1,32 +1,32 @@
 name = "BallArithmetic"
 uuid = "77e4f72b-b5a4-4fb0-ac2a-dcc32095a072"
-authors = ["Luca Ferranti and Isaia Nisoli"]
 version = "0.1.1"
+authors = ["Luca Ferranti and Isaia Nisoli"]
 
 [deps]
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 OpenBLASConsistentFPCSR_jll = "6cdc7f73-28fd-5e50-80fb-958a8875b1af"
 RoundingEmulator = "5eaf0fd0-dfba-4ccb-bf02-d820a40db705"
 SetRounding = "3cc68bcd-71a2-5612-b932-767ffbe40ab0"
-JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 
 [weakdeps]
+Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 IntervalArithmetic = "d1acc4aa-44c8-5952-acd4-ba5d80a2a253"
-Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 
 [extensions]
+DistributedExt = "Distributed"
 FFTExt = "FFTW"
 IntervalArithmeticExt = "IntervalArithmetic"
-DistributedExt = "Distributed"
 
 [compat]
 FFTW = "1"
 IntervalArithmetic = "0.20.9"
+JLD2 = "0.6.2"
 MacroTools = "0.5"
 OpenBLASConsistentFPCSR_jll = "0.3.21"
 RoundingEmulator = "0.2"
 SetRounding = "0.2"
-JLD2 = "0.4"
 julia = "^1.9"

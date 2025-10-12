@@ -218,7 +218,7 @@ Principal square root of a non-negative real ball. The method verifies
 that the enclosure stays within the domain of the square root and then
 propagates rounding errors to produce a rigorous result.
 """
-function Base.sqrt(y::Ball{Float64}) where {T}
+function Base.sqrt(y::Ball{Float64})
     my, ry = mid(y), rad(y)
     ry < my || throw(DomainError("Ball $y contains zero."))
     c1 = sqrt_down(@down my - ry)
