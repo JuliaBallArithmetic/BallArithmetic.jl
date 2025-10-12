@@ -4,7 +4,7 @@ using LinearAlgebra
 using JLD2
 using Base: dirname, mod1
 
-using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm
+using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm, inf
 
 export dowork, adaptive_arcs!, bound_res_original, choose_snapshot_to_load,
        save_snapshot!, configure_certification!, set_schur_matrix!,
@@ -371,12 +371,21 @@ function bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; Cbo
     ϵ = max(max(errF_sup, errT_sup), max(norm_Z_sup, norm_Z_inv_sup))
     @info "The ϵ in the Schur theorems $ϵ"
 
-    bound = setrounding(Float64, RoundUp) do
-        numerator = 2 * (1 + ϵ^2) * l2pseudo_sup * Cbound
-        denominator = 1 - 2 * ϵ * (1 + ϵ^2) * l2pseudo_sup
-        return numerator / denominator
+    ball_ϵ = Ball(ϵ)
+    ball_l2pseudo = Ball(l2pseudo_sup)
+    ball_C = Ball(Cbound)
+    one = Ball(1.0)
+    two = Ball(2.0)
+
+    factor = one + ball_ϵ^2
+    numerator = two * factor * ball_l2pseudo * ball_C
+    denominator = one - two * ball_ϵ * factor * ball_l2pseudo
+
+    if inf(denominator) <= 0
+        throw(DomainError(denominator, "resolvent bound denominator is not positive"))
     end
-    return bound
+
+    return _upper_bound(numerator / denominator)
 end
 
 """

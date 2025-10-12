@@ -1,6 +1,7 @@
 module DistributedExt
 
 using Distributed
+using Distributed: RemoteException
 using Base: dirname
 
 using BallArithmetic
@@ -64,6 +65,8 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
     job_channel = nothing
     result_channel = nothing
     worker_tasks = Future[]
+    cache = nothing
+    pending = nothing
 
     try
         _load_certification_dependencies(worker_ids)
@@ -99,6 +102,41 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
             errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
             snapshot_base)
     finally
+        if result_channel !== nothing && pending isa Dict
+            wait_start = time()
+            try
+                while !isempty(pending)
+                    if isready(result_channel)
+                        result = try
+                            take!(result_channel)
+                        catch err
+                            if err isa InvalidStateException
+                                break
+                            end
+                            rethrow(err)
+                        end
+                        if cache isa Dict
+                            CertifScripts._push_result!(cache, certification_log, result)
+                        end
+                        haskey(pending, result.i) && delete!(pending, result.i)
+                        wait_start = time()
+                    elseif !isempty(worker_tasks) && any(!isready, worker_tasks)
+                        sleep(0.1)
+                        if time() - wait_start > 30
+                            @warn "timeout while draining pending certification results" pending=length(pending)
+                            break
+                        end
+                    else
+                        break
+                    end
+                end
+            catch err
+                if !(err isa InvalidStateException)
+                    @warn "failed to drain pending certification results" exception=(err, catch_backtrace())
+                end
+            end
+        end
+
         if job_channel !== nothing
             try
                 close(job_channel)
@@ -113,7 +151,34 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
             try
                 fetch(task)
             catch err
-                @warn "certification worker terminated with an error" exception=(err, catch_backtrace())
+                bt = catch_backtrace()
+                inner = err
+                while true
+                    if inner isa InvalidStateException
+                        break
+                    elseif inner isa RemoteException
+                        inner = inner.captured.ex
+                        continue
+                    elseif inner isa TaskFailedException
+                        inner = inner.task.exception
+                        continue
+                    elseif inner isa CompositeException && !isempty(inner.exceptions)
+                        inner = first(inner.exceptions)
+                        continue
+                    end
+                    inner = nothing
+                    break
+                end
+                if inner isa InvalidStateException
+                    reason = inner
+                    message = sprint(showerror, reason)
+                    @info "certification worker stopped after channels closed" reason=reason reason_message=message exception=(reason, bt)
+                    continue
+                end
+
+                reason = inner === nothing ? err : inner
+                message = sprint(showerror, reason)
+                @warn "certification worker terminated with an error" exception=(err, bt) reason=reason reason_message=message
             end
         end
 

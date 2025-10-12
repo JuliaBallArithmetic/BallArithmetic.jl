@@ -1,4 +1,5 @@
 using BallArithmetic
+using BallArithmetic.CertifScripts
 using Documenter
 using DocumenterCitations
 
@@ -12,7 +13,7 @@ DocMeta.setdocmeta!(BallArithmetic, :DocTestSetup, :(using BallArithmetic);
 
 makedocs(;
     plugins = [bib],
-    modules = [BallArithmetic],
+    modules = [BallArithmetic, CertifScripts],
     authors = "Luca Ferranti, Isaia Nisoli",
     repo = Documenter.Remotes.GitHub("JuliaBallArithmetic", "BallArithmetic.jl"),
     sitename = "BallArithmetic.jl",
