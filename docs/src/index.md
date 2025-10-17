@@ -15,6 +15,12 @@ Ogita and collaborators to obtain a posteriori guaranteed bounds.
 The main object are BallMatrices, i.e., midpoint matrices equipped with
 non-negative radii that provide rigorous entrywise enclosures.
 
+## Sylvester equations
+
+[`sylvester_miyajima_enclosure`](@ref) provides a componentwise enclosure for
+solutions of the Sylvester equation following the fast verification method of
+Ref. [MiyajimaSylvester2013](@cite).
+
 ## `BallMatrix`
 
 `BallMatrix` is the midpoint-radius companion of the scalar [`Ball`](@ref)

@@ -1,4 +1,5 @@
 using Test
+using LinearAlgebra
 using BallArithmetic
 
 @testset "CertifScripts serial" begin
@@ -36,4 +37,21 @@ end
 @testset "Polynomial helpers" begin
     coeffs = BallArithmetic.CertifScripts.poly_from_roots([1, 2, 3])
     @test coeffs ≈ [-6.0, 11.0, -6.0, 1.0]
+end
+
+@testset "Sylvester Miyajima enclosure" begin
+    A = [3.0 1.0 0.0; 0.0 2.5 0.3; 0.0 0.0 4.0]
+    B = [-1.5 0.2; 0.0 -0.75]
+    C = [1.0 0.5; -0.2 0.8; 0.3 -0.4]
+
+    n = size(B, 1)
+    K = kron(Matrix{Float64}(I, n, n), A) + kron(transpose(B), Matrix{Float64}(I, size(A, 1), size(A, 1)))
+    X_exact = reshape(K \ vec(C), size(A, 1), size(B, 1))
+
+    X̃ = X_exact .+ 1e-12 .* ones(size(X_exact))
+    enclosure = BallArithmetic.sylvester_miyajima_enclosure(A, B, C, X̃)
+
+    @test all(rad(enclosure) .>= 0)
+    diff = abs.(X_exact .- mid(enclosure))
+    @test all(diff .<= rad(enclosure))
 end

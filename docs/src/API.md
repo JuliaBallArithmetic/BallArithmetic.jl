@@ -17,3 +17,9 @@ BallArithmetic.CertifScripts.bound_res_original
 BallArithmetic.CertifScripts.run_certification
 BallArithmetic.CertifScripts.poly_from_roots
 ```
+
+## Sylvester equations
+
+```@docs
+sylvester_miyajima_enclosure
+```
