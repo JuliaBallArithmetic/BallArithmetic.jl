@@ -174,3 +174,51 @@ function _matrix_norm_inf(M)
     end
     return max_sum
 end
+
+"""
+    solve_leading_triangular_sylvester(A, B, C, k = 1)
+
+Solve the Sylvester equation `A₁₁ * X + X * B₁₁ = C₁₁` associated with the
+leading diagonal block of size `k × k` of the upper-triangular matrices `A` and
+`B`. The right-hand side is given by the matching leading block of `C`.
+
+The matrices `A` and `B` must be square and upper triangular, and `C` must have
+dimensions compatible with the Sylvester equation `A * X + X * B = C`.
+The returned matrix corresponds to the `k × k` leading block of the solution
+`X` for this subsystem. The function throws an `ArgumentError` if any spectral
+gap `Aᵢᵢ + Bⱼⱼ` for the selected block vanishes, as the subsystem would have no
+unique solution.
+"""
+function solve_leading_triangular_sylvester(A::AbstractMatrix,
+        B::AbstractMatrix, C::AbstractMatrix, k::Integer = 1)
+    mA, nA = size(A)
+    mA == nA || throw(DimensionMismatch("A must be square"))
+    mB, nB = size(B)
+    mB == nB || throw(DimensionMismatch("B must be square"))
+    size(C) == (mA, nB) || throw(DimensionMismatch("C must be of size ($mA, $nB)"))
+
+    0 < k <= min(mA, nB) || throw(ArgumentError("k must satisfy 1 ≤ k ≤ $(min(mA, nB))"))
+
+    istriu(Matrix(A)) || throw(ArgumentError("A must be upper triangular"))
+    istriu(Matrix(B)) || throw(ArgumentError("B must be upper triangular"))
+
+    block_type = promote_type(eltype(A), eltype(B), eltype(C))
+
+    A11 = Matrix{block_type}(A[1:k, 1:k])
+    B11 = Matrix{block_type}(B[1:k, 1:k])
+    C11 = Matrix{block_type}(C[1:k, 1:k])
+
+    for i in 1:k, j in 1:k
+        gap = A11[i, i] + B11[j, j]
+        iszero(gap) && throw(ArgumentError("Encountered zero spectral gap at ($(i), $(j))"))
+    end
+
+    if k == 1
+        return C11 ./ (A11[1, 1] + B11[1, 1])
+    end
+
+    Ik = Matrix{block_type}(I, k, k)
+    K = kron(Ik, A11) + kron(transpose(B11), Ik)
+    X_vec = K \ vec(C11)
+    return reshape(X_vec, k, k)
+end

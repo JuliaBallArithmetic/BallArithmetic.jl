@@ -55,3 +55,28 @@ end
     diff = abs.(X_exact .- mid(enclosure))
     @test all(diff .<= rad(enclosure))
 end
+
+@testset "Leading triangular Sylvester block" begin
+    A = UpperTriangular([2.0 1.0 0.5; 0.0 3.0 -0.2; 0.0 0.0 4.0])
+    B = UpperTriangular([1.5 -0.3 0.4; 0.0 0.75 0.6; 0.0 0.0 -1.2])
+    C = [0.4 0.1 -0.2; -0.3 0.25 0.0; 0.2 -0.1 0.5]
+
+    X11 = BallArithmetic.solve_leading_triangular_sylvester(A, B, C)
+    @test size(X11) == (1, 1)
+    @test isapprox(A[1, 1] * X11[1, 1] + X11[1, 1] * B[1, 1], C[1, 1]; atol = 1e-12)
+
+    k = 2
+    X_block = BallArithmetic.solve_leading_triangular_sylvester(A, B, C, k)
+    A_block = Matrix(A[1:k, 1:k])
+    B_block = Matrix(B[1:k, 1:k])
+    C_block = Matrix(C[1:k, 1:k])
+    @test A_block * X_block + X_block * B_block ≈ C_block atol = 1e-12
+
+    singular_A = UpperTriangular([1.0 0.0; 0.0 -1.0])
+    singular_B = UpperTriangular([-1.0 0.0; 0.0 2.0])
+    singular_C = zeros(2, 2)
+    @test_throws ArgumentError BallArithmetic.solve_leading_triangular_sylvester(singular_A, singular_B, singular_C)
+
+    nontriangular = [1.0 1.0 0.0; 0.5 2.0 0.1; 0.0 0.0 3.0]
+    @test_throws ArgumentError BallArithmetic.solve_leading_triangular_sylvester(nontriangular, B, C)
+end
