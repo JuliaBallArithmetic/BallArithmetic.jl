@@ -34,27 +34,45 @@ function sylvester_miyajima_enclosure(A::AbstractMatrix, B::AbstractMatrix,
     λB = eigBT.values
     WB = inv(VB)
 
+    VA_ball = BallMatrix(VA)
+    WA_ball = BallMatrix(WA)
+    VB_ball = BallMatrix(VB)
+    WB_ball = BallMatrix(WB)
+    AMat_ball = BallMatrix(AMat)
+    BT_ball = BallMatrix(BT)
+    diagA_ball = BallMatrix(Diagonal(λA))
+    diagB_ball = BallMatrix(Diagonal(λB))
+
     I_m = Matrix{eltype(WA)}(I, m, m)
     I_n = Matrix{eltype(WB)}(I, n, n)
 
-    SA = I_m - WA * VA
-    SB = I_n - WB * VB
+    SA = BallMatrix(I_m) - WA_ball * VA_ball
+    SB = BallMatrix(I_n) - WB_ball * VB_ball
 
-    RA = WA * (VA * Diagonal(λA) - AMat * VA)
-    RB = WB * (VB * Diagonal(λB) - BT * VB)
+    RA = WA_ball * (VA_ball * diagA_ball - AMat_ball * VA_ball)
+    RB = WB_ball * (VB_ball * diagB_ball - BT_ball * VB_ball)
 
-    norm_RA = _matrix_norm_inf(RA)
-    norm_SA = _matrix_norm_inf(SA)
-    norm_RB = _matrix_norm_inf(RB)
-    norm_SB = _matrix_norm_inf(SB)
+    abs_RA = _abs_sup_matrix(RA, realtype)
+    abs_SA = _abs_sup_matrix(SA, realtype)
+    abs_RB = _abs_sup_matrix(RB, realtype)
+    abs_SB = _abs_sup_matrix(SB, realtype)
+
+    norm_RA = setrounding(realtype, RoundUp) do
+        _matrix_norm_inf(abs_RA)
+    end
+    norm_SA = setrounding(realtype, RoundUp) do
+        _matrix_norm_inf(abs_SA)
+    end
+    norm_RB = setrounding(realtype, RoundUp) do
+        _matrix_norm_inf(abs_RB)
+    end
+    norm_SB = setrounding(realtype, RoundUp) do
+        _matrix_norm_inf(abs_SB)
+    end
 
     norm_SA < 1 || throw(ArgumentError("\u2225S_A\u2225_\u221E must be < 1"))
     norm_SB < 1 || throw(ArgumentError("\u2225S_B\u2225_\u221E must be < 1"))
 
-    abs_RA = abs.(RA)
-    abs_SA = abs.(SA)
-    abs_RB = abs.(RB)
-    abs_SB = abs.(SB)
 
     TA = setrounding(realtype, RoundUp) do
         abs_RA .+ (norm_RA / (1 - norm_SA)) .* abs_SA
@@ -64,9 +82,8 @@ function sylvester_miyajima_enclosure(A::AbstractMatrix, B::AbstractMatrix,
     end
 
     E = ones(realtype, m, n)
-    T = setrounding(realtype, RoundUp) do
-        TA * E .+ E * transpose(TB)
-    end
+    T_ball = BallMatrix(TA) * BallMatrix(E) + BallMatrix(E) * BallMatrix(transpose(TB))
+    T = _abs_sup_matrix(T_ball, realtype)
 
     λA_mat = reshape(λA, m, 1)
     λB_row = reshape(λB, 1, n)
@@ -82,17 +99,25 @@ function sylvester_miyajima_enclosure(A::AbstractMatrix, B::AbstractMatrix,
     BMat = Matrix(B)
     CMat = Matrix(C)
 
-    R = setrounding(realtype, RoundUp) do
-        AMat * X̃Mat .+ X̃Mat * BMat .- CMat
-    end
-    R_W = WA * R * transpose(WB)
+    X̃_ball = BallMatrix(X̃Mat)
+    BMat_ball = BallMatrix(BMat)
+    CMat_ball = BallMatrix(CMat)
+
+    R = AMat_ball * X̃_ball + X̃_ball * BMat_ball - CMat_ball
+    R_W = WA_ball * R * transpose(WB)
+
+    R_W_abs = _abs_sup_matrix(R_W, realtype)
 
     R_D = setrounding(realtype, RoundUp) do
-        abs.(R_W) ./ abs_D̃
+        R_W_abs ./ abs_D̃
     end
 
-    norm_TD = _entrywise_max_norm(T_D)
-    norm_RD = _entrywise_max_norm(R_D)
+    norm_TD = setrounding(realtype, RoundUp) do
+        _entrywise_max_norm(T_D)
+    end
+    norm_RD = setrounding(realtype, RoundUp) do
+        _entrywise_max_norm(R_D)
+    end
 
     norm_TD < 1 || throw(ArgumentError("Entrywise max norm of T_D must be < 1"))
 
@@ -116,6 +141,16 @@ end
 
 function _real_type(::Type{Complex{T}}) where {T <: Real}
     return float(T)
+end
+
+function _abs_sup_matrix(M::BallMatrix, ::Type{T}) where {T <: AbstractFloat}
+    setrounding(T, RoundUp) do
+        result = Matrix{T}(undef, size(M))
+        for i in axes(M, 1), j in axes(M, 2)
+            result[i, j] = sup(abs(M[i, j]))
+        end
+        result
+    end
 end
 
 function _entrywise_max_norm(M)
