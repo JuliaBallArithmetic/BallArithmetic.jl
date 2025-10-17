@@ -1,4 +1,5 @@
 using Test
+using LinearAlgebra
 using BallArithmetic
 
 @testset "CertifScripts serial" begin
@@ -36,4 +37,54 @@ end
 @testset "Polynomial helpers" begin
     coeffs = BallArithmetic.CertifScripts.poly_from_roots([1, 2, 3])
     @test coeffs ≈ [-6.0, 11.0, -6.0, 1.0]
+end
+
+@testset "Sylvester Miyajima enclosure" begin
+    A = [3.0 1.0 0.0; 0.0 2.5 0.3; 0.0 0.0 4.0]
+    B = [-1.5 0.2; 0.0 -0.75]
+    C = [1.0 0.5; -0.2 0.8; 0.3 -0.4]
+
+    n = size(B, 1)
+    K = kron(Matrix{Float64}(I, n, n), A) + kron(transpose(B), Matrix{Float64}(I, size(A, 1), size(A, 1)))
+    X_exact = reshape(K \ vec(C), size(A, 1), size(B, 1))
+
+    X̃ = X_exact .+ 1e-12 .* ones(size(X_exact))
+    enclosure = BallArithmetic.sylvester_miyajima_enclosure(A, B, C, X̃)
+
+    @test all(rad(enclosure) .>= 0)
+    diff = abs.(X_exact .- mid(enclosure))
+    @test all(diff .<= rad(enclosure))
+end
+
+@testset "Triangular Miyajima Sylvester block" begin
+    T = UpperTriangular([2.0 + 0.2im  0.3 - 0.1im   0.5 + 0.4im  -0.2 + 0.3im;
+                         0.0          1.5 + 0.6im  -0.1 - 0.2im  0.4 + 0.1im;
+                         0.0          0.0           2.7 - 0.5im  0.6 - 0.3im;
+                         0.0          0.0           0.0           3.4 + 0.2im])
+    k = 2
+
+    enclosure = BallArithmetic.triangular_sylvester_miyajima_enclosure(T, k)
+    @test size(enclosure) == (size(T, 1) - k, k)
+
+    Tmat = Matrix(T)
+    T11 = Matrix(Tmat[1:k, 1:k])
+    T22 = Matrix(Tmat[k+1:end, k+1:end])
+    T12 = Matrix(Tmat[1:k, k+1:end])
+
+    A = Matrix(adjoint(T22))
+    B = -Matrix(adjoint(T11))
+    C = Matrix(adjoint(T12))
+    In = Matrix{eltype(A)}(I, size(B, 1), size(B, 1))
+    Im = Matrix{eltype(A)}(I, size(A, 1), size(A, 1))
+    K = kron(In, A) + kron(transpose(B), Im)
+    Y_exact = reshape(K \ vec(C), size(A, 1), size(B, 1))
+
+    diff = abs.(Y_exact .- mid(enclosure))
+    @test all(diff .<= rad(enclosure))
+
+    @test_throws ArgumentError BallArithmetic.triangular_sylvester_miyajima_enclosure(T, size(T, 1))
+
+    nontriangular = Matrix(T)
+    nontriangular[end, 1] = 1.0
+    @test_throws ArgumentError BallArithmetic.triangular_sylvester_miyajima_enclosure(nontriangular, k)
 end
