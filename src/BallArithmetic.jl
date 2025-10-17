@@ -94,6 +94,6 @@ include("linear_system/backward_substitution.jl")
 include("certification/CertifScripts.jl")
 include("certification/sylvester.jl")
 
-export sylvester_miyajima_enclosure, solve_leading_triangular_sylvester
+export sylvester_miyajima_enclosure, triangular_sylvester_miyajima_enclosure
 
 end

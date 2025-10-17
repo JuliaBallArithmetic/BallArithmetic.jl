@@ -56,27 +56,35 @@ end
     @test all(diff .<= rad(enclosure))
 end
 
-@testset "Leading triangular Sylvester block" begin
-    A = UpperTriangular([2.0 1.0 0.5; 0.0 3.0 -0.2; 0.0 0.0 4.0])
-    B = UpperTriangular([1.5 -0.3 0.4; 0.0 0.75 0.6; 0.0 0.0 -1.2])
-    C = [0.4 0.1 -0.2; -0.3 0.25 0.0; 0.2 -0.1 0.5]
-
-    X11 = BallArithmetic.solve_leading_triangular_sylvester(A, B, C)
-    @test size(X11) == (1, 1)
-    @test isapprox(A[1, 1] * X11[1, 1] + X11[1, 1] * B[1, 1], C[1, 1]; atol = 1e-12)
-
+@testset "Triangular Miyajima Sylvester block" begin
+    T = UpperTriangular([2.0 + 0.2im  0.3 - 0.1im   0.5 + 0.4im  -0.2 + 0.3im;
+                         0.0          1.5 + 0.6im  -0.1 - 0.2im  0.4 + 0.1im;
+                         0.0          0.0           2.7 - 0.5im  0.6 - 0.3im;
+                         0.0          0.0           0.0           3.4 + 0.2im])
     k = 2
-    X_block = BallArithmetic.solve_leading_triangular_sylvester(A, B, C, k)
-    A_block = Matrix(A[1:k, 1:k])
-    B_block = Matrix(B[1:k, 1:k])
-    C_block = Matrix(C[1:k, 1:k])
-    @test A_block * X_block + X_block * B_block ≈ C_block atol = 1e-12
 
-    singular_A = UpperTriangular([1.0 0.0; 0.0 -1.0])
-    singular_B = UpperTriangular([-1.0 0.0; 0.0 2.0])
-    singular_C = zeros(2, 2)
-    @test_throws ArgumentError BallArithmetic.solve_leading_triangular_sylvester(singular_A, singular_B, singular_C)
+    enclosure = BallArithmetic.triangular_sylvester_miyajima_enclosure(T, k)
+    @test size(enclosure) == (size(T, 1) - k, k)
 
-    nontriangular = [1.0 1.0 0.0; 0.5 2.0 0.1; 0.0 0.0 3.0]
-    @test_throws ArgumentError BallArithmetic.solve_leading_triangular_sylvester(nontriangular, B, C)
+    Tmat = Matrix(T)
+    T11 = Matrix(Tmat[1:k, 1:k])
+    T22 = Matrix(Tmat[k+1:end, k+1:end])
+    T12 = Matrix(Tmat[1:k, k+1:end])
+
+    A = Matrix(adjoint(T22))
+    B = -Matrix(adjoint(T11))
+    C = Matrix(adjoint(T12))
+    In = Matrix{eltype(A)}(I, size(B, 1), size(B, 1))
+    Im = Matrix{eltype(A)}(I, size(A, 1), size(A, 1))
+    K = kron(In, A) + kron(transpose(B), Im)
+    Y_exact = reshape(K \ vec(C), size(A, 1), size(B, 1))
+
+    diff = abs.(Y_exact .- mid(enclosure))
+    @test all(diff .<= rad(enclosure))
+
+    @test_throws ArgumentError BallArithmetic.triangular_sylvester_miyajima_enclosure(T, size(T, 1))
+
+    nontriangular = Matrix(T)
+    nontriangular[end, 1] = 1.0
+    @test_throws ArgumentError BallArithmetic.triangular_sylvester_miyajima_enclosure(nontriangular, k)
 end

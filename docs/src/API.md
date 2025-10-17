@@ -22,5 +22,5 @@ BallArithmetic.CertifScripts.poly_from_roots
 
 ```@docs
 sylvester_miyajima_enclosure
-solve_leading_triangular_sylvester
+triangular_sylvester_miyajima_enclosure
 ```

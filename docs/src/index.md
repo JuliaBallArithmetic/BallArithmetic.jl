@@ -19,10 +19,11 @@ non-negative radii that provide rigorous entrywise enclosures.
 
 [`sylvester_miyajima_enclosure`](@ref) provides a componentwise enclosure for
 solutions of the Sylvester equation following the fast verification method of
-Ref. [MiyajimaSylvester2013](@cite).  When triangular spectral decompositions
-are available, [`solve_leading_triangular_sylvester`](@ref) solves the Sylvester
-subproblem associated with the leading diagonal block, which is useful when
-assembling block-wise certificates.
+Ref. [MiyajimaSylvester2013](@cite).  When the data originate from an upper
+triangular Schur factor `T`, [`triangular_sylvester_miyajima_enclosure`](@ref)
+extracts the blocks `T₁₁`, `T₁₂`, and `T₂₂`, solves the associated Sylvester
+system `T₂₂' Y₂ - Y₂ T₁₁' = T₁₂'`, and returns the Miyajima enclosure for the
+unknown block `Y₂`.
 
 ## `BallMatrix`
 

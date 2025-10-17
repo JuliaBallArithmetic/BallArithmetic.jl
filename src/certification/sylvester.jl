@@ -104,7 +104,8 @@ function sylvester_miyajima_enclosure(A::AbstractMatrix, B::AbstractMatrix,
     CMat_ball = BallMatrix(CMat)
 
     R = AMat_ball * X̃_ball + X̃_ball * BMat_ball - CMat_ball
-    R_W = WA_ball * R * transpose(WB)
+    WB_T_ball = BallMatrix(Matrix(transpose(WB)))
+    R_W = WA_ball * R * WB_T_ball
 
     R_W_abs = _abs_sup_matrix(R_W, realtype)
 
@@ -176,49 +177,50 @@ function _matrix_norm_inf(M)
 end
 
 """
-    solve_leading_triangular_sylvester(A, B, C, k = 1)
+    triangular_sylvester_miyajima_enclosure(T, k)
 
-Solve the Sylvester equation `A₁₁ * X + X * B₁₁ = C₁₁` associated with the
-leading diagonal block of size `k × k` of the upper-triangular matrices `A` and
-`B`. The right-hand side is given by the matching leading block of `C`.
+Construct the Miyajima enclosure for the Sylvester system associated with the
+upper-triangular matrix `T` partitioned as
 
-The matrices `A` and `B` must be square and upper triangular, and `C` must have
-dimensions compatible with the Sylvester equation `A * X + X * B = C`.
-The returned matrix corresponds to the `k × k` leading block of the solution
-`X` for this subsystem. The function throws an `ArgumentError` if any spectral
-gap `Aᵢᵢ + Bⱼⱼ` for the selected block vanishes, as the subsystem would have no
-unique solution.
+```
+T = [T₁₁  T₁₂;
+     0    T₂₂],
+```
+
+where `T₁₁` is `k × k`.  The enclosure is computed for the solution `Y₂` of the
+transformed Sylvester equation `T₂₂' * Y₂ - Y₂ * T₁₁' = T₁₂'`.  Forming the
+standard Sylvester data `A = T₂₂'`, `B = -T₁₁'`, and `C = T₁₂'`, the routine
+solves for an approximate `Y₂` and then calls [`sylvester_miyajima_enclosure`](@ref)
+to obtain a verified bound.  The returned `BallMatrix` encloses the exact `Y₂`
+entrywise.
+
+The matrix `T` must be square and upper triangular, and the block size `k`
+must satisfy `1 ≤ k < size(T, 1)`.
 """
-function solve_leading_triangular_sylvester(A::AbstractMatrix,
-        B::AbstractMatrix, C::AbstractMatrix, k::Integer = 1)
-    mA, nA = size(A)
-    mA == nA || throw(DimensionMismatch("A must be square"))
-    mB, nB = size(B)
-    mB == nB || throw(DimensionMismatch("B must be square"))
-    size(C) == (mA, nB) || throw(DimensionMismatch("C must be of size ($mA, $nB)"))
+function triangular_sylvester_miyajima_enclosure(T::AbstractMatrix, k::Integer)
+    n, m = size(T)
+    n == m || throw(DimensionMismatch("T must be square"))
+    1 <= k < n || throw(ArgumentError("k must satisfy 1 ≤ k < $n"))
 
-    0 < k <= min(mA, nB) || throw(ArgumentError("k must satisfy 1 ≤ k ≤ $(min(mA, nB))"))
+    Ttype = promote_type(eltype(T), Float64)
+    Tmat = Matrix{Ttype}(T)
+    istriu(Tmat) || throw(ArgumentError("T must be upper triangular"))
 
-    istriu(Matrix(A)) || throw(ArgumentError("A must be upper triangular"))
-    istriu(Matrix(B)) || throw(ArgumentError("B must be upper triangular"))
+    T11 = @view Tmat[1:k, 1:k]
+    T22 = @view Tmat[k+1:n, k+1:n]
+    T12 = @view Tmat[1:k, k+1:n]
 
-    block_type = promote_type(eltype(A), eltype(B), eltype(C))
+    A = Matrix{Ttype}(adjoint(T22))
+    B = -Matrix{Ttype}(adjoint(T11))
+    C = Matrix{Ttype}(adjoint(T12))
 
-    A11 = Matrix{block_type}(A[1:k, 1:k])
-    B11 = Matrix{block_type}(B[1:k, 1:k])
-    C11 = Matrix{block_type}(C[1:k, 1:k])
+    mA = size(A, 1)
+    nB = size(B, 1)
+    ImA = Matrix{Ttype}(I, mA, mA)
+    InB = Matrix{Ttype}(I, nB, nB)
+    K = kron(InB, A) + kron(transpose(B), ImA)
+    Y_vec = K \ vec(C)
+    Ỹ = reshape(Y_vec, mA, nB)
 
-    for i in 1:k, j in 1:k
-        gap = A11[i, i] + B11[j, j]
-        iszero(gap) && throw(ArgumentError("Encountered zero spectral gap at ($(i), $(j))"))
-    end
-
-    if k == 1
-        return C11 ./ (A11[1, 1] + B11[1, 1])
-    end
-
-    Ik = Matrix{block_type}(I, k, k)
-    K = kron(Ik, A11) + kron(transpose(B11), Ik)
-    X_vec = K \ vec(C11)
-    return reshape(X_vec, k, k)
+    return sylvester_miyajima_enclosure(A, B, C, Ỹ)
 end
