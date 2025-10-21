@@ -13,72 +13,105 @@ function helper_i(v::BallVector, i)::BallVector
 end
 
 """
-Qi1984 intervals for singular values (Theorem 2).
-Returns intervals B_i as a Vector{Ball}.
+    qi_intervals(A::BallMatrix)
+
+Qi (1984, Theorem 2) intervals for singular values. Returns the
+intervals `Bᵢ` as a `Vector{Ball}`. See Ref. [Qi1984](@cite).
 """
 function qi_intervals(A::BallMatrix)
     m, n = size(A)
     N = min(m, n)
-    B = Ball[]
+    N == 0 && return Ball[]
+
+    intervals = Ball[]
     for i in 1:N
         ai = abs(A[i, i])
         ri = upper_bound_norm(helper_i(A[i, :], i), 1)
         ci = upper_bound_norm(helper_i(A[:, i], i), 1)
         si = max(ri, ci)
 
-        if inf(ai - si) < 0
-            c = sup((ai + si) / 2)
-            r = c
-            push!(B, Ball(c, r))
-        else
-            push!(B, ai + Ball(0, si))
-        end
+        a_lower = inf(ai)
+        a_upper = sup(ai)
+
+        lower_raw = @down a_lower - si
+        lower = max(lower_raw, zero(lower_raw))
+        upper = @up a_upper + si
+
+        center = (lower + upper) / 2
+        upper_radius = @up upper - center
+        lower_radius = @up center - lower
+        radius = max(upper_radius, lower_radius)
+
+        push!(intervals, Ball(center, radius))
     end
-    return B
+
+    return intervals
 end
 
 """
-Sharper square-root intervals (Theorem 3).
+    qi_sqrt_intervals(A::BallMatrix)
+
+Sharper square-root intervals for the singular values (Qi 1984,
+Theorem 3). See Ref. [Qi1984](@cite).
 """
 function qi_sqrt_intervals(A::BallMatrix)
     m, n = size(A)
     N = min(m, n)
-    G = Ball[]
+    N == 0 && return Ball[]
+
+    intervals = Ball[]
     for i in 1:N
         ai = abs(A[i, i])
         ri = upper_bound_norm(helper_i(A[i, :], i), 1)
         ci = upper_bound_norm(helper_i(A[:, i], i), 1)
 
-        Δc = ai^2 - ai * ci + (ci^2) / 4
-        Δr = ai^2 - ai * ri + (ri^2) / 4
+        a_lower = inf(ai)
+        a_upper = sup(ai)
 
-        if inf(Δc) < 0
-            Δc = 0
+        ci_half_down = @down ci * 0.5
+        ci_half_up = @up ci * 0.5
+        ri_half_down = @down ri * 0.5
+        ri_half_up = @up ri * 0.5
+
+        zero_val = zero(a_lower)
+        lc = if a_upper ≤ ci_half_down
+            @down zero_val - a_upper
+        elseif a_lower ≥ ci_half_up
+            @down a_lower - ci
+        else
+            @down zero_val - ci_half_up
         end
-        if inf(Δr) < 0
-            Δr = 0
+
+        lr = if a_upper ≤ ri_half_down
+            @down zero_val - a_upper
+        elseif a_lower ≥ ri_half_up
+            @down a_lower - ri
+        else
+            @down zero_val - ri_half_up
         end
-        lc = inf(sqrt(Δc) - Ball(ci) / 2)
-        lr = inf(sqrt(Δr) - Ball(ri) / 2)
 
-        Δc = ai^2 + ai * ci + (ci^2) / 4
-        Δr = ai^2 + ai * ri + (ri^2) / 4
-        uc = sup(sqrt(Δc) + Ball(ci) / 2)
-        ur = sup(sqrt(Δr) + Ball(ri) / 2)
+        uc = @up a_upper + ci
+        ur = @up a_upper + ri
 
-        l = max(min(lc, lr), 0)
-        u = max(uc, ur)
+        lower = max(min(lc, lr), zero(lc))
+        upper = max(uc, ur)
 
-        c = (l + u) / 2
-        r = @up (u - l) / 2.0
+        center = (lower + upper) / 2
+        upper_radius = @up upper - center
+        lower_radius = @up center - lower
+        radius = max(upper_radius, lower_radius)
 
-        push!(G, Ball(c, r))
+        push!(intervals, Ball(center, radius))
     end
-    return G
+
+    return intervals
 end
 
 """
-Rebalanced (Theorem 2).
+    qi_intervals_rebalanced(A::BallMatrix)
+
+Qi (1984, Theorem 2) intervals after the balancing transformation
+suggested in the paper. See Ref. [Qi1984](@cite).
 """
 function qi_intervals_rebalanced(A::BallMatrix)
     norm_r = [norm(v, 1) for v in eachrow(A.c)]
@@ -94,7 +127,10 @@ function qi_intervals_rebalanced(A::BallMatrix)
 end
 
 """
-Rebalanced (Theorem 3).
+    qi_sqrt_intervals_rebalanced(A::BallMatrix)
+
+Qi (1984, Theorem 3) square-root intervals after the balancing
+transformation suggested in the paper. See Ref. [Qi1984](@cite).
 """
 function qi_sqrt_intervals_rebalanced(A::BallMatrix)
     norm_r = [norm(v, 1) for v in eachrow(A.c)]

@@ -58,11 +58,11 @@ end
 
 using RoundingEmulator, MacroTools, SetRounding
 
-export ±, mid, rad
+export ±, mid, rad, midtype, radtype
 
 include("rounding/rounding.jl")
 include("types/ball.jl")
-export Ball, BallF64, BallComplexF64, inf, sup
+export Ball, BallF64, BallComplexF64, inf, sup, ball_hull, intersect_ball
 
 include("types/array.jl")
 export BallArray
@@ -84,7 +84,9 @@ export upper_bound_L1_opnorm, upper_bound_L2_opnorm, upper_bound_L_inf_opnorm
 include("eigenvalues/gev.jl")
 include("eigenvalues/upper_bound_spectral.jl")
 include("svd/singular_gerschgorin.jl")
+include("svd/miyajima_vbd.jl")
 include("svd/svd.jl")
+export MiyajimaVBDResult, RigorousSVDResult, miyajima_vbd, rigorous_svd, svdbox
 include("pseudospectra/rigorous_contour.jl")
 include("matrix_classifiers/is_M_matrix.jl")
 
