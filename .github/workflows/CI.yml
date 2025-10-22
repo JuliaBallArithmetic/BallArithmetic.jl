@@ -58,6 +58,6 @@ jobs:
       - run: |
           julia --project=docs -e '
             using Documenter: DocMeta, doctest
-            using BallArithmetic
-            DocMeta.setdocmeta!(BallArithmetic, :DocTestSetup, :(using BallArithmetic); recursive=true)
-            doctest(BallArithmetic)'
+            using JakobsonSymm
+            DocMeta.setdocmeta!(JakobsonSymm, :DocTestSetup, :(using JakobsonSymm); recursive=true)
+            doctest(JakobsonSymm)'
