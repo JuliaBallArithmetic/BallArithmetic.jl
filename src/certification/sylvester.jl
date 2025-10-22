@@ -3,7 +3,7 @@
 
 Compute a Miyajima-style verified enclosure for the solution of the Sylvester
 problem `A * X + X * B = C`.  The method follows the componentwise certificate
-from Ref. [`MiyajimaSylvester2013`](@cite) and returns a `BallMatrix` whose
+from Ref. [MiyajimaSylvester2013](@cite) and returns a `BallMatrix` whose
 midpoint is the supplied approximation `X̃` and whose radii enclose the exact
 solution entrywise.
 
