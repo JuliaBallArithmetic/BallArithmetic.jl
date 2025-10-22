@@ -49,7 +49,7 @@
         tiny_rad = ArbNumerics.ArbReal("1e-4010")
         tiny_entry = ArbNumerics.setball(tiny_mid, tiny_rad)
 
-        tiny_ball = BallMatrix(reshape(tiny_entry, 1, 1))
+        tiny_ball = BallMatrix(fill(tiny_entry, 1, 1))
 
         @test tiny_ball.c[1] == 0.0
 
@@ -64,7 +64,7 @@
         @test expected_tiny_radius > 0
 
         tiny_complex_entry = ArbNumerics.ArbComplex(tiny_entry, ArbNumerics.setball(-tiny_mid, tiny_rad))
-        tiny_complex_ball = BallMatrix(reshape(tiny_complex_entry, 1, 1))
+        tiny_complex_ball = BallMatrix(fill(tiny_complex_entry, 1, 1))
 
         @test tiny_complex_ball.c[1] == ComplexF64(0.0, 0.0)
 
