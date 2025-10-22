@@ -290,7 +290,7 @@ function schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur::Bool 
     for ii in length(Ab):-1:1
         IA = Ab[ii]
         Aii = TA[IA, IA]
-        for jj in length(Bb):-1:1
+        for jj in 1:length(Bb)
             JB = Bb[jj]
             Bjj = TB[JB, JB]
 
@@ -300,7 +300,7 @@ function schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur::Bool 
                 IK = Ab[kk]
                 RHS -= TA[IA, IK] * Ymid[IK, JB]
             end
-            for ℓ in (jj + 1):length(Bb)
+            for ℓ in 1:(jj - 1)
                 JL = Bb[ℓ]
                 RHS -= Ymid[IA, JL] * TB[JL, JB]
             end
@@ -349,7 +349,7 @@ function schur_sylvester_midpoint(A, B, C; prefer_complex_schur::Bool = true)
     for ii in length(Ab):-1:1
         IA = Ab[ii]
         Aii = TA[IA, IA]
-        for jj in length(Bb):-1:1
+        for jj in 1:length(Bb)
             JB = Bb[jj]
             Bjj = TB[JB, JB]
 
@@ -358,7 +358,7 @@ function schur_sylvester_midpoint(A, B, C; prefer_complex_schur::Bool = true)
                 IK = Ab[kk]
                 RHS -= TA[IA, IK] * Y[IK, JB]
             end
-            for ℓ in (jj + 1):length(Bb)
+            for ℓ in 1:(jj - 1)
                 JL = Bb[ℓ]
                 RHS -= Y[IA, JL] * TB[JL, JB]
             end

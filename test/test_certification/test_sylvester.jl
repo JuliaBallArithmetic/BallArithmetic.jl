@@ -72,6 +72,23 @@ end
         assert_encloses(BM, Xtrue; atol = 1e-12)
     end
 
+    @testset "Schur fallback respects block coupling order" begin
+        A = Diagonal([2.0, 3.0, 5.0]) |> Matrix
+        B = [1.0 1.0 0.0; 0.0 4.0 2.0; 0.0 0.0 6.0]
+        C = [1.0 2.0 3.0; 4.0 5.0 6.0; 7.0 8.0 9.0]
+        Xtrue = exact_sylvester(A, B, C)
+
+        Xmid_complex = schur_sylvester_midpoint(A, B, C; prefer_complex_schur = true)
+        @test norm(Xmid_complex - Xtrue) ≤ 1e-13
+        BM_complex = schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur = true)
+        assert_encloses(BM_complex, Xtrue; atol = 1e-13)
+
+        Xmid_real = schur_sylvester_midpoint(A, B, C; prefer_complex_schur = false)
+        @test norm(Xmid_real - Xtrue) ≤ 1e-13
+        BM_real = schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur = false)
+        assert_encloses(BM_real, Xtrue; atol = 1e-13)
+    end
+
     # 3) Wrapper: try fast, else fallback (we only assert correctness)
     @testset "wrapper: verified_sylvester_enclosure" begin
         n = 6
