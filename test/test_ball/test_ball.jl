@@ -93,4 +93,25 @@
     b = Ball(1.5, 0.1)
     diff = a - b
     @test 1.5 ∈ diff
+
+    # hull and intersection of real balls
+    left = Ball(-1.0, 0.5)  # [-1.5, -0.5]
+    right = Ball(-0.6, 0.75)  # [-1.35, 0.15]
+    hull = ball_hull(left, right)
+    @test inf(hull) <= -1.5
+    @test sup(hull) >= 0.15
+    overlap = intersect_ball(left, right)
+    @test overlap isa Ball
+    @test isapprox(inf(overlap), -1.35; atol = eps())
+    @test isapprox(sup(overlap), -0.5; atol = eps())
+
+    cleft = Ball(-1.0 + 2.0im, 0.5)
+    cright = Ball(0.25 - 0.75im, 0.2)
+    complex_hull = ball_hull(cleft, cright)
+    @test cleft ∈ complex_hull
+    @test cright ∈ complex_hull
+
+    disjoint_left = Ball(-5.0, 0.3)
+    disjoint_right = Ball(-4.0, 0.3)
+    @test intersect_ball(disjoint_left, disjoint_right) === nothing
 end

@@ -76,10 +76,18 @@ is useful for allocating arrays that mirror the internal layout of a
 ball or a collection of balls.
 """
 midtype(::Ball{T, CT}) where {T, CT} = CT
-radtype(::Ball{T, CT}) where {T, CT} = T
 midtype(::Type{Ball{T, CT}}) where {T, CT} = CT
-radtype(::Type{Ball{T, CT}}) where {T, CT} = T
 midtype(::Type{Ball}) = Float64
+
+"""
+    radtype(x)
+
+Return the floating-point type used to store radii for `x`. The helper
+accepts either a ball instance or the associated type, mirroring the
+behaviour of [`midtype`](@ref).
+"""
+radtype(::Ball{T, CT}) where {T, CT} = T
+radtype(::Type{Ball{T, CT}}) where {T, CT} = T
 radtype(::Type{Ball}) = Float64
 
 """
@@ -99,6 +107,75 @@ evaluating `mid(x) - rad(x)` with downward rounding.
 inf(x::Ball) = @down x.c - x.r
 
 Base.show(io::IO, ::MIME"text/plain", x::Ball) = print(io, x.c, " ± ", x.r)
+
+#################
+# SET OPERATIONS #
+#################
+
+"""
+    ball_hull(a::Ball, b::Ball)
+
+Return the smallest ball that contains both `a` and `b`. For real centres
+the function encloses the convex hull on the real line. When the midpoints
+are complex the result encloses both discs while keeping the centre as
+close as possible to one of the inputs so that subsequent operations remain
+stable.
+"""
+function ball_hull(a::Ball{T, T}, b::Ball{T, T}) where {T}
+    lower = min(inf(a), inf(b))
+    upper = max(sup(a), sup(b))
+    center = setrounding(T, RoundNearest) do
+        (lower + upper) / 2
+    end
+    radius = setrounding(T, RoundUp) do
+        (upper - lower) / 2
+    end
+    return Ball(center, radius)
+end
+
+function ball_hull(a::Ball{T, Complex{T}}, b::Ball{T, Complex{T}}) where {T}
+    center_a = Ball(mid(a))
+    center_b = Ball(mid(b))
+    distance = abs(center_a - center_b)
+
+    coverage_from_a = setrounding(T, RoundUp) do
+        add_up(add_up(distance.c, distance.r), rad(b))
+    end
+    coverage_from_b = setrounding(T, RoundUp) do
+        add_up(add_up(distance.c, distance.r), rad(a))
+    end
+
+    option_a = max(rad(a), coverage_from_a)
+    option_b = max(rad(b), coverage_from_b)
+
+    if option_a <= option_b
+        return Ball(mid(a), option_a)
+    else
+        return Ball(mid(b), option_b)
+    end
+end
+
+"""
+    intersect_ball(a::Ball, b::Ball)
+
+Return the intersection of the real balls `a` and `b`. When the balls do
+not overlap the function returns `nothing` to indicate that the
+intersection is empty.
+"""
+function intersect_ball(a::Ball{T, T}, b::Ball{T, T}) where {T}
+    lower = max(inf(a), inf(b))
+    upper = min(sup(a), sup(b))
+    if lower > upper
+        return nothing
+    end
+    center = setrounding(T, RoundNearest) do
+        (lower + upper) / 2
+    end
+    radius = setrounding(T, RoundUp) do
+        (upper - lower) / 2
+    end
+    return Ball(center, radius)
+end
 
 ###############
 # CONVERSIONS #
