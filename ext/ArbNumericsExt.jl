@@ -19,9 +19,14 @@ function _arb_to_float_with_radius(x::ArbNumerics.ArbReal{P}) where {P}
     mid_f = Float64(mid)
     round_err = abs(mid - ArbNumerics.ArbReal(mid_f))
 
+    total = rad + round_err
+
     rad_f = setrounding(Float64, RoundUp) do
-        total = rad + round_err
         Float64(ArbNumerics.midpoint(total)) + Float64(ArbNumerics.radius(total))
+    end
+
+    if rad_f == 0.0 && !iszero(total)
+        rad_f = nextfloat(0.0)
     end
 
     return mid_f, rad_f
@@ -39,12 +44,17 @@ function _arbcomplex_to_float_with_radius(x::ArbNumerics.ArbComplex{P}) where {P
     err_real = abs(mid_real - ArbNumerics.ArbReal(real(mid)))
     err_imag = abs(mid_imag - ArbNumerics.ArbReal(imag(mid)))
 
+    total_real = ArbNumerics.radius(real_part) + err_real
+    total_imag = ArbNumerics.radius(imag_part) + err_imag
+
     rad = setrounding(Float64, RoundUp) do
-        total_real = ArbNumerics.radius(real_part) + err_real
-        total_imag = ArbNumerics.radius(imag_part) + err_imag
         real_hi = Float64(ArbNumerics.midpoint(total_real)) + Float64(ArbNumerics.radius(total_real))
         imag_hi = Float64(ArbNumerics.midpoint(total_imag)) + Float64(ArbNumerics.radius(total_imag))
         sqrt(real_hi^2 + imag_hi^2)
+    end
+
+    if rad == 0.0 && (!iszero(total_real) || !iszero(total_imag))
+        rad = nextfloat(0.0)
     end
 
     return mid, rad

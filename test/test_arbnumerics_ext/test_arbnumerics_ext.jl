@@ -42,6 +42,10 @@
         sqrt(real_hi^2 + imag_hi^2)
     end
 
+    if expected_rad == 0.0 && (!iszero(total_real) || !iszero(total_imag))
+        expected_rad = nextfloat(0.0)
+    end
+
     @test D.r[1] == expected_rad
 
     @testset "Subnormal rounding" begin
@@ -60,8 +64,12 @@
             Float64(ArbNumerics.midpoint(total)) + Float64(ArbNumerics.radius(total))
         end
 
+        if expected_tiny_radius == 0.0 && !iszero(total)
+            expected_tiny_radius = nextfloat(0.0)
+        end
+
         @test tiny_ball.r[1] == expected_tiny_radius
-        @test expected_tiny_radius > 0
+        @test expected_tiny_radius == nextfloat(0.0)
 
         tiny_complex_entry = ArbNumerics.ArbComplex(tiny_entry, ArbNumerics.setball(-tiny_mid, tiny_rad))
         tiny_complex_ball = BallMatrix(fill(tiny_complex_entry, 1, 1))
@@ -80,7 +88,11 @@
             sqrt(real_hi^2 + imag_hi^2)
         end
 
+        if expected_tiny_complex_radius == 0.0 && (!iszero(total_real) || !iszero(total_imag))
+            expected_tiny_complex_radius = nextfloat(0.0)
+        end
+
         @test tiny_complex_ball.r[1] == expected_tiny_complex_radius
-        @test expected_tiny_complex_radius > 0
+        @test expected_tiny_complex_radius == nextfloat(0.0)
     end
 end
