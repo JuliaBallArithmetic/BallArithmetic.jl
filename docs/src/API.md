@@ -24,3 +24,9 @@ BallArithmetic.CertifScripts.poly_from_roots
 sylvester_miyajima_enclosure
 triangular_sylvester_miyajima_enclosure
 ```
+
+## Numerical tests
+
+```@docs
+BallArithmetic.NumericalTest.rounding_test
+```

@@ -64,7 +64,7 @@ function svdbox(A::BallMatrix{T}; apply_vbd::Bool = true) where {T}
     return result.singular_values
 end
 
-function _certify_svd(A::BallMatrix{T}, svdA::SVD; apply_vbd::Bool) where {T}
+function _certify_svd(A::BallMatrix{T}, svdA::SVD; apply_vbd::Bool = true) where {T}
     U = BallMatrix(svdA.U)
     V = BallMatrix(svdA.V)
     Vt = BallMatrix(svdA.Vt)
