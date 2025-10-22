@@ -9,24 +9,32 @@ using BallArithmetic
     @test !isempty(result.certification_log)
     @test result.minimum_singular_value > 0
     @test result.resolvent_original >= result.resolvent_schur
+
+    result_no_vbd = BallArithmetic.CertifScripts.run_certification(A, circle; η = 0.9,
+        check_interval = 4, log_io = IOBuffer(), apply_vbd = false)
+    @test !isempty(result_no_vbd.certification_log)
+    @test result_no_vbd.minimum_singular_value > 0
 end
 
 @testset "CertifScripts distributed" begin
     using Distributed
     circle = BallArithmetic.CertifScripts.CertificationCircle(0.0, 0.25; samples = 8)
     A = BallArithmetic.BallMatrix(Matrix{ComplexF64}(I, 2, 2))
-    result = BallArithmetic.CertifScripts.run_certification(A, circle, 1; η = 0.9, check_interval = 4, log_io = IOBuffer(), channel_capacity = 4)
+    result = BallArithmetic.CertifScripts.run_certification(A, circle, 1; η = 0.9, check_interval = 4,
+        log_io = IOBuffer(), channel_capacity = 4, apply_vbd = false)
     @test result.circle == circle
     @test !isempty(result.certification_log)
 
     pids = addprocs(1)
     pool = WorkerPool(pids)
     try
-        pooled_result = BallArithmetic.CertifScripts.run_certification(A, circle, pool; η = 0.9, check_interval = 4, log_io = IOBuffer(), channel_capacity = 4)
+        pooled_result = BallArithmetic.CertifScripts.run_certification(A, circle, pool; η = 0.9, check_interval = 4,
+            log_io = IOBuffer(), channel_capacity = 4)
         @test pooled_result.circle == circle
         @test !isempty(pooled_result.certification_log)
 
-        reuse_result = BallArithmetic.CertifScripts.run_certification(A, circle, pool; η = 0.9, check_interval = 4, log_io = IOBuffer(), channel_capacity = 4)
+        reuse_result = BallArithmetic.CertifScripts.run_certification(A, circle, pool; η = 0.9, check_interval = 4,
+            log_io = IOBuffer(), channel_capacity = 4, apply_vbd = false)
         @test reuse_result.circle == circle
         @test !isempty(reuse_result.certification_log)
     finally

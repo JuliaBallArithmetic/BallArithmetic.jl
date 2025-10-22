@@ -39,7 +39,7 @@ end
 function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::CertifScripts.CertificationCircle,
         worker_ids::Vector{Int}; polynomial = nothing, η::Real = 0.5, check_interval::Integer = 100,
         snapshot_path::Union{Nothing, AbstractString} = nothing, log_io::IO = stdout,
-        channel_capacity::Integer = 1024, Cbound = 1.0, cleanup_workers::Bool)
+        channel_capacity::Integer = 1024, Cbound = 1.0, apply_vbd::Bool = true, cleanup_workers::Bool)
 
     isempty(worker_ids) && throw(ArgumentError("no worker processes available for certification"))
     channel_capacity < 1 && throw(ArgumentError("channel_capacity must be positive"))
@@ -76,11 +76,12 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
         result_channel = RemoteChannel(() -> Channel{NamedTuple}(channel_capacity))
 
         CertifScripts.configure_certification!(; job_channel = job_channel, result_channel = result_channel,
-            certification_log = certification_log, snapshot = snapshot_base, io = log_io)
+            certification_log = certification_log, snapshot = snapshot_base, io = log_io,
+            apply_vbd = apply_vbd)
 
         worker_tasks = Future[]
         for pid in worker_ids
-            push!(worker_tasks, Distributed.@spawnat pid CertifScripts.dowork(job_channel, result_channel))
+            push!(worker_tasks, Distributed.@spawnat pid CertifScripts.dowork(job_channel, result_channel; apply_vbd = apply_vbd))
         end
 
         arcs = CertifScripts._initial_arcs(circle)
@@ -244,6 +245,8 @@ certification samples in parallel.
   with worker processes.
 - `Cbound = 1.0`: constant used by [`CertifScripts.bound_res_original`](@ref)
   when translating Schur resolvent bounds to the original matrix.
+- `apply_vbd = true`: whether to employ Miyajima's verified block-diagonal
+  preconditioner while bounding singular values on workers.
 
 The return value matches the serial flavour, exposing the Schur data,
 certification log, and resolvent bounds in a named tuple.  When new workers are
