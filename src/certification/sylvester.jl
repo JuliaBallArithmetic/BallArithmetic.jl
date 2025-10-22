@@ -266,10 +266,10 @@ when the eigenvector-based Miyajima method is not applicable.
 function schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur::Bool = true)
     # 1) Unitary Schur decompositions
     if prefer_complex_schur
-        SA = schur(complex.(A))         # ComplexSchur: SA.Q, SA.T
+        SA = schur(complex.(A))         # ComplexSchur: SA.Z, SA.T
         SB = schur(complex.(B))
     else
-        SA = schur(A)                   # RealSchur:   SA.Q, SA.T (quasi-triangular)
+        SA = schur(A)                   # RealSchur:   SA.Z, SA.T (quasi-triangular)
         SB = schur(B)
     end
     QA, TA = SA.Z, SA.T
@@ -294,24 +294,57 @@ function schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur::Bool 
             JB = Bb[jj]
             Bjj = TB[JB, JB]
 
-            # Assemble local RHS for (ii,jj)
-            RHS = C̃[IA, JB]
-            for kk in (ii + 1):length(Ab)
+            # Assemble local RHS midpoint for (ii,jj)
+            RHS_mid = C̃[IA, JB]
+            for kk in (ii + 1):length(Ab)              # uses already-known Ymid blocks
                 IK = Ab[kk]
-                RHS -= TA[IA, IK] * Ymid[IK, JB]
+                RHS_mid -= TA[IA, IK] * Ymid[IK, JB]
             end
             for ℓ in (jj + 1):length(Bb)
                 JL = Bb[ℓ]
-                RHS -= Ymid[IA, JL] * TB[JL, JB]
+                RHS_mid -= Ymid[IA, JL] * TB[JL, JB]
             end
 
-            # Tiny (unverified) midpoint for this block
-            Ỹ = tiny_sylvester_midpoint(Aii, Bjj, RHS)
+            # === NEW: propagate uncertainty from later blocks into a ΔRHS bound ===
+            # |ΔRHS| ≤ Σ |TA[IA,IK]| * Yrad[IK,JB]  +  Σ Yrad[IA,JL] * |TB[JL,JB]|
+            ΔRHS_abs = zeros(_real_type(eltype(C̃)), length(IA), length(JB))
+            for kk in (ii + 1):length(Ab)
+                IK = Ab[kk]
+                ΔRHS_abs .+= abs.(TA[IA, IK]) * Yrad[IK, JB]
+            end
+            for ℓ in (jj + 1):length(Bb)
+                JL = Bb[ℓ]
+                ΔRHS_abs .+= Yrad[IA, JL] * abs.(TB[JL, JB])
+            end
+            # =====================================================================
+
+            # Tiny midpoint for this block
+            Ỹ = tiny_sylvester_midpoint(Aii, Bjj, RHS_mid)
             place!(Ymid, IA, JB, Ỹ)
 
-            # Verified Miyajima enclosure on the tiny block
-            Bij = sylvester_miyajima_enclosure(Aii, Bjj, RHS, Ỹ)
-            Eij = rad(Bij)                     # entrywise radii
+            # Verified Miyajima enclosure on the tiny block (midpoint RHS only)
+            Bij = sylvester_miyajima_enclosure(Aii, Bjj, RHS_mid, Ỹ)
+            Eij = rad(Bij)  # entrywise radii from Miyajima
+
+            # === NEW: inflate the radius to account for ΔRHS ===
+            p = size(Aii, 1)
+            q = size(Bjj, 1)
+            if p == 1 && q == 1
+                denom = abs(Aii[1, 1] + Bjj[1, 1])
+                # extra radius from RHS uncertainty:
+                Eij .+= ΔRHS_abs ./ denom
+            else
+                # (rare if prefer_complex_schur=true)
+                # Simple and safe normwise inflation for 2×2 cases:
+                # use Kronecker form to bound effect of ΔRHS:
+                K = kron(I(q), Aii) + kron(Bjj', I(p))
+                # Bound ||vec(ΔY)||∞ ≤ ||K^{-1}||∞ * ||vec(ΔRHS)||∞
+                # (numerical bound; if you want rigor, wrap with intervals/bigfloats)
+                kinf = opnorm(inv(K), Inf)
+                Eij .+= fill(kinf * maximum(ΔRHS_abs), size(Eij))
+            end
+            # =====================================================================
+
             place!(Yrad, IA, JB, Eij)
         end
     end
