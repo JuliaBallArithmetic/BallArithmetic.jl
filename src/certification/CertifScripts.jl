@@ -16,6 +16,7 @@ const _result_channel = Ref{Any}(nothing)
 const _certification_log = Ref{Any}(nothing)
 const _snapshot_path = Ref{Union{Nothing, AbstractString}}(nothing)
 const _log_io = Ref{IO}(stdout)
+const _apply_vbd = Ref{Bool}(true)
 
 """
     CertificationCircle(center, radius; samples = 256)
@@ -66,19 +67,23 @@ function set_schur_matrix!(T::BallMatrix)
 end
 
 """
-    configure_certification!(; job_channel, result_channel, certification_log, snapshot, io)
+    configure_certification!(; job_channel, result_channel, certification_log, snapshot, io, apply_vbd)
 
 Cache common resources used by the certification helpers.  The stored values
 are used as defaults by [`adaptive_arcs!`](@ref) and [`save_snapshot!`](@ref).
-Any keyword may be omitted to keep its previous value.
+Any keyword may be omitted to keep its previous value.  Providing `apply_vbd`
+updates the default behaviour used by [`dowork`](@ref) when bounding singular
+values.
 """
 function configure_certification!(; job_channel = nothing, result_channel = nothing,
-        certification_log = nothing, snapshot = nothing, io = nothing)
+        certification_log = nothing, snapshot = nothing, io = nothing,
+        apply_vbd::Union{Nothing, Bool} = nothing)
     job_channel !== nothing && (_job_channel[] = job_channel)
     result_channel !== nothing && (_result_channel[] = result_channel)
     certification_log !== nothing && (_certification_log[] = certification_log)
     snapshot !== nothing && (_snapshot_path[] = snapshot)
     io !== nothing && (_log_io[] = io)
+    apply_vbd !== nothing && (_apply_vbd[] = apply_vbd)
     return nothing
 end
 
@@ -88,10 +93,11 @@ function _require_config(ref::Base.RefValue, name::AbstractString)
     return value
 end
 
-function _evaluate_sample(T::BallMatrix, z::ComplexF64, idx::Int)
+function _evaluate_sample(T::BallMatrix, z::ComplexF64, idx::Int;
+        apply_vbd::Bool = _apply_vbd[])
     bz = Ball(z, 0.0)
 
-    elapsed = @elapsed Σ = svdbox(T - bz * LinearAlgebra.I)
+    elapsed = @elapsed Σ = svdbox(T - bz * LinearAlgebra.I; apply_vbd = apply_vbd)
 
     val = Σ[end]
     res = 1 / val
@@ -124,8 +130,9 @@ Process tasks received on `jobs`, computing the SVD certification routine for
 `T - zI`.  The Schur factor must have been registered in advance with
 [`set_schur_matrix!`](@ref).
 """
-function dowork(jobs, results)
+function dowork(jobs, results; apply_vbd::Union{Nothing, Bool} = nothing)
     T = _require_config(_schur_matrix, "Schur factor")
+    local_apply_vbd = apply_vbd === nothing ? _apply_vbd[] : apply_vbd
     while true
         job = try
             take!(jobs)
@@ -139,7 +146,7 @@ function dowork(jobs, results)
 
         i, z = job
         @debug "Received and working on" z
-        result = _evaluate_sample(T, z, i)
+        result = _evaluate_sample(T, z, i; apply_vbd = local_apply_vbd)
         put!(results, result)
     end
     return nothing
@@ -562,6 +569,8 @@ Run the adaptive certification routine on `circle` using a serial evaluator.
 - `log_io = stdout`: destination `IO` for log messages.
 - `Cbound = 1.0`: constant used by [`bound_res_original`](@ref) when lifting
   resolvent bounds back to the original matrix.
+- `apply_vbd = true`: whether to apply Miyajima's verified block-diagonal
+  preconditioner during singular value bounds.
 
 The return value is a named tuple containing the computed Schur form, the
 accumulated certification log, and the resolvent bounds for both the Schur
@@ -569,7 +578,7 @@ factor and the original matrix.
 """
 function run_certification(A::BallMatrix, circle::CertificationCircle;
         polynomial = nothing, η::Real = 0.5, check_interval::Integer = 100,
-        log_io::IO = stdout, Cbound = 1.0)
+        log_io::IO = stdout, Cbound = 1.0, apply_vbd::Bool = true)
 
     check_interval < 1 && throw(ArgumentError("check_interval must be positive"))
     η = Float64(η)
@@ -592,7 +601,7 @@ function run_certification(A::BallMatrix, circle::CertificationCircle;
 
     serial_evaluator = function (z::ComplexF64)
         eval_index[] += 1
-        return _evaluate_sample(schur_matrix, z, eval_index[])
+        return _evaluate_sample(schur_matrix, z, eval_index[]; apply_vbd = apply_vbd)
     end
 
     adaptive_arcs!(arcs, cache, pending, η; check_interval = check_interval,

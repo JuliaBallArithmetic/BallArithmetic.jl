@@ -122,7 +122,7 @@ function _certify_circle(T, λ, r, N)
         K = svd(T - z * I)
         z_ball = Ball(z, pearl_radius)
 
-        bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
+        bound = _certify_svd(BallMatrix(T) - z_ball * I, K; apply_vbd = true).singular_values[end]
         push!(out_bound, bound)
         push!(out_radiuses, pearl_radius)
     end
@@ -169,7 +169,7 @@ function _compute_exclusion_set(T, r; max_steps, rel_steps, λ = 0 + im * 0)
 
         # we certify in a ball around z_old
         z_ball = Ball(z_old, r_guaranteed)
-        bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
+        bound = _certify_svd(BallMatrix(T) - z_ball * I, K; apply_vbd = true).singular_values[end]
         push!(out_bound, bound)
         push!(out_radiuses, r_guaranteed)
         #print("test")
@@ -300,7 +300,7 @@ function _compute_enclosure_eigval(T, λ, ϵ; max_initial_newton, max_steps, rel
         # we certify the SVD on a ball around z_old
 
         z_ball = Ball(z_old, r_guaranteed)
-        bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
+        bound = _certify_svd(BallMatrix(T) - z_ball * I, K; apply_vbd = true).singular_values[end]
         push!(out_bound, bound)
         push!(radiuses, r_guaranteed)
 
