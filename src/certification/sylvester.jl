@@ -26,13 +26,16 @@ function sylvester_miyajima_enclosure(A::AbstractMatrix, B::AbstractMatrix,
     eigA = eigen(AMat)
     VA = Matrix(eigA.vectors)
     λA = eigA.values
-    WA = inv(VA)
 
     BT = Matrix(transpose(B))
     eigBT = eigen(BT)
     VB = Matrix(eigBT.vectors)
     λB = eigBT.values
-    WB = inv(VB)
+
+    I_m = Matrix{eltype(VA)}(I, m, m)
+    I_n = Matrix{eltype(VB)}(I, n, n)
+    WA = VA \ I_m
+    WB = VB \ I_n
 
     VA_ball = BallMatrix(VA)
     WA_ball = BallMatrix(WA)
@@ -42,9 +45,6 @@ function sylvester_miyajima_enclosure(A::AbstractMatrix, B::AbstractMatrix,
     BT_ball = BallMatrix(BT)
     diagA_ball = BallMatrix(Diagonal(λA))
     diagB_ball = BallMatrix(Diagonal(λB))
-
-    I_m = Matrix{eltype(WA)}(I, m, m)
-    I_n = Matrix{eltype(WB)}(I, n, n)
 
     SA = BallMatrix(I_m) - WA_ball * VA_ball
     SB = BallMatrix(I_n) - WB_ball * VB_ball
@@ -70,9 +70,10 @@ function sylvester_miyajima_enclosure(A::AbstractMatrix, B::AbstractMatrix,
         _matrix_norm_inf(abs_SB)
     end
 
-    norm_SA < 1 || throw(ArgumentError("\u2225S_A\u2225_\u221E must be < 1"))
-    norm_SB < 1 || throw(ArgumentError("\u2225S_B\u2225_\u221E must be < 1"))
-
+    norm_SA < 1 ||
+        throw(ArgumentError("‖S_A‖∞=$(norm_SA) must be < 1 (try Schur fallback)"))
+    norm_SB < 1 ||
+        throw(ArgumentError("‖S_B‖∞=$(norm_SB) must be < 1 (try Schur fallback)"))
 
     TA = setrounding(realtype, RoundUp) do
         abs_RA .+ (norm_RA / (1 - norm_SA)) .* abs_SA
@@ -89,7 +90,8 @@ function sylvester_miyajima_enclosure(A::AbstractMatrix, B::AbstractMatrix,
     λB_row = reshape(λB, 1, n)
     D̃ = λA_mat .+ λB_row
     abs_D̃ = abs.(D̃)
-    minimum(abs_D̃) > eps(realtype) || throw(ArgumentError("Encountered zero spectral gap"))
+    any(iszero, abs_D̃) &&
+        throw(ArgumentError("Encountered zero spectral gap (λ_i(A)+λ_j(B)=0)"))
 
     T_D = setrounding(realtype, RoundUp) do
         T ./ abs_D̃
@@ -207,8 +209,8 @@ function triangular_sylvester_miyajima_enclosure(T::AbstractMatrix, k::Integer)
     istriu(Tmat) || throw(ArgumentError("T must be upper triangular"))
 
     T11 = @view Tmat[1:k, 1:k]
-    T22 = @view Tmat[k+1:n, k+1:n]
-    T12 = @view Tmat[1:k, k+1:n]
+    T22 = @view Tmat[(k + 1):n, (k + 1):n]
+    T12 = @view Tmat[1:k, (k + 1):n]
 
     A = Matrix{Ttype}(adjoint(T22))
     B = -Matrix{Ttype}(adjoint(T11))
@@ -223,4 +225,225 @@ function triangular_sylvester_miyajima_enclosure(T::AbstractMatrix, k::Integer)
     Ỹ = reshape(Y_vec, mA, nB)
 
     return sylvester_miyajima_enclosure(A, B, C, Ỹ)
+end
+
+"""
+    verified_sylvester_enclosure(A, B, C; X̃=nothing, prefer_complex_schur=true)
+
+Verified enclosure (as `BallMatrix`) for the Sylvester equation
+
+    A*X + X*B = C
+
+It first tries the fast Miyajima eigenvector route:
+`sylvester_miyajima_enclosure(A,B,C,X̃)`. If that throws (ill-conditioned
+diagonalizers, resonance, or contraction failure), it falls back to a robust
+unitary-Schur, block-by-block verified method.
+
+- If `X̃ === nothing`, a numerical midpoint is computed via Schur back-substitution.
+- Set `prefer_complex_schur=false` to use real quasi-Schur (1×1/2×2 blocks).
+"""
+function verified_sylvester_enclosure(
+        A, B, C; X̃ = nothing, prefer_complex_schur::Bool = true)
+    # 0) if no midpoint provided, get a numerical one via Schur (no verification)
+    if X̃ === nothing
+        X̃ = schur_sylvester_midpoint(A, B, C; prefer_complex_schur)
+    end
+    # 1) try fast Miyajima eigenvector certificate
+    try
+        return sylvester_miyajima_enclosure(A, B, C, X̃)
+    catch
+        # 2) Schur fallback: verified, block-by-block
+        return schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur)
+    end
+end
+
+"""
+    schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur=true)
+Verified enclosure (as `BallMatrix`) for the Sylvester equation using the Schur decomposition,
+when the eigenvector-based Miyajima method is not applicable.
+
+"""
+function schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur::Bool = true)
+    # 1) Unitary Schur decompositions
+    if prefer_complex_schur
+        SA = schur(complex.(A))         # ComplexSchur: SA.Q, SA.T
+        SB = schur(complex.(B))
+    else
+        SA = schur(A)                   # RealSchur:   SA.Q, SA.T (quasi-triangular)
+        SB = schur(B)
+    end
+    QA, TA = SA.Z, SA.T
+    QB, TB = SB.Z, SB.T
+
+    # 2) Transform RHS into Schur basis
+    C̃ = QA' * C * QB
+
+    # 3) Block structure of TA, TB
+    Ab = schur_blocks(TA)
+    Bb = schur_blocks(TB)
+
+    # 4) Allocate midpoint and radii in Schur space
+    Ymid = zero(C̃)
+    Yrad = zeros(_real_type(eltype(C̃)), size(C̃))
+
+    # 5) Block back-substitution with verified per-block solves (reverse order)
+    for ii in length(Ab):-1:1
+        IA = Ab[ii]
+        Aii = TA[IA, IA]
+        for jj in length(Bb):-1:1
+            JB = Bb[jj]
+            Bjj = TB[JB, JB]
+
+            # Assemble local RHS for (ii,jj)
+            RHS = C̃[IA, JB]
+            for kk in (ii + 1):length(Ab)
+                IK = Ab[kk]
+                RHS -= TA[IA, IK] * Ymid[IK, JB]
+            end
+            for ℓ in (jj + 1):length(Bb)
+                JL = Bb[ℓ]
+                RHS -= Ymid[IA, JL] * TB[JL, JB]
+            end
+
+            # Tiny (unverified) midpoint for this block
+            Ỹ = tiny_sylvester_midpoint(Aii, Bjj, RHS)
+            place!(Ymid, IA, JB, Ỹ)
+
+            # Verified Miyajima enclosure on the tiny block
+            Bij = sylvester_miyajima_enclosure(Aii, Bjj, RHS, Ỹ)
+            Eij = rad(Bij)                     # entrywise radii
+            place!(Yrad, IA, JB, Eij)
+        end
+    end
+
+    # 6) Lift back to the original basis; entrywise radii via |Q| multipliers
+    Xmid = QA * Ymid * QB'
+    Xrad = abs.(QA) * Yrad * abs.(QB)'
+
+    return BallMatrix(Xmid, Xrad)
+end
+
+"""
+    schur_sylvester_midpoint(A,B,C; prefer_complex_schur=true)
+
+Numerical midpoint for `A*X + X*B = C` via Schur back-substitution (no verification).
+Used as default `X̃` if the caller doesn't pass one.
+"""
+function schur_sylvester_midpoint(A, B, C; prefer_complex_schur::Bool = true)
+    if prefer_complex_schur
+        SA = schur(complex.(A))
+        SB = schur(complex.(B))
+    else
+        SA = schur(A)
+        SB = schur(B)
+    end
+    QA, TA = SA.Z, SA.T
+    QB, TB = SB.Z, SB.T
+
+    C̃ = QA' * C * QB
+    Ab = schur_blocks(TA)
+    Bb = schur_blocks(TB)
+
+    Y = zero(C̃)
+
+    for ii in length(Ab):-1:1
+        IA = Ab[ii]
+        Aii = TA[IA, IA]
+        for jj in length(Bb):-1:1
+            JB = Bb[jj]
+            Bjj = TB[JB, JB]
+
+            RHS = C̃[IA, JB]
+            for kk in (ii + 1):length(Ab)
+                IK = Ab[kk]
+                RHS -= TA[IA, IK] * Y[IK, JB]
+            end
+            for ℓ in (jj + 1):length(Bb)
+                JL = Bb[ℓ]
+                RHS -= Y[IA, JL] * TB[JL, JB]
+            end
+
+            Yij = tiny_sylvester_midpoint(Aii, Bjj, RHS)
+            place!(Y, IA, JB, Yij)
+        end
+    end
+
+    return QA * Y * QB'
+end
+
+"""
+    schur_blocks(T; tol=nothing) -> Vector{UnitRange{Int}}
+
+Diagonal block ranges of a Schur form `T`.
+- Complex Schur: all 1×1 blocks.
+- Real Schur: detect 2×2 blocks when `abs(T[i+1,i]) > tol`.
+"""
+function schur_blocks(T; tol = nothing)
+    n, m = size(T)
+    n == m || throw(DimensionMismatch("T must be square"))
+
+    if eltype(T) <: Complex
+        return [i:i for i in 1:n]
+    end
+
+    RT = float(real(one(eltype(T))))
+    if tol === nothing
+        maxrowsum = zero(RT)
+        @inbounds for i in 1:n
+            s = zero(RT)
+            @inbounds for j in 1:n
+                s += abs(T[i, j])
+            end
+            maxrowsum = max(maxrowsum, s)
+        end
+        tol = sqrt(eps(RT)) * max(maxrowsum, one(RT))
+    end
+
+    blocks = Vector{UnitRange{Int}}()
+    i = 1
+    @inbounds while i <= n
+        if i < n && abs(T[i + 1, i]) > tol
+            push!(blocks, i:(i + 1))
+            i += 2
+        else
+            push!(blocks, i:i)
+            i += 1
+        end
+    end
+    return blocks
+end
+
+"""
+    tiny_sylvester_midpoint(Aii, Bjj, RHS)
+
+Fast midpoint for the tiny Sylvester subproblem
+`Aii*Y + Y*Bjj = RHS`, where `Aii` and `Bjj` are 1×1 or 2×2.
+"""
+function tiny_sylvester_midpoint(Aii, Bjj, RHS)
+    p = size(Aii, 1)
+    q = size(Bjj, 1)
+    if p == 1 && q == 1
+        return RHS / (Aii[1, 1] + Bjj[1, 1])
+    elseif p == 2 && q == 1
+        M = Aii + Bjj[1, 1] * I(2)
+        return M \ RHS
+    elseif p == 1 && q == 2
+        M = (Bjj + Aii[1, 1] * I(2))'
+        return (M \ RHS')'
+    elseif p == 2 && q == 2
+        K = kron(I(2), Aii) + kron(Bjj', I(2))
+        return reshape(K \ vec(RHS), 2, 2)
+    else
+        throw(ArgumentError("Unsupported block sizes p=$p, q=$q"))
+    end
+end
+
+"""
+    place!(M, I, J, B)
+
+Insert block `B` into matrix `M` at row-range `I` and col-range `J`.
+"""
+@inline function place!(M, I::UnitRange{Int}, J::UnitRange{Int}, B)
+    @inbounds M[I, J] .= B
+    return M
 end
