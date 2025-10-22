@@ -28,6 +28,15 @@ struct RigorousSVDResult{UT, ST, ΣT, VT, ET, RT, VBDT}
     block_diagonalisation::VBDT
 end
 
+Base.size(result::RigorousSVDResult) = size(result.singular_values)
+Base.length(result::RigorousSVDResult) = length(result.singular_values)
+Base.firstindex(result::RigorousSVDResult) = firstindex(result.singular_values)
+Base.lastindex(result::RigorousSVDResult) = lastindex(result.singular_values)
+Base.lastindex(result::RigorousSVDResult, i::Int) = lastindex(result.singular_values, i)
+Base.getindex(result::RigorousSVDResult, inds...) = getindex(result.singular_values, inds...)
+Base.iterate(result::RigorousSVDResult) = iterate(result.singular_values)
+Base.iterate(result::RigorousSVDResult, state) = iterate(result.singular_values, state)
+
 """
     rigorous_svd(A::BallMatrix; apply_vbd = true)
 
