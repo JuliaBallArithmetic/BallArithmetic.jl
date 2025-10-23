@@ -472,6 +472,7 @@ include("MMul/MMul2.jl")
 include("MMul/MMul3.jl")
 include("MMul/MMul4.jl")
 include("MMul/MMul5.jl")
+include("MMul/oishi_mmul.jl")
 # The specialised kernels above expose rigorous, rounded matrix
 # multiplication routines of increasing blocking order.  The fourth-order
 # variant is currently used by default in the high-level `*` methods, while

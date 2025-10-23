@@ -213,14 +213,43 @@ function triangular_sylvester_miyajima_enclosure(T::AbstractMatrix, k::Integer)
     B = -Matrix{Ttype}(adjoint(T11))
     C = Matrix{Ttype}(adjoint(T12))
 
-    #mA = size(A, 1)
-    #nB = size(B, 1)
-    #ImA = Matrix{Ttype}(I, mA, mA)
-    #InB = Matrix{Ttype}(I, nB, nB)
-    #K = kron(InB, A) + kron(transpose(B), ImA)
-    #Y_vec = K \ vec(C)
+    mA = size(A, 1)
+    nB = size(B, 1)
+    ImA = Matrix{Ttype}(I, mA, mA)
+    InB = Matrix{Ttype}(I, nB, nB)
+    K = kron(InB, A) + kron(transpose(B), ImA)
+    Y_vec = K \ vec(C)
 
     Ỹ = reshape(Y_vec, mA, nB)
 
     return sylvester_miyajima_enclosure(A, B, C, Ỹ)
+end
+
+# Input: A,B,C
+# 1. [Schur] A = Q TA Q*, B = Z TB Z*          // real Schur if real
+# 2. [Approx solve] Solve TA Yhat + Yhat TB = Q* C Z  (back/forward substitution)
+# 3. [Residual] R = (Q* C Z) - (TA Yhat + Yhat TB)
+# 4. [Preconditioner M] define M(·) as: solve TA Δ + Δ TB = (·)
+# 5. [Interval radius] pick initial Δ0 (e.g. scaled ||R|| bound)
+# 6. loop:
+#       // Krawczyk interval evaluation, outward rounding
+#       Kmid = Yhat - M( (TA Yhat + Yhat TB) - (Q* C Z) )
+#       E = I - M∘L   // realized by two triangular solves inside interval arithmetic
+#       Kset = Kmid + E([-Δ, +Δ])
+#       if Kset ⊆ (Yhat + (-Δ, +Δ)) then
+#           return verified enclosure for Y*, hence X* = Q Y* Z*
+#       else
+#           shrink Δ or recompute using refined Yhat; repeat
+
+function sylvester_krawczyk_enclosure(A::AbstractMatrix,
+        B::AbstractMatrix, C::AbstractMatrix, X̃::AbstractMatrix;
+        maxiter::Int = 10, tol::Real = 1e-12)
+    TA, QA, _ = schur(Matrix(A))
+    TB, QB, _ = schur(Matrix(B))
+
+    tildeC = adjoint(QA) * C * QB
+    Yhat = sylvester(TA, TB, tildeC)
+    R = tildeC - (TA * Yhat + Yhat * TB)
+
+    throw(ErrorException("sylvester_krawczyk_enclosure is not yet implemented"))
 end
