@@ -73,7 +73,6 @@ function sylvester_miyajima_enclosure(A::AbstractMatrix, B::AbstractMatrix,
     norm_SA < 1 || throw(ArgumentError("\u2225S_A\u2225_\u221E must be < 1"))
     norm_SB < 1 || throw(ArgumentError("\u2225S_B\u2225_\u221E must be < 1"))
 
-
     TA = setrounding(realtype, RoundUp) do
         abs_RA .+ (norm_RA / (1 - norm_SA)) .* abs_SA
     end
@@ -207,19 +206,20 @@ function triangular_sylvester_miyajima_enclosure(T::AbstractMatrix, k::Integer)
     istriu(Tmat) || throw(ArgumentError("T must be upper triangular"))
 
     T11 = @view Tmat[1:k, 1:k]
-    T22 = @view Tmat[k+1:n, k+1:n]
-    T12 = @view Tmat[1:k, k+1:n]
+    T22 = @view Tmat[(k + 1):n, (k + 1):n]
+    T12 = @view Tmat[1:k, (k + 1):n]
 
     A = Matrix{Ttype}(adjoint(T22))
     B = -Matrix{Ttype}(adjoint(T11))
     C = Matrix{Ttype}(adjoint(T12))
 
-    mA = size(A, 1)
-    nB = size(B, 1)
-    ImA = Matrix{Ttype}(I, mA, mA)
-    InB = Matrix{Ttype}(I, nB, nB)
-    K = kron(InB, A) + kron(transpose(B), ImA)
-    Y_vec = K \ vec(C)
+    #mA = size(A, 1)
+    #nB = size(B, 1)
+    #ImA = Matrix{Ttype}(I, mA, mA)
+    #InB = Matrix{Ttype}(I, nB, nB)
+    #K = kron(InB, A) + kron(transpose(B), ImA)
+    #Y_vec = K \ vec(C)
+
     Ỹ = reshape(Y_vec, mA, nB)
 
     return sylvester_miyajima_enclosure(A, B, C, Ỹ)
