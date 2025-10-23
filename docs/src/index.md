@@ -55,6 +55,26 @@ bA = BallMatrix(A, A/128)
 bA^2
 ```
 
+### Rounding-mode controlled products
+
+Some matrix enclosures benefit from explicitly steering the floating-point
+rounding mode.  The wrapper [`oishi_MMul`](@ref BallArithmetic.oishi_MMul)
+implements the Oishi–Rump product, which evaluates the real and imaginary
+parts of `F*G` with downward and upward rounding and returns the result as a
+`BallMatrix`.  The routine is particularly useful when replicating the
+eigenvalue and singular value enclosures described in Ref.
+[@RumpOishi2001](@cite).
+
+```@example oishi
+using BallArithmetic
+setprecision(BigFloat, 128) do
+    F = Complex{BigFloat}[1 + im 2; 3 - im 4]
+    G = Complex{BigFloat}[2 - im 1; -1 3 + im]
+    B = BallArithmetic.oishi_MMul(F, G)
+    (mid(B), rad(B))
+end
+```
+
 ```@autodocs
 Modules = [BallArithmetic]
 ```

@@ -1,7 +1,9 @@
-@testset "Test MMul structure support" begin
-    using LinearAlgebra
+using LinearAlgebra
+using Test
 
-    import BallArithmetic: abs_preserving_structure
+import BallArithmetic: abs_preserving_structure
+
+@testset "Test MMul structure support" begin
 
     @testset "abs_preserving_structure" begin
         # AbstractTriangular inputs preserve their type and zeroed structure
@@ -116,19 +118,19 @@
             Matrix(Cmix_right.r), Matrix(Cmix_right_dense.r); rtol = tol, atol = 0)
     end
 
-    using Test, Random
-
-    randC(T, m, n) = rand(T, m, n) .+ im * rand(T, m, n)
+    sampleC(T, m, n; re_scale = 1, im_scale = 2, shift = 0) = Complex{T}[
+        T(re_scale * (i + 2j) + shift) / T(3) + im * T(im_scale * (2i - j) + 2shift) / T(5)
+        for i in 1:m, j in 1:n
+    ]
 
     @testset "oishi_MMul: mid/rad and containment" begin
-        Random.seed!(0xC0FFEE)
         setprecision(BigFloat, 256) do
             for (m, k, n) in ((3, 3, 3), (4, 5, 2), (6, 3, 4))
-                F = randC(BigFloat, m, k)
-                G = randC(BigFloat, k, n)
+                F = sampleC(BigFloat, m, k; re_scale = 1, im_scale = 2, shift = 1)
+                G = sampleC(BigFloat, k, n; re_scale = 3, im_scale = 5, shift = 2)
 
                 # low-level rectangular bounds + working type
-                Hrl, Hru, Hil, Hiu, T = _oishi_MMul_up_lo(F, G)
+                Hrl, Hru, Hil, Hiu, T = BallArithmetic._oishi_MMul_up_lo(F, G)
 
                 # manual center/radius with directed rounding
                 half = T(0.5)
@@ -143,7 +145,7 @@
                 Hc = complex.(Rc, Ic)
 
                 # wrapper
-                B = oishi_MMul(F, G)
+                B = BallArithmetic.oishi_MMul(F, G)
 
                 # 1) mid/rad match our manual construction
                 @test mid(B) == Hc

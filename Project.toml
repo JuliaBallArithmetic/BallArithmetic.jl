@@ -23,6 +23,12 @@ FFTExt = "FFTW"
 IntervalArithmeticExt = "IntervalArithmetic"
 ArbNumericsExt = "ArbNumerics"
 
+[extras]
+Test = "8dfed614-5729-5b62-bb73-8f89d75bee26"
+
+[targets]
+test = ["Test"]
+
 [compat]
 ArbNumerics = "1"
 FFTW = "1"
