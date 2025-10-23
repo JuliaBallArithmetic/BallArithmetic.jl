@@ -30,3 +30,9 @@ triangular_sylvester_miyajima_enclosure
 ```@docs
 BallArithmetic.NumericalTest.rounding_test
 ```
+
+## Rounding-mode controlled products
+
+```@docs
+BallArithmetic.oishi_MMul
+```
