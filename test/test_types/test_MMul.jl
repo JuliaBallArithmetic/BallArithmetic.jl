@@ -187,6 +187,14 @@ import BallArithmetic: abs_preserving_structure
                 @test mid(Brect_direct) == mid(Brect)
                 @test rad(Brect_direct) == rad(Brect)
 
+                Krlp, Krup, Kilp, Kiup, Tp = BallArithmetic._ccrprod_prime(Hc, Hr, J)
+                @test Tp == T
+                Brect_prime, Tccr_prime = BallArithmetic._ccr(Krlp, Krup, Kilp, Kiup)
+                @test Tccr_prime == Tp
+                prod_ball_prime = Hball * Jball
+                @test mid(Brect_prime) == mid(prod_ball_prime)
+                @test rad(Brect_prime) == rad(prod_ball_prime)
+
                 for _ in 1:5
                     perturb = [Hr[i, j] == 0 ? zero(BigFloat) : Hr[i, j] *
                         (rand(BigFloat) - BigFloat(0.5)) * 2 for i in 1:k, j in 1:n]
@@ -197,6 +205,10 @@ import BallArithmetic: abs_preserving_structure
                     JS = Complex{BigFloat}.(J) * Hsamp
                     @test all(Krl .<= real(JS) .<= Kru)
                     @test all(Kil .<= imag(JS) .<= Kiu)
+
+                    SJ = Hsamp * Complex{BigFloat}.(J)
+                    @test all(Krlp .<= real(SJ) .<= Krup)
+                    @test all(Kilp .<= imag(SJ) .<= Kiup)
                 end
 
                 Hrl = real.(Hc) .- Hr
@@ -210,6 +222,13 @@ import BallArithmetic: abs_preserving_structure
                 @test all(Kru .<= Cru)
                 @test all(Kil .>= Cil)
                 @test all(Kiu .<= Ciu)
+
+                Crlp, Crup, Cilp, Ciup, Tci_prime = BallArithmetic._ciprod_prime(Hrl, Hru, Hil, Hiu, J)
+                @test Tci_prime == T
+                @test all(Krlp .>= Crlp)
+                @test all(Krup .<= Crup)
+                @test all(Kilp .>= Cilp)
+                @test all(Kiup .<= Ciup)
             end
         end
     end

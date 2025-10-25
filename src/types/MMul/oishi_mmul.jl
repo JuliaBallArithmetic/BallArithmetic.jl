@@ -142,6 +142,54 @@ function _ccrprod(J::AbstractMatrix{<:Complex},
 end
 
 """
+    _ccrprod_prime(Hc::AbstractMatrix{<:Complex}, Hr::AbstractMatrix{<:Real},
+                   J::AbstractMatrix{<:Complex})
+
+Right-multiplication analogue of Algorithm 4 from Ref. [Miyajima2010](@cite).
+Given a complex ball enclosure `(Hc, Hr)` and a complex matrix `J`, return
+rectangular bounds `(Krl, Kru, Kil, Kiu)` and the promoted working type `T` such
+that `〈Hc, Hr〉 * J ⊆ [Krl, Kru] + √(-1) [Kil, Kiu]` entrywise.
+"""
+function _ccrprod_prime(
+        Hc::AbstractMatrix{<:Complex}, Hr::AbstractMatrix{<:Real},
+        J::AbstractMatrix{<:Complex})
+    THc = float(typeof(real(zero(eltype(Hc)))))
+    THr = float(typeof(zero(eltype(Hr))))
+    TJ = float(typeof(real(zero(eltype(J)))))
+    T = promote_type(THc, THr, TJ)
+    CT = Complex{T}
+
+    Hc = CT.(Hc)
+    Hr = T.(Hr)
+    J = CT.(J)
+
+    Mrl, Mru, Mil, Miu, Tprod = _cprod(Hc, J)
+    if T !== Tprod
+        T = promote_type(T, Tprod)
+        CT = Complex{T}
+        Hc = CT.(Hc)
+        Hr = T.(Hr)
+        J = CT.(J)
+    end
+
+    R, Kru, Kiu = setrounding(T, RoundUp) do
+        S = abs.(real(J)) .+ abs.(imag(J))
+        R = Hr * S
+        Kru = Mru + R
+        Kiu = Miu + R
+        return R, Kru, Kiu
+    end
+
+    Krl, Kil = setrounding(T, RoundDown) do
+        Krl = Mrl - R
+        Kil = Mil - R
+        return Krl, Kil
+    end
+
+    return Krl, Kru, Kil, Kiu, T
+end
+
+"""
     _cr(Fl::AbstractMatrix{<:Real}, Fu::AbstractMatrix{<:Real}, ::Type{T}) where {T}
 
 Algorithm 5 of Ref. [Miyajima2010](@cite).  Convert entrywise real lower/upper
@@ -231,6 +279,34 @@ function _iprod(
 end
 
 """
+    _iprod_right(Gc::AbstractMatrix{<:Real}, Gr::AbstractMatrix{<:Real}, F::AbstractMatrix{<:Real}, ::Type{T}) where {T}
+
+Right-multiplication analogue of [`_iprod`](@ref).  Given a real ball enclosure
+`(Gc, Gr)` and a real matrix `F`, compute rectangular bounds `(Hl, Hu)` for
+`(Gc ± Gr) * F` using directed rounding in the working type `T`.
+"""
+function _iprod_right(
+        Gc::AbstractMatrix{<:Real}, Gr::AbstractMatrix{<:Real}, F::AbstractMatrix{<:Real},
+        ::Type{T}) where {T <: AbstractFloat}
+    Gc = T.(Gc)
+    Gr = T.(Gr)
+    F = T.(F)
+
+    R, Hu = setrounding(T, RoundUp) do
+        absF = abs.(F)
+        R = Gr * absF
+        Hu = Gc * F + R
+        return R, Hu
+    end
+
+    Hl = setrounding(T, RoundDown) do
+        Gc * F - R
+    end
+
+    return Hl, Hu
+end
+
+"""
     _ciprod(J::AbstractMatrix{<:Complex}, Hrl, Hru, Hil, Hiu)
 
 Algorithm 7 of Ref. [Miyajima2010](@cite).  Multiply a complex matrix `J` by
@@ -258,6 +334,52 @@ function _ciprod(J::AbstractMatrix{<:Complex},
     Mirl, Miru, _ = _iprod(Ji, Hrc, Hrr)
     Mril, Mriu, _ = _iprod(Jr, Hic, Hir)
     Miil, Miiu, _ = _iprod(Ji, Hic, Hir)
+
+    Krl, Kil = setrounding(T, RoundDown) do
+        Krl = Mrrl - Miiu
+        Kil = Mirl + Mril
+        return Krl, Kil
+    end
+
+    Kru, Kiu = setrounding(T, RoundUp) do
+        Kru = Mrru - Miil
+        Kiu = Miru + Mriu
+        return Kru, Kiu
+    end
+
+    return Krl, Kru, Kil, Kiu, T
+end
+
+"""
+    _ciprod_prime(Hrl, Hru, Hil, Hiu, J)
+
+Right-multiplication analogue of Algorithm 7 from Ref. [Miyajima2010](@cite).
+Given rectangular bounds for the real and imaginary parts of a complex matrix and
+an additional complex matrix `J`, compute rectangular bounds for
+`([Hrl, Hru] + √(-1)[Hil, Hiu]) * J` with outward rounding in the promoted type
+`T`.
+"""
+function _ciprod_prime(
+        Hrl::AbstractMatrix{<:Real}, Hru::AbstractMatrix{<:Real},
+        Hil::AbstractMatrix{<:Real}, Hiu::AbstractMatrix{<:Real},
+        J::AbstractMatrix{<:Complex})
+    THr = float(typeof(real(zero(eltype(Hrl)))))
+    THu = float(typeof(real(zero(eltype(Hru)))))
+    THil = float(typeof(real(zero(eltype(Hil)))))
+    THiu = float(typeof(real(zero(eltype(Hiu)))))
+    TJ = float(typeof(real(zero(eltype(J)))))
+    T = promote_type(THr, THu, THil, THiu, TJ)
+
+    Jr = T.(real.(J))
+    Ji = T.(imag.(J))
+
+    Hrc, Hrr = _cr(Hrl, Hru, T)
+    Hic, Hir = _cr(Hil, Hiu, T)
+
+    Mrrl, Mrru = _iprod_right(Hrc, Hrr, Jr, T)
+    Mirl, Miru = _iprod_right(Hrc, Hrr, Ji, T)
+    Mril, Mriu = _iprod_right(Hic, Hir, Jr, T)
+    Miil, Miiu = _iprod_right(Hic, Hir, Ji, T)
 
     Krl, Kil = setrounding(T, RoundDown) do
         Krl = Mrrl - Miiu
