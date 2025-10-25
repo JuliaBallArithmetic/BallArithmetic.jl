@@ -35,4 +35,8 @@ BallArithmetic.NumericalTest.rounding_test
 
 ```@docs
 BallArithmetic.oishi_MMul
+BallArithmetic._ccrprod
+BallArithmetic._cr
+BallArithmetic._iprod
+BallArithmetic._ciprod
 ```

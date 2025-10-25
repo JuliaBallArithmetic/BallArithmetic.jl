@@ -1,4 +1,5 @@
 using LinearAlgebra
+using Random
 using Test
 
 import BallArithmetic: abs_preserving_structure
@@ -118,6 +119,8 @@ import BallArithmetic: abs_preserving_structure
             Matrix(Cmix_right.r), Matrix(Cmix_right_dense.r); rtol = tol, atol = 0)
     end
 
+    sampleR(T, m, n; scale = 1, shift = 0) = T[scale * (i - j) + shift / (i + j) for i in 1:m, j in 1:n]
+
     sampleC(T, m, n; re_scale = 1, im_scale = 2, shift = 0) = Complex{T}[
         T(re_scale * (i + 2j) + shift) / T(3) + im * T(im_scale * (2i - j) + 2shift) / T(5)
         for i in 1:m, j in 1:n
@@ -160,6 +163,72 @@ import BallArithmetic: abs_preserving_structure
                 @test size(rad(B)) == (m, n)
                 @test eltype(mid(B)) <: Complex{T}
                 @test eltype(rad(B)) <: T
+            end
+        end
+    end
+
+    @testset "Miyajima auxiliary products" begin
+        setprecision(BigFloat, 256) do
+            for (m, k, n) in ((2, 3, 2), (3, 2, 4))
+                J = sampleC(BigFloat, m, k; re_scale = 2, im_scale = 3, shift = 1)
+                Hc = sampleC(BigFloat, k, n; re_scale = 1, im_scale = 2, shift = -1)
+                Hr = BigFloat.(abs.(sampleR(Float64, k, n; scale = 1))) ./ BigFloat(4)
+
+                Krl, Kru, Kil, Kiu, T = BallArithmetic._ccrprod(J, Hc, Hr)
+                Brect, Tccr = BallArithmetic._ccr(Krl, Kru, Kil, Kiu)
+                @test Tccr == T
+                Brect_direct = BallArithmetic._ccr(Krl, Kru, Kil, Kiu, T)
+                Jball = BallMatrix(J)
+                Hball = BallMatrix(Hc, Hr)
+                prod_ball = Jball * Hball
+
+                @test mid(Brect) == mid(prod_ball)
+                @test rad(Brect) == rad(prod_ball)
+                @test mid(Brect_direct) == mid(Brect)
+                @test rad(Brect_direct) == rad(Brect)
+
+                Krlp, Krup, Kilp, Kiup, Tp = BallArithmetic._ccrprod_prime(Hc, Hr, J)
+                @test Tp == T
+                Brect_prime, Tccr_prime = BallArithmetic._ccr(Krlp, Krup, Kilp, Kiup)
+                @test Tccr_prime == Tp
+                prod_ball_prime = Hball * Jball
+                @test mid(Brect_prime) == mid(prod_ball_prime)
+                @test rad(Brect_prime) == rad(prod_ball_prime)
+
+                for _ in 1:5
+                    perturb = [Hr[i, j] == 0 ? zero(BigFloat) : Hr[i, j] *
+                        (rand(BigFloat) - BigFloat(0.5)) * 2 for i in 1:k, j in 1:n]
+                    thetas = 2π .* rand(BigFloat, k, n)
+                    phase = [Complex{BigFloat}(cos(thetas[i, j]), sin(thetas[i, j]))
+                        for i in 1:k, j in 1:n]
+                    Hsamp = Hc .+ perturb .* phase
+                    JS = Complex{BigFloat}.(J) * Hsamp
+                    @test all(Krl .<= real(JS) .<= Kru)
+                    @test all(Kil .<= imag(JS) .<= Kiu)
+
+                    SJ = Hsamp * Complex{BigFloat}.(J)
+                    @test all(Krlp .<= real(SJ) .<= Krup)
+                    @test all(Kilp .<= imag(SJ) .<= Kiup)
+                end
+
+                Hrl = real.(Hc) .- Hr
+                Hru = real.(Hc) .+ Hr
+                Hil = imag.(Hc) .- Hr
+                Hiu = imag.(Hc) .+ Hr
+
+                Crl, Cru, Cil, Ciu, Tci = BallArithmetic._ciprod(J, Hrl, Hru, Hil, Hiu)
+                @test Tci == T
+                @test all(Krl .>= Crl)
+                @test all(Kru .<= Cru)
+                @test all(Kil .>= Cil)
+                @test all(Kiu .<= Ciu)
+
+                Crlp, Crup, Cilp, Ciup, Tci_prime = BallArithmetic._ciprod_prime(Hrl, Hru, Hil, Hiu, J)
+                @test Tci_prime == T
+                @test all(Krlp .>= Crlp)
+                @test all(Krup .<= Crup)
+                @test all(Kilp .>= Cilp)
+                @test all(Kiup .<= Ciup)
             end
         end
     end
