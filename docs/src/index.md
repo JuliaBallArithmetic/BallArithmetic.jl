@@ -65,6 +65,12 @@ parts of `F*G` with downward and upward rounding and returns the result as a
 eigenvalue and singular value enclosures described in Ref.
 [@RumpOishi2001](@cite).
 
+Internally we also expose the auxiliary kernels from Ref.
+[@Miyajima2010](@cite).  The helpers `_ccrprod`, `_cr`, `_iprod`, and `_ciprod`
+implement Algorithms 4–7 and propagate rectangular or ball bounds through
+matrix products.  They are available for advanced workflows that need direct
+access to the underlying interval data.
+
 ```@example oishi
 using BallArithmetic
 setprecision(BigFloat, 128) do

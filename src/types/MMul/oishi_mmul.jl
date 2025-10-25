@@ -16,7 +16,7 @@ Reference:
 - “Fast enclosure of matrix eigenvalues and singular values via rounding mode controlled
   computation,” *Linear Algebra and its Applications* **324** (2001), 133–146.
 """
-function _cprod(F::AbstractMatrix{<:Complex}, G::AbstractMatrix{<:Complex})
+function _oishi_MMul_up_lo(F::AbstractMatrix{<:Complex}, G::AbstractMatrix{<:Complex})
     size(F, 2) == size(G, 1) || throw(DimensionMismatch("size(F,2) must equal size(G,1)"))
 
     TF = float(typeof(real(zero(eltype(F)))))  # underlying real of F
@@ -46,6 +46,12 @@ function _cprod(F::AbstractMatrix{<:Complex}, G::AbstractMatrix{<:Complex})
 
     return Hrl, Hru, Hil, Hiu, T
 end
+
+# Internal helper used by the Miyajima kernels below.  The name mirrors the
+# terminology in Ref. [Miyajima2010](@cite), where the routine is referred to as
+# the “complex product” computed with directed rounding.
+_cprod(F::AbstractMatrix{<:Complex}, G::AbstractMatrix{<:Complex}) =
+    _oishi_MMul_up_lo(F, G)
 
 """
     _ccr(Hrl, Hru, Hil, Hiu, ::Type{T}) where {T<:AbstractFloat}
@@ -86,19 +92,34 @@ function _ccr(Hrl::AbstractMatrix{<:Real}, Hru::AbstractMatrix{<:Real},
 end
 
 """
-Algorithm 4 Miyajima  Journal of Computational and Applied Mathematics 233 (2010) 2994–3004
+    _ccrprod(J::AbstractMatrix{<:Complex}, Hc::AbstractMatrix{<:Complex}, Hr::AbstractMatrix{<:Real})
+
+Implement Algorithm 4 of Ref. [Miyajima2010](@cite).  Given a complex matrix
+`J` and a ball enclosure `(Hc, Hr)` for another complex matrix, return
+rectangular bounds `(Krl, Kru, Kil, Kiu)` and the working type `T` such that
+`Krl ≤ Re(J * (Hc ± Hr)) ≤ Kru` and `Kil ≤ Im(J * (Hc ± Hr)) ≤ Kiu` hold
+entrywise.  All computations are performed with outward rounding using the
+promoted working type `T`.
 """
 function _ccrprod(J::AbstractMatrix{<:Complex},
         Hc::AbstractMatrix{<:Complex}, Hr::AbstractMatrix{<:Real})
-    TJ = float(typeof(real(zero(eltype(J)))))  # underlying real of F
-    TH = float(typeof(real(zero(eltype(Hc)))))  # underlying real of G
-    T = promote_type(TJ, TH)                  # e.g. Float64 or BigFloat
+    TJ = float(typeof(real(zero(eltype(J)))))  # underlying real of J
+    THc = float(typeof(real(zero(eltype(Hc)))))  # underlying real of Hc
+    THr = float(typeof(zero(eltype(Hr))))
+    T = promote_type(TJ, THc, THr)  # e.g. Float64 or BigFloat
     CT = Complex{T}
     J = CT.(J)
     Hc = CT.(Hc)
     Hr = T.(Hr)
 
-    Mrl, Mru, Mil, Miu = _cprod(J, Hc)
+    Mrl, Mru, Mil, Miu, Tprod = _cprod(J, Hc)
+    if T !== Tprod
+        T = promote_type(T, Tprod)
+        CT = Complex{T}
+        J = CT.(J)
+        Hc = CT.(Hc)
+        Hr = T.(Hr)
+    end
 
     R, Kru, Kiu = setrounding(T, RoundUp) do
         R = (abs.(real(J)) + abs.(imag(J))) * Hr
@@ -113,43 +134,60 @@ function _ccrprod(J::AbstractMatrix{<:Complex},
         return Krl, Kil
     end
 
-    return Krl, Kru, Kil, Kiu  # or return (Hc, Hr)
+    return Krl, Kru, Kil, Kiu, T
 end
 
 """
-Algorithm 5 Miyajima  Journal of Computational and Applied Mathematics 233 (2010) 2994–3004
+    _cr(Fl::AbstractMatrix{<:Real}, Fu::AbstractMatrix{<:Real}, ::Type{T}) where {T}
+
+Algorithm 5 of Ref. [Miyajima2010](@cite).  Convert entrywise real lower/upper
+bounds `Fl ≤ F ≤ Fu` into midpoint and radius matrices `(Fc, Fr)` evaluated in
+type `T` using directed rounding.
 """
 function _cr(Fl::AbstractMatrix{<:Real}, Fu::AbstractMatrix{<:Real},
         ::Type{T}) where {T <: AbstractFloat}
-    half = T(0.5)
-
-    # centers at midpoints (nearest rounding is fine/tight)
-    Fc, Fr = setrounding(T, RoundUp) do
-        Fc = Fl + half * (Fu - Fl)
-        Fr = Fc - Fl
-        return Fc, Fr
-    end
-    return BallMatrix(Fc, Fr)
-end
-
-function _cr(Fl::AbstractMatrix{<:Real}, Fu::AbstractMatrix{<:Real})
-    TFl = float(typeof(real(zero(eltype(Fl)))))  # underlying real of F
-    TFu = float(typeof(real(zero(eltype(Fu)))))  # underlying real of G
-    T = promote_type(TFl, TFu)                  # e.g. Float64 or BigFloat
     Fl = T.(Fl)
     Fu = T.(Fu)
-    return _cr(Fl, Fu, T)
+    half = T(0.5)
+
+    Fc = setrounding(T, RoundNearest) do
+        (Fu .+ Fl) .* half
+    end
+
+    Fr = setrounding(T, RoundUp) do
+        (Fu .- Fl) .* half
+    end
+
+    return Fc, Fr
 end
 
 """
-Algorithm 6 Miyajima  Journal of Computational and Applied Mathematics 233 (2010) 2994–3004
+    _cr(Fl::AbstractMatrix{<:Real}, Fu::AbstractMatrix{<:Real})
+
+Convenience overload returning `(Fc, Fr, T)` where `T` is the promoted working
+type.
+"""
+function _cr(Fl::AbstractMatrix{<:Real}, Fu::AbstractMatrix{<:Real})
+    TFl = float(typeof(real(zero(eltype(Fl)))))
+    TFu = float(typeof(real(zero(eltype(Fu)))))
+    T = promote_type(TFl, TFu)
+    Fc, Fr = _cr(Fl, Fu, T)
+    return Fc, Fr, T
+end
+
+"""
+    _iprod(F::AbstractMatrix{<:Real}, Gc::AbstractMatrix{<:Real}, Gr::AbstractMatrix{<:Real})
+
+Algorithm 6 of Ref. [Miyajima2010](@cite).  Multiply a real matrix `F` by a
+ball enclosure `(Gc, Gr)` and return rectangular bounds `(Hl, Hu)` and the
+working type `T` enclosing `F * (Gc ± Gr)`.
 """
 function _iprod(
         F::AbstractMatrix{<:Real}, Gc::AbstractMatrix{<:Real}, Gr::AbstractMatrix{<:Real})
-    TF = float(typeof(real(zero(eltype(F)))))  # underlying real of F
-    TGc = float(typeof(real(zero(eltype(Gc)))))  # underlying real of G
-    TGr = float(typeof(real(zero(eltype(Gr)))))  # underlying real of G
-    T = promote_type(promote_type(TF, TGc), TGr)
+    TF = float(typeof(real(zero(eltype(F)))))
+    TGc = float(typeof(real(zero(eltype(Gc)))))
+    TGr = float(typeof(real(zero(eltype(Gr)))))
+    T = promote_type(TF, TGc, TGr)
 
     F = T.(F)
     Gc = T.(Gc)
@@ -166,22 +204,37 @@ function _iprod(
         return Hl
     end
 
-    return Hl, Hu
+    return Hl, Hu, T
 end
 
 """
-Algorithm 7 Miyajima  Journal of Computational and Applied Mathematics 233 (2010) 2994–3004
-"""
-function _ciprod(J::AbstractMatrix{<:Complex}, Hrl, Hru, Hil, Hiu)
-    Jr = real.(J)
-    Ji = imag.(J)
+    _ciprod(J::AbstractMatrix{<:Complex}, Hrl, Hru, Hil, Hiu)
 
-    T = Hrc, Hrr = _cr(Hrl, Hru)
-    Hic, Hir = _cr(Hil, Hiu)
-    Mrrl, Mrru = _iprod(Jr, Hrc, Hrr)
-    Mirl, Miru = _iprod(Ji, Hrc, Hrr)
-    Mril, Mriu = _iprod(Jr, Hic, Hir)
-    Miil, Miiu = _iprod(Ji, Hic, Hir)
+Algorithm 7 of Ref. [Miyajima2010](@cite).  Multiply a complex matrix `J` by
+rectangular bounds on another complex matrix, provided as lower/upper bounds
+for the real and imaginary parts.  The result is returned as rectangular bounds
+`(Krl, Kru, Kil, Kiu)` together with the working type `T`.
+"""
+function _ciprod(J::AbstractMatrix{<:Complex},
+        Hrl::AbstractMatrix{<:Real}, Hru::AbstractMatrix{<:Real},
+        Hil::AbstractMatrix{<:Real}, Hiu::AbstractMatrix{<:Real})
+    TJ = float(typeof(real(zero(eltype(J)))))
+    THr = float(typeof(real(zero(eltype(Hrl)))))
+    THu = float(typeof(real(zero(eltype(Hru)))))
+    THil = float(typeof(real(zero(eltype(Hil)))))
+    THiu = float(typeof(real(zero(eltype(Hiu)))))
+    T = promote_type(TJ, THr, THu, THil, THiu)
+
+    Jr = T.(real.(J))
+    Ji = T.(imag.(J))
+
+    Hrc, Hrr = _cr(Hrl, Hru, T)
+    Hic, Hir = _cr(Hil, Hiu, T)
+
+    Mrrl, Mrru, _ = _iprod(Jr, Hrc, Hrr)
+    Mirl, Miru, _ = _iprod(Ji, Hrc, Hrr)
+    Mril, Mriu, _ = _iprod(Jr, Hic, Hir)
+    Miil, Miiu, _ = _iprod(Ji, Hic, Hir)
 
     Krl, Kil = setrounding(T, RoundDown) do
         Krl = Mrrl - Miiu
@@ -195,7 +248,7 @@ function _ciprod(J::AbstractMatrix{<:Complex}, Hrl, Hru, Hil, Hiu)
         return Kru, Kiu
     end
 
-    return Krl, Kru, Kil, Kiu
+    return Krl, Kru, Kil, Kiu, T
 end
 
 """
