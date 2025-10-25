@@ -73,6 +73,10 @@ Reference:
 function _ccr(Hrl::AbstractMatrix{<:Real}, Hru::AbstractMatrix{<:Real},
         Hil::AbstractMatrix{<:Real}, Hiu::AbstractMatrix{<:Real}, ::Type{T}) where {T <:
                                                                                     AbstractFloat}
+    Hrl = T.(Hrl)
+    Hru = T.(Hru)
+    Hil = T.(Hil)
+    Hiu = T.(Hiu)
     half = T(0.5)
 
     # centers at midpoints (nearest rounding is fine/tight)
@@ -173,6 +177,25 @@ function _cr(Fl::AbstractMatrix{<:Real}, Fu::AbstractMatrix{<:Real})
     T = promote_type(TFl, TFu)
     Fc, Fr = _cr(Fl, Fu, T)
     return Fc, Fr, T
+end
+
+"""
+    _ccr(Hrl::AbstractMatrix{<:Real}, Hru::AbstractMatrix{<:Real},
+         Hil::AbstractMatrix{<:Real}, Hiu::AbstractMatrix{<:Real})
+
+Convenience overload returning `(B, T)` where `B` is the `BallMatrix`
+produced by `_ccr(Hrl, Hru, Hil, Hiu, T)` and `T` is the promoted working
+type.
+"""
+function _ccr(Hrl::AbstractMatrix{<:Real}, Hru::AbstractMatrix{<:Real},
+        Hil::AbstractMatrix{<:Real}, Hiu::AbstractMatrix{<:Real})
+    THrl = float(typeof(real(zero(eltype(Hrl)))))
+    THru = float(typeof(real(zero(eltype(Hru)))))
+    THil = float(typeof(real(zero(eltype(Hil)))))
+    THiu = float(typeof(real(zero(eltype(Hiu)))))
+    T = promote_type(THrl, THru, THil, THiu)
+    B = _ccr(Hrl, Hru, Hil, Hiu, T)
+    return B, T
 end
 
 """

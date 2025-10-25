@@ -175,13 +175,17 @@ import BallArithmetic: abs_preserving_structure
                 Hr = BigFloat.(abs.(sampleR(Float64, k, n; scale = 1))) ./ BigFloat(4)
 
                 Krl, Kru, Kil, Kiu, T = BallArithmetic._ccrprod(J, Hc, Hr)
-                Brect = BallArithmetic._ccr(Krl, Kru, Kil, Kiu, T)
+                Brect, Tccr = BallArithmetic._ccr(Krl, Kru, Kil, Kiu)
+                @test Tccr == T
+                Brect_direct = BallArithmetic._ccr(Krl, Kru, Kil, Kiu, T)
                 Jball = BallMatrix(J)
                 Hball = BallMatrix(Hc, Hr)
                 prod_ball = Jball * Hball
 
                 @test mid(Brect) == mid(prod_ball)
                 @test rad(Brect) == rad(prod_ball)
+                @test mid(Brect_direct) == mid(Brect)
+                @test rad(Brect_direct) == rad(Brect)
 
                 for _ in 1:5
                     perturb = [Hr[i, j] == 0 ? zero(BigFloat) : Hr[i, j] *
