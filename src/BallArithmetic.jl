@@ -94,6 +94,7 @@ include("matrix_classifiers/is_M_matrix.jl")
 
 include("linear_system/inflation.jl")
 include("linear_system/backward_substitution.jl")
+include("linear_system/Krawczyk.jl")
 
 include("pseudospectra/CertifScripts.jl")
 include("linear_system/sylvester.jl")
