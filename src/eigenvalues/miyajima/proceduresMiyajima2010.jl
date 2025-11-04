@@ -1,3 +1,5 @@
+# procedures from Miyajima2010, Section 4
+
 function _encR1ci(A, tildeX, tildeD, Y, Zrl, Zru, Zil, Ziu)
     Crl, Cru, Cil, Ciu = _cprod(A, tildeX)
     Vrl, Vru, Vil, Viu = _ciprod_prime(Zrl, Zru, Zil, Ziu, tildeD)
