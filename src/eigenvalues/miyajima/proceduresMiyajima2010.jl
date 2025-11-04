@@ -17,4 +17,17 @@ end
 function _encR1ccr(A, tildeX, tildeD, Y, Zc, Zr)
     Crl, Cru, Cil, Ciu = _cprod(A, tildeX)
     Vrl, Vru, Vil, Viu = _ccrprod_prime(Zc, Zr, tildeD)
+    Url, Uil = setrounding(T, RoundDown) do
+        Url = Crl - Vru
+        Uil = Cil - Viu
+        return Url, Uil
+    end
+    Uru, Uiu = setrounding(T, RoundUp) do
+        Uru = Cru - Vrl
+        Uiu = Ciu - Vil
+        return Uru, Uiu
+    end
+    Uc, Ur = _ccr(Url, Uru, Uil, Uiu)
+    Wrl, Wru, Wil, Wiu = _ccrprod(Y, Uc, Ur)
+    return Wrl, Wru, Wil, Wiu
 end
