@@ -73,6 +73,8 @@ include("types/vector.jl")
 export BallVector
 include("types/triangularize.jl")
 
+export oishi_MMul
+
 include("types/convertpromote.jl")
 include("norm_bounds/rigorous_norm.jl")
 export upper_bound_norm
