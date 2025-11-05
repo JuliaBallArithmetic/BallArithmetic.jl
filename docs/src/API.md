@@ -35,8 +35,17 @@ BallArithmetic.NumericalTest.rounding_test
 
 ```@docs
 BallArithmetic.oishi_MMul
+```
+
+## Advanced API
+
+```@docs
 BallArithmetic._ccrprod
+BallArithmetic._ccrprod_prime
+BallArithmetic._ccr
 BallArithmetic._cr
 BallArithmetic._iprod
+BallArithmetic._iprod_right
 BallArithmetic._ciprod
+BallArithmetic._ciprod_prime
 ```

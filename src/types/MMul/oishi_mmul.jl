@@ -56,19 +56,21 @@ _cprod(F::AbstractMatrix{<:Complex}, G::AbstractMatrix{<:Complex}) =
 """
     _ccr(Hrl, Hru, Hil, Hiu, ::Type{T}) where {T<:AbstractFloat}
 
-Collapse rectangular enclosures for `Re(F*G)` and `Im(F*G)` to a complex
-ball enclosure `BallMatrix(Hc, Hr)`.
+Advanced API — collapse rectangular enclosures for `Re(F*G)` and `Im(F*G)` to a
+complex ball enclosure `BallMatrix(Hc, Hr)`.
 
 Centers are midpoints `Rc = (Hru+Hrl)/2`, `Ic = (Hiu+Hil)/2` computed with
 `RoundNearest`. Radii are the outward 2-norm of the half-widths:
 `Hr = sqrt(((Hru-Hrl)/2).^2 + ((Hiu-Hil)/2).^2)` computed with `RoundUp`.
 
 This implements the ball conversion step used with the Oishi–Rump
-rounding-mode controlled product.
+rounding-mode controlled product and the Miyajima 2010 procedures.
 
 Reference:
 - “Fast enclosure of matrix eigenvalues and singular values via rounding mode controlled
   computation,” *Linear Algebra and its Applications* **324** (2001), 133–146.
+
+See also [`_ccrprod`](@ref) and [`_ccrprod_prime`](@ref).
 """
 function _ccr(Hrl::AbstractMatrix{<:Real}, Hru::AbstractMatrix{<:Real},
         Hil::AbstractMatrix{<:Real}, Hiu::AbstractMatrix{<:Real}, ::Type{T}) where {T <:
@@ -98,12 +100,15 @@ end
 """
     _ccrprod(J::AbstractMatrix{<:Complex}, Hc::AbstractMatrix{<:Complex}, Hr::AbstractMatrix{<:Real})
 
-Implement Algorithm 4 of Ref. [Miyajima2010](@cite).  Given a complex matrix
-`J` and a ball enclosure `(Hc, Hr)` for another complex matrix, return
+Advanced API — Algorithm 4 from Ref. [Miyajima2010](@cite).  Given a complex
+matrix `J` and a ball enclosure `(Hc, Hr)` for another complex matrix, return
 rectangular bounds `(Krl, Kru, Kil, Kiu)` and the working type `T` such that
 `Krl ≤ Re(J * (Hc ± Hr)) ≤ Kru` and `Kil ≤ Im(J * (Hc ± Hr)) ≤ Kiu` hold
 entrywise.  All computations are performed with outward rounding using the
 promoted working type `T`.
+
+See also [`_ccrprod_prime`](@ref) and [`_ccr`](@ref) for the right-multiplication
+variant and the conversion to ball form.
 """
 function _ccrprod(J::AbstractMatrix{<:Complex},
         Hc::AbstractMatrix{<:Complex}, Hr::AbstractMatrix{<:Real})
@@ -145,10 +150,13 @@ end
     _ccrprod_prime(Hc::AbstractMatrix{<:Complex}, Hr::AbstractMatrix{<:Real},
                    J::AbstractMatrix{<:Complex})
 
-Right-multiplication analogue of Algorithm 4 from Ref. [Miyajima2010](@cite).
-Given a complex ball enclosure `(Hc, Hr)` and a complex matrix `J`, return
-rectangular bounds `(Krl, Kru, Kil, Kiu)` and the promoted working type `T` such
-that `〈Hc, Hr〉 * J ⊆ [Krl, Kru] + √(-1) [Kil, Kiu]` entrywise.
+Advanced API — right-multiplication analogue of Algorithm 4 from
+Ref. [Miyajima2010](@cite).  Given a complex ball enclosure `(Hc, Hr)` and a
+complex matrix `J`, return rectangular bounds `(Krl, Kru, Kil, Kiu)` and the
+promoted working type `T` such that
+`〈Hc, Hr〉 * J ⊆ [Krl, Kru] + √(-1) [Kil, Kiu]` entrywise.
+
+See also [`_ccrprod`](@ref) and [`_ccr`](@ref).
 """
 function _ccrprod_prime(
         Hc::AbstractMatrix{<:Complex}, Hr::AbstractMatrix{<:Real},
@@ -192,9 +200,12 @@ end
 """
     _cr(Fl::AbstractMatrix{<:Real}, Fu::AbstractMatrix{<:Real}, ::Type{T}) where {T}
 
-Algorithm 5 of Ref. [Miyajima2010](@cite).  Convert entrywise real lower/upper
-bounds `Fl ≤ F ≤ Fu` into midpoint and radius matrices `(Fc, Fr)` evaluated in
-type `T` using directed rounding.
+Advanced API — Algorithm 5 of Ref. [Miyajima2010](@cite).  Convert entrywise real
+lower/upper bounds `Fl ≤ F ≤ Fu` into midpoint and radius matrices `(Fc, Fr)`
+evaluated in type `T` using directed rounding.
+
+Useful in conjunction with [`_ccr`](@ref) and the interval products
+[`_iprod`](@ref) / [`_ciprod`](@ref).
 """
 function _cr(Fl::AbstractMatrix{<:Real}, Fu::AbstractMatrix{<:Real},
         ::Type{T}) where {T <: AbstractFloat}
@@ -249,9 +260,12 @@ end
 """
     _iprod(F::AbstractMatrix{<:Real}, Gc::AbstractMatrix{<:Real}, Gr::AbstractMatrix{<:Real})
 
-Algorithm 6 of Ref. [Miyajima2010](@cite).  Multiply a real matrix `F` by a
-ball enclosure `(Gc, Gr)` and return rectangular bounds `(Hl, Hu)` and the
-working type `T` enclosing `F * (Gc ± Gr)`.
+Advanced API — Algorithm 6 of Ref. [Miyajima2010](@cite).  Multiply a real
+matrix `F` by a ball enclosure `(Gc, Gr)` and return rectangular bounds
+`(Hl, Hu)` and the working type `T` enclosing `F * (Gc ± Gr)`.
+
+The helper complements [`_ccrprod`](@ref) for mixed real/complex interval
+arithmetic.
 """
 function _iprod(
         F::AbstractMatrix{<:Real}, Gc::AbstractMatrix{<:Real}, Gr::AbstractMatrix{<:Real})
@@ -281,9 +295,12 @@ end
 """
     _iprod_right(Gc::AbstractMatrix{<:Real}, Gr::AbstractMatrix{<:Real}, F::AbstractMatrix{<:Real}, ::Type{T}) where {T}
 
-Right-multiplication analogue of [`_iprod`](@ref).  Given a real ball enclosure
-`(Gc, Gr)` and a real matrix `F`, compute rectangular bounds `(Hl, Hu)` for
-`(Gc ± Gr) * F` using directed rounding in the working type `T`.
+Advanced API — right-multiplication analogue of [`_iprod`](@ref).  Given a real
+ball enclosure `(Gc, Gr)` and a real matrix `F`, compute rectangular bounds
+`(Hl, Hu)` for `(Gc ± Gr) * F` using directed rounding in the working type `T`.
+
+Pairs naturally with [`_iprod`](@ref) when traversing the Miyajima 2010
+verification procedures.
 """
 function _iprod_right(
         Gc::AbstractMatrix{<:Real}, Gr::AbstractMatrix{<:Real}, F::AbstractMatrix{<:Real},
@@ -309,10 +326,13 @@ end
 """
     _ciprod(J::AbstractMatrix{<:Complex}, Hrl, Hru, Hil, Hiu)
 
-Algorithm 7 of Ref. [Miyajima2010](@cite).  Multiply a complex matrix `J` by
-rectangular bounds on another complex matrix, provided as lower/upper bounds
-for the real and imaginary parts.  The result is returned as rectangular bounds
-`(Krl, Kru, Kil, Kiu)` together with the working type `T`.
+Advanced API — Algorithm 7 of Ref. [Miyajima2010](@cite).  Multiply a complex
+matrix `J` by rectangular bounds on another complex matrix, provided as
+lower/upper bounds for the real and imaginary parts.  The result is returned as
+rectangular bounds `(Krl, Kru, Kil, Kiu)` together with the working type `T`.
+
+Combines with [`_ccrprod`](@ref) / [`_ccrprod_prime`](@ref) to mirror the flow in
+Miyajima's block diagonalisation routines.
 """
 function _ciprod(J::AbstractMatrix{<:Complex},
         Hrl::AbstractMatrix{<:Real}, Hru::AbstractMatrix{<:Real},
@@ -353,11 +373,13 @@ end
 """
     _ciprod_prime(Hrl, Hru, Hil, Hiu, J)
 
-Right-multiplication analogue of Algorithm 7 from Ref. [Miyajima2010](@cite).
-Given rectangular bounds for the real and imaginary parts of a complex matrix and
-an additional complex matrix `J`, compute rectangular bounds for
-`([Hrl, Hru] + √(-1)[Hil, Hiu]) * J` with outward rounding in the promoted type
-`T`.
+Advanced API — right-multiplication analogue of Algorithm 7 from
+Ref. [Miyajima2010](@cite).  Given rectangular bounds for the real and imaginary
+parts of a complex matrix and an additional complex matrix `J`, compute
+rectangular bounds for `([Hrl, Hru] + √(-1)[Hil, Hiu]) * J` with outward
+rounding in the promoted type `T`.
+
+Complements [`_ciprod`](@ref) for the Miyajima 2010 verification flow.
 """
 function _ciprod_prime(
         Hrl::AbstractMatrix{<:Real}, Hru::AbstractMatrix{<:Real},
