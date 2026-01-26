@@ -13,6 +13,8 @@ using Test
     include("test_types/test_array.jl")
     include("test_types/test_vector_operations.jl")
     include("test_eigen/test_eigen.jl")
+    include("test_eigen/test_miyajima_new.jl")
+    include("test_eigenvalues/test_verified_gev.jl")
     include("test_interval_arithmetic_ext/test_interval_arithmetic_ext.jl")
     include("test_arbnumerics_ext/test_arbnumerics_ext.jl")
     include("test_pseudospectra/test_pseudospectra.jl")
