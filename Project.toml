@@ -4,6 +4,7 @@ version = "0.1.1"
 authors = ["Luca Ferranti and Isaia Nisoli"]
 
 [deps]
+Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
@@ -12,25 +13,20 @@ RoundingEmulator = "5eaf0fd0-dfba-4ccb-bf02-d820a40db705"
 SetRounding = "3cc68bcd-71a2-5612-b932-767ffbe40ab0"
 
 [weakdeps]
+ArbNumerics = "7e558dbc-694d-5a72-987c-6f4ebed21442"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 IntervalArithmetic = "d1acc4aa-44c8-5952-acd4-ba5d80a2a253"
-ArbNumerics = "7e558dbc-694d-5a72-987c-6f4ebed21442"
 
 [extensions]
+ArbNumericsExt = "ArbNumerics"
 DistributedExt = "Distributed"
 FFTExt = "FFTW"
 IntervalArithmeticExt = "IntervalArithmetic"
-ArbNumericsExt = "ArbNumerics"
-
-[extras]
-Test = "8dfed614-5729-5b62-bb73-8f89d75bee26"
-
-[targets]
-test = ["Test"]
 
 [compat]
 ArbNumerics = "1"
+Combinatorics = "1.1.0"
 FFTW = "1"
 IntervalArithmetic = "0.20.9"
 JLD2 = "0.6.2"
@@ -39,3 +35,9 @@ OpenBLASConsistentFPCSR_jll = "0.3.21"
 RoundingEmulator = "0.2"
 SetRounding = "0.2"
 julia = "^1.9"
+
+[extras]
+Test = "8dfed614-5729-5b62-bb73-8f89d75bee26"
+
+[targets]
+test = ["Test"]

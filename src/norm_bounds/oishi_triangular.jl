@@ -1,23 +1,6 @@
-function backward_singular_value_bound(A::BallMatrix)
-    @assert istriu(A.c) && istriu(A.r)
-
-    n = size(A, 1)
-    σ = fill(Ball(0.0, 0.0), n + 1)
-    # we start from σ[n+1] = 0
-    σ[n + 1] = Ball(0.0, 0.0)
-
-    for i in n:-1:1
-        b = A[i, (i + 1):end]
-        norm_b = upper_bound_norm(b, 2)  # this uses BallArithmetic norm
-        d_ii = A[i, i]
-
-        term = sqrt(1 + norm_b^2 * σ[i + 1]^2)
-        bound = 1 / abs(d_ii) * term
-        σ[i] = Ball(max(sup(σ[i + 1]), sup(bound)))
-    end
-
-    return σ[1:(end - 1)]
-end
+# NOTE: backward_singular_value_bound is now defined in rump_oishi_2024.jl
+# The implementation there is more general and better documented.
+# This old version has been removed to avoid method overwriting during precompilation.
 
 function oishi_rump_bound(T::BallMatrix, k::Int)
     if k == size(T)[1]

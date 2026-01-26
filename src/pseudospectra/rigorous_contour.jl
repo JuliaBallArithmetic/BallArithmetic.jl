@@ -8,8 +8,8 @@ struct Enclosure
     loop_closure::Bool
 end
 
-function _compute_exclusion_circle(T, λ, r; max_steps, rel_steps)
-    return _compute_exclusion_set(T, r; max_steps, rel_steps, λ)
+function _compute_exclusion_circle(T, λ, r; max_steps, rel_steps, svd_method::SVDMethod = MiyajimaM1(), apply_vbd::Bool = false)
+    return _compute_exclusion_set(T, r; max_steps, rel_steps, λ, svd_method, apply_vbd)
 end
 
 function _compute_exclusion_circle_level_set_ode(T,
@@ -17,7 +17,9 @@ function _compute_exclusion_circle_level_set_ode(T,
         ϵ;
         max_steps,
         rel_steps,
-        max_initial_newton)
+        max_initial_newton,
+        svd_method::SVDMethod = MiyajimaM1(),
+        apply_vbd::Bool = false)
     z = λ + ϵ
     #@info z
 
@@ -33,7 +35,7 @@ function _compute_exclusion_circle_level_set_ode(T,
     end
     r = abs(λ - z)
 
-    return _compute_exclusion_circle(T, λ, r; max_steps, rel_steps)
+    return _compute_exclusion_circle(T, λ, r; max_steps, rel_steps, svd_method, apply_vbd)
 end
 
 """
@@ -60,7 +62,9 @@ function _compute_exclusion_circle_level_set_priori(T,
         λ,
         ϵ;
         rel_pearl_size,
-        max_initial_newton)
+        max_initial_newton,
+        svd_method::SVDMethod = MiyajimaM1(),
+        apply_vbd::Bool = false)
     out_z = []
     out_bound = []
     out_radiuses = []
@@ -105,10 +109,10 @@ function _compute_exclusion_circle_level_set_priori(T,
     # end
 
     #return Enclosure(λ, out_z, out_bound, out_radiuses, true)
-    return _certify_circle(T, λ, r, N)
+    return _certify_circle(T, λ, r, N; svd_method, apply_vbd)
 end
 
-function _certify_circle(T, λ, r, N)
+function _certify_circle(T, λ, r, N; svd_method::SVDMethod = MiyajimaM1(), apply_vbd::Bool = false)
     out_z = []
     out_bound = []
     out_radiuses = []
@@ -122,14 +126,14 @@ function _certify_circle(T, λ, r, N)
         K = svd(T - z * I)
         z_ball = Ball(z, pearl_radius)
 
-        bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
+        bound = _certify_svd(BallMatrix(T) - z_ball * I, K, svd_method; apply_vbd)[end]
         push!(out_bound, bound)
         push!(out_radiuses, pearl_radius)
     end
     return Enclosure(λ, out_z, out_bound, out_radiuses, true)
 end
 
-function _compute_exclusion_set(T, r; max_steps, rel_steps, λ = 0 + im * 0)
+function _compute_exclusion_set(T, r; max_steps, rel_steps, λ = 0 + im * 0, svd_method::SVDMethod = MiyajimaM1(), apply_vbd::Bool = false)
     eigvals = diag(T)
 
     out_z = []
@@ -169,7 +173,7 @@ function _compute_exclusion_set(T, r; max_steps, rel_steps, λ = 0 + im * 0)
 
         # we certify in a ball around z_old
         z_ball = Ball(z_old, r_guaranteed)
-        bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
+        bound = _certify_svd(BallMatrix(T) - z_ball * I, K, svd_method; apply_vbd)[end]
         push!(out_bound, bound)
         push!(out_radiuses, r_guaranteed)
         #print("test")
@@ -238,7 +242,7 @@ end
 #     return _newton_step(z, K, ϵ, τ)
 # end
 
-function _compute_enclosure_eigval(T, λ, ϵ; max_initial_newton, max_steps, rel_steps)
+function _compute_enclosure_eigval(T, λ, ϵ; max_initial_newton, max_steps, rel_steps, svd_method::SVDMethod = MiyajimaM1(), apply_vbd::Bool = false)
     #@info "Enclosing ", λ
     #@info "Level set", ϵ
 
@@ -300,7 +304,7 @@ function _compute_enclosure_eigval(T, λ, ϵ; max_initial_newton, max_steps, rel
         # we certify the SVD on a ball around z_old
 
         z_ball = Ball(z_old, r_guaranteed)
-        bound = _certify_svd(BallMatrix(T) - z_ball * I, K)[end]
+        bound = _certify_svd(BallMatrix(T) - z_ball * I, K, svd_method; apply_vbd)[end]
         push!(out_bound, bound)
         push!(radiuses, r_guaranteed)
 
@@ -356,7 +360,8 @@ end
 
 """
     compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
-            max_steps = Int64(ceil(256 * π)), rel_steps = 16)
+            max_steps = Int64(ceil(256 * π)), rel_steps = 16,
+            svd_method = MiyajimaM1(), apply_vbd = false)
 
     Given a BallMatrix `A`, this method follows the level lines of level `ϵ`
 around the eigenvalues with modulus bound between `r1` and `r2`.
@@ -365,8 +370,10 @@ The keyword arguments
     - max_initial_newton: maximum number of newton steps to reach the level lines
     - max_steps: maximum number of steps following the contour
     - rel_steps: relative integration step for the Euler method
+    - svd_method: SVD certification method (MiyajimaM1(), MiyajimaM4(), or RumpOriginal())
+    - apply_vbd: whether to apply verified block diagonalization for tighter bounds
 
-The method outputs an array of truples:
+The method outputs an array of tuples:
     - the first element is the eigenvalue we are enclosing
     (in the case of the excluding circles, it is 0.0 or the maximum modulus of the eigenvalues)
     - the second element is an upper bound on the resolvent norm
@@ -374,7 +381,8 @@ The method outputs an array of truples:
     bound on circles centered at each point and of radius 5/8 the distance to the previous point
 """
 function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
-        max_steps = Int64(ceil(256 * π)), rel_steps = 16)
+        max_steps = Int64(ceil(256 * π)), rel_steps = 16,
+        svd_method::SVDMethod = MiyajimaM1(), apply_vbd::Bool = false)
     F = schur(Complex{Float64}.(A.c))
 
     bZ = BallMatrix(F.Z)
@@ -394,7 +402,7 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
 
     for λ in eigvals
         E = _compute_enclosure_eigval(F.T, λ, ϵ; max_initial_newton,
-            max_steps, rel_steps)
+            max_steps, rel_steps, svd_method, apply_vbd)
 
         # bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
 
@@ -414,7 +422,7 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
     if !isempty(eigvals_smaller_than_r1)
         @info "Computing exclusion circle ", r1
 
-        E = _compute_exclusion_set(F.T, r1; max_steps, rel_steps)
+        E = _compute_exclusion_set(F.T, r1; max_steps, rel_steps, svd_method, apply_vbd)
         #bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
         #@info bound, i
         #@info "σ", bounds[i]
@@ -429,7 +437,7 @@ function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
     if !isempty(eigvals_bigger_than_r2)
         #@info "Computing exclusion circle ", r2
 
-        E = _compute_exclusion_set(F.T, r2; max_steps, rel_steps)
+        E = _compute_exclusion_set(F.T, r2; max_steps, rel_steps, svd_method, apply_vbd)
         #max_abs_eigenvalue = maximum(abs.(diag(F.T)))
         #bound, i = findmax([@up 1.0 / (@down x.c - x.r) for x in bounds])
         #@info bound, i
