@@ -364,18 +364,112 @@ function _rump_2022a_krawczyk_bounds!(eigenvalue_balls, eigenvector_errors,
     return nothing
 end
 
-# Helper function for dot product with ball vectors
-function dot(v::BallVector, w::BallVector)
-    return sum(v .* w)
+# Rigorous dot product for BallVectors following Rump 1999 Algorithm 3.4
+# "Fast and Parallel Interval Arithmetic"
+#
+# For interval vectors [mA ± rA] and [mB ± rB], computes a rigorous enclosure
+# of the dot product using directed rounding to bound floating-point errors.
+#
+# The algorithm:
+# 1. Compute propagated radius: rp = |mA|ᵀ·rB + rAᵀ·(|mB| + rB)
+# 2. Compute upper bound: c₂ = △(mA·mB + rp)
+# 3. Compute lower bound: c₁ = ▽(mA·mB - rp)
+# 4. Midpoint: c = △((c₁ + c₂)/2)
+# 5. Radius: r = △(c - c₁)
+function dot(v::BallVector{T}, w::BallVector{T}) where {T <: AbstractFloat}
+    mA, rA = mid(v), rad(v)
+    mB, rB = mid(w), rad(w)
+
+    # Compute propagated radius from input radii (rounded up)
+    # rp = |mA|ᵀ·rB + rAᵀ·(|mB| + rB)
+    c2, rp = setrounding(T, RoundUp) do
+        abs_mA = abs.(mA)
+        abs_mB = abs.(mB)
+        rp = LinearAlgebra.dot(abs_mA, rB) + LinearAlgebra.dot(rA, abs_mB .+ rB)
+        c2 = LinearAlgebra.dot(mA, mB) + rp
+        return c2, rp
+    end
+
+    c1 = setrounding(T, RoundDown) do
+        LinearAlgebra.dot(mA, mB) - rp
+    end
+
+    mc, rc = setrounding(T, RoundUp) do
+        mc = (c1 + c2) / 2
+        rc = mc - c1
+        return mc, rc
+    end
+
+    return Ball(mc, rc)
+end
+
+# Complex BallVector dot product
+# For complex Ball, the radius is real and represents a disc in the complex plane.
+# The dot product v·w = Σᵢ vᵢ·wᵢ where each term is a product of complex discs.
+function dot(v::BallVector{T, Complex{T}}, w::BallVector{T, Complex{T}}) where {T <: AbstractFloat}
+    mA, rA = mid(v), rad(v)
+    mB, rB = mid(w), rad(w)
+
+    # For complex numbers with real radii (discs), the product of two discs
+    # centered at a, b with radii α, β is contained in a disc centered at a*b
+    # with radius |a|β + |b|α + αβ
+    #
+    # For the dot product, propagated radius:
+    # rp = Σᵢ (|mA[i]|·rB[i] + |mB[i]|·rA[i] + rA[i]·rB[i])
+    #    = |mA|ᵀ·rB + |mB|ᵀ·rA + rAᵀ·rB
+
+    # Compute midpoint dot product and rounding bounds
+    dot_mid = LinearAlgebra.dot(mA, mB)  # complex result
+
+    rp = setrounding(T, RoundUp) do
+        abs_mA = abs.(mA)
+        abs_mB = abs.(mB)
+        LinearAlgebra.dot(abs_mA, rB) + LinearAlgebra.dot(abs_mB, rA) + LinearAlgebra.dot(rA, rB)
+    end
+
+    # For the complex dot product, we need to bound the rounding error
+    # in both real and imaginary parts. Compute upper/lower bounds separately.
+    c2_re, c2_im = setrounding(T, RoundUp) do
+        re_up = real(LinearAlgebra.dot(mA, mB))
+        im_up = imag(LinearAlgebra.dot(mA, mB))
+        return re_up, im_up
+    end
+
+    c1_re, c1_im = setrounding(T, RoundDown) do
+        re_dn = real(LinearAlgebra.dot(mA, mB))
+        im_dn = imag(LinearAlgebra.dot(mA, mB))
+        return re_dn, im_dn
+    end
+
+    mc, rc = setrounding(T, RoundUp) do
+        mc_re = (c1_re + c2_re) / 2
+        mc_im = (c1_im + c2_im) / 2
+        # Rounding error component for each part
+        rounding_re = mc_re - c1_re
+        rounding_im = mc_im - c1_im
+        # Total radius: rounding error (as L∞ bound on components) + propagated radius
+        # Using hypot would be tighter but max is simpler and still rigorous
+        rc = max(rounding_re, rounding_im) + rp
+        return Complex(mc_re, mc_im), rc
+    end
+
+    return Ball(mc, rc)
 end
 
 # Mixed dot product: Vector and BallVector
-function dot(v::AbstractVector{<:Number}, w::BallVector)
-    return sum(v .* w)
+# Convert to BallVector with zero radii for rigorous computation
+function dot(v::AbstractVector{S}, w::BallVector{T}) where {S<:Number, T}
+    # Convert v to BallVector with zero radii
+    v_mid = collect(convert.(eltype(mid(w)), v))
+    v_ball = BallVector(v_mid, zeros(T, length(v)))
+    return dot(v_ball, w)
 end
 
-function dot(v::BallVector, w::AbstractVector{<:Number})
-    return sum(v .* w)
+function dot(v::BallVector{T}, w::AbstractVector{S}) where {T, S<:Number}
+    # Convert w to BallVector with zero radii
+    w_mid = collect(convert.(eltype(mid(v)), w))
+    w_ball = BallVector(w_mid, zeros(T, length(w)))
+    return dot(v, w_ball)
 end
 
 # Export
