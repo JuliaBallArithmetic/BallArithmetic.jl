@@ -48,8 +48,9 @@ function Base.:+(A::BallVector{T}, B::BallVector{T}) where {T <: AbstractFloat}
     mB, rB = mid(B), rad(B)
 
     C = mA + mB
+    ϵ = machine_epsilon(T)
     R = setrounding(T, RoundUp) do
-        (ϵp * abs.(C) + rA) + rB
+        (ϵ * abs.(C) + rA) + rB
     end
     BallVector(C, R)
 end
@@ -65,8 +66,9 @@ function Base.:-(A::BallVector{T}, B::BallVector{T}) where {T <: AbstractFloat}
     mB, rB = mid(B), rad(B)
 
     C = mA - mB
+    ϵ = machine_epsilon(T)
     R = setrounding(T, RoundUp) do
-        (ϵp * abs.(C) + rA) + rB
+        (ϵ * abs.(C) + rA) + rB
     end
     BallVector(C, R)
 end
@@ -84,8 +86,10 @@ function Base.:*(lam::Number, A::BallVector{T}) where {T}
 
     B = lam * A.c
 
+    ϵ = machine_epsilon(T)
+    η_val = subnormal_min(T)
     R = setrounding(T, RoundUp) do
-        return (η .+ ϵp * abs.(B)) + (A.r * abs(mid(lam)))
+        return (η_val .+ ϵ * abs.(B)) + (A.r * abs(mid(lam)))
     end
 
     return BallVector(B, R)
@@ -105,8 +109,10 @@ function Base.:*(lam::Ball{T, NT}, A::BallVector{T}) where {T, NT <: Union{T, Co
 
     B = mid(lam) * A.c
 
+    ϵ = machine_epsilon(T)
+    η_val = subnormal_min(T)
     R = setrounding(T, RoundUp) do
-        return (η .+ ϵp * abs.(B)) + ((abs.(A.c) + A.r) * rad(lam) + A.r * abs(mid(lam)))
+        return (η_val .+ ϵ * abs.(B)) + ((abs.(A.c) + A.r) * rad(lam) + A.r * abs(mid(lam)))
     end
 
     return BallVector(B, R)

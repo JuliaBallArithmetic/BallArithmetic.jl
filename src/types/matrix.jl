@@ -122,8 +122,9 @@ function Base.:+(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
     mB, rB = mid(B), rad(B)
 
     C = mA + mB
+    ϵ = machine_epsilon(T)
     R = setrounding(T, RoundUp) do
-        (ϵp * abs.(C) + rA) + rB
+        (ϵ * abs.(C) + rA) + rB
     end
     BallMatrix(C, R)
 end
@@ -141,8 +142,9 @@ function Base.:-(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
     mB, rB = mid(B), rad(B)
 
     C = mA - mB
+    ϵ = machine_epsilon(T)
     R = setrounding(T, RoundUp) do
-        (ϵp * abs.(C) + rA) + rB
+        (ϵ * abs.(C) + rA) + rB
     end
     BallMatrix(C, R)
 end
@@ -164,12 +166,15 @@ function Base.:*(lam::Number, A::BallMatrix{T}) where {T}
     # Scale the midpoint matrix using the standard matrix-scalar product.
     B = lam * A.c
 
+    # Use type-parametric constants for BigFloat support
+    ϵ = machine_epsilon(T)
+    η_val = subnormal_min(T)
     R = setrounding(T, RoundUp) do
         # The resulting radius is composed of three pieces:
-        #   • `η` to account for gradual underflow;
+        #   • `η_val` to account for gradual underflow;
         #   • a proportional floating-point error term;
         #   • the original radii scaled by `|λ|`.
-        return (η .+ ϵp * abs.(B)) + (A.r * abs(mid(lam)))
+        return (η_val .+ ϵ * abs.(B)) + (A.r * abs(mid(lam)))
     end
 
     return BallMatrix(B, R)
@@ -194,11 +199,14 @@ function Base.:*(lam::Ball{T, NT}, A::BallMatrix{T}) where {T, NT <: Union{T, Co
     # result; the radius enters the enclosure bookkeeping below.
     B = mid(lam) * A.c
 
+    # Use type-parametric constants for BigFloat support
+    ϵ = machine_epsilon(T)
+    η_val = subnormal_min(T)
     R = setrounding(T, RoundUp) do
         # The uncertainty now has to capture the radius of `λ` as well.  Each
         # midpoint entry is magnified by `rad(λ)` and combined with the input
         # radii, in addition to the floating-point padding described above.
-        return (η .+ ϵp * abs.(B)) + ((abs.(A.c) + A.r) * rad(lam) + A.r * abs(mid(lam)))
+        return (η_val .+ ϵ * abs.(B)) + ((abs.(A.c) + A.r) * rad(lam) + A.r * abs(mid(lam)))
     end
 
     return BallMatrix(B, R)
@@ -229,11 +237,12 @@ function Base.:+(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFlo
     # Apply the operation directly to the midpoint data.
     C = mA + B
 
+    ϵ = machine_epsilon(T)
     R = setrounding(T, RoundUp) do
         # Only the `BallMatrix` contributes an existing radius, but
         # we still need to compensate for floating-point error in the
         # combined midpoint.
-        return (ϵp * abs.(C) + rA)
+        return (ϵ * abs.(C) + rA)
     end
     BallMatrix(C, R)
 end
@@ -262,10 +271,11 @@ function Base.:-(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFlo
     # Subtract the midpoint data directly.
     C = mA - B
 
+    ϵ = machine_epsilon(T)
     R = setrounding(T, RoundUp) do
         # Only `A` carries an existing radius; nevertheless we must still
         # compensate for floating-point roundoff in the midpoint result.
-        return (ϵp * abs.(C) + rA)
+        return (ϵ * abs.(C) + rA)
     end
     BallMatrix(C, R)
 end
@@ -283,10 +293,11 @@ function Base.:-(B::AbstractMatrix{T}, A::BallMatrix{T}) where {T <: AbstractFlo
     # Compute the midpoint part of `B - A` directly.
     C = B - mA
 
+    ϵ = machine_epsilon(T)
     R = setrounding(T, RoundUp) do
         # The stored radii of `A` still drive the enclosure, with additional
         # padding for floating-point roundoff in the midpoint subtraction.
-        return (ϵp * abs.(C) + rA)
+        return (ϵ * abs.(C) + rA)
     end
     BallMatrix(C, R)
 end
@@ -310,9 +321,10 @@ function Base.:+(A::BallMatrix{T}, J::UniformScaling) where {T}
         B[i, i] += J
     end
 
+    ϵ = machine_epsilon(T)
     R = setrounding(T, RoundUp) do
         @inbounds for i in axes(A, 1)
-            R[i, i] += ϵp * abs(B[i, i])
+            R[i, i] += ϵ * abs(B[i, i])
         end
         return R
     end
@@ -336,9 +348,10 @@ function Base.:+(A::BallMatrix{T},
         B[i, i] += J.λ.c
     end
 
+    ϵ = machine_epsilon(T)
     R = setrounding(T, RoundUp) do
         @inbounds for i in axes(A, 1)
-            R[i, i] += ϵp * abs(B[i, i]) + J.λ.r
+            R[i, i] += ϵ * abs(B[i, i]) + J.λ.r
         end
         return R
     end
@@ -375,9 +388,10 @@ function Base.:-(A::BallMatrix{T}, J::UniformScaling) where {T}
         B[i, i] -= J
     end
 
+    ϵ = machine_epsilon(T)
     R = setrounding(T, RoundUp) do
         @inbounds for i in axes(A, 1)
-            R[i, i] += ϵp * abs(B[i, i])
+            R[i, i] += ϵ * abs(B[i, i])
         end
         return R
     end
@@ -402,9 +416,10 @@ function Base.:-(A::BallMatrix{T},
         B[i, i] -= J.λ.c
     end
 
+    ϵ = machine_epsilon(T)
     R = setrounding(T, RoundUp) do
         @inbounds for i in axes(A, 1)
-            R[i, i] += ϵp * abs(B[i, i]) + J.λ.r
+            R[i, i] += ϵ * abs(B[i, i]) + J.λ.r
         end
         return R
     end
@@ -429,9 +444,10 @@ function Base.:-(J::UniformScaling, A::BallMatrix{T}) where {T}
         B[i, i] = J - B[i, i]
     end
 
+    ϵ = machine_epsilon(T)
     R = setrounding(T, RoundUp) do
         @inbounds for i in axes(A, 1)
-            R[i, i] += ϵp * abs(B[i, i])
+            R[i, i] += ϵ * abs(B[i, i])
         end
         return R
     end
@@ -458,9 +474,10 @@ function Base.:-(J::UniformScaling{Ball{T, NT}},
         B[i, i] = J.λ.c - B[i, i]
     end
 
+    ϵ = machine_epsilon(T)
     R = setrounding(T, RoundUp) do
         @inbounds for i in axes(A, 1)
-            R[i, i] += ϵp * abs(B[i, i]) + J.λ.r
+            R[i, i] += ϵ * abs(B[i, i]) + J.λ.r
         end
         return R
     end

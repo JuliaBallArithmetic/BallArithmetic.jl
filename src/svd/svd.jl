@@ -99,8 +99,45 @@ to `false`, the `block_diagonalisation` field is `nothing`.
 * Rump S.M. (2011), "Verified bounds for singular values", BIT 51, 367–384.
 """
 function rigorous_svd(A::BallMatrix{T}; method::SVDMethod = MiyajimaM1(), apply_vbd::Bool = true) where {T}
+    RT = real(T)
+
+    # For BigFloat, use Ogita refinement since LAPACK doesn't support BigFloat
+    if RT === BigFloat
+        return _rigorous_svd_bigfloat(A, method; apply_vbd)
+    end
+
+    # Standard path for Float64/Float32
     svdA = svd(A.c)
     return _certify_svd(A, svdA, method; apply_vbd)
+end
+
+"""
+    _rigorous_svd_bigfloat(A, method; apply_vbd)
+
+BigFloat version of rigorous SVD using Ogita refinement.
+Computes SVD in Float64, refines to BigFloat, then certifies.
+"""
+function _rigorous_svd_bigfloat(A::BallMatrix{BigFloat}, method::SVDMethod; apply_vbd::Bool = true)
+    # Step 1: Compute Float64 SVD
+    A_f64 = Complex{Float64}.(A.c)
+    F64 = svd(A_f64)
+
+    # Step 2: Refine to BigFloat using Ogita
+    # Determine number of iterations based on precision
+    prec_bits = precision(BigFloat)
+    # Quadratic convergence: ~ceil(log2(prec_bits / 15)) iterations
+    n_iter = max(2, ceil(Int, log2(prec_bits / 15)))
+
+    refined = ogita_svd_refine(A.c, F64.U, F64.S, F64.Vt';
+                               max_iterations=n_iter,
+                               precision_bits=prec_bits,
+                               check_convergence=false)
+
+    # Step 3: Certify the refined SVD
+    Σ_vec = isa(refined.Σ, Diagonal) ? diag(refined.Σ) : refined.Σ
+    svd_refined = SVD(Matrix(refined.U), Vector(Σ_vec), Matrix(refined.V'))
+
+    return _certify_svd(A, svd_refined, method; apply_vbd)
 end
 
 """
@@ -118,28 +155,37 @@ function svdbox(A::BallMatrix{T}; method::SVDMethod = MiyajimaM1(), apply_vbd::B
 end
 
 function _certify_svd(A::BallMatrix{T}, svdA::SVD, method::SVDMethod; apply_vbd::Bool = true) where {T}
-    U = BallMatrix(svdA.U)
-    V = BallMatrix(svdA.V)
-    Vt = BallMatrix(svdA.Vt)
-    Σ_mid = BallMatrix(Diagonal(svdA.S))
+    return _certify_svd_impl(A, svdA.U, svdA.S, svdA.V, svdA.Vt, method; apply_vbd)
+end
+
+# Method for NamedTuple (used by Ogita refinement)
+function _certify_svd(A::BallMatrix{T}, svdA::NamedTuple{(:U, :S, :V, :Vt)}, method::SVDMethod; apply_vbd::Bool = true) where {T}
+    return _certify_svd_impl(A, svdA.U, svdA.S, svdA.V, svdA.Vt, method; apply_vbd)
+end
+
+function _certify_svd_impl(A::BallMatrix{T}, U_in, S_in, V_in, Vt_in, method::SVDMethod; apply_vbd::Bool = true) where {T}
+    U = BallMatrix(U_in)
+    V = BallMatrix(V_in)
+    Vt = BallMatrix(Vt_in)
+    Σ_mid = BallMatrix(Diagonal(S_in))
 
     E = U * Σ_mid * Vt - A
-    normE = collatz_upper_bound_L2_opnorm(E)
+    normE = upper_bound_L2_opnorm(E)
     @debug "norm E" normE
 
     F = Vt * V - I
-    normF = collatz_upper_bound_L2_opnorm(F)
+    normF = upper_bound_L2_opnorm(F)
     @debug "norm F" normF
 
     G = U' * U - I
-    normG = collatz_upper_bound_L2_opnorm(G)
+    normG = upper_bound_L2_opnorm(G)
     @debug "norm G" normG
 
     @assert normF < 1 "It is not possible to verify the singular values with this precision"
     @assert normG < 1 "It is not possible to verify the singular values with this precision"
 
     # Compute bounds based on method
-    svdbounds_down, svdbounds_up = _compute_svd_bounds(method, svdA.S, normE, normF, normG, T)
+    svdbounds_down, svdbounds_up = _compute_svd_bounds(method, S_in, normE, normF, normG, T)
 
     midpoints = (svdbounds_down + svdbounds_up) / 2
     radii = setrounding(T, RoundUp) do
@@ -154,12 +200,16 @@ function _certify_svd(A::BallMatrix{T}, svdA::SVD, method::SVDMethod; apply_vbd:
     # Reuse the midpoint residual `E` and only account for the interval
     # widening introduced when replacing `Σ_mid` with the ball diagonal `Σ`.
     residual = E + U * ΔΣ * Vt
-    residual_norm = collatz_upper_bound_L2_opnorm(residual)
+    residual_norm = upper_bound_L2_opnorm(residual)
 
     vbd = nothing
     if apply_vbd
-        H = adjoint(Σ) * Σ
-        vbd = miyajima_vbd(H; hermitian = true)
+        # VBD requires eigen decomposition which doesn't work for BigFloat
+        # Skip VBD for BigFloat matrices
+        if T !== BigFloat
+            H = adjoint(Σ) * Σ
+            vbd = miyajima_vbd(H; hermitian = true)
+        end
     end
 
     return RigorousSVDResult(U, singular_values, Σ, V, residual,
@@ -288,7 +338,7 @@ function rigorous_svd_m4(A::BallMatrix{T}; apply_vbd::Bool = true) where {T}
 
     # Compute F = VᵀV - I (orthogonality defect)
     F = V' * V - I
-    normF = collatz_upper_bound_L2_opnorm(F)
+    normF = upper_bound_L2_opnorm(F)
     @assert normF < 1 "It is not possible to verify singular values: ‖VᵀV - I‖ ≥ 1"
 
     # Compute AV (or AᵀV if m < n) and then (AV)ᵀAV

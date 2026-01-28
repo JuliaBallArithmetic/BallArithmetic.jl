@@ -16,8 +16,10 @@ function MMul5(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
     abs_rhoB = abs_preserving_structure(ρB)
 
     Γ = abs_mA * abs_mB + abs_rhoA * abs_rhoB
+    ϵ = machine_epsilon(T)
+    η_val = subnormal_min(T)
     rC = setrounding(T, RoundUp) do
-        γ = (k + 1) * eps.(Γ) .+ 0.5 * η / ϵp
+        γ = (k + 1) * eps.(Γ) .+ 0.5 * η_val / ϵ
         rC = (abs_mA + rA) * (abs_mB + rB) - Γ + 2γ
         return rC
     end
