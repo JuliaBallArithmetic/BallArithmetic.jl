@@ -20,8 +20,8 @@ end
     upper_bound_norm(A::BallMatrix, p::Real = 2)
 
 Compute a rigorous upper bound for the p-norm of a `BallMatrix` by
-delegating to [`_upper_bound_norm`](@ref) on the stored midpoint and
-radius arrays. The default `p = 2` corresponds to the Frobenius norm.
+computing the norm of the midpoint and radius arrays with upward rounding.
+The default `p = 2` corresponds to the Frobenius norm.
 """
 function upper_bound_norm(A::BallMatrix, p::Real = 2)
     return _upper_bound_norm(A.c, A.r, p)

@@ -58,15 +58,15 @@ bA^2
 ### Rounding-mode controlled products
 
 Some matrix enclosures benefit from explicitly steering the floating-point
-rounding mode.  The wrapper [`oishi_MMul`](@ref BallArithmetic.oishi_MMul)
+rounding mode.  The wrapper `BallArithmetic.oishi_MMul`
 implements the Oishi–Rump product, which evaluates the real and imaginary
 parts of `F*G` with downward and upward rounding and returns the result as a
 `BallMatrix`.  The routine is particularly useful when replicating the
 eigenvalue and singular value enclosures described in Ref.
-[@RumpOishi2001](@cite).
+[RumpOishi2001](@cite).
 
 Internally we also expose the auxiliary kernels from Ref.
-[@Miyajima2010](@cite).  The helpers `_ccrprod`, `_cr`, `_iprod`, and `_ciprod`
+[Miyajima2010](@cite).  The helpers `_ccrprod`, `_cr`, `_iprod`, and `_ciprod`
 implement Algorithms 4–7 and propagate rectangular or ball bounds through
 matrix products.  They are available for advanced workflows that need direct
 access to the underlying interval data.
@@ -81,9 +81,6 @@ setprecision(BigFloat, 128) do
 end
 ```
 
-```@autodocs
-Modules = [BallArithmetic]
-```
 
 
 

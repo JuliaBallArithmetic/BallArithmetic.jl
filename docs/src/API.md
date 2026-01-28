@@ -1,42 +1,14 @@
+# API Reference
+
+This section contains the complete API reference for BallArithmetic.jl, organized by functionality.
+
+## Pages
+
+- [Core Types](api/core.md) - Ball, BallArray, BallMatrix, BallVector, and norm bounds
+- [Linear Systems](api/linearsystems.md) - Verified linear system solvers
+- [Eigenvalues & SVD](api/eigenvalues.md) - Eigenvalue and singular value computation
+- [CertifScripts](api/certifscripts.md) - Pseudospectra certification
+- [NumericalTest](api/numericaltest.md) - Testing utilities
+
 ```@index
-```
-
-## Certification helpers
-
-```@docs
-BallArithmetic.CertifScripts.CertificationCircle
-BallArithmetic.CertifScripts.points_on
-BallArithmetic.CertifScripts.set_schur_matrix!
-BallArithmetic.CertifScripts.configure_certification!
-BallArithmetic.CertifScripts.dowork
-BallArithmetic.CertifScripts.adaptive_arcs!
-BallArithmetic.CertifScripts.save_snapshot!
-BallArithmetic.CertifScripts.choose_snapshot_to_load
-BallArithmetic.CertifScripts.compute_schur_and_error
-BallArithmetic.CertifScripts.bound_res_original
-BallArithmetic.CertifScripts.run_certification
-BallArithmetic.CertifScripts.poly_from_roots
-```
-
-## Sylvester equations
-
-```@docs
-sylvester_miyajima_enclosure
-triangular_sylvester_miyajima_enclosure
-```
-
-## Numerical tests
-
-```@docs
-BallArithmetic.NumericalTest.rounding_test
-```
-
-## Rounding-mode controlled products
-
-```@docs
-BallArithmetic.oishi_MMul
-BallArithmetic._ccrprod
-BallArithmetic._cr
-BallArithmetic._iprod
-BallArithmetic._ciprod
 ```

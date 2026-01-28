@@ -1,5 +1,6 @@
 using BallArithmetic
 using BallArithmetic.CertifScripts
+using BallArithmetic.NumericalTest
 using Documenter
 using DocumenterCitations
 
@@ -13,7 +14,8 @@ DocMeta.setdocmeta!(BallArithmetic, :DocTestSetup, :(using BallArithmetic);
 
 makedocs(;
     plugins = [bib],
-    modules = [BallArithmetic, CertifScripts],
+    modules = [BallArithmetic, CertifScripts, NumericalTest],
+    warnonly = [:missing_docs],
     authors = "Luca Ferranti, Isaia Nisoli",
     repo = Documenter.Remotes.GitHub("JuliaBallArithmetic", "BallArithmetic.jl"),
     sitename = "BallArithmetic.jl",
@@ -25,8 +27,18 @@ makedocs(;
     ),
     pages = [
         "Home" => "index.md",
-        "API" => "API.md",
+        "SVD" => "svd.md",
         "Eigenvalues" => "eigenvalues.md",
+        "Pseudospectra" => "pseudospectra.md",
+        "Linear Systems" => "linearsystems.md",
+        "API" => [
+            "Overview" => "API.md",
+            "Core Types" => "api/core.md",
+            "Linear Systems" => "api/linearsystems.md",
+            "Eigenvalues & SVD" => "api/eigenvalues.md",
+            "CertifScripts" => "api/certifscripts.md",
+            "NumericalTest" => "api/numericaltest.md"
+        ],
         "References" => "references.md"
     ])
 
