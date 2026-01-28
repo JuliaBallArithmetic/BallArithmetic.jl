@@ -228,9 +228,10 @@ Combine two balls using addition and enlarge the radius so that the
 result remains a rigorous enclosure. The midpoint is the rounded sum and
 the radius accounts for both operands plus floating-point roundoff.
 """
-function Base.:+(x::Ball, y::Ball)
+function Base.:+(x::Ball{T}, y::Ball{T}) where {T}
     c = mid(x) + mid(y)
-    r = @up (ϵp * abs(c) + rad(x)) + rad(y)
+    ϵ = machine_epsilon(T)
+    r = add_up(add_up(mul_up(ϵ, abs(c)), rad(x)), rad(y))
     Ball(c, r)
 end
 
@@ -242,9 +243,10 @@ result remains a rigorous enclosure. The midpoint is the rounded
 difference and the radius accounts for both operands plus floating-point
 roundoff.
 """
-function Base.:-(x::Ball, y::Ball)
+function Base.:-(x::Ball{T}, y::Ball{T}) where {T}
     c = mid(x) - mid(y)
-    r = @up (ϵp * abs(c) + rad(x)) + rad(y)
+    ϵ = machine_epsilon(T)
+    r = add_up(add_up(mul_up(ϵ, abs(c)), rad(x)), rad(y))
     Ball(c, r)
 end
 
@@ -256,9 +258,17 @@ is the product of the midpoints, whereas the radius collects propagated
 uncertainty from both operands and the intrinsic rounding error of the
 operation.
 """
-function Base.:*(x::Ball, y::Ball)
+function Base.:*(x::Ball{T}, y::Ball{T}) where {T}
     c = mid(x) * mid(y)
-    r = @up (η + ϵp * abs(c)) + ((abs(mid(x)) + rad(x)) * rad(y) + rad(x) * abs(mid(y)))
+    ϵ = machine_epsilon(T)
+    η_val = subnormal_min(T)
+    # r = (η + ϵ * |c|) + ((|mid(x)| + rad(x)) * rad(y) + rad(x) * |mid(y)|)
+    abs_mx = abs(mid(x))
+    abs_my = abs(mid(y))
+    term1 = add_up(η_val, mul_up(ϵ, abs(c)))
+    term2 = mul_up(add_up(abs_mx, rad(x)), rad(y))
+    term3 = mul_up(rad(x), abs_my)
+    r = add_up(term1, add_up(term2, term3))
     Ball(c, r)
 end
 
@@ -270,13 +280,15 @@ Return the multiplicative inverse of a real ball. The method throws an
 inverse can be produced in that case.
 """
 # TODO: this probably is incorrect for complex balls
-function Base.inv(y::Ball{<:AbstractFloat})
+function Base.inv(y::Ball{T}) where {T<:AbstractFloat}
     my, ry = mid(y), rad(y)
     ry < abs(my) || throw(ArgumentError("Ball $y contains zero."))
-    c1 = @down 1.0 / (abs(my) + ry)
-    c2 = @up 1.0 / (abs(my) - ry)
-    c = @up c1 + 0.5 * (c2 - c1)
-    r = @up c - c1
+    one_T = one(T)
+    half_T = one_T / T(2)
+    c1 = div_down(one_T, add_up(abs(my), ry))
+    c2 = div_up(one_T, sub_down(abs(my), ry))
+    c = add_up(c1, mul_up(half_T, sub_up(c2, c1)))
+    r = sub_up(c, c1)
     Ball(copysign(c, my), r)
 end
 
@@ -295,13 +307,14 @@ Principal square root of a non-negative real ball. The method verifies
 that the enclosure stays within the domain of the square root and then
 propagates rounding errors to produce a rigorous result.
 """
-function Base.sqrt(y::Ball{Float64})
+function Base.sqrt(y::Ball{T}) where {T<:AbstractFloat}
     my, ry = mid(y), rad(y)
     ry < my || throw(DomainError("Ball $y contains zero."))
-    c1 = sqrt_down(@down my - ry)
-    c2 = sqrt_up(@up my + ry)
-    c = @up c1 + 0.5 * (c2 - c1)
-    r = @up c - c1
+    half_T = one(T) / T(2)
+    c1 = sqrt_down(sub_down(my, ry))
+    c2 = sqrt_up(add_up(my, ry))
+    c = add_up(c1, mul_up(half_T, sub_up(c2, c1)))
+    r = sub_up(c, c1)
     Ball(c, r)
 end
 
