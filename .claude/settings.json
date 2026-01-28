@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(julia --project*)",
+      "Bash(julia -e*)",
+      "Bash(pkill -f*)",
+      "Bash(ps aux*)",
+      "Bash(cat*)",
+      "Bash(tail*)",
+      "Bash(head*)",
+      "Bash(grep*)",
+      "Bash(wc*)",
+      "Bash(sleep*)",
+      "Bash(timeout*)",
+      "Bash(mkdir*)",
+      "Bash(rm /tmp/*)",
+      "Bash(git*)"
+    ]
+  }
+}

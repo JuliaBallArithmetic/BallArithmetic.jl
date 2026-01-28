@@ -369,5 +369,14 @@ function dot(v::BallVector, w::BallVector)
     return sum(v .* w)
 end
 
+# Mixed dot product: Vector and BallVector
+function dot(v::AbstractVector{<:Number}, w::BallVector)
+    return sum(v .* w)
+end
+
+function dot(v::BallVector, w::AbstractVector{<:Number})
+    return sum(v .* w)
+end
+
 # Export
 export Rump2022aResult, rump_2022a_eigenvalue_bounds

@@ -306,7 +306,7 @@ end
 @testset "BigFloat Support" begin
     # Test that all methods work with BigFloat
     setprecision(BigFloat, 128) do
-        A_big = BallMatrix{BigFloat}(Diagonal(BigFloat[1.0, 1.1, 5.0]))
+        A_big = BallMatrix(Diagonal(BigFloat[1.0, 1.1, 5.0]))
 
         # VBD
         vbd = miyajima_vbd(A_big; hermitian=true)

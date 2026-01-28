@@ -39,7 +39,14 @@ end
 function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::CertifScripts.CertificationCircle,
         worker_ids::Vector{Int}; polynomial = nothing, η::Real = 0.5, check_interval::Integer = 100,
         snapshot_path::Union{Nothing, AbstractString} = nothing, log_io::IO = stdout,
-        channel_capacity::Integer = 1024, Cbound = 1.0, cleanup_workers::Bool)
+        channel_capacity::Integer = 1024, Cbound = 1.0, cleanup_workers::Bool,
+        use_ogita_cache::Bool = false,
+        ogita_distance_threshold::Real = 1e-4,
+        ogita_quality_threshold::Real = 1e-10,
+        ogita_iterations::Integer = 2,
+        use_bigfloat_ogita::Bool = false,
+        target_precision::Integer = 256,
+        max_ogita_iterations::Integer = 4)
 
     isempty(worker_ids) && throw(ArgumentError("no worker processes available for certification"))
     channel_capacity < 1 && throw(ArgumentError("channel_capacity must be positive"))
@@ -49,9 +56,34 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
     (η <= 0 || η >= 1) && throw(ArgumentError("η must belong to (0, 1)"))
 
     coeffs = polynomial === nothing ? nothing : collect(polynomial)
-    schur_data = coeffs === nothing ?
-        CertifScripts.compute_schur_and_error(A) :
-        CertifScripts.compute_schur_and_error(A; polynomial = coeffs)
+
+    # For BigFloat Ogita mode, use BigFloat Schur computation
+    if use_bigfloat_ogita
+        old_prec = precision(BigFloat)
+        setprecision(BigFloat, target_precision)
+        try
+            # Convert A to BigFloat if needed
+            ET = eltype(A.c)
+            if real(ET) !== BigFloat
+                A_big = BallArithmetic.BallMatrix(
+                    convert.(Complex{BigFloat}, A.c),
+                    convert.(BigFloat, A.r)
+                )
+            else
+                A_big = A
+            end
+
+            schur_data = coeffs === nothing ?
+                CertifScripts.compute_schur_and_error(A_big) :
+                CertifScripts.compute_schur_and_error(A_big; polynomial = coeffs)
+        finally
+            setprecision(BigFloat, old_prec)
+        end
+    else
+        schur_data = coeffs === nothing ?
+            CertifScripts.compute_schur_and_error(A) :
+            CertifScripts.compute_schur_and_error(A; polynomial = coeffs)
+    end
 
     S, errF, errT, norm_Z, norm_Z_inv = schur_data
     bT = BallArithmetic.BallMatrix(S.T)
@@ -80,7 +112,21 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
 
         worker_tasks = Future[]
         for pid in worker_ids
-            push!(worker_tasks, Distributed.@spawnat pid CertifScripts.dowork(job_channel, result_channel))
+            if use_bigfloat_ogita
+                push!(worker_tasks, Distributed.@spawnat pid CertifScripts.dowork_ogita_bigfloat(
+                    job_channel, result_channel;
+                    target_precision = target_precision,
+                    max_ogita_iterations = max_ogita_iterations,
+                    distance_threshold = ogita_distance_threshold))
+            elseif use_ogita_cache
+                push!(worker_tasks, Distributed.@spawnat pid CertifScripts.dowork_ogita(
+                    job_channel, result_channel;
+                    ogita_distance_threshold = ogita_distance_threshold,
+                    ogita_quality_threshold = ogita_quality_threshold,
+                    ogita_iterations = ogita_iterations))
+            else
+                push!(worker_tasks, Distributed.@spawnat pid CertifScripts.dowork(job_channel, result_channel))
+            end
         end
 
         arcs = CertifScripts._initial_arcs(circle)
@@ -244,6 +290,22 @@ certification samples in parallel.
   with worker processes.
 - `Cbound = 1.0`: constant used by [`CertifScripts.bound_res_original`](@ref)
   when translating Schur resolvent bounds to the original matrix.
+- `use_ogita_cache = false`: when `true`, workers use Ogita SVD refinement from
+  cached SVD to speed up evaluation of nearby points. This can provide ~2x speedup
+  when consecutive jobs are for nearby points (which happens naturally during
+  adaptive bisection of small arcs).
+- `ogita_distance_threshold = 1e-4`: maximum distance between points for Ogita
+  cache reuse. Only used when `use_ogita_cache = true`.
+- `ogita_quality_threshold = 1e-10`: maximum relative residual for accepting
+  Ogita-refined SVD. Falls back to full SVD if exceeded.
+- `ogita_iterations = 2`: number of Ogita refinement iterations.
+- `use_bigfloat_ogita = false`: when `true`, workers use BigFloat precision with
+  Ogita SVD refinement. At each sample point, computes Float64 SVD then refines
+  to BigFloat using Ogita's algorithm. This is the distributed equivalent of
+  `run_certification_ogita` and is required for very small radii (< 10^-15).
+- `target_precision = 256`: BigFloat precision in bits for BigFloat Ogita mode.
+- `max_ogita_iterations = 4`: Ogita iterations for BigFloat refinement. Due to
+  quadratic convergence, 4 iterations from Float64 saturate 256-bit precision.
 
 The return value matches the serial flavour, exposing the Schur data,
 certification log, and resolvent bounds in a named tuple.  When new workers are

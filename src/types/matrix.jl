@@ -212,6 +212,20 @@ function Base.:*(lam::Ball{T, NT}, A::BallMatrix{T}) where {T, NT <: Union{T, Co
     return BallMatrix(B, R)
 end
 
+"""
+    *(A::BallMatrix, λ::Number)
+
+Right-multiplication of `BallMatrix` by a scalar. Delegates to left-multiplication.
+"""
+Base.:*(A::BallMatrix, lam::Number) = lam * A
+
+"""
+    *(A::BallMatrix, λ::Ball)
+
+Right-multiplication of `BallMatrix` by a scalar Ball. Delegates to left-multiplication.
+"""
+Base.:*(A::BallMatrix{T}, lam::Ball{T, NT}) where {T, NT <: Union{T, Complex{T}}} = lam * A
+
 # function Base.:*(lam::NT, A::BallMatrix{T}) where {T, NT<:Union{T,Complex{T}}}
 #     B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c),typeof(mid(lam))}))
 

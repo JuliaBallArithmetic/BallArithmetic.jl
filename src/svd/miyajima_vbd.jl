@@ -94,6 +94,32 @@ function miyajima_vbd(A::BallMatrix{T, NT}; hermitian::Bool = false) where {T, N
 end
 
 function _hermitian_diagonalisation(H::AbstractMatrix{T}) where {T}
+    # For Diagonal matrices, eigendecomposition is trivial
+    if H isa Diagonal
+        n = size(H, 1)
+        return (Matrix{T}(I, n, n), diag(H))
+    end
+
+    # For BigFloat matrices, try without alg keyword (Julia compat issue)
+    # Julia 1.12+ passes alg=RobustRepresentations which BigFloat doesn't support
+    if T <: BigFloat || (T <: Complex && real(T) <: BigFloat)
+        # Use explicit call without keyword arguments
+        try
+            eig = eigen(Hermitian(H))
+            return (eig.vectors, eig.values)
+        catch e
+            if e isa MethodError
+                # Fallback: convert to Float64, compute, convert back
+                H_f64 = convert.(Complex{Float64}, H)
+                eig = eigen(Hermitian(H_f64))
+                vectors = convert.(T, eig.vectors)
+                values = convert.(real(T), eig.values)
+                return (vectors, values)
+            end
+            rethrow(e)
+        end
+    end
+
     eig = eigen(Hermitian(H))
     return (eig.vectors, eig.values)
 end

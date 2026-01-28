@@ -197,8 +197,9 @@ function compute_spectral_projector_schur(A::BallMatrix{T, NT},
     # P_Schur = [I   Y]
     #           [0   0]
     # Build center and radius matrices separately
+    # NT is the center type, T is the radius type (Float64 for Complex{Float64})
     P_schur_c = zeros(NT, n, n)
-    P_schur_r = zeros(NT, n, n)
+    P_schur_r = zeros(realtype, n, n)
 
     # Top-left: I (k×k identity)
     P_schur_c[1:k, 1:k] .= Matrix{NT}(I, k, k)

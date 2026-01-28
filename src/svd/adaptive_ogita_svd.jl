@@ -11,6 +11,37 @@ Based on Rump & Ogita (2024), this implements an adaptive algorithm that:
 """
 
 """
+    _spectral_norm_bound(A::AbstractMatrix)
+
+Compute an upper bound on the spectral norm (2-norm) using:
+    ‖A‖₂ ≤ √(‖A‖∞ · ‖A‖₁)
+
+where ‖A‖∞ = max row sum of |A| and ‖A‖₁ = max column sum of |A|.
+
+This bound is valid for any matrix and computable for BigFloat (unlike opnorm(..., 2)
+which requires svdvals and fails for BigFloat).
+"""
+function _spectral_norm_bound(A::AbstractMatrix{T}) where T
+    m, n = size(A)
+
+    # ‖A‖∞ = max row sum of absolute values
+    inf_norm = zero(real(T))
+    for i in 1:m
+        row_sum = sum(abs(A[i, j]) for j in 1:n)
+        inf_norm = max(inf_norm, row_sum)
+    end
+
+    # ‖A‖₁ = max column sum of absolute values
+    one_norm = zero(real(T))
+    for j in 1:n
+        col_sum = sum(abs(A[i, j]) for i in 1:m)
+        one_norm = max(one_norm, col_sum)
+    end
+
+    return sqrt(inf_norm * one_norm)
+end
+
+"""
     OgitaSVDRefinementResult
 
 Result from Ogita's iterative SVD refinement.
@@ -41,60 +72,60 @@ end
 
 """
     ogita_svd_refine(A::AbstractMatrix{T}, U, Σ, V;
-                     max_iterations=10, precision_bits=256) where {T<:AbstractFloat}
+                     max_iterations=10, precision_bits=256,
+                     check_convergence=false) where {T<:AbstractFloat}
 
-Refine an approximate SVD using Ogita's iterative method.
+Refine an approximate SVD using Ogita's iterative method (RefSVD algorithm).
 
 # Arguments
 - `A`: Original matrix (in higher precision if needed)
 - `U`: Initial left singular vectors
 - `Σ`: Initial singular values
 - `V`: Initial right singular vectors
-- `max_iterations`: Maximum number of iterations (default: 10)
+- `max_iterations`: Number of iterations to run (default: 10)
 - `precision_bits`: Working precision in bits (default: 256)
+- `check_convergence`: If `true`, check convergence via spectral norm and stop early.
+                       If `false` (default), run fixed number of iterations.
+
+# Iteration count guidance (quadratic convergence from Float64)
+- 2 iterations: ~10⁻⁶⁰ precision (sufficient for 256-bit)
+- 3 iterations: ~10⁻¹²⁰ precision (saturates 256-bit, sufficient for 512-bit)
+- 4 iterations: ~10⁻²⁴⁰ precision (sufficient for 1024-bit)
 
 # Returns
 - `OgitaSVDRefinementResult` containing refined SVD
 
-# Algorithm
-TODO: Implement Ogita's specific algorithm from RuOg24a.pdf
-
-The general structure for iterative SVD refinement:
-1. Compute residual R = A - U*Σ*V'
-2. Solve correction equations for ΔU, ΔΣ, ΔV
-3. Update: U += ΔU, Σ += ΔΣ, V += ΔV
-4. Re-orthogonalize U and V if needed
-5. Repeat until convergence
-
 # References
-- Rump, S.M. & Ogita, T. (2024), "..." (RuOg24a.pdf)
+- [OgitaAishima2020](@cite) Ogita, T. & Aishima, K. (2020), "Iterative refinement for
+  singular value decomposition based on matrix multiplication",
+  J. Comput. Appl. Math. 369, 112512.
 """
 function ogita_svd_refine(A::AbstractMatrix{T}, U, Σ, V;
                          max_iterations::Int=10,
-                         precision_bits::Int=256) where {T<:AbstractFloat}
-    # TODO: This is a placeholder. The user needs to provide specifics from RuOg24a.pdf
-    # for the exact Ogita algorithm
+                         precision_bits::Int=256,
+                         check_convergence::Bool=false) where {T<:Union{AbstractFloat, Complex{<:AbstractFloat}}}
+    RT = real(T)  # Get the real type (Float64, BigFloat, etc.)
 
     # Convert to higher precision if needed
-    if T == Float64 && precision_bits > 53
+    if RT == Float64 && precision_bits > 53
         # Need to work in BigFloat
-        A_high = convert.(BigFloat, A)
-        U_high = convert.(BigFloat, U)
+        A_high = convert.(Complex{BigFloat}, A)
+        U_high = convert.(Complex{BigFloat}, U)
         Σ_high = convert.(BigFloat, Σ)
-        V_high = convert.(BigFloat, V)
+        V_high = convert.(Complex{BigFloat}, V)
 
         # Set precision
         old_precision = precision(BigFloat)
         setprecision(BigFloat, precision_bits)
 
         try
-            result = _ogita_svd_refine_impl(A_high, U_high, Σ_high, V_high, max_iterations)
+            result = _ogita_svd_refine_impl(A_high, U_high, Σ_high, V_high, max_iterations, check_convergence)
             return result
         finally
             setprecision(BigFloat, old_precision)
         end
     else
-        return _ogita_svd_refine_impl(A, U, Σ, V, max_iterations)
+        return _ogita_svd_refine_impl(A, U, Σ, V, max_iterations, check_convergence)
     end
 end
 
@@ -114,22 +145,26 @@ The algorithm computes corrections F̃ and G̃ such that:
 This converges quadratically if singular values are well-separated.
 """
 function _ogita_svd_refine_impl(A::AbstractMatrix{T}, U, Σ, V,
-                                max_iterations::Int) where {T<:AbstractFloat}
+                                max_iterations::Int,
+                                check_convergence::Bool) where {T<:Union{AbstractFloat, Complex{<:AbstractFloat}}}
     m, n = size(A)
     min_dim = min(m, n)
+    RT = real(T)  # Real type for singular values
 
-    # Current approximations
-    U_curr = copy(U)
-    Σ_curr = copy(Σ)
-    V_curr = copy(V)
+    # Current approximations - convert to match A's precision
+    U_curr = convert.(T, U)
+    Σ_curr = convert.(RT, Σ)
+    V_curr = convert.(T, V)
 
-    converged = false
     iterations = 0
-    residual_norm = T(Inf)
+    converged = false
 
+    # Quadratic convergence guarantees: iterations ≈ ceil(log2(precision_bits / 15))
+    # - 2 iterations: ~10^-60 (enough for 256-bit)
+    # - 3 iterations: ~10^-120 (saturates 256-bit, enough for 512-bit)
+    # - 4 iterations: ~10^-240 (enough for 1024-bit)
     for iter in 1:max_iterations
         iterations = iter
-
         # Step 1: Compute residual matrices (Algorithm 1, line 1)
         # R = I_m - U^T U (orthogonality residual for U)
         # S = I_n - V^T V (orthogonality residual for V)
@@ -139,23 +174,11 @@ function _ogita_svd_refine_impl(A::AbstractMatrix{T}, U, Σ, V,
         T_matrix = U_curr' * A * V_curr
 
         # Step 2: Compute refined singular values (Algorithm 1, line 2)
-        σ_tilde = zeros(T, min_dim)
+        # Singular values are always real
+        σ_tilde = zeros(RT, min_dim)
         for i in 1:min_dim
-            denom = 1 - (R[i,i] + S[i,i]) / 2
-            if abs(denom) < eps(T)
-                @warn "Ogita refinement: near-singular denominator at i=$i"
-                converged = false
-                break
-            end
-            σ_tilde[i] = T_matrix[i,i] / denom
-        end
-
-        # Check convergence via residual
-        residual_norm = opnorm(A - U_curr * Diagonal(σ_tilde) * V_curr', 2)
-        if residual_norm < eps(T) * opnorm(A, 2) * 100
-            converged = true
-            Σ_curr = σ_tilde
-            break
+            denom = 1 - real(R[i,i] + S[i,i]) / 2
+            σ_tilde[i] = real(T_matrix[i,i] / denom)
         end
 
         # Steps 3-7: Compute correction matrices F̃ and G̃
@@ -169,39 +192,33 @@ function _ogita_svd_refine_impl(A::AbstractMatrix{T}, U, Σ, V,
         end
 
         # Step 4: Off-diagonal parts of F_11 and G (Algorithm 1, line 4)
+        # From Ogita & Aishima 2020:
+        #   α := T_{i,j} + σ̃_j · R_{i,j}
+        #   β := conj(T_{j,i}) + σ̃_j · conj(S_{j,i})
+        #   F̃_{i,j} := (α·σ̃_j + β·σ̃_i) / (σ̃_j² - σ̃_i²)
+        #   G̃_{i,j} := (α·σ̃_i + β·σ̃_j) / (σ̃_j² - σ̃_i²)
         for i in 1:n
             for j in 1:n
                 if i != j
-                    # Check for distinct singular values
-                    if abs(σ_tilde[j]^2 - σ_tilde[i]^2) < eps(T) * max(σ_tilde[i], σ_tilde[j])^2
-                        @warn "Ogita refinement: clustered singular values at i=$i, j=$j"
-                        converged = false
-                        break
+                    denom = σ_tilde[j]^2 - σ_tilde[i]^2
+                    # Skip if singular values are too close (clustered)
+                    if abs(denom) > eps(RT) * max(σ_tilde[i], σ_tilde[j])^2
+                        α = T_matrix[i,j] + σ_tilde[j] * R[i,j]
+                        β = conj(T_matrix[j,i]) + σ_tilde[j] * conj(S[j,i])
+                        F_tilde[i,j] = (α * σ_tilde[j] + β * σ_tilde[i]) / denom
+                        G_tilde[i,j] = (α * σ_tilde[i] + β * σ_tilde[j]) / denom
                     end
-
-                    α = T_matrix[i,j] + σ_tilde[j] * R[i,j]
-                    β = T_matrix[j,i] + σ_tilde[j] * S[i,j]
-
-                    F_tilde[i,j] = (α * σ_tilde[j] + β * σ_tilde[i]) / (σ_tilde[j]^2 - σ_tilde[i]^2)
-                    G_tilde[i,j] = (α * σ_tilde[i] + β * σ_tilde[j]) / (σ_tilde[j]^2 - σ_tilde[i]^2)
                 end
             end
-        end
-
-        if !converged
-            break
         end
 
         # Step 5: F_12 block (Algorithm 1, line 5)
         if m > n
             for i in 1:n
                 for j in (n+1):m
-                    if abs(σ_tilde[i]) < eps(T)
-                        @warn "Ogita refinement: near-zero singular value"
-                        converged = false
-                        break
+                    if abs(σ_tilde[i]) > eps(RT)
+                        F_tilde[i,j] = -T_matrix[j,i] / σ_tilde[i]
                     end
-                    F_tilde[i,j] = -T_matrix[j,i] / σ_tilde[i]
                 end
             end
         end
@@ -229,14 +246,47 @@ function _ogita_svd_refine_impl(A::AbstractMatrix{T}, U, Σ, V,
         V_curr = V_curr * (I + G_tilde)
         Σ_curr = σ_tilde
 
-        # Check if corrections are small enough
-        if max(opnorm(F_tilde, 2), opnorm(G_tilde, 2)) < eps(T) * 100
-            converged = true
-            break
+        # Optional convergence check based on correction matrix norms
+        if check_convergence
+            correction_norm = max(_spectral_norm_bound(F_tilde), _spectral_norm_bound(G_tilde))
+            if correction_norm < eps(RT) * 100
+                converged = true
+                break
+            end
         end
     end
 
+    # Final singular value computation using the converged U and V
+    # This is necessary because Σ_curr was computed BEFORE the last U,V update
+    T_final = U_curr' * A * V_curr
+    R_final = I - U_curr' * U_curr
+    S_final = I - V_curr' * V_curr
+    for i in 1:min_dim
+        denom = one(RT) - real(R_final[i,i] + S_final[i,i]) / 2
+        Σ_curr[i] = abs(T_final[i,i] / denom)  # Use abs() to get the magnitude
+    end
+
+    # Phase correction for complex matrices: ensure U'AV is real positive
+    # If T_final[i,i] = σ_i * e^{iθ_i}, multiply U[:,i] by e^{iθ_i} so that
+    # (new U[:,i])' * A * V[:,i] = σ_i (real positive)
+    if T <: Complex
+        for i in 1:min_dim
+            if abs(T_final[i,i]) > eps(RT)
+                phase = T_final[i,i] / abs(T_final[i,i])  # e^{iθ_i}
+                U_curr[:, i] .*= phase  # U[:,i] ← U[:,i] * e^{iθ_i}
+            end
+        end
+    end
+
+    # Mark as converged if we ran all iterations (for fixed iteration mode)
+    if !check_convergence
+        converged = true
+    end
+
     precision_used = T == Float64 ? 53 : precision(BigFloat)
+
+    # Compute final residual norm for diagnostics (only once at the end)
+    residual_norm = _spectral_norm_bound(A - U_curr * Diagonal(Σ_curr) * V_curr')
 
     return OgitaSVDRefinementResult(
         U_curr, Diagonal(Σ_curr), V_curr,

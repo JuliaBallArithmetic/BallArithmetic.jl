@@ -209,25 +209,17 @@ All eigenvalues satisfy |λⱼ - λ̃ⱼ| ≤ δ̂.
 # Returns
 - δ̂ if successful, Inf if ‖I - Gg‖₂ >= 1
 """
-function compute_global_eigenvalue_bound(Rg, Gg, β::Float64)
+function compute_global_eigenvalue_bound(Rg::BallMatrix, Gg::BallMatrix, β::Float64)
     n = size(Rg, 1)
 
     # Compute norms using interval arithmetic
+    # Rg is a BallMatrix
     norm_Rg = svd_bound_L2_opnorm(Rg)
 
-    # I - Gg with proper interval arithmetic
-    I_Gg = Matrix{Ball{Float64, Float64}}(undef, n, n)
-    for i in 1:n
-        for j in 1:n
-            if i == j
-                I_Gg[i, j] = Ball(1.0, 0.0) - Gg[i, j]
-            else
-                I_Gg[i, j] = Ball(0.0, 0.0) - Gg[i, j]
-            end
-        end
-    end
-
-    norm_I_Gg = svd_bound_L2_opnorm(BallMatrix(I_Gg))
+    # I - Gg: compute the identity minus Gg as a BallMatrix
+    I_ball = BallMatrix(Matrix{Float64}(I, n, n))
+    I_Gg = I_ball - Gg
+    norm_I_Gg = svd_bound_L2_opnorm(I_Gg)
 
     # Check condition
     denominator = 1 - norm_I_Gg
@@ -510,6 +502,7 @@ function verify_generalized_eigenpairs(A::BallMatrix, B::BallMatrix, X̃::Matrix
         Gg = compute_gram_matrix(B, X̃)
 
         # Residual norm for diagnostics
+        # Rg is already a BallMatrix
         residual_norm = svd_bound_L2_opnorm(Rg)
 
         δ̂ = compute_global_eigenvalue_bound(Rg, Gg, β)
