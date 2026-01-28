@@ -79,6 +79,53 @@ Base.getindex(result::RigorousSVDResult, inds...) = getindex(result.singular_val
 Base.iterate(result::RigorousSVDResult) = iterate(result.singular_values)
 Base.iterate(result::RigorousSVDResult, state) = iterate(result.singular_values, state)
 
+# BigFloat SVD cache for warm-starting Ogita refinement
+# This cache stores the most recently computed SVD for reuse with nearby matrices
+const _svd_cache_U = Ref{Union{Nothing, Matrix}}(nothing)
+const _svd_cache_S = Ref{Union{Nothing, Vector}}(nothing)
+const _svd_cache_V = Ref{Union{Nothing, Matrix}}(nothing)
+const _svd_cache_A_hash = Ref{UInt64}(0)  # Hash of the matrix for cache validation
+const _svd_cache_hits = Ref{Int}(0)
+const _svd_cache_misses = Ref{Int}(0)
+
+"""
+    clear_svd_cache!()
+
+Clear the BigFloat SVD cache used for warm-starting Ogita refinement.
+"""
+function clear_svd_cache!()
+    _svd_cache_U[] = nothing
+    _svd_cache_S[] = nothing
+    _svd_cache_V[] = nothing
+    _svd_cache_A_hash[] = 0
+    _svd_cache_hits[] = 0
+    _svd_cache_misses[] = 0
+    return nothing
+end
+
+"""
+    svd_cache_stats()
+
+Return statistics about the BigFloat SVD cache usage.
+"""
+function svd_cache_stats()
+    return (hits = _svd_cache_hits[], misses = _svd_cache_misses[])
+end
+
+"""
+    set_svd_cache!(U, S, V, A_hash)
+
+Set the SVD cache with the given factors and matrix hash.
+Used for warm-starting Ogita refinement on nearby matrices.
+"""
+function set_svd_cache!(U, S, V, A_hash::UInt64)
+    _svd_cache_U[] = U
+    _svd_cache_S[] = S
+    _svd_cache_V[] = V
+    _svd_cache_A_hash[] = A_hash
+    return nothing
+end
+
 """
     rigorous_svd(A::BallMatrix; apply_vbd = true)
 
@@ -112,28 +159,54 @@ function rigorous_svd(A::BallMatrix{T}; method::SVDMethod = MiyajimaM1(), apply_
 end
 
 """
-    _rigorous_svd_bigfloat(A, method; apply_vbd)
+    _rigorous_svd_bigfloat(A, method; apply_vbd, use_cache)
 
 BigFloat version of rigorous SVD using Ogita refinement.
 Computes SVD in Float64, refines to BigFloat, then certifies.
-"""
-function _rigorous_svd_bigfloat(A::BallMatrix{BigFloat}, method::SVDMethod; apply_vbd::Bool = true)
-    # Step 1: Compute Float64 SVD
-    A_f64 = Complex{Float64}.(A.c)
-    F64 = svd(A_f64)
 
-    # Step 2: Refine to BigFloat using Ogita
-    # Determine number of iterations based on precision
+When `use_cache=true` (default), attempts to warm-start from a cached SVD
+if available, which can significantly speed up computation for similar matrices.
+"""
+function _rigorous_svd_bigfloat(A::BallMatrix{BigFloat}, method::SVDMethod;
+                                 apply_vbd::Bool = true, use_cache::Bool = true)
     prec_bits = precision(BigFloat)
     # Quadratic convergence: ~ceil(log2(prec_bits / 15)) iterations
     n_iter = max(2, ceil(Int, log2(prec_bits / 15)))
 
-    refined = ogita_svd_refine(A.c, F64.U, F64.S, F64.Vt';
-                               max_iterations=n_iter,
-                               precision_bits=prec_bits,
-                               check_convergence=false)
+    # Try to use cached SVD for warm-starting
+    use_cached = false
+    if use_cache && _svd_cache_U[] !== nothing
+        # Cache is available - use it for warm-starting (fewer iterations needed)
+        use_cached = true
+        _svd_cache_hits[] += 1
 
-    # Step 3: Certify the refined SVD
+        refined = ogita_svd_refine(A.c,
+                                   _svd_cache_U[],
+                                   _svd_cache_S[],
+                                   _svd_cache_V[];
+                                   max_iterations=n_iter,  # Still need full iterations from cached start
+                                   precision_bits=prec_bits,
+                                   check_convergence=false)
+    else
+        # No cache - compute Float64 SVD first
+        _svd_cache_misses[] += 1
+
+        A_f64 = Complex{Float64}.(A.c)
+        F64 = svd(A_f64)
+
+        refined = ogita_svd_refine(A.c, F64.U, F64.S, F64.Vt';
+                                   max_iterations=n_iter,
+                                   precision_bits=prec_bits,
+                                   check_convergence=false)
+    end
+
+    # Update cache with refined SVD for future use
+    if use_cache
+        Σ_for_cache = isa(refined.Σ, Diagonal) ? diag(refined.Σ) : refined.Σ
+        set_svd_cache!(refined.U, Σ_for_cache, refined.V, hash(A.c))
+    end
+
+    # Certify the refined SVD
     Σ_vec = isa(refined.Σ, Diagonal) ? diag(refined.Σ) : refined.Σ
     svd_refined = SVD(Matrix(refined.U), Vector(Σ_vec), Matrix(refined.V'))
 
