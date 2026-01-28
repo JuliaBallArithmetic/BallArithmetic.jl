@@ -119,6 +119,9 @@ include("eigenvalues/spectral_projection_schur.jl")
 export SchurSpectralProjectorResult, compute_spectral_projector_schur,
     compute_spectral_projector_hermitian, project_vector_spectral,
     verify_spectral_projector_properties
+include("eigenvalues/iterative_schur_refinement.jl")
+export SchurRefinementResult, refine_schur_decomposition, rigorous_schur_bigfloat,
+    newton_schulz_orthogonalize!
 include("pseudospectra/rigorous_contour.jl")
 include("matrix_classifiers/is_M_matrix.jl")
 
