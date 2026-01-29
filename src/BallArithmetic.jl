@@ -80,9 +80,13 @@ include("norm_bounds/rigorous_opnorm_bounds.jl")
 include("norm_bounds/oishi.jl")
 include("norm_bounds/oishi_triangular.jl")
 include("norm_bounds/rump_oishi_2024.jl")
+include("norm_bounds/oishi_2023_schur.jl")
 
 export upper_bound_L1_opnorm, upper_bound_L2_opnorm, upper_bound_L_inf_opnorm
 export rump_oishi_2024_triangular_bound, backward_singular_value_bound
+export Oishi2023Result, oishi_2023_sigma_min_bound, oishi_2023_optimal_block_size
+export RumpOishi2024Result, rump_oishi_2024_sigma_min_bound, rump_oishi_2024_optimal_block_size
+export psi_schur_factor, pi_norm
 include("eigenvalues/gev.jl")
 include("eigenvalues/upper_bound_spectral.jl")
 include("eigenvalues/miyajima/proceduresMiyajima2010.jl")
@@ -123,6 +127,18 @@ export SchurSpectralProjectorResult, compute_spectral_projector_schur,
 include("eigenvalues/iterative_schur_refinement.jl")
 export SchurRefinementResult, refine_schur_decomposition, rigorous_schur_bigfloat,
     newton_schulz_orthogonalize!
+export SymmetricEigenRefinementResult, refine_symmetric_eigen, rigorous_symmetric_eigen_bigfloat
+export refine_schur_double64, refine_schur_hybrid, refine_schur_multifloat
+export refine_symmetric_eigen_double64, refine_symmetric_eigen_hybrid, refine_symmetric_eigen_multifloat
+export ogita_svd_refine_fast, ogita_svd_refine_hybrid, ogita_svd_refine_multifloat
+
+# Verified matrix decompositions (Rump & Ogita 2024)
+include("decompositions/verified_lu.jl")
+include("decompositions/verified_cholesky.jl")
+include("decompositions/verified_qr.jl")
+include("decompositions/verified_polar.jl")
+include("decompositions/verified_takagi.jl")
+include("decompositions/iterative_refinement.jl")
 include("pseudospectra/rigorous_contour.jl")
 include("matrix_classifiers/is_M_matrix.jl")
 
@@ -167,9 +183,36 @@ export subsquares_method, multi_jacobi_method, interval_least_squares
 include("linear_system/verified_linear_system_hmatrix.jl")
 export VerifiedLinearSystemResult, verified_linear_solve_hmatrix
 
+include("pseudospectra/sylvester_resolvent_bound.jl")
 include("pseudospectra/CertifScripts.jl")
 include("linear_system/sylvester.jl")
 
 export sylvester_miyajima_enclosure, triangular_sylvester_miyajima_enclosure
+
+# Sylvester-based resolvent bounds
+export SylvesterResolventResult, SylvesterResolventPointResult
+export SylvesterResolventPointResultV2, SylvesterResolventPointResultV3
+export CollatzNeumannResult
+export sylvester_resolvent_precompute, sylvester_resolvent_bound
+export sylvester_resolvent_bound_v2, sylvester_resolvent_bound_v3
+export triangular_inverse_inf_norm_bound, triangular_inverse_one_norm_bound, triangular_inverse_two_norm_bound
+export collatz_norm_N_bound, neumann_inverse_bound
+export psi_squared, similarity_condition_number, solve_sylvester_oracle
+export print_sylvester_diagnostics, print_point_result, print_point_result_v2, print_point_result_v3
+export find_optimal_split
+# Unified parametric interface
+export LargeBlockMethod, TriangularBacksub, NeumannCollatz
+export CouplingMethod, ProductBound, DirectSolve
+export UnifiedResolventResult, sylvester_resolvent_bound_unified
+export print_unified_result, compare_methods, print_method_comparison
+# Extended parametric framework
+export NormEstimator, OneInfNorm, FrobeniusNorm, RowCol2Norm
+export DInverseEstimator, TriBacksub, NeumannOneInf, NeumannCollatz2
+export CouplingEstimator, CouplingNone, CouplingARSolve, CouplingOffDirect
+export Combiner, CombinerV1, CombinerV2, CombinerV2p5
+export ResolventBoundConfig, config_v1, config_v2, config_v3, config_v2p5
+export ParametricResolventResult, parametric_resolvent_bound, SVDWarmStart
+export neumann_one_inf_bound, offdiag_direct_bound, estimate_2norm
+export compare_all_configs, print_config_comparison
 
 end

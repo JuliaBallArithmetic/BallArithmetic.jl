@@ -25,4 +25,6 @@ using Test
     include("test_numerical_test/test_numerical_test.jl")
     include("test_linear_solvers/test_solvers.jl")
     include("test_certification/test_certifscripts.jl")
+    include("test_decompositions/test_iterative_refinement.jl")
+    include("test_decompositions/test_iterative_refinement_ext.jl")
 end
