@@ -113,6 +113,58 @@ The rigorous bound accounts for:
 
 For certification purposes, **always use the rigorous bound**.
 
+## Other Matrix Decompositions (100×100 Matrix)
+
+Beyond SVD, BallArithmetic provides verified versions of standard matrix decompositions.
+These use **Float64 computation with BigFloat certification** (no iterative refinement).
+
+All benchmarks use 256-bit BigFloat precision.
+
+| Decomposition | Time | Residual Norm | Rigorous Bound |
+|---------------|------|---------------|----------------|
+| **Cholesky** (SPD) | **1.7s** | 2.7×10⁻¹⁶ | ✓ |
+| **QR** | **2.1s** | 3.1×10⁻¹⁵ | ✓ |
+| **Polar** | 3.3s | 4.8×10⁻¹⁶ | ✓ |
+| **LU** | 5.6s | 1.3×10⁻¹⁴ | ✓ |
+| **Takagi** (symmetric complex) | 10.3s | 1.7×10⁻¹⁵ | ✓ |
+
+**Note:** The residual norms (~10⁻¹⁴ to 10⁻¹⁶) reflect Float64 computation accuracy.
+For applications requiring higher accuracy, these decompositions can be enhanced with
+iterative refinement methods similar to the SVD cascade approach.
+
+**Usage examples:**
+
+```julia
+using BallArithmetic
+using LinearAlgebra
+
+A = randn(100, 100) + 5I
+
+# LU decomposition
+result_lu = verified_lu(A)
+# result_lu.L, result_lu.U are BallMatrix enclosures
+# result_lu.residual_norm is the rigorous error bound
+
+# QR decomposition
+result_qr = verified_qr(A)
+# result_qr.Q, result_qr.R are BallMatrix enclosures
+# result_qr.orthogonality_defect bounds ‖QᴴQ - I‖
+
+# Cholesky (for symmetric positive definite)
+A_spd = A'A + 100I
+result_chol = verified_cholesky(A_spd)
+# result_chol.L is the lower Cholesky factor
+
+# Polar decomposition A = UH
+result_polar = verified_polar(A)
+# result_polar.U (unitary), result_polar.H (Hermitian positive semidefinite)
+
+# Takagi factorization (for complex symmetric)
+A_symm = A + transpose(A)
+result_takagi = verified_takagi(A_symm)
+# A = U Σ Uᵀ (not Uᴴ!)
+```
+
 ## Schur Complement Bounds (Oishi 2023 / Rump-Oishi 2024)
 
 For block-structured matrices, the Schur complement method provides efficient σ_min bounds:
