@@ -1,8 +1,24 @@
+"""
+Test suite for extended precision iterative refinement.
+
+Tests matrix decomposition refinement using higher precision arithmetic
+provided by optional dependencies:
+- DoubleFloats.jl: Double64 (~106 bits precision)
+- MultiFloats.jl: Float64x2, Float64x3, Float64x4 (up to ~212 bits)
+
+NOTE: These are OPTIONAL dependencies. Tests are skipped (marked as broken
+in the test summary) when the packages are not installed.
+
+To enable these tests:
+    ] add DoubleFloats
+    ] add MultiFloats
+"""
+
 using Test
 using BallArithmetic
 using LinearAlgebra
 
-# Check if extensions are available
+# Check if optional extensions are available
 const HAS_DOUBLEFLOATS = try
     using DoubleFloats
     true

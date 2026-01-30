@@ -295,13 +295,23 @@ end
         end
     end
 
+    # NOTE: Matrices with repeated (multiple) eigenvalues are challenging for
+    # iterative eigenvalue refinement methods. When eigenvalues are repeated,
+    # the eigenspaces are not uniquely defined - any orthonormal basis of the
+    # eigenspace is valid. This non-uniqueness causes Newton-based refinement
+    # to struggle achieving ultra-high precision, as the iteration may "wander"
+    # within the eigenspace instead of converging to a specific eigenvector.
+    #
+    # The algorithm still produces mathematically correct results (eigenvalues
+    # are accurate, eigenvectors span the correct subspace), but may not reach
+    # the target precision within the iteration limit.
     @testset "RefSyEv handles multiple eigenvalues" begin
         old_prec = precision(BigFloat)
         try
             setprecision(BigFloat, 256)
 
             n = 6
-            # Create matrix with multiple eigenvalues: λ = [1, 1, 2, 2, 3, 3]
+            # Matrix with repeated eigenvalues: λ = [1, 1, 2, 2, 3, 3]
             λ_true = [1.0, 1.0, 2.0, 2.0, 3.0, 3.0]
             D = Diagonal(λ_true)
             P = qr(randn(n, n)).Q |> Matrix
@@ -311,25 +321,23 @@ end
             F = eigen(Symmetric(A))
             Q0, λ0 = F.vectors, F.values
 
-            # RefSyEv should handle multiple eigenvalues gracefully
-            # Note: Repeated eigenvalues are challenging for iterative refinement
             result = refine_symmetric_eigen(A, Q0, λ0;
                                             target_precision=256,
                                             max_iterations=15)
 
-            # Should converge or make good progress
-            # Repeated eigenvalues may not converge to ultra-high precision
             if result.converged
                 @test result.residual_norm < 1e-20
             else
-                # At least check it made some progress (not diverging)
+                # KNOWN LIMITATION: Repeated eigenvalues may prevent convergence
+                # to ultra-high precision. We still verify the algorithm makes
+                # progress and doesn't diverge.
                 @test result.residual_norm < 1e-8 || @test_broken result.converged
             end
 
-            # Check orthogonality is maintained (more lenient for repeated eigenvalues)
+            # Orthogonality should be maintained (relaxed tolerance for repeated eigenvalues)
             @test result.orthogonality_defect < 1e-10
 
-            # Check eigenvalues are close to true values
+            # Eigenvalues should still be accurate even if eigenvectors aren't fully refined
             λ_refined = sort(Float64.(result.λ))
             λ_expected = sort(λ_true)
             @test maximum(abs.(λ_refined - λ_expected)) < 1e-8

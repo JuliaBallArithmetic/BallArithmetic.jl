@@ -6,6 +6,10 @@ for efficient high-precision SVD certification.
 
 Based on Ogita, T. & Aishima, K. (2020), "Iterative refinement for singular value
 decomposition based on matrix multiplication", J. Comput. Appl. Math. 369, 112512.
+
+NOTE: This test requires MultiFloats.jl to be installed:
+    ] add MultiFloats
+If not installed, the test is skipped (marked as broken in test summary).
 """
 
 using Test
@@ -13,11 +17,14 @@ using BallArithmetic
 using LinearAlgebra
 using Random
 
-# Check if MultiFloats extension is available by checking if function has methods
+# Check if MultiFloats extension is available
 const HAS_CASCADE = hasmethod(ogita_svd_cascade, Tuple{Matrix{Complex{BigFloat}}, Complex{BigFloat}})
 
 @testset "Precision Cascade SVD" begin
     if !HAS_CASCADE
+        # OPTIONAL DEPENDENCY: MultiFloats.jl provides Float64x2, Float64x3, Float64x4
+        # types for extended precision without the overhead of BigFloat.
+        # Install with: ] add MultiFloats
         @warn "ogita_svd_cascade not available (MultiFloats extension not loaded)"
         @test_skip true
         return

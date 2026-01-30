@@ -371,31 +371,33 @@ using BallArithmetic
         end
     end
 
+    # NOTE: This test deliberately creates an ill-conditioned case to verify
+    # failure handling. The matrix has large off-diagonal elements relative to
+    # eigenvalue separation, causing the Neumann series bound to fail (α ≥ 1).
+    # In rare cases, even the fallback triangular inversion triggers LAPACK
+    # numerical issues. This is expected behavior for such extreme inputs.
     @testset "V3 Neumann failure mode" begin
-        # Create a case where α ≥ 1 (Neumann fails)
-        # This happens when z is close to eigenvalues and off-diagonal is large
+        # Create a case where α ≥ 1 (Neumann series diverges)
         n = 8
         λ = complex.(1.0:n, 0.0)
-        # Large off-diagonal relative to diagonal separation
+        # Deliberately large off-diagonal to cause Neumann failure
         T22 = diagm(0 => λ) + 5.0 * UpperTriangular(ones(n, n) - I)
         T22 = Matrix(T22)
 
-        z = 4.5 + 0.0im  # Between eigenvalues, but off-diagonal is huge
+        z = 4.5 + 0.0im  # Between eigenvalues, but off-diagonal dominates
 
         neumann_result = neumann_inverse_bound(T22, z; power_iterations=5)
 
-        println("\nNeumann failure test:")
+        println("\nNeumann failure test (expected to fail):")
         println("  α = $(neumann_result.alpha)")
         println("  success = $(neumann_result.success)")
 
         # With large off-diagonal, Neumann should fail (α ≥ 1)
-        # But we fall back to triangular bound, so V3 should still work
+        # V3 falls back to triangular bound
         k = 2
         T_full = [diagm(ones(k)) zeros(k, n); zeros(n, k) T22]
         T_full[1:k, (k+1):end] .= 0.1 * randn(k, n)
 
-        # The test may fail with LAPACK errors due to ill-conditioning
-        # This is expected for this extreme test case
         try
             precomp, R, result = sylvester_resolvent_bound_v3(T_full, k, z)
 
@@ -405,8 +407,10 @@ using BallArithmetic
             println("  Neumann certified: $(result.neumann_success)")
         catch e
             if e isa LinearAlgebra.LAPACKException
-                # Expected for this ill-conditioned case
-                @test_broken false  # Mark as known issue
+                # KNOWN LIMITATION: Extreme ill-conditioning can cause LAPACK
+                # to fail even in fallback path. This is expected for this
+                # deliberately pathological test case.
+                @test_broken false
                 println("  LAPACK exception (expected for ill-conditioned case)")
             else
                 rethrow(e)

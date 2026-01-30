@@ -3,6 +3,10 @@ Test suite for GenericLinearAlgebra SVD extension.
 
 Tests the native BigFloat SVD provided by GenericLinearAlgebra.jl,
 which is faster and more accurate than cascade refinement methods.
+
+NOTE: This test requires GenericLinearAlgebra.jl to be installed:
+    ] add GenericLinearAlgebra
+If not installed, the test is skipped (marked as broken in test summary).
 """
 
 using Test
@@ -10,11 +14,14 @@ using BallArithmetic
 using LinearAlgebra
 using Random
 
-# Check if GLA extension is available by checking if function has methods
+# Check if GLA extension is available
 const HAS_GLA = hasmethod(ogita_svd_cascade_gla, Tuple{Matrix{Complex{BigFloat}}, Complex{BigFloat}})
 
 @testset "GenericLinearAlgebra SVD" begin
     if !HAS_GLA
+        # OPTIONAL DEPENDENCY: GenericLinearAlgebra.jl provides native BigFloat
+        # SVD without LAPACK, achieving higher precision than Float64-based methods.
+        # Install with: ] add GenericLinearAlgebra
         @warn "ogita_svd_cascade_gla not available (GenericLinearAlgebra extension not loaded)"
         @test_skip true
         return
