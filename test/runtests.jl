@@ -21,6 +21,7 @@ using Test
     include("test_pseudospectra/test_pseudospectra.jl")
     include("test_fft_ext/test_fft.jl")
     include("test_norm_bounds/test_norm_bounds.jl")
+    include("test_norm_bounds/test_oishi_2023_schur.jl")
     include("test_svd/test_svd.jl")
     include("test_svd/test_subepsilon_certification.jl")
     include("test_svd/test_precision_cascade_svd.jl")
