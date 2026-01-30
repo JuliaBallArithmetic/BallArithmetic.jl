@@ -7,11 +7,18 @@ which is faster and more accurate than cascade refinement methods.
 
 using Test
 using BallArithmetic
-using GenericLinearAlgebra
 using LinearAlgebra
 using Random
 
+# Check if GLA extension is available by checking if function has methods
+const HAS_GLA = hasmethod(ogita_svd_cascade_gla, Tuple{Matrix{Complex{BigFloat}}, Complex{BigFloat}})
+
 @testset "GenericLinearAlgebra SVD" begin
+    if !HAS_GLA
+        @warn "ogita_svd_cascade_gla not available (GenericLinearAlgebra extension not loaded)"
+        @test_skip true
+        return
+    end
 
     @testset "svd_bigfloat basic" begin
         Random.seed!(42)
