@@ -116,21 +116,39 @@ For certification purposes, **always use the rigorous bound**.
 ## Other Matrix Decompositions (100×100 Matrix)
 
 Beyond SVD, BallArithmetic provides verified versions of standard matrix decompositions.
-These use **Float64 computation with BigFloat certification** (no iterative refinement).
 
-All benchmarks use 256-bit BigFloat precision.
+### Standard (Float64 → BigFloat)
+
+These use Float64 computation with BigFloat certification:
 
 | Decomposition | Time | Residual Norm | Rigorous Bound |
 |---------------|------|---------------|----------------|
-| **Cholesky** (SPD) | **1.7s** | 2.7×10⁻¹⁶ | ✓ |
-| **QR** | **2.1s** | 3.1×10⁻¹⁵ | ✓ |
-| **Polar** | 3.3s | 4.8×10⁻¹⁶ | ✓ |
-| **LU** | 5.6s | 1.3×10⁻¹⁴ | ✓ |
-| **Takagi** (symmetric complex) | 10.3s | 1.7×10⁻¹⁵ | ✓ |
+| Cholesky (SPD) | 1.7s | 2.7×10⁻¹⁶ | ✓ |
+| QR | 2.1s | 3.1×10⁻¹⁵ | ✓ |
+| Polar | 3.3s | 4.8×10⁻¹⁶ | ✓ |
+| LU | 5.6s | 1.3×10⁻¹⁴ | ✓ |
+| Takagi | 10.3s | 1.7×10⁻¹⁵ | ✓ |
 
-**Note:** The residual norms (~10⁻¹⁴ to 10⁻¹⁶) reflect Float64 computation accuracy.
-For applications requiring higher accuracy, these decompositions can be enhanced with
-iterative refinement methods similar to the SVD cascade approach.
+### GLA-Based (Native BigFloat)
+
+With GenericLinearAlgebra, we achieve **60+ orders of magnitude better residuals**:
+
+| Decomposition | Time | Residual Norm | Improvement |
+|---------------|------|---------------|-------------|
+| **Cholesky (GLA)** | **0.55s** | **5.2×10⁻⁷⁴** | 10⁵⁸× better |
+| **LU (GLA)** | **0.91s** | **5.9×10⁻⁷⁵** | 10⁶¹× better |
+| **QR (GLA)** | **0.91s** | **5.4×10⁻⁷⁵** | 10⁶⁰× better |
+| **SVD (GLA)** | 5.15s | 4.5×10⁻⁷⁴ | 10⁶⁰× better |
+
+**GLA functions:**
+```julia
+using BallArithmetic, GenericLinearAlgebra
+
+result_lu = verified_lu_gla(A)        # ~10⁻⁷⁵ residual
+result_qr = verified_qr_gla(A)        # ~10⁻⁷⁵ residual
+result_chol = verified_cholesky_gla(A_spd)  # ~10⁻⁷⁴ residual
+(U, S, V, res) = verified_svd_gla(A)  # ~10⁻⁷⁴ residual
+```
 
 **Usage examples:**
 

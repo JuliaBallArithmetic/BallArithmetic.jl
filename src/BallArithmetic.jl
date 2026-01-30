@@ -143,6 +143,41 @@ include("decompositions/verified_cholesky.jl")
 include("decompositions/verified_qr.jl")
 include("decompositions/verified_polar.jl")
 include("decompositions/verified_takagi.jl")
+
+# GLA-based decomposition stubs (implemented in GenericLinearAlgebraExt)
+"""
+    verified_lu_gla(A; precision_bits=256)
+
+Verified LU using GenericLinearAlgebra's native BigFloat.
+Achieves residuals ~10⁻⁷⁴. Requires GenericLinearAlgebra.jl.
+"""
+function verified_lu_gla end
+
+"""
+    verified_qr_gla(A; precision_bits=256)
+
+Verified QR using GenericLinearAlgebra's native BigFloat.
+Achieves residuals ~10⁻⁷⁴. Requires GenericLinearAlgebra.jl.
+"""
+function verified_qr_gla end
+
+"""
+    verified_cholesky_gla(A; precision_bits=256)
+
+Verified Cholesky using GenericLinearAlgebra's native BigFloat.
+Achieves residuals ~10⁻⁷⁴. Requires GenericLinearAlgebra.jl.
+"""
+function verified_cholesky_gla end
+
+"""
+    verified_svd_gla(A; precision_bits=256)
+
+Verified SVD using GenericLinearAlgebra's native BigFloat.
+Achieves residuals ~10⁻⁷⁴. Requires GenericLinearAlgebra.jl.
+"""
+function verified_svd_gla end
+
+export verified_lu_gla, verified_qr_gla, verified_cholesky_gla, verified_svd_gla
 include("decompositions/iterative_refinement.jl")
 include("pseudospectra/rigorous_contour.jl")
 include("matrix_classifiers/is_M_matrix.jl")
