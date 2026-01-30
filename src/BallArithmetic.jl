@@ -101,11 +101,14 @@ include("svd/singular_gerschgorin.jl")
 include("svd/miyajima_vbd.jl")
 include("svd/svd.jl")
 include("svd/adaptive_ogita_svd.jl")
+include("svd/precision_cascade_svd.jl")
 export MiyajimaVBDResult, RigorousSVDResult, miyajima_vbd, rigorous_svd, svdbox,
     rigorous_svd_m4, refine_svd_bounds_with_vbd,
     OgitaSVDRefinementResult, AdaptiveSVDResult, ogita_svd_refine, adaptive_ogita_svd,
     SVDMethod, MiyajimaM1, MiyajimaM4, RumpOriginal, _certify_svd,
     clear_svd_cache!, svd_cache_stats, set_svd_cache!
+export PrecisionCascadeSVDResult, ogita_svd_cascade
+export svd_bigfloat, ogita_svd_cascade_gla
 include("eigenvalues/spectral_projectors.jl")
 include("eigenvalues/block_schur.jl")
 export RigorousSpectralProjectorsResult, miyajima_spectral_projectors,
