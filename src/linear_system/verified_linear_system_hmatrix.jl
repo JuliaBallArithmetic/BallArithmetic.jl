@@ -286,6 +286,13 @@ function compute_perron_vector_power_iteration(comp_matrix::Matrix{T};
     D = Diagonal([comp_matrix[i,i] for i in 1:n])
     E = -comp_matrix + D
 
+    # Handle edge case: if E ≈ 0 (e.g., pure diagonal matrix), any positive v works
+    if norm(E) < tol
+        v = ones(T, n)
+        u = comp_matrix * v
+        return v, u
+    end
+
     # ED^(-1)
     ED_inv = E * inv(D)
 
@@ -296,8 +303,15 @@ function compute_perron_vector_power_iteration(comp_matrix::Matrix{T};
     for iter in 1:max_iter
         v_new = ED_inv * v
 
+        # Handle case where v_new is very small (near-diagonal matrix)
+        v_norm = norm(v_new)
+        if v_norm < tol
+            v = ones(T, n)
+            break
+        end
+
         # Normalize
-        v_new = v_new / norm(v_new)
+        v_new = v_new / v_norm
 
         if norm(v_new - v) < tol
             v = v_new

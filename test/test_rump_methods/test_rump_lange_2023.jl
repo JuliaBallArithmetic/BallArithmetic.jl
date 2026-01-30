@@ -177,10 +177,12 @@ using BallArithmetic
 
         result = rump_lange_2023_cluster_bounds(A; hermitian=true)
 
-        # All eigenvalues should be contained
+        # All eigenvalues should be contained in some ball
+        # (eigenvalue ordering may differ between true and computed)
         λ_true = eigvals(Hermitian(mid(A)))
-        for i in 1:3
-            @test λ_true[i] ∈ result.eigenvalues[i]
+        for λ in λ_true
+            contained = any(λ ∈ ball for ball in result.eigenvalues)
+            @test contained
         end
     end
 

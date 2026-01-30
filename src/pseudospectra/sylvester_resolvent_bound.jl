@@ -1914,7 +1914,7 @@ function compare_methods(T::AbstractMatrix{ET}, k::Int, z::Complex;
     bounds["V3b (Neu+Dir)"] = v3b.success ? Float64(v3b.resolvent_bound) : Inf
 
     # Find best
-    best_name, _ = findmin(bounds)
+    _, best_name = findmin(bounds)
 
     return (
         precomp = precomp,
@@ -2691,7 +2691,7 @@ function compare_all_configs(T::AbstractMatrix{ET}, k::Int, z::Complex;
         bounds[name] = result.success ? Float64(result.resolvent_bound) : Inf
     end
 
-    best_name, _ = findmin(bounds)
+    _, best_name = findmin(bounds)
 
     return (
         precomp = precomp,
