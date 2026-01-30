@@ -19,7 +19,7 @@ using LinearAlgebra
 
 Result structure for verified linear system solution.
 """
-struct VerifiedLinearSystemResult{T, VT}
+struct VerifiedLinearSystemResult{T, VT, RT<:Union{Nothing, AbstractMatrix{T}}}
     """Approximate solution."""
     x_approx::VT
     """Error bound on |x_true - x_approx|."""
@@ -29,7 +29,7 @@ struct VerifiedLinearSystemResult{T, VT}
     """Method used for verification."""
     method::Symbol
     """Approximate inverse used as preconditioner."""
-    R::Union{Nothing, Matrix{T}}
+    R::RT
     """Perron vector used in verification."""
     v::Union{Nothing, Vector{T}}
     """Condition-related metrics."""
@@ -162,7 +162,7 @@ end
 Compute rigorous interval enclosure of R(b - Ax) with directed rounding.
 """
 function compute_residual_rigorous(A::BallMatrix{T}, b::BallVector{T},
-                                   x::Vector{T}, R::Matrix{T}) where {T}
+                                   x::Vector{T}, R::AbstractMatrix{T}) where {T}
     # Compute b - Ax rigorously
     Ax = mid(A) * x
     res_mid = mid(b) - Ax
@@ -171,8 +171,9 @@ function compute_residual_rigorous(A::BallMatrix{T}, b::BallVector{T},
     res_rad = rad(b) + rad(A) * abs.(x)
 
     # Apply R with directed rounding
-    residual_mid = R * res_mid
-    residual_rad = abs.(R) * res_rad
+    R_matrix = Matrix(R)  # Convert Diagonal etc. to Matrix for uniform handling
+    residual_mid = R_matrix * res_mid
+    residual_rad = abs.(R_matrix) * res_rad
 
     return BallVector(residual_mid, residual_rad)
 end
@@ -183,13 +184,14 @@ end
 Compute interval enclosure C = [▽(RA), △(RA)] using Method (a).
 Uses directed rounding for matrix multiplication.
 """
-function compute_RA_interval_method_a(R::Matrix{T}, A::BallMatrix{T}) where {T}
+function compute_RA_interval_method_a(R::AbstractMatrix{T}, A::BallMatrix{T}) where {T}
     A_mid = mid(A)
     A_rad = rad(A)
+    R_matrix = Matrix(R)
 
     # Compute RA with directed rounding
-    RA_mid = R * A_mid
-    RA_rad = abs.(R) * A_rad
+    RA_mid = R_matrix * A_mid
+    RA_rad = abs.(R_matrix) * A_rad
 
     # Create interval matrix
     return BallMatrix(RA_mid, RA_rad)
@@ -201,22 +203,23 @@ end
 Compute interval enclosure C' = [▽(RA), |▽(RA)| + 2nu|R||A|] using Method (b).
 This is cheaper (half the cost) but provides weaker bounds.
 """
-function compute_RA_interval_method_b(R::Matrix{T}, A::BallMatrix{T}) where {T}
+function compute_RA_interval_method_b(R::AbstractMatrix{T}, A::BallMatrix{T}) where {T}
     n = size(R, 1)
     u = eps(T) / 2  # unit roundoff
+    R_matrix = Matrix(R)
 
     A_mid = mid(A)
 
     # Compute RA
-    RA_mid = R * A_mid
+    RA_mid = R_matrix * A_mid
 
     # Add rounding error bound: 2nu|R||A|
-    rounding_bound = 2 * n * u * abs.(R) * abs.(A_mid)
+    rounding_bound = 2 * n * u * abs.(R_matrix) * abs.(A_mid)
 
     # Total radius includes input uncertainties
     total_rad = rad(A) .+ rounding_bound
 
-    return BallMatrix(RA_mid, abs.(R) * total_rad)
+    return BallMatrix(RA_mid, abs.(R_matrix) * total_rad)
 end
 
 """

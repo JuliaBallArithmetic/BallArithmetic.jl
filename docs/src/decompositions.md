@@ -183,6 +183,52 @@ result_takagi = verified_takagi(A_symm)
 # A = U Σ Uᵀ (not Uᴴ!)
 ```
 
+### Iterative Refinement Methods
+
+For decompositions not supported by GLA, we provide iterative refinement using extended precision arithmetic.
+
+#### Float64 Iterative Refinement (5 iterations)
+
+| Decomposition | Time | Residual | Orthogonality Defect |
+|---------------|------|----------|---------------------|
+| Cholesky | 0.97s | 8.9×10⁻¹⁷ | N/A |
+| QR (CholQR2) | 0.12s | 6.8×10⁻¹⁶ | 2.8×10⁻¹⁵ |
+| LU | 0.96s | 1.5×10⁻¹⁵ | N/A |
+| Polar (Newton-Schulz) | 0.22s | 1.4×10⁻¹⁵ | 2.1×10⁻¹⁵ |
+
+#### Double64 Iterative Refinement (5 iterations)
+
+Double64 provides ~106 bits of precision, dramatically improving orthogonality:
+
+| Decomposition | Time | Residual | Orthogonality Defect |
+|---------------|------|----------|---------------------|
+| Cholesky | 0.90s | 7.2×10⁻¹⁸ | N/A |
+| QR (CholQR2) | 1.69s | 7.1×10⁻¹⁶ | **2.1×10⁻³¹** |
+| LU | 4.53s | 1.2×10⁻¹⁵ | N/A |
+| Polar (Newton-Schulz) | 2.76s | 1.3×10⁻¹⁵ | **2.0×10⁻³¹** |
+
+**Key observation:** Double64 achieves **16 orders of magnitude better orthogonality** for QR and Polar decompositions, while residuals remain similar (limited by Float64 input precision).
+
+**Usage:**
+```julia
+using BallArithmetic, DoubleFloats, LinearAlgebra
+
+A = randn(100, 100) + 5I
+F_qr = qr(A)
+
+# Float64 refinement
+result_f64 = refine_qr_cholqr2(A, Matrix(F_qr.Q), Matrix(F_qr.R); max_iterations=5)
+
+# Double64 refinement (better orthogonality)
+result_d64 = refine_qr_double64(A, Matrix(F_qr.Q), Matrix(F_qr.R);
+    method=:cholqr2, max_iterations=5)
+
+# Polar refinement
+F_svd = svd(A)
+Q0 = F_svd.U * F_svd.Vt
+result_polar = refine_polar_double64(A, Q0; method=:newton_schulz, max_iterations=10)
+```
+
 ## Schur Complement Bounds (Oishi 2023 / Rump-Oishi 2024)
 
 For block-structured matrices, the Schur complement method provides efficient σ_min bounds:

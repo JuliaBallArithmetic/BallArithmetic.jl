@@ -377,8 +377,14 @@ function interval_least_squares(A::BallMatrix{T}, b::BallVector{T};
 
     if method == :normal_equations
         # Form normal equations: A^T A x = A^T b
-        AtA = transpose(A) * A
-        Atb = transpose(A) * b
+        # Use adjoint for BallMatrix (same as transpose for real matrices)
+        At = adjoint(A)
+        AtA_raw = At * A
+        Atb_raw = At * b
+
+        # Ensure proper BallMatrix/BallVector types
+        AtA = AtA_raw isa BallMatrix ? AtA_raw : BallMatrix(Matrix(mid(AtA_raw)), Matrix(rad(AtA_raw)))
+        Atb = Atb_raw isa BallVector ? Atb_raw : BallVector(Vector(mid(Atb_raw)), Vector(rad(Atb_raw)))
 
         # Solve square system
         result = interval_gaussian_elimination(AtA, Atb)
@@ -423,20 +429,19 @@ if !@isdefined(krawczyk_linear_system)
     end
 end
 
-if !@isdefined(ball_hull)
-    function ball_hull(x::BallVector{T}, y::BallVector{T}) where {T}
-        # Simple hull implementation
-        n = length(x)
-        result = similar(x)
-        for i in 1:n
-            inf_i = min(inf(x[i]), inf(y[i]))
-            sup_i = max(sup(x[i]), sup(y[i]))
-            mid_i = (inf_i + sup_i) / 2
-            rad_i = (sup_i - inf_i) / 2
-            result[i] = Ball(mid_i, rad_i)
-        end
-        return result
+# BallVector hull implementation
+function ball_hull(x::BallVector{T}, y::BallVector{T}) where {T}
+    # Simple hull implementation
+    n = length(x)
+    c = Vector{eltype(mid(x))}(undef, n)
+    r = Vector{T}(undef, n)
+    for i in 1:n
+        inf_i = min(inf(x[i]), inf(y[i]))
+        sup_i = max(sup(x[i]), sup(y[i]))
+        c[i] = (inf_i + sup_i) / 2
+        r[i] = (sup_i - inf_i) / 2
     end
+    return BallVector(c, r)
 end
 
 # Export functions

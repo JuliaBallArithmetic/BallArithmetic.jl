@@ -417,7 +417,7 @@ function refine_cluster_bounds(result::RumpLange2023Result,
             # Tighten eigenvalue bounds using improved residual
             # (simplified - full algorithm would use Krawczyk-style refinement)
             scale_factor = setrounding(T, RoundUp) do
-                min(one(T), avg_improved_residual / current_result.cluster_residuals[k])
+                min(one(T), improved_residual / current_result.cluster_residuals[k])
             end
 
             for i in cluster_indices

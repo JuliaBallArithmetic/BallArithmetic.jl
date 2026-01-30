@@ -68,6 +68,35 @@ and balls return their stored uncertainty.
 rad(x::Ball) = x.r
 rad(::T) where {T <: Number} = zero(float(real(T)))
 
+# rad and mid for collections of Balls
+"""
+    rad(v::AbstractVector{<:Ball})
+
+Return a vector of radii for a collection of balls.
+"""
+rad(v::AbstractVector{<:Ball}) = [x.r for x in v]
+
+"""
+    rad(M::AbstractMatrix{<:Ball})
+
+Return a matrix of radii for a collection of balls.
+"""
+rad(M::AbstractMatrix{<:Ball}) = [x.r for x in M]
+
+"""
+    mid(v::AbstractVector{<:Ball})
+
+Return a vector of midpoints for a collection of balls.
+"""
+mid(v::AbstractVector{<:Ball}) = [x.c for x in v]
+
+"""
+    mid(M::AbstractMatrix{<:Ball})
+
+Return a matrix of midpoints for a collection of balls.
+"""
+mid(M::AbstractMatrix{<:Ball}) = [x.c for x in M]
+
 """
     midtype(::Ball)
 
@@ -200,6 +229,13 @@ Embed a plain number into a ball with zero radius whose midpoint matches
 """
 Base.convert(::Type{Ball{T, CT}}, c::Number) where {T, CT} = Ball(convert(CT, c), zero(T))
 Base.convert(::Type{Ball}, c::Number) = Ball(c)
+
+# Conversion from Ball to plain numeric types (extracts midpoint)
+Base.convert(::Type{T}, x::Ball{T, T}) where {T <: AbstractFloat} = x.c
+Base.convert(::Type{T}, x::Ball) where {T <: AbstractFloat} = convert(T, x.c)
+Base.Float64(x::Ball) = Float64(x.c)
+Base.Float32(x::Ball) = Float32(x.c)
+(::Type{T})(x::Ball) where {T <: AbstractFloat} = convert(T, x.c)
 
 #########################
 # ARITHMETIC OPERATIONS #
@@ -396,3 +432,60 @@ operations defined above to keep the enclosure rigorous.
 function Base.inv(x::Ball{T, Complex{T}}) where {T <: AbstractFloat}
     return conj(x) / (abs(x)^2)
 end
+
+#==============================================================================#
+# Comparison operators for Ball
+#==============================================================================#
+
+"""
+    isless(a::Ball, b::Ball)
+
+Compare two balls by their midpoints. This provides a total ordering for
+sorting and comparison operations. For rigorous "certainly less than"
+semantics, use `sup(a) < inf(b)`.
+"""
+Base.isless(a::Ball{T, T}, b::Ball{T, T}) where {T <: AbstractFloat} = isless(a.c, b.c)
+
+"""
+    isless(a::Ball, b::Number)
+
+Compare a ball with a number by comparing the ball's midpoint.
+"""
+Base.isless(a::Ball{T, T}, b::Number) where {T <: AbstractFloat} = isless(a.c, b)
+Base.isless(a::Number, b::Ball{T, T}) where {T <: AbstractFloat} = isless(a, b.c)
+
+"""
+    <(a::Ball, b::Ball)
+
+Compare two balls. Returns true if the ball midpoints satisfy a < b.
+"""
+Base.:(<)(a::Ball{T, T}, b::Ball{T, T}) where {T <: AbstractFloat} = a.c < b.c
+Base.:(<)(a::Ball{T, T}, b::Number) where {T <: AbstractFloat} = a.c < b
+Base.:(<)(a::Number, b::Ball{T, T}) where {T <: AbstractFloat} = a < b.c
+
+"""
+    <=(a::Ball, b::Ball)
+
+Compare two balls. Returns true if the ball midpoints satisfy a <= b.
+"""
+Base.:(<=)(a::Ball{T, T}, b::Ball{T, T}) where {T <: AbstractFloat} = a.c <= b.c
+Base.:(<=)(a::Ball{T, T}, b::Number) where {T <: AbstractFloat} = a.c <= b
+Base.:(<=)(a::Number, b::Ball{T, T}) where {T <: AbstractFloat} = a <= b.c
+
+"""
+    >(a::Ball, b::Ball)
+
+Compare two balls by midpoints.
+"""
+Base.:(>)(a::Ball{T, T}, b::Ball{T, T}) where {T <: AbstractFloat} = a.c > b.c
+Base.:(>)(a::Ball{T, T}, b::Number) where {T <: AbstractFloat} = a.c > b
+Base.:(>)(a::Number, b::Ball{T, T}) where {T <: AbstractFloat} = a > b.c
+
+"""
+    >=(a::Ball, b::Ball)
+
+Compare two balls by midpoints.
+"""
+Base.:(>=)(a::Ball{T, T}, b::Ball{T, T}) where {T <: AbstractFloat} = a.c >= b.c
+Base.:(>=)(a::Ball{T, T}, b::Number) where {T <: AbstractFloat} = a.c >= b
+Base.:(>=)(a::Number, b::Ball{T, T}) where {T <: AbstractFloat} = a >= b.c

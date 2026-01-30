@@ -14,7 +14,7 @@ Extends the standard eigenvalue result with:
 - Condition number estimates
 - Residual-based refinements
 """
-struct Rump2022aResult{T, VT, ΛT, ET, CT}
+struct Rump2022aResult{T, VT, ΛT}
     """Approximate eigenvectors (as ball matrix)."""
     eigenvectors::VT
     """Certified eigenvalue enclosures."""
@@ -471,6 +471,11 @@ function dot(v::BallVector{T}, w::AbstractVector{S}) where {T, S<:Number}
     w_ball = BallVector(w_mid, zeros(T, length(w)))
     return dot(v, w_ball)
 end
+
+# Fallback for plain vectors - delegate to LinearAlgebra.dot
+# This is needed because defining dot(::BallVector, ...) shadows LinearAlgebra.dot
+dot(v::AbstractVector{T}, w::AbstractVector{T}) where {T<:Number} = LinearAlgebra.dot(v, w)
+dot(v::AbstractVector{S}, w::AbstractVector{T}) where {S<:Number, T<:Number} = LinearAlgebra.dot(v, w)
 
 # Export
 export Rump2022aResult, rump_2022a_eigenvalue_bounds

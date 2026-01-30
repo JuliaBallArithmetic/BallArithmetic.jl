@@ -21,6 +21,22 @@ Construct a `BallVector` from matching midpoint and radius arrays.
 BallVector(c::AbstractVector, r::AbstractVector) = BallArray(c, r)
 
 """
+    BallVector(v::AbstractVector{<:Ball})
+
+Convert a vector of `Ball` elements to a `BallVector` by extracting
+midpoints and radii into separate arrays.
+"""
+function BallVector(v::AbstractVector{<:Ball})
+    c = [x.c for x in v]
+    r = [x.r for x in v]
+    BallArray(c, r)
+end
+
+# Conversion methods
+Base.convert(::Type{BallVector}, v::AbstractVector{<:Ball}) = BallVector(v)
+Base.convert(::Type{<:BallVector}, v::AbstractVector{<:Ball}) = BallVector(v)
+
+"""
     mid(v::AbstractVector)
 
 Treat ordinary vectors as their own midpoints.

@@ -86,8 +86,19 @@ function _rump_oishi_psi_bound(T::BallMatrix{T_type, NT}, k::Int) where {T_type,
     D = T[(k+1):end, (k+1):end]
 
     # Split D = D_diagonal + D_offdiagonal
-    Dd = Diagonal(diag(D))
-    Df = D - Dd
+    # Extract diagonal entries as midpoint values for Dd
+    D_diag = [mid(D[i, i]) for i in 1:size(D, 1)]
+    Dd = Diagonal(D_diag)
+
+    # Compute Df = D - Dd as a BallMatrix
+    n_d = size(D, 1)
+    Df_mid = copy(mid(D))
+    Df_rad = copy(rad(D))
+    for i in 1:n_d
+        Df_mid[i, i] = zero(eltype(Df_mid))
+        # Keep radius to account for diagonal uncertainty
+    end
+    Df = BallMatrix(Df_mid, Df_rad)
 
     # Compute E = A⁻¹B via backward substitution
     E = backward_substitution(A, B)
