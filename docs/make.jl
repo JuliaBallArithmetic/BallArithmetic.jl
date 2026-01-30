@@ -27,6 +27,7 @@ makedocs(;
     ),
     pages = [
         "Home" => "index.md",
+        "Matrix Decompositions" => "decompositions.md",
         "SVD" => "svd.md",
         "Eigenvalues" => "eigenvalues.md",
         "Pseudospectra" => "pseudospectra.md",
