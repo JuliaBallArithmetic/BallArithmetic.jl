@@ -100,6 +100,7 @@ function project_onto_eigenspace(v::AbstractVector,
         if left_eigenvectors === nothing
             # Attempt to compute V^{-1} (may fail if ill-conditioned)
             @warn "Non-normal projection without left eigenvectors: computing V^{-1} (may be unstable)"
+            local V_inv
             try
                 V_inv = inv(V)
             catch e

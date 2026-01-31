@@ -8,6 +8,8 @@ using Test
     include("test_types/test_algebra.jl")
     include("test_types/test_MMul.jl")
     include("test_types/test_convert_promote.jl")
+    include("test_types/test_promotion.jl")
+    include("test_types/test_mmul5.jl")
     include("test_types/test_vector.jl")
     include("test_types/test_matrix.jl")
     include("test_types/test_array.jl")
@@ -39,10 +41,13 @@ using Test
     include("test_svd/test_adaptive_ogita_svd.jl")
     include("test_svd/test_subepsilon_certification.jl")
     include("test_svd/test_precision_cascade_svd.jl")
+    include("test_svd/test_precision_cascade_core.jl")
     include("test_svd/test_gla_svd.jl")
 
     # Norm bounds
     include("test_norm_bounds/test_norm_bounds.jl")
+    include("test_norm_bounds/test_oishi.jl")
+    include("test_norm_bounds/test_oishi_triangular.jl")
     include("test_norm_bounds/test_oishi_2023_schur.jl")
 
     # Pseudospectra
@@ -54,11 +59,15 @@ using Test
     include("test_linear_solvers/test_inflation.jl")
     include("test_linear_solvers/test_backward_substitution.jl")
     include("test_linear_system/test_verified_hmatrix.jl")
+    include("test_linear_system/test_krawczyk.jl")
+    include("test_linear_system/test_shaving.jl")
     include("test_horacek_methods.jl")
 
     # Decompositions
     include("test_decompositions/test_iterative_refinement.jl")
     include("test_decompositions/test_iterative_refinement_ext.jl")
+    include("test_decompositions/test_verified_decompositions.jl")
+    include("test_decompositions/test_verified_takagi.jl")
 
     # Certification
     include("test_certification/test_certifscripts.jl")

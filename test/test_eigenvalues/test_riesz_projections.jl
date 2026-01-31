@@ -164,4 +164,102 @@ using BallArithmetic
         @test_throws AssertionError project_onto_eigenspace(v_wrong, F.vectors, 1:1; hermitian=true)
     end
 
+    @testset "Non-Hermitian eigenspace projection" begin
+        # Non-symmetric matrix
+        A = [1.0 1.0; 0.0 2.0]
+        F = eigen(A)
+        v = [1.0, 1.0]
+
+        # Compute left eigenvectors explicitly
+        V_inv = inv(F.vectors)
+
+        # Project with explicit left eigenvectors
+        v_proj = project_onto_eigenspace(v, F.vectors, 1:1;
+                                          hermitian=false, left_eigenvectors=V_inv)
+
+        # Check idempotency
+        v_proj2 = project_onto_eigenspace(v_proj, F.vectors, 1:1;
+                                           hermitian=false, left_eigenvectors=V_inv)
+        @test norm(v_proj2 - v_proj) < 1e-10
+
+        # Projected vector should be in span of first eigenvector
+        e1 = F.vectors[:, 1]
+        @test norm(v_proj - (dot(V_inv[1, :], v) * e1)) < 1e-10
+    end
+
+    @testset "Non-Hermitian projection without left eigenvectors" begin
+        # Non-symmetric matrix that is well-conditioned
+        A = [3.0 1.0; 0.0 2.0]
+        F = eigen(A)
+        v = [1.0, 0.5]
+
+        # Project without providing left eigenvectors (should compute V^-1 internally with warning)
+        v_proj = @test_logs (:warn,) project_onto_eigenspace(v, F.vectors, 1:1;
+                                                               hermitian=false)
+
+        # Check that projection worked
+        @test length(v_proj) == 2
+        @test all(isfinite.(v_proj))
+
+        # Idempotency
+        v_proj2 = @test_logs (:warn,) project_onto_eigenspace(v_proj, F.vectors, 1:1;
+                                                                hermitian=false)
+        @test norm(v_proj2 - v_proj) < 1e-10
+    end
+
+    @testset "Non-Hermitian projector matrix" begin
+        A = [2.0 1.0; 0.0 3.0]
+        F = eigen(A)
+        V_inv = inv(F.vectors)
+
+        # Compute projector with left eigenvectors
+        P = compute_eigenspace_projector(F.vectors, 1:1;
+                                          hermitian=false, left_eigenvectors=V_inv)
+
+        # Check idempotency: P² = P
+        @test norm(P * P - P) < 1e-10
+
+        # Check that projector projects onto first eigenspace
+        e1 = F.vectors[:, 1]
+        @test norm(P * e1 - e1) < 1e-10  # First eigenvector unchanged
+
+        # Second eigenvector should be zeroed (or close to it since it's not in range)
+        e2 = F.vectors[:, 2]
+        @test norm(P * e2) < 1e-10  # Second eigenvector projected to zero
+    end
+
+    @testset "Verified projection - hermitian case" begin
+        # Create hermitian ball matrix
+        A_mid = [3.0 1.0; 1.0 2.0]
+        F = eigen(Symmetric(A_mid))
+
+        # Create ball vector and matrix
+        v = BallVector([1.0, 2.0], [1e-12, 1e-12])
+        V = BallMatrix(F.vectors, fill(1e-12, 2, 2))
+
+        # Project onto first eigenspace
+        v_proj = verified_project_onto_eigenspace(v, V, 1:1; hermitian=true)
+
+        @test length(v_proj) == 2
+        @test all(isfinite.(v_proj.c))
+        @test all(v_proj.r .>= 0)
+
+        # The projection should be close to the non-verified result
+        v_proj_exact = project_onto_eigenspace(v.c, F.vectors, 1:1; hermitian=true)
+        for i in 1:2
+            @test abs(v_proj.c[i] - v_proj_exact[i]) < 1e-8
+        end
+    end
+
+    @testset "Verified projection error for non-hermitian" begin
+        A_mid = [2.0 1.0; 0.0 3.0]
+        F = eigen(A_mid)
+
+        v = BallVector([1.0, 1.0], [1e-12, 1e-12])
+        V = BallMatrix(F.vectors, fill(1e-12, 2, 2))
+
+        # Non-hermitian verified projection not implemented - should error
+        @test_throws ErrorException verified_project_onto_eigenspace(v, V, 1:1; hermitian=false)
+    end
+
 end

@@ -17,6 +17,127 @@ using BallArithmetic
 using LinearAlgebra
 using Random
 
+# Tests for core functionality that doesn't require extensions
+@testset "Ogita SVD Core Iteration" begin
+    @testset "PrecisionCascadeSVDResult struct" begin
+        # Create a dummy result
+        n = 3
+        U = randn(n, n)
+        Σ = [3.0, 2.0, 1.0]
+        V = randn(n, n)
+        residual = 1e-10
+        σ_min = Σ[end] - residual
+
+        result = PrecisionCascadeSVDResult(U, Σ, V, residual, σ_min, 256)
+
+        @test result.U === U
+        @test result.Σ === Σ
+        @test result.V === V
+        @test result.residual_norm == residual
+        @test result.σ_min == σ_min
+        @test result.final_precision == 256
+    end
+
+    @testset "_ogita_iteration! basic functionality" begin
+        Random.seed!(12345)
+        n = 5
+        A = randn(n, n) + 5.0 * I  # Well-conditioned matrix
+
+        # Get initial SVD approximation
+        F = svd(A)
+        U = copy(F.U)
+        Σ = copy(F.S)
+        V = copy(F.V)
+
+        # The initial SVD should be quite accurate for Float64
+        initial_residual = norm(A - U * Diagonal(Σ) * V')
+
+        # Run one Ogita iteration (should improve or maintain accuracy)
+        new_residual = BallArithmetic._ogita_iteration!(A, U, Σ, V)
+
+        @test new_residual >= 0  # Residual should be non-negative
+        @test isfinite(new_residual)
+
+        # After iteration, U and V should still be approximately orthogonal
+        @test norm(U' * U - I) < 1e-10
+        @test norm(V' * V - I) < 1e-10
+
+        # The singular values should remain positive
+        @test all(Σ .> 0)
+    end
+
+    @testset "_ogita_iteration! convergence" begin
+        Random.seed!(54321)
+        n = 8
+        A = randn(n, n) + 4.0 * I
+
+        F = svd(A)
+        U = copy(F.U)
+        Σ = copy(F.S)
+        V = copy(F.V)
+
+        # Run multiple iterations
+        residuals = Float64[]
+        for _ in 1:3
+            res = BallArithmetic._ogita_iteration!(A, U, Σ, V)
+            push!(residuals, res)
+        end
+
+        # All residuals should be small and finite
+        @test all(r -> r >= 0 && isfinite(r), residuals)
+
+        # Final reconstruction should be accurate
+        reconstruction = U * Diagonal(Σ) * V'
+        @test norm(A - reconstruction) < 1e-10
+    end
+
+    @testset "_ogita_iteration! with clustered singular values" begin
+        # Matrix with clustered singular values
+        n = 4
+        # Create matrix with singular values [4.0, 4.0001, 4.0002, 1.0]
+        Σ_target = [4.0, 4.0001, 4.0002, 1.0]
+        U_random = qr(randn(n, n)).Q
+        V_random = qr(randn(n, n)).Q
+        A = Matrix(U_random) * Diagonal(Σ_target) * Matrix(V_random)'
+
+        F = svd(A)
+        U = copy(F.U)
+        Σ = copy(F.S)
+        V = copy(F.V)
+
+        # Run iteration - should handle clustered singular values
+        residual = BallArithmetic._ogita_iteration!(A, U, Σ, V)
+
+        @test residual >= 0
+        @test isfinite(residual)
+
+        # Singular values should remain in decreasing order
+        for i in 1:n-1
+            @test Σ[i] >= Σ[i+1] - 1e-10  # Allow small tolerance
+        end
+    end
+
+    @testset "_ogita_iteration! with complex matrices" begin
+        Random.seed!(98765)
+        n = 5
+        A = randn(ComplexF64, n, n) + 5.0 * I
+
+        F = svd(A)
+        U = copy(F.U)
+        Σ = copy(F.S)
+        V = copy(F.V)
+
+        residual = BallArithmetic._ogita_iteration!(A, U, Σ, V)
+
+        @test residual >= 0
+        @test isfinite(residual)
+
+        # Check orthogonality for complex case
+        @test norm(U' * U - I) < 1e-10
+        @test norm(V' * V - I) < 1e-10
+    end
+end
+
 # Check if MultiFloats extension is available
 const HAS_CASCADE = hasmethod(ogita_svd_cascade, Tuple{Matrix{Complex{BigFloat}}, Complex{BigFloat}})
 

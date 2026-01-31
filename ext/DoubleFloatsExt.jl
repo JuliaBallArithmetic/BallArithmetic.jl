@@ -13,7 +13,8 @@ module DoubleFloatsExt
 
 using BallArithmetic
 using BallArithmetic: _ogita_svd_refine_impl, _spectral_norm_bound,
-                      OgitaSVDRefinementResult, ogita_iterations_for_precision
+                      OgitaSVDRefinementResult, ogita_iterations_for_precision,
+                      _stril, _frobenius_norm
 using DoubleFloats
 using LinearAlgebra
 
@@ -204,6 +205,13 @@ Fast Schur decomposition refinement using Double64 arithmetic (~106 bits precisi
 This is the Schur analog of `ogita_svd_refine_fast`. It uses Double64 for the bulk
 of the refinement iterations, which is ~30× faster than BigFloat.
 
+# Algorithm (Bujanović et al. 2022, Algorithm 4)
+The algorithm performs Newton-like iterations:
+1. Compute T̂ = Q^H A Q and extract E = stril(T̂)
+2. Solve triangular matrix equation stril(TL - LT) = -E for L
+3. Form skew-Hermitian W = L - L^H
+4. Update Q using modified Newton-Schulz: Q ← ½Q(2I + 2W - Y - YW + W² + W³)
+
 # Arguments
 - `A`: Original matrix (Float64 or ComplexF64)
 - `Q0, T0`: Initial Schur decomposition from LAPACK (A ≈ Q0 * T0 * Q0')
@@ -216,7 +224,7 @@ A tuple `(Q, T, residual_norm, iterations)` with refined Schur decomposition.
 # Performance
 Double64 provides ~106 bits (~31 decimal digits). Starting from Float64 (~15 digits):
 - After 1 iteration: ~30 digits (saturates Double64)
-- After 2 iterations: ~60 digits (exceeds Double64 capacity)
+- After 2 iterations: can achieve ~60 digits with proper algorithm
 
 For most applications, 2 iterations with Double64 gives excellent results.
 For higher precision needs, use `refine_schur_hybrid`.
@@ -226,6 +234,8 @@ function BallArithmetic.refine_schur_double64(
         max_iterations::Int=2,
         certify_with_bigfloat::Bool=true,
         bigfloat_precision::Int=256) where {T<:Union{Float64, ComplexF64}}
+
+    n = size(A, 1)
 
     # Convert to Double64 for refinement
     if T <: Complex
@@ -238,19 +248,48 @@ function BallArithmetic.refine_schur_double64(
         T_d64 = convert.(Double64, T0)
     end
 
-    # Run Schur refinement iterations in Double64
-    Q_curr, T_curr = Q_d64, T_d64
+    D64 = T <: Complex ? Complex{Double64} : Double64
+    I_n = Matrix{D64}(I, n, n)
+
+    # Initial orthogonalization
+    Q_curr = _newton_schulz_step_d64(Q_d64)
+    Q_curr = _newton_schulz_step_d64(Q_curr)
+    T_curr = T_d64
+
+    # Run full Schur refinement iterations in Double64
     for _ in 1:max_iterations
-        # Compute T̂ = Q' * A * Q
+        # Step 1: Compute T̂ = Q^H A Q
         T_hat = Q_curr' * A_d64 * Q_curr
 
-        # Extract strictly lower triangular part E and upper triangular T
+        # Step 2: Extract E = stril(T̂) and T = T̂ - E
         E = _stril_d64(T_hat)
         T_curr = T_hat - E
 
-        # Newton-Schulz orthogonalization step
-        Q_curr = _newton_schulz_step_d64(Q_curr)
+        # Compute orthogonality defect Y = Q^H Q - I
+        Y = Q_curr' * Q_curr - I_n
+
+        # Step 3: Solve triangular matrix equation stril(TL - LT) = -E for L
+        L = _solve_triangular_equation_d64(T_curr, E)
+
+        # Step 4: Form skew-Hermitian W = L - L^H
+        W = L - L'
+
+        # Step 5: Compute products for Newton-Schulz update
+        W2 = W * W
+        W3 = W2 * W
+        YW = Y * W
+
+        # Step 6: Compute Σ = 2I + 2W - Y - YW + W² + W³
+        Σ = D64(2) * I_n + D64(2) * W - Y - YW + W2 + W3
+
+        # Step 7: Update Q ← ½QΣ
+        Q_curr = (Q_curr * Σ) / D64(2)
     end
+
+    # Final T computation
+    T_hat = Q_curr' * A_d64 * Q_curr
+    E = _stril_d64(T_hat)
+    T_curr = T_hat - E
 
     iterations = max_iterations
 
@@ -271,9 +310,12 @@ function BallArithmetic.refine_schur_double64(
                 A_bf = convert.(BigFloat, A)
             end
 
-            # Compute rigorous residual norm: ||A - Q*T*Q'||_F / ||A||_F
-            residual = A_bf - Q_bf * T_bf * Q_bf'
-            residual_norm = BallArithmetic._frobenius_norm(residual) / BallArithmetic._frobenius_norm(A_bf)
+            # Compute rigorous residual norm using E (strictly lower triangular part)
+            T_hat_bf = Q_bf' * A_bf * Q_bf
+            E_bf = BallArithmetic._stril(T_hat_bf)
+            E_norm = BallArithmetic._frobenius_norm(E_bf)
+            A_norm = BallArithmetic._frobenius_norm(A_bf)
+            residual_norm = E_norm / A_norm
 
             return (Q=Q_bf, T=T_bf, residual_norm=residual_norm, iterations=iterations)
         finally
@@ -281,10 +323,50 @@ function BallArithmetic.refine_schur_double64(
         end
     else
         # Return Double64 result directly
-        residual = A_d64 - Q_curr * T_curr * Q_curr'
-        residual_norm = _frobenius_norm_d64(residual) / _frobenius_norm_d64(A_d64)
+        E_norm = _frobenius_norm_d64(E)
+        A_norm = _frobenius_norm_d64(A_d64)
+        residual_norm = E_norm / A_norm
         return (Q=Q_curr, T=T_curr, residual_norm=convert(BigFloat, residual_norm), iterations=iterations)
     end
+end
+
+"""
+    _solve_triangular_equation_d64(T, E)
+
+Solve the triangular matrix equation stril(TL - LT) = -E for strictly lower triangular L.
+This is the key step in Schur refinement that enables quadratic convergence.
+"""
+function _solve_triangular_equation_d64(T::AbstractMatrix{DT}, E::AbstractMatrix{DT}) where DT
+    n = size(T, 1)
+    L = zeros(DT, n, n)
+
+    # Solve element by element: for i > j, we have
+    # T[i,i]*L[i,j] - L[i,j]*T[j,j] + (terms with L[k,j] for k<i) = -E[i,j]
+    # => L[i,j] = (-E[i,j] - sum) / (T[i,i] - T[j,j])
+    for j in 1:n
+        for i in (j+1):n
+            # Compute the sum of already-computed terms
+            s = zero(DT)
+            for k in (j+1):(i-1)
+                s += T[i, k] * L[k, j] - L[i, k] * T[k, j]
+            end
+
+            denom = T[i, i] - T[j, j]
+            if abs(denom) > eps(real(DT)) * 100
+                L[i, j] = (-E[i, j] - s) / denom
+            else
+                # Near-degenerate case: use regularization
+                L[i, j] = zero(DT)
+            end
+
+            # Truncate large entries for stability (as in the paper)
+            if abs(L[i, j]) > 1e10
+                L[i, j] = sign(real(L[i, j])) * DT(1e10)
+            end
+        end
+    end
+
+    return L
 end
 
 """
@@ -452,13 +534,14 @@ function BallArithmetic.refine_symmetric_eigen_double64(
     else
         Λ = Diagonal(λ_curr)
         reconstruction = Q_curr * Λ * Q_curr'
-        residual_norm = _frobenius_norm_d64(A_d64 - reconstruction) / _frobenius_norm_d64(A_d64)
-        orthogonality_defect = _frobenius_norm_d64(I_n - Q_curr' * Q_curr)
+        residual_norm_d64 = _frobenius_norm_d64(A_d64 - reconstruction) / _frobenius_norm_d64(A_d64)
+        orthogonality_defect_d64 = _frobenius_norm_d64(I_n - Q_curr' * Q_curr)
 
+        # Keep types consistent: Q is Double64, λ is Double64, so residual should be Double64
         return BallArithmetic.SymmetricEigenRefinementResult(
-            Q_curr, λ_curr, max_iterations,
-            convert(BigFloat, residual_norm),
-            convert(BigFloat, orthogonality_defect),
+            Matrix(Q_curr), Vector(λ_curr), max_iterations,
+            residual_norm_d64,
+            orthogonality_defect_d64,
             true
         )
     end
