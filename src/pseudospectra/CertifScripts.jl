@@ -7,13 +7,22 @@ using Base: dirname, mod1
 using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm, inf,
                         refine_schur_decomposition,
                         ogita_svd_refine, OgitaSVDRefinementResult,
-                        rigorous_svd, _certify_svd, MiyajimaM1
+                        rigorous_svd, _certify_svd, MiyajimaM1,
+                        # Parametric framework
+                        SylvesterResolventResult, ParametricResolventResult,
+                        ResolventBoundConfig, SVDWarmStart,
+                        config_v1, config_v2, config_v2p5, config_v3,
+                        parametric_resolvent_bound, sylvester_resolvent_precompute,
+                        solve_sylvester_oracle, estimate_2norm, OneInfNorm
 
 export dowork, dowork_ogita, dowork_ogita_bigfloat, adaptive_arcs!, bound_res_original,
        choose_snapshot_to_load, save_snapshot!, configure_certification!, set_schur_matrix!,
        compute_schur_and_error, CertificationCircle, points_on, run_certification,
        run_certification_ogita, poly_from_roots, polyconv,
-       _clear_bf_ogita_cache!, _bf_ogita_cache_stats, _set_center_svd_cache!
+       _clear_bf_ogita_cache!, _bf_ogita_cache_stats, _set_center_svd_cache!,
+       # Parametric certifier exports
+       dowork_parametric, run_certification_parametric,
+       set_parametric_config!, _parametric_cache_stats, _clear_parametric_cache!
 
 const _schur_matrix = Ref{Union{Nothing, BallMatrix}}(nothing)
 const _job_channel = Ref{Any}(nothing)
@@ -48,6 +57,18 @@ const _bf_center_svd_S = Ref{Union{Nothing, Vector}}(nothing)
 const _bf_center_svd_V = Ref{Union{Nothing, Matrix}}(nothing)
 const _bf_center_svd_z = Ref{Union{Nothing, Number}}(nothing)
 const _bf_center_cache_hits = Ref{Int}(0)
+
+# Parametric Sylvester-based certifier cache
+const _parametric_precomp = Ref{Union{Nothing, SylvesterResolventResult}}(nothing)
+const _parametric_residual = Ref{Union{Nothing, Matrix}}(nothing)
+const _parametric_config = Ref{Union{Nothing, ResolventBoundConfig}}(nothing)
+const _parametric_k = Ref{Int}(0)
+const _parametric_warm_U = Ref{Union{Nothing, Matrix}}(nothing)
+const _parametric_warm_S = Ref{Union{Nothing, Vector}}(nothing)
+const _parametric_warm_V = Ref{Union{Nothing, Matrix}}(nothing)
+const _parametric_warm_z = Ref{Union{Nothing, Number}}(nothing)
+const _parametric_cache_hits = Ref{Int}(0)
+const _parametric_cache_misses = Ref{Int}(0)
 
 """
     CertificationCircle(center, radius; samples = 256)
@@ -398,7 +419,7 @@ function dowork_ogita(jobs, results;
 end
 
 """
-    dowork_ogita_bigfloat(jobs, results; target_precision=256, max_ogita_iterations=4,
+    dowork_ogita_bigfloat(jobs, results; target_precision=256, max_ogita_iterations=3,
                           distance_threshold=1e-4)
 
 Process tasks with BigFloat precision using Ogita SVD refinement with caching.
@@ -420,7 +441,7 @@ The Schur matrix must be a BigFloat BallMatrix registered with `set_schur_matrix
 """
 function dowork_ogita_bigfloat(jobs, results;
                                target_precision::Int = 256,
-                               max_ogita_iterations::Int = 4,
+                               max_ogita_iterations::Int = 3,
                                distance_threshold::Real = 1e-4)
     T = _require_config(_schur_matrix, "Schur factor")
     _clear_bf_ogita_cache!()
@@ -491,6 +512,201 @@ function dowork(jobs, results)
         i, z = job
         @debug "Received and working on" z
         result = _evaluate_sample(T, z, i)
+        put!(results, result)
+    end
+    return nothing
+end
+
+# =====================================================================
+# Parametric Sylvester-based certifier
+# =====================================================================
+
+"""
+    _clear_parametric_cache!()
+
+Clear the worker-local parametric certifier cache.
+"""
+function _clear_parametric_cache!()
+    _parametric_precomp[] = nothing
+    _parametric_residual[] = nothing
+    _parametric_config[] = nothing
+    _parametric_k[] = 0
+    _parametric_warm_U[] = nothing
+    _parametric_warm_S[] = nothing
+    _parametric_warm_V[] = nothing
+    _parametric_warm_z[] = nothing
+    _parametric_cache_hits[] = 0
+    _parametric_cache_misses[] = 0
+    return nothing
+end
+
+"""
+    _parametric_cache_stats()
+
+Return statistics about the parametric cache usage.
+"""
+function _parametric_cache_stats()
+    return (
+        hits = _parametric_cache_hits[],
+        misses = _parametric_cache_misses[],
+    )
+end
+
+"""
+    set_parametric_config!(precomp, R, config; k=0)
+
+Set the parametric certifier configuration.
+
+# Arguments
+- `precomp`: Precomputed Sylvester quantities from `sylvester_resolvent_precompute`
+- `R`: Sylvester residual matrix
+- `config`: ResolventBoundConfig specifying estimators
+- `k`: Split index (for reference)
+"""
+function set_parametric_config!(precomp::SylvesterResolventResult, R::AbstractMatrix,
+                                 config::ResolventBoundConfig; k::Int=0)
+    _parametric_precomp[] = precomp
+    _parametric_residual[] = Matrix(R)
+    _parametric_config[] = config
+    _parametric_k[] = k
+    return nothing
+end
+
+"""
+    _evaluate_sample_parametric(T, z, idx; use_warm_start=true, distance_threshold=1e-4)
+
+Evaluate sample using the parametric Sylvester-based certifier.
+
+Returns a result compatible with the standard certification format.
+"""
+function _evaluate_sample_parametric(T::BallMatrix{ET}, z::Number, idx::Int;
+                                      use_warm_start::Bool=true,
+                                      distance_threshold::Real=1e-4) where ET
+    RT = real(ET)
+    CT = Complex{RT}
+    z_converted = CT(z)
+
+    precomp = _parametric_precomp[]
+    R = _parametric_residual[]
+    config = _parametric_config[]
+
+    if precomp === nothing || R === nothing || config === nothing
+        error("Parametric config not set. Call set_parametric_config! first.")
+    end
+
+    # Check for warm start
+    warm_start = nothing
+    if use_warm_start && _parametric_warm_z[] !== nothing
+        last_z = _parametric_warm_z[]
+        if abs(z_converted - last_z) < distance_threshold * (abs(last_z) + 1)
+            warm_start = SVDWarmStart(
+                _parametric_warm_U[],
+                _parametric_warm_S[],
+                _parametric_warm_V[]
+            )
+            _parametric_cache_hits[] += 1
+        else
+            _parametric_cache_misses[] += 1
+        end
+    else
+        _parametric_cache_misses[] += 1
+    end
+
+    elapsed = @elapsed result = parametric_resolvent_bound(
+        precomp, Matrix(T.c), z_converted, config;
+        R=R, svd_warm_start=warm_start
+    )
+
+    # Update warm start cache for next call
+    if result.success
+        k = precomp.k
+        T11 = T.c[1:k, 1:k]
+        A_z = z_converted * I - T11
+        try
+            svd_Az = LinearAlgebra.svd(A_z)
+            _parametric_warm_U[] = svd_Az.U
+            _parametric_warm_S[] = svd_Az.S
+            _parametric_warm_V[] = svd_Az.V
+            _parametric_warm_z[] = z_converted
+        catch
+            # SVD failed, don't update cache
+        end
+    end
+
+    # Convert to standard format
+    if result.success
+        # Compute σ_min from M_A (M_A = 1/σ_min)
+        sigma_min = RT(1) / result.M_A
+        sigma_min_ball = Ball(sigma_min, zero(RT))  # Approximate
+
+        lo_val = setrounding(RT, RoundDown) do
+            sigma_min
+        end
+
+        hi_res = setrounding(RT, RoundUp) do
+            result.resolvent_bound
+        end
+
+        return (
+            i = idx,
+            val = sigma_min_ball,
+            lo_val = lo_val,
+            res = Ball(result.resolvent_bound, zero(RT)),
+            hi_res = hi_res,
+            second_val = Ball(zero(RT), zero(RT)),  # Not available from parametric
+            z = z_converted,
+            t = elapsed,
+            id = nothing,
+        )
+    else
+        # Failure case
+        return (
+            i = idx,
+            val = Ball(zero(RT), RT(Inf)),
+            lo_val = zero(RT),
+            res = Ball(RT(Inf), zero(RT)),
+            hi_res = RT(Inf),
+            second_val = Ball(zero(RT), zero(RT)),
+            z = z_converted,
+            t = elapsed,
+            id = nothing,
+        )
+    end
+end
+
+"""
+    dowork_parametric(jobs, results; distance_threshold=1e-4)
+
+Process tasks using the parametric Sylvester-based certifier.
+
+The Schur factor and parametric config must have been registered in advance with
+[`set_schur_matrix!`](@ref) and [`set_parametric_config!`](@ref).
+"""
+function dowork_parametric(jobs, results; distance_threshold::Real=1e-4)
+    T = _require_config(_schur_matrix, "Schur factor")
+    _clear_parametric_cache!()
+
+    while true
+        job = try
+            take!(jobs)
+        catch e
+            if e isa InvalidStateException
+                # Log cache stats before exiting
+                stats = _parametric_cache_stats()
+                total = stats.hits + stats.misses
+                if total > 0
+                    hit_rate = stats.hits / total * 100
+                    @debug "Parametric cache stats" hits=stats.hits misses=stats.misses hit_rate="$(round(hit_rate, digits=1))%"
+                end
+                break
+            else
+                rethrow(e)
+            end
+        end
+
+        i, z = job
+        @debug "Received and working on (Parametric)" z
+        result = _evaluate_sample_parametric(T, z, i; distance_threshold=distance_threshold)
         put!(results, result)
     end
     return nothing
@@ -1350,14 +1566,14 @@ Typically 10-100x faster than computing fresh BigFloat SVDs at each point.
 - `A`: matrix to certify (will be converted to BigFloat BallMatrix)
 - `circle`: CertificationCircle describing the contour
 - `target_precision::Int=256`: precision in bits for BigFloat
-- `max_ogita_iterations::Int=4`: Ogita iterations (4 is usually sufficient)
+- `max_ogita_iterations::Int=3`: Ogita iterations (3 is optimal for 256-bit precision)
 - Other kwargs passed to standard certification
 """
 function run_certification_ogita(A::BallMatrix{T}, circle::CertificationCircle;
         polynomial = nothing, η::Real = 0.5, check_interval::Integer = 100,
         log_io::IO = stdout, Cbound = 1.0,
         target_precision::Int = 256,
-        max_ogita_iterations::Int = 4) where T
+        max_ogita_iterations::Int = 3) where T
 
     check_interval < 1 && throw(ArgumentError("check_interval must be positive"))
     η = Float64(η)
@@ -1465,6 +1681,197 @@ end
 
 run_certification_ogita(A::AbstractMatrix, circle::CertificationCircle; kwargs...) =
     run_certification_ogita(BallMatrix(A), circle; kwargs...)
+
+# =====================================================================
+# Serial Parametric Sylvester-based Certification
+# =====================================================================
+
+"""
+    run_certification_parametric(A, circle; k=nothing, config=config_v2(), kwargs...)
+
+Run the adaptive certification routine using the parametric Sylvester-based certifier.
+
+This method uses block-diagonalization via Sylvester equation to certify the resolvent
+norm, which can be more efficient than full SVD for large matrices.
+
+# Arguments
+- `A`: matrix to certify. Converted to `BallMatrix` when required.
+- `circle`: [`CertificationCircle`](@ref) describing the contour.
+
+# Keyword Arguments
+- `k::Union{Nothing, Int}=nothing`: Split index for the Schur block decomposition.
+  If `nothing`, automatically selects k ≈ n/4.
+- `config::ResolventBoundConfig=config_v2()`: Configuration specifying estimators.
+  Options: `config_v1()`, `config_v2()`, `config_v2p5()`, `config_v3()`.
+- `polynomial = nothing`: optional coefficients for polynomial certification.
+- `η = 0.5`: admissible threshold for adaptive refinement.
+- `check_interval = 100`: number of arcs between progress reports.
+- `log_io = stdout`: destination for log messages.
+- `Cbound = 1.0`: constant for resolvent bound lifting.
+
+# Example
+```julia
+using BallArithmetic
+A = randn(ComplexF64, 50, 50)
+circle = CertificationCircle(0.0, 1.5; samples=64)
+
+# Use V2 configuration (default)
+result = run_certification_parametric(A, circle)
+
+# Use V3 configuration with Neumann bounds
+result = run_certification_parametric(A, circle; config=config_v3())
+
+# Specify custom split
+result = run_certification_parametric(A, circle; k=10)
+```
+"""
+function run_certification_parametric(A::BallMatrix{T}, circle::CertificationCircle;
+        k::Union{Nothing, Int} = nothing,
+        config::ResolventBoundConfig = config_v2(),
+        polynomial = nothing, η::Real = 0.5, check_interval::Integer = 100,
+        log_io::IO = stdout, Cbound = 1.0) where T
+
+    check_interval < 1 && throw(ArgumentError("check_interval must be positive"))
+    η = Float64(η)
+    (η <= 0 || η >= 1) && throw(ArgumentError("η must belong to (0, 1)"))
+
+    coeffs = polynomial === nothing ? nothing : collect(polynomial)
+    schur_data = coeffs === nothing ?
+        compute_schur_and_error(A) :
+        compute_schur_and_error(A; polynomial = coeffs)
+
+    S, errF, errT, norm_Z, norm_Z_inv = schur_data
+    bT = BallMatrix(S.T)
+    schur_matrix = coeffs === nothing ? bT : _polynomial_matrix(coeffs, bT)
+
+    n = size(schur_matrix, 1)
+
+    # Auto-select k if not provided
+    k_used = k === nothing ? max(2, n ÷ 4) : k
+    k_used = clamp(k_used, 2, n - 2)  # Ensure valid range
+
+    @info "Parametric certification with k=$k_used (n=$n)"
+    @info "Configuration: $(config.d_inv_estimator), $(config.coupling_estimator), $(config.combiner)"
+
+    # Precompute Sylvester quantities
+    T_mat = Matrix(schur_matrix.c)
+    T11 = T_mat[1:k_used, 1:k_used]
+    T12 = T_mat[1:k_used, (k_used+1):n]
+    T22 = T_mat[(k_used+1):n, (k_used+1):n]
+
+    X = solve_sylvester_oracle(T11, T12, T22)
+    R = T12 + T11 * X - X * T22
+    precomp = sylvester_resolvent_precompute(T_mat, k_used; X_oracle=X)
+
+    if !precomp.precomputation_success
+        error("Sylvester precomputation failed: $(precomp.failure_reason)")
+    end
+
+    @info "Sylvester diagnostics: reduction=$(precomp.reduction_factor), penalty=$(precomp.similarity_cond)"
+
+    # Set up parametric config for the evaluator
+    RT = real(T)
+    R_typed = convert.(Complex{RT}, R)
+
+    arcs = _initial_arcs(circle)
+    cache = Dict{ComplexF64, Any}()
+    certification_log = Any[]
+    pending = Dict{Int, Tuple{ComplexF64, ComplexF64}}()
+    eval_index = Ref(0)
+
+    # Warm start cache for serial evaluation
+    warm_U = Ref{Union{Nothing, Matrix}}(nothing)
+    warm_S = Ref{Union{Nothing, Vector}}(nothing)
+    warm_V = Ref{Union{Nothing, Matrix}}(nothing)
+    warm_z = Ref{Union{Nothing, Number}}(nothing)
+
+    serial_evaluator = function (z::ComplexF64)
+        eval_index[] += 1
+        idx = eval_index[]
+
+        z_typed = Complex{RT}(z)
+
+        # Check for warm start
+        warm_start = nothing
+        if warm_z[] !== nothing && abs(z_typed - warm_z[]) < 1e-4 * (abs(warm_z[]) + 1)
+            warm_start = SVDWarmStart(warm_U[], warm_S[], warm_V[])
+        end
+
+        elapsed = @elapsed result = parametric_resolvent_bound(
+            precomp, T_mat, z_typed, config;
+            R=R_typed, svd_warm_start=warm_start
+        )
+
+        # Update warm start
+        if result.success
+            A_z = z_typed * I - T11
+            try
+                svd_Az = LinearAlgebra.svd(A_z)
+                warm_U[] = svd_Az.U
+                warm_S[] = svd_Az.S
+                warm_V[] = svd_Az.V
+                warm_z[] = z_typed
+            catch
+            end
+        end
+
+        # Convert to standard format
+        if result.success
+            sigma_min = RT(1) / result.M_A
+            sigma_min_ball = Ball(sigma_min, zero(RT))
+
+            lo_val = setrounding(RT, RoundDown) do
+                sigma_min
+            end
+
+            hi_res = setrounding(RT, RoundUp) do
+                result.resolvent_bound
+            end
+
+            return (
+                i = idx,
+                val = sigma_min_ball,
+                lo_val = lo_val,
+                res = Ball(result.resolvent_bound, zero(RT)),
+                hi_res = hi_res,
+                second_val = Ball(zero(RT), zero(RT)),
+                z = z_typed,
+                t = elapsed,
+                id = nothing,
+            )
+        else
+            return (
+                i = idx,
+                val = Ball(zero(RT), RT(Inf)),
+                lo_val = zero(RT),
+                res = Ball(RT(Inf), zero(RT)),
+                hi_res = RT(Inf),
+                second_val = Ball(zero(RT), zero(RT)),
+                z = z_typed,
+                t = elapsed,
+                id = nothing,
+            )
+        end
+    end
+
+    adaptive_arcs!(arcs, cache, pending, η; check_interval = check_interval,
+        certification_log = certification_log, io = log_io,
+        evaluator = serial_evaluator)
+
+    isempty(certification_log) && throw(ErrorException("certification produced no samples"))
+
+    min_sigma = minimum(log -> log.lo_val, certification_log)
+    l2pseudo = maximum(log -> log.hi_res, certification_log)
+    resolvent_bound = bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1); Cbound = Cbound)
+
+    return (; schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
+        resolvent_schur = l2pseudo, resolvent_original = resolvent_bound, Cbound,
+        errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
+        snapshot_base = nothing, k = k_used, parametric_precomp = precomp)
+end
+
+run_certification_parametric(A::AbstractMatrix, circle::CertificationCircle; kwargs...) =
+    run_certification_parametric(BallMatrix(A), circle; kwargs...)
 
 function polyconv(a::AbstractVector, b::AbstractVector)
     n, m = length(a), length(b)

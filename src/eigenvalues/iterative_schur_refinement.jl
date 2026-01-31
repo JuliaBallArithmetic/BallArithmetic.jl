@@ -1033,7 +1033,69 @@ function rigorous_symmetric_eigen_bigfloat(A::BallMatrix{T, NT};
     end
 end
 
+#==============================================================================#
+# Stub functions for Double64 extension (DoubleFloatsExt)
+#==============================================================================#
+
+"""
+    refine_schur_double64(A, Q0, T0; max_iterations=2, certify_with_bigfloat=true, bigfloat_precision=256)
+
+Fast Schur refinement using Double64 arithmetic. Requires DoubleFloats.jl to be loaded.
+
+This is ~30× faster than pure BigFloat refinement. See `DoubleFloatsExt` for details.
+"""
+function refine_schur_double64 end
+
+"""
+    refine_schur_hybrid(A, Q0, T0; d64_iterations=2, bf_iterations=1, precision_bits=256)
+
+Hybrid Schur refinement: Double64 for bulk iterations, BigFloat for final polish.
+Requires DoubleFloats.jl to be loaded.
+
+Expected speedup: ~2× for 256-bit precision vs pure BigFloat.
+"""
+function refine_schur_hybrid end
+
+"""
+    refine_symmetric_eigen_double64(A, Q0, λ0; max_iterations=2, certify_with_bigfloat=true, bigfloat_precision=256)
+
+Fast symmetric eigenvalue refinement (RefSyEv) using Double64 arithmetic.
+Requires DoubleFloats.jl to be loaded.
+"""
+function refine_symmetric_eigen_double64 end
+
+"""
+    refine_symmetric_eigen_hybrid(A, Q0, λ0; d64_iterations=2, bf_iterations=1, precision_bits=256)
+
+Hybrid RefSyEv refinement: Double64 for bulk iterations, BigFloat for final polish.
+Requires DoubleFloats.jl to be loaded.
+"""
+function refine_symmetric_eigen_hybrid end
+
+#==============================================================================#
+# Stub functions for MultiFloat extension (MultiFloatsExt)
+#==============================================================================#
+
+"""
+    refine_schur_multifloat(A, Q0, T0; precision=:x2, max_iterations=2, certify=true, bigfloat_precision=256)
+
+Refine Schur decomposition using MultiFloats arithmetic.
+Requires MultiFloats.jl to be loaded.
+"""
+function refine_schur_multifloat end
+
+"""
+    refine_symmetric_eigen_multifloat(A, Q0, λ0; precision=:x2, max_iterations=2, certify=true, bigfloat_precision=256)
+
+Refine symmetric eigenvalue decomposition using MultiFloats arithmetic.
+Requires MultiFloats.jl to be loaded.
+"""
+function refine_symmetric_eigen_multifloat end
+
 # Export functions
 export SchurRefinementResult, refine_schur_decomposition, rigorous_schur_bigfloat
 export newton_schulz_orthogonalize!, solve_triangular_matrix_equation
 export SymmetricEigenRefinementResult, refine_symmetric_eigen, rigorous_symmetric_eigen_bigfloat
+export refine_schur_double64, refine_schur_hybrid
+export refine_symmetric_eigen_double64, refine_symmetric_eigen_hybrid
+export refine_schur_multifloat, refine_symmetric_eigen_multifloat

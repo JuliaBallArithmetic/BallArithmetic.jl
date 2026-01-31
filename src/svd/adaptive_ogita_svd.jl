@@ -71,9 +71,31 @@ struct AdaptiveSVDResult{T, RigT}
 end
 
 """
+    ogita_iterations_for_precision(target_bits::Int; start_bits::Int=53)
+
+Compute the number of Ogita iterations needed to achieve target precision,
+based on quadratic convergence theory.
+
+With quadratic convergence, each iteration roughly doubles the number of correct bits.
+Starting from Float64 (53 bits), we need ceil(log2(target_bits / start_bits)) iterations.
+
+# Examples
+- 256 bits: ceil(log2(256/53)) = 3 iterations
+- 512 bits: ceil(log2(512/53)) = 4 iterations
+- 1024 bits: ceil(log2(1024/53)) = 5 iterations
+"""
+function ogita_iterations_for_precision(target_bits::Int; start_bits::Int=53)
+    if target_bits <= start_bits
+        return 0
+    end
+    return ceil(Int, log2(target_bits / start_bits))
+end
+
+"""
     ogita_svd_refine(A::AbstractMatrix{T}, U, Σ, V;
                      max_iterations=10, precision_bits=256,
-                     check_convergence=false) where {T<:AbstractFloat}
+                     check_convergence=false,
+                     use_optimal_iterations=false) where {T<:AbstractFloat}
 
 Refine an approximate SVD using Ogita's iterative method (RefSVD algorithm).
 
@@ -82,15 +104,19 @@ Refine an approximate SVD using Ogita's iterative method (RefSVD algorithm).
 - `U`: Initial left singular vectors
 - `Σ`: Initial singular values
 - `V`: Initial right singular vectors
-- `max_iterations`: Number of iterations to run (default: 10)
+- `max_iterations`: Maximum number of iterations to run (default: 10)
 - `precision_bits`: Working precision in bits (default: 256)
 - `check_convergence`: If `true`, check convergence via spectral norm and stop early.
                        If `false` (default), run fixed number of iterations.
+- `use_optimal_iterations`: If `true`, compute optimal iteration count from quadratic
+                            convergence theory and ignore max_iterations.
+                            This is the fastest option for known target precision.
 
-# Iteration count guidance (quadratic convergence from Float64)
-- 2 iterations: ~10⁻⁶⁰ precision (sufficient for 256-bit)
-- 3 iterations: ~10⁻¹²⁰ precision (saturates 256-bit, sufficient for 512-bit)
-- 4 iterations: ~10⁻²⁴⁰ precision (sufficient for 1024-bit)
+# Iteration count (quadratic convergence from Float64)
+Based on theory, starting from Float64 (~53 bits), each iteration doubles precision:
+- 3 iterations: sufficient for 256-bit (~77 decimal digits)
+- 4 iterations: sufficient for 512-bit (~154 decimal digits)
+- 5 iterations: sufficient for 1024-bit (~308 decimal digits)
 
 # Returns
 - `OgitaSVDRefinementResult` containing refined SVD
@@ -103,8 +129,16 @@ Refine an approximate SVD using Ogita's iterative method (RefSVD algorithm).
 function ogita_svd_refine(A::AbstractMatrix{T}, U, Σ, V;
                          max_iterations::Int=10,
                          precision_bits::Int=256,
-                         check_convergence::Bool=false) where {T<:Union{AbstractFloat, Complex{<:AbstractFloat}}}
+                         check_convergence::Bool=false,
+                         use_optimal_iterations::Bool=false) where {T<:Union{AbstractFloat, Complex{<:AbstractFloat}}}
     RT = real(T)  # Get the real type (Float64, BigFloat, etc.)
+
+    # Compute optimal iterations if requested
+    iterations_to_run = if use_optimal_iterations
+        ogita_iterations_for_precision(precision_bits)
+    else
+        max_iterations
+    end
 
     # Convert to higher precision if needed
     if RT == Float64 && precision_bits > 53
@@ -119,13 +153,13 @@ function ogita_svd_refine(A::AbstractMatrix{T}, U, Σ, V;
         setprecision(BigFloat, precision_bits)
 
         try
-            result = _ogita_svd_refine_impl(A_high, U_high, Σ_high, V_high, max_iterations, check_convergence)
+            result = _ogita_svd_refine_impl(A_high, U_high, Σ_high, V_high, iterations_to_run, check_convergence)
             return result
         finally
             setprecision(BigFloat, old_precision)
         end
     else
-        return _ogita_svd_refine_impl(A, U, Σ, V, max_iterations, check_convergence)
+        return _ogita_svd_refine_impl(A, U, Σ, V, iterations_to_run, check_convergence)
     end
 end
 
@@ -455,6 +489,50 @@ function _convert_to_precision(A::BallMatrix{T}, precision_bits::Int) where {T}
     end
 end
 
+#==============================================================================#
+# Stub functions for Double64 extension (DoubleFloatsExt)
+#==============================================================================#
+
+"""
+    ogita_svd_refine_fast(A, U, Σ, V; max_iterations=2, certify_with_bigfloat=true, bigfloat_precision=256)
+
+Fast SVD refinement using Double64 arithmetic (~106 bits precision).
+Requires DoubleFloats.jl to be loaded.
+
+This is ~30× faster than pure BigFloat refinement because:
+1. Double64 uses native Float64 operations with error compensation
+2. No memory allocation per arithmetic operation (unlike BigFloat)
+
+See `DoubleFloatsExt` module for implementation details.
+"""
+function ogita_svd_refine_fast end
+
+"""
+    ogita_svd_refine_hybrid(A, U, Σ, V; d64_iterations=2, bf_iterations=1, precision_bits=256)
+
+Hybrid SVD refinement: Double64 for bulk iterations, BigFloat for final polish.
+Requires DoubleFloats.jl to be loaded.
+
+Expected speedup: ~2× for 256-bit precision compared to pure BigFloat.
+"""
+function ogita_svd_refine_hybrid end
+
+#==============================================================================#
+# Stub functions for MultiFloat extension (MultiFloatsExt)
+#==============================================================================#
+
+"""
+    ogita_svd_refine_multifloat(A, U, Σ, V; precision=:x2, max_iterations=2,
+                                 certify_with_bigfloat=true, bigfloat_precision=256)
+
+Fast SVD refinement using MultiFloats arithmetic.
+Requires MultiFloats.jl to be loaded.
+
+Precision options: `:x2` (~106 bits), `:x4` (~212 bits), `:x8` (~424 bits)
+"""
+function ogita_svd_refine_multifloat end
+
 # Export new functions
 export OgitaSVDRefinementResult, AdaptiveSVDResult
-export ogita_svd_refine, adaptive_ogita_svd
+export ogita_svd_refine, adaptive_ogita_svd, ogita_iterations_for_precision
+export ogita_svd_refine_fast, ogita_svd_refine_hybrid, ogita_svd_refine_multifloat
