@@ -51,7 +51,8 @@ function IntervalArithmetic.interval(x::Ball{Float64, Float64})
     up = setrounding(Float64, RoundUp) do
         return x.c + x.r
     end
-    down = setrounding(Float64, RoundUp) do
+    # CRITICAL FIX: Must use RoundDown for lower bound to ensure valid enclosure
+    down = setrounding(Float64, RoundDown) do
         return x.c - x.r
     end
     return IntervalArithmetic.interval(down, up)

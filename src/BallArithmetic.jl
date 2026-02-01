@@ -138,6 +138,8 @@ export refine_symmetric_eigen_double64, refine_symmetric_eigen_hybrid, refine_sy
 export ogita_svd_refine_fast, ogita_svd_refine_hybrid, ogita_svd_refine_multifloat
 
 # Verified matrix decompositions (Rump & Ogita 2024)
+# Rigorous residual computation helpers (must be before decomposition files)
+include("decompositions/rigorous_residual.jl")
 include("decompositions/verified_lu.jl")
 include("decompositions/verified_cholesky.jl")
 include("decompositions/verified_qr.jl")
@@ -193,6 +195,7 @@ export det_hadamard, det_gershgorin, det_cramer
 export interval_det, contains_zero
 
 include("linear_system/inflation.jl")
+export EpsilonInflationResult, epsilon_inflation
 include("linear_system/backward_substitution.jl")
 include("linear_system/gaussian_elimination.jl")
 export GaussianEliminationResult
@@ -215,6 +218,10 @@ include("linear_system/preconditioning.jl")
 export PreconditionerType, MidpointInverse, LUFactorization, LDLTFactorization, IdentityPreconditioner
 export PreconditionerResult
 export compute_preconditioner, apply_preconditioner, is_well_preconditioned
+
+# Krawczyk must come before overdetermined (overdetermined uses krawczyk_linear_system)
+include("linear_system/krawczyk_complete.jl")
+export KrawczykResult, krawczyk_linear_system, krawczyk_sylvester
 
 include("linear_system/overdetermined.jl")
 export OverdeterminedResult

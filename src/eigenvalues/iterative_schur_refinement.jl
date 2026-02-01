@@ -67,6 +67,11 @@ This converges quadratically if ‖Q^H Q - I‖₂ < 1.
 
 # References
 - [BujanovicKressnerSchroder2022](@cite) Section 2.2.2 (Newton-Schulz iteration)
+
+# NOTE: This is an ORACLE computation - convergence is checked via the defect
+# (‖Q^H Q - I‖_F < tol), which serves as an A POSTERIORI verification. The
+# intermediate computations don't need directed rounding because the final
+# defect measurement validates the orthogonalization quality.
 """
 function newton_schulz_orthogonalize!(Q::Matrix{T}; max_iter::Int=10, tol=nothing) where T
     n = size(Q, 1)
@@ -688,6 +693,10 @@ function rigorous_schur_bigfloat(A::BallMatrix{T, NT};
         Q_error = result.orthogonality_defect
 
         # Build ball matrices with certified errors
+        # NOTE: The radii here are uniform (same for all entries) for simplicity.
+        # This is a valid OVERESTIMATE - each entry's true error may be smaller.
+        # The radii are derived from A POSTERIORI bounds (orthogonality defect,
+        # residual norm) computed after the iterative refinement converges.
         # Q radius: orthogonality defect + propagated input uncertainty
         # Use Frobenius norm (upper bound on spectral norm) for BigFloat compatibility
         Q_rad = fill(Q_error + _frobenius_norm(A_rad_big), n, n)

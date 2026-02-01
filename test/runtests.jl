@@ -68,6 +68,7 @@ using Test
     include("test_decompositions/test_iterative_refinement_ext.jl")
     include("test_decompositions/test_verified_decompositions.jl")
     include("test_decompositions/test_verified_takagi.jl")
+    include("test_decompositions/test_rigorous_residual.jl")
 
     # Certification
     include("test_certification/test_certifscripts.jl")

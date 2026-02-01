@@ -771,7 +771,7 @@ end
 # Import verified decomposition types and functions
 using BallArithmetic: VerifiedLUResult, VerifiedCholeskyResult, VerifiedQRResult,
                       VerifiedPolarResult, VerifiedTakagiResult,
-                      _lu_perturbed_identity, _gram_schmidt_bigfloat,
+                      _lu_perturbed_identity,
                       BallMatrix, Ball
 
 """
@@ -833,7 +833,11 @@ function BallArithmetic.verified_lu_double64(
     end
 
     # Convert to Float64 for verification
-    E = convert.(Float64, I_E_d64 - I)
+    # Account for Double64 → Float64 truncation error
+    E_d64 = I_E_d64 - I
+    truncation_bound_d64 = eps(Float64) * abs.(E_d64)
+    E = convert.(Float64, E_d64)
+    truncation_bound = convert.(Float64, truncation_bound_d64)
 
     # Verify with BigFloat
     L_E_data, U_E_data, _, _, success =
@@ -847,6 +851,23 @@ function BallArithmetic.verified_lu_double64(
 
     L_offset_mid, L_offset_rad = L_E_data
     U_offset_mid, U_offset_rad = U_E_data
+
+    # Add truncation error to radii
+    # L_offset uses strictly lower triangular part of E
+    # U_offset uses upper triangular part of E
+    truncation_bound_bf = convert.(BigFloat, truncation_bound)
+    for j in 1:mn
+        for i in (j+1):m
+            L_offset_rad[i, j] += truncation_bound_bf[i, j]
+        end
+    end
+    for i in 1:mn
+        for j in i:n
+            if j <= size(U_offset_rad, 2)
+                U_offset_rad[i, j] += truncation_bound_bf[i, j]
+            end
+        end
+    end
 
     # Build final result with BigFloat certification
     old_prec = precision(BigFloat)
@@ -928,7 +949,11 @@ function BallArithmetic.verified_cholesky_double64(
 
     # Form perturbed identity in Double64
     I_E_d64 = X_G_d64' * A_d64 * X_G_d64
-    E = convert.(Float64, I_E_d64 - I)
+    # Account for Double64 → Float64 truncation error
+    E_d64 = I_E_d64 - I
+    truncation_bound_d64 = eps(Float64) * abs.(E_d64)
+    E = convert.(Float64, E_d64)
+    truncation_bound = convert.(Float64, truncation_bound_d64)
 
     # Verify
     L_E_data, U_E_data, _, _, success = _lu_perturbed_identity(E; precision_bits=precision_bits)
@@ -940,6 +965,17 @@ function BallArithmetic.verified_cholesky_double64(
 
     L_offset_mid, L_offset_rad = L_E_data
     U_offset_mid, U_offset_rad = U_E_data
+
+    # Add truncation error to radii (Cholesky: symmetric, so both L and U use same truncation)
+    truncation_bound_bf = convert.(BigFloat, truncation_bound)
+    for j in 1:n
+        for i in (j+1):n
+            L_offset_rad[i, j] += truncation_bound_bf[i, j]
+        end
+        for i in 1:j
+            U_offset_rad[i, j] += truncation_bound_bf[i, j]
+        end
+    end
 
     old_prec = precision(BigFloat)
     setprecision(BigFloat, precision_bits)
@@ -1056,7 +1092,11 @@ function BallArithmetic.verified_qr_double64(
 
     # C'C should be close to I
     CtC_d64 = C_d64' * C_d64
-    E = convert.(Float64, CtC_d64 - I)
+    # Account for Double64 → Float64 truncation error
+    E_d64 = CtC_d64 - I
+    truncation_bound_d64 = eps(Float64) * abs.(E_d64)
+    E = convert.(Float64, E_d64)
+    truncation_bound = convert.(Float64, truncation_bound_d64)
 
     # Verify
     L_E_data, U_E_data, _, _, success = _lu_perturbed_identity(E; precision_bits=precision_bits)
@@ -1069,6 +1109,17 @@ function BallArithmetic.verified_qr_double64(
 
     L_offset_mid, L_offset_rad = L_E_data
     U_offset_mid, U_offset_rad = U_E_data
+
+    # Add truncation error to radii
+    truncation_bound_bf = convert.(BigFloat, truncation_bound)
+    for j in 1:n
+        for i in (j+1):n
+            L_offset_rad[i, j] += truncation_bound_bf[i, j]
+        end
+        for i in 1:j
+            U_offset_rad[i, j] += truncation_bound_bf[i, j]
+        end
+    end
 
     old_prec = precision(BigFloat)
     setprecision(BigFloat, precision_bits)

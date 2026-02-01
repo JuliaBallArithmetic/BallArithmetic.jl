@@ -825,7 +825,7 @@ export refine_lu_multifloat, refine_qr_multifloat, refine_cholesky_multifloat
 
 using BallArithmetic: VerifiedLUResult, VerifiedCholeskyResult, VerifiedQRResult,
                       VerifiedPolarResult, VerifiedTakagiResult,
-                      _lu_perturbed_identity, _gram_schmidt_bigfloat,
+                      _lu_perturbed_identity,
                       BallMatrix, Ball
 
 """

@@ -242,6 +242,9 @@ Returns a BallMatrix enclosure of X.
 """
 function _solve_ball_system(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
     # Approximate solution using midpoints
+    # NOTE: The `\` solve here is an ORACLE - the approximate solution is used
+    # as a starting point, and its quality is verified A POSTERIORI via the
+    # residual-based error bound below. No directed rounding needed for the solve.
     A_mid = mid(A)
     B_mid = mid(B)
 

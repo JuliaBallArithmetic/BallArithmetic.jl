@@ -2,6 +2,7 @@
 # Based on Section 4 of Rump & Ogita (2024) "Verified Error Bounds for Matrix Decompositions"
 #
 # For symmetric positive definite A, compute verified bounds for G such that A = G^T G.
+# Note: _bigfloat_type and _to_bigfloat are defined in verified_lu.jl
 
 """
     VerifiedCholeskyResult{GM, RT}
@@ -29,7 +30,8 @@ end
 
 """
     verified_cholesky(A::AbstractMatrix{T}; precision_bits::Int=256,
-                      use_double_precision::Bool=true) where T
+                      use_double_precision::Bool=true,
+                      use_bigfloat::Bool=true) where T
 
 Compute verified Cholesky decomposition A = G^T G with rigorous error bounds.
 
@@ -46,8 +48,9 @@ enclosure of the Cholesky factor G.
 
 # Arguments
 - `A`: Symmetric positive definite matrix (symmetry is checked, not assumed)
-- `precision_bits`: BigFloat precision for rigorous computation (default: 256)
+- `precision_bits`: BigFloat precision for rigorous computation (default: 256, ignored if use_bigfloat=false)
 - `use_double_precision`: Use double-precision products (default: true)
+- `use_bigfloat`: If true, use BigFloat for high precision; if false, use Float64 (faster)
 
 # Returns
 [`VerifiedCholeskyResult`](@ref) containing rigorous enclosure of G.
@@ -55,7 +58,8 @@ enclosure of the Cholesky factor G.
 # Example
 ```julia
 A = randn(100, 100); A = A' * A + 0.1I  # Make positive definite
-result = verified_cholesky(A)
+result = verified_cholesky(A)  # Uses BigFloat by default
+result_fast = verified_cholesky(A; use_bigfloat=false)  # Uses Float64 (faster)
 @assert result.success  # A is proven positive definite
 ```
 
@@ -68,9 +72,14 @@ result = verified_cholesky(A)
 """
 function verified_cholesky(A::AbstractMatrix{T};
                            precision_bits::Int=256,
-                           use_double_precision::Bool=true) where T<:Union{Float64, ComplexF64}
+                           use_double_precision::Bool=true,
+                           use_bigfloat::Bool=true) where T<:Union{Float64, ComplexF64}
     n = size(A, 1)
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("A must be square"))
+
+    # Get working type for this computation
+    WT = _working_type(T, use_bigfloat)
+    RWT = real(WT)
 
     # Check approximate symmetry
     sym_error = maximum(abs.(A - A'))
@@ -87,8 +96,8 @@ function verified_cholesky(A::AbstractMatrix{T};
     catch e
         if e isa PosDefException
             # Matrix is not positive definite
-            G_ball = BallMatrix(fill(BigFloat(NaN), n, n), fill(BigFloat(Inf), n, n))
-            return VerifiedCholeskyResult(G_ball, false, BigFloat(Inf))
+            G_ball = BallMatrix(fill(WT(NaN), n, n), fill(RWT(Inf), n, n))
+            return VerifiedCholeskyResult(G_ball, false, RWT(Inf))
         end
         rethrow(e)
     end
@@ -110,22 +119,24 @@ function verified_cholesky(A::AbstractMatrix{T};
 
     # Step 4: Verified LU of I + E
     # The uniqueness of LU and Cholesky implies G_E = D^{1/2} L_E^T
-    L_E_data, U_E_data, _, _, success = _lu_perturbed_identity(E; precision_bits=precision_bits)
+    L_E_data, U_E_data, _, _, success = _lu_perturbed_identity(E; precision_bits=precision_bits, use_bigfloat=use_bigfloat)
 
     if !success
-        G_ball = BallMatrix(convert.(BigFloat, G_approx), fill(BigFloat(Inf), n, n))
-        return VerifiedCholeskyResult(G_ball, false, BigFloat(Inf))
+        G_ball = BallMatrix(_to_working(G_approx, use_bigfloat), fill(RWT(Inf), n, n))
+        return VerifiedCholeskyResult(G_ball, false, RWT(Inf))
     end
 
     L_offset_mid, L_offset_rad = L_E_data
     U_offset_mid, U_offset_rad = U_E_data
 
     old_prec = precision(BigFloat)
-    setprecision(BigFloat, precision_bits)
+    if use_bigfloat
+        setprecision(BigFloat, precision_bits)
+    end
 
     try
         # Build L_E and U_E
-        I_n = Matrix{BigFloat}(I, n, n)
+        I_n = Matrix{WT}(I, n, n)
         L_E_mid = I_n + L_offset_mid
         U_E_mid = I_n + U_offset_mid
 
@@ -135,20 +146,20 @@ function verified_cholesky(A::AbstractMatrix{T};
 
         # Check all diagonal entries are positive (proves positive definiteness)
         for i in 1:n
-            if D_mid[i] - D_rad[i] <= 0
-                G_ball = BallMatrix(convert.(BigFloat, G_approx), fill(BigFloat(Inf), n, n))
-                return VerifiedCholeskyResult(G_ball, false, BigFloat(Inf))
+            if real(D_mid[i]) - D_rad[i] <= 0
+                G_ball = BallMatrix(_to_working(G_approx, use_bigfloat), fill(RWT(Inf), n, n))
+                return VerifiedCholeskyResult(G_ball, false, RWT(Inf))
             end
         end
 
         # Compute D^{1/2} with rigorous bounds
         # For x ∈ [a-r, a+r] with a > r > 0: √x ∈ [√(a-r), √(a+r)]
         D_sqrt_mid = sqrt.(D_mid)
-        D_sqrt_rad = zeros(BigFloat, n)
+        D_sqrt_rad = zeros(RWT, n)
         for i in 1:n
             # Use interval arithmetic for square root
-            lower = sqrt(D_mid[i] - D_rad[i])
-            upper = sqrt(D_mid[i] + D_rad[i])
+            lower = sqrt(real(D_mid[i]) - D_rad[i])
+            upper = sqrt(real(D_mid[i]) + D_rad[i])
             D_sqrt_mid[i] = (lower + upper) / 2
             D_sqrt_rad[i] = (upper - lower) / 2
         end
@@ -160,32 +171,41 @@ function verified_cholesky(A::AbstractMatrix{T};
                   Diagonal(D_sqrt_rad) * L_offset_rad'
 
         # Step 5: Transform back G = G_E X_G⁻¹ = G_E G̃
-        G_approx_bf = convert.(BigFloat, G_approx)
+        G_approx_w = _to_working(G_approx, use_bigfloat)
 
-        G_mid = G_E_mid * G_approx_bf
-        G_rad = G_E_rad * abs.(G_approx_bf) +
-                abs.(G_E_mid) * zeros(BigFloat, n, n)  # G_approx has no uncertainty here
+        G_mid = G_E_mid * G_approx_w
+        # Error propagation: account for G_E uncertainty and floating-point error
+        # in G_E_mid * G_approx_w. Using Revol-Théveny formula: error ≤ (k+2)*ε*|A|*|B| + η/ε
+        ε_w = eps(RWT)
+        η_w = floatmin(RWT)  # smallest positive normal number
+        k = n  # inner dimension of G_E_mid * G_approx_w
+        mmul_error = setrounding(RWT, RoundUp) do
+            (k + 2) * ε_w * abs.(G_E_mid) * abs.(G_approx_w) .+ η_w / ε_w
+        end
+        G_rad = setrounding(RWT, RoundUp) do
+            G_E_rad * abs.(G_approx_w) + mmul_error
+        end
 
         # Ensure upper triangular structure
         for j in 1:n
             for i in (j+1):n
-                G_mid[i, j] = zero(BigFloat)
-                G_rad[i, j] = zero(BigFloat)
+                G_mid[i, j] = zero(WT)
+                G_rad[i, j] = zero(RWT)
             end
         end
 
         G_ball = BallMatrix(G_mid, G_rad)
 
-        # Compute residual
-        GtG = G_mid' * G_mid
-        A_bf = convert.(BigFloat, A_sym)
-        residual = GtG - A_bf
-        residual_norm = maximum(abs.(residual)) / maximum(abs.(A_bf))
+        # Compute rigorous residual using Miyajima products
+        A_w = _to_working(A_sym, use_bigfloat)
+        residual_norm = _rigorous_gram_relative_residual_norm(G_mid, A_w)
 
         return VerifiedCholeskyResult(G_ball, true, residual_norm)
 
     finally
-        setprecision(BigFloat, old_prec)
+        if use_bigfloat
+            setprecision(BigFloat, old_prec)
+        end
     end
 end
 

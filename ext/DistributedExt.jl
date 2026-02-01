@@ -29,6 +29,16 @@ function _set_schur_on_workers(pids, matrix)
     end
 end
 
+function _set_parametric_config_on_workers(pids, precomp, R, config, k)
+    Distributed.@sync begin
+        for pid in pids
+            Distributed.@async Distributed.remotecall_wait(
+                CertifScripts.set_parametric_config!, pid, precomp, R, config; k=k
+            )
+        end
+    end
+end
+
 function _cleanup_snapshots(basepath)
     for suffix in ("_A.jld2", "_B.jld2")
         filename = basepath * suffix
@@ -46,7 +56,12 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
         ogita_iterations::Integer = 2,
         use_bigfloat_ogita::Bool = false,
         target_precision::Integer = 256,
-        max_ogita_iterations::Integer = 4)
+        max_ogita_iterations::Integer = 4,
+        # Parametric Sylvester-based certifier options
+        use_parametric::Bool = false,
+        parametric_k::Union{Nothing, Integer} = nothing,
+        parametric_config::BallArithmetic.ResolventBoundConfig = BallArithmetic.config_v2(),
+        parametric_distance_threshold::Real = 1e-4)
 
     isempty(worker_ids) && throw(ArgumentError("no worker processes available for certification"))
     channel_capacity < 1 && throw(ArgumentError("channel_capacity must be positive"))
@@ -100,9 +115,41 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
     cache = nothing
     pending = nothing
 
+    # For parametric mode, precompute Sylvester quantities
+    parametric_precomp = nothing
+    parametric_R = nothing
+    k_used = 0
+    if use_parametric
+        n = size(schur_matrix, 1)
+        k_used = parametric_k === nothing ? max(2, n ÷ 4) : Int(parametric_k)
+        k_used = clamp(k_used, 2, n - 2)
+
+        T_mat = Matrix(schur_matrix.c)
+        T11 = T_mat[1:k_used, 1:k_used]
+        T12 = T_mat[1:k_used, (k_used+1):n]
+        T22 = T_mat[(k_used+1):n, (k_used+1):n]
+
+        X = BallArithmetic.solve_sylvester_oracle(T11, T12, T22)
+        parametric_R = T12 + T11 * X - X * T22
+        parametric_precomp = BallArithmetic.sylvester_resolvent_precompute(T_mat, k_used; X_oracle=X)
+
+        if !parametric_precomp.precomputation_success
+            error("Sylvester precomputation failed: $(parametric_precomp.failure_reason)")
+        end
+
+        @info "Parametric certification with k=$k_used (n=$n)"
+        @info "Configuration: $(parametric_config.d_inv_estimator), $(parametric_config.coupling_estimator)"
+        @info "Sylvester diagnostics: reduction=$(parametric_precomp.reduction_factor), penalty=$(parametric_precomp.similarity_cond)"
+    end
+
     try
         _load_certification_dependencies(worker_ids)
         _set_schur_on_workers(worker_ids, schur_matrix)
+
+        # Set parametric config on workers if needed
+        if use_parametric
+            _set_parametric_config_on_workers(worker_ids, parametric_precomp, parametric_R, parametric_config, k_used)
+        end
 
         job_channel = RemoteChannel(() -> Channel{_RemoteJob}(channel_capacity))
         result_channel = RemoteChannel(() -> Channel{NamedTuple}(channel_capacity))
@@ -112,7 +159,11 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
 
         worker_tasks = Future[]
         for pid in worker_ids
-            if use_bigfloat_ogita
+            if use_parametric
+                push!(worker_tasks, Distributed.@spawnat pid CertifScripts.dowork_parametric(
+                    job_channel, result_channel;
+                    distance_threshold = parametric_distance_threshold))
+            elseif use_bigfloat_ogita
                 push!(worker_tasks, Distributed.@spawnat pid CertifScripts.dowork_ogita_bigfloat(
                     job_channel, result_channel;
                     target_precision = target_precision,
@@ -143,10 +194,18 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
         l2pseudo = maximum(log -> log.hi_res, certification_log)
         resolvent_bound = CertifScripts.bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1); Cbound = Cbound)
 
-        return (; schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
-            resolvent_schur = l2pseudo, resolvent_original = resolvent_bound, Cbound,
-            errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
-            snapshot_base)
+        # Include parametric info in result if used
+        if use_parametric
+            return (; schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
+                resolvent_schur = l2pseudo, resolvent_original = resolvent_bound, Cbound,
+                errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
+                snapshot_base, k = k_used, parametric_precomp)
+        else
+            return (; schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
+                resolvent_schur = l2pseudo, resolvent_original = resolvent_bound, Cbound,
+                errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
+                snapshot_base)
+        end
     finally
         if result_channel !== nothing && pending isa Dict
             wait_start = time()
@@ -306,6 +365,15 @@ certification samples in parallel.
 - `target_precision = 256`: BigFloat precision in bits for BigFloat Ogita mode.
 - `max_ogita_iterations = 4`: Ogita iterations for BigFloat refinement. Due to
   quadratic convergence, 4 iterations from Float64 saturate 256-bit precision.
+- `use_parametric = false`: when `true`, workers use the parametric Sylvester-based
+  certifier instead of full SVD. This method uses block-diagonalization via
+  Sylvester equation and can be more efficient for large matrices.
+- `parametric_k = nothing`: split index for the Schur block decomposition in
+  parametric mode. If `nothing`, automatically selects k ≈ n/4.
+- `parametric_config = config_v2()`: configuration specifying estimators for
+  parametric mode. Options: `config_v1()`, `config_v2()`, `config_v2p5()`, `config_v3()`.
+- `parametric_distance_threshold = 1e-4`: maximum distance for warm-start cache
+  reuse in parametric mode.
 
 The return value matches the serial flavour, exposing the Schur data,
 certification log, and resolvent bounds in a named tuple.  When new workers are

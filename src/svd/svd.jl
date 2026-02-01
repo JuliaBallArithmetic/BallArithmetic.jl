@@ -254,8 +254,19 @@ function _certify_svd_impl(A::BallMatrix{T}, U_in, S_in, V_in, Vt_in, method::SV
     normG = upper_bound_L2_opnorm(G)
     @debug "norm G" normG
 
-    @assert normF < 1 "It is not possible to verify the singular values with this precision"
-    @assert normG < 1 "It is not possible to verify the singular values with this precision"
+    # Verification requires ‖F‖ < 1 and ‖G‖ < 1 for the Neumann series bounds
+    # Return failed result instead of crashing if conditions aren't met
+    if normF >= 1 || normG >= 1
+        n_sv = length(S_in)
+        RT = real(T)
+        # Create failed result with infinite bounds
+        singular_values = [Ball(S_in[i], RT(Inf)) for i in 1:n_sv]
+        Σ = _diagonal_ball_matrix(singular_values)
+        residual = E
+        @warn "SVD verification failed: ‖V'V - I‖ = $normF, ‖U'U - I‖ = $normG (both must be < 1)"
+        return RigorousSVDResult(U, singular_values, Σ, V, residual,
+            RT(Inf), normF, normG, nothing)
+    end
 
     # Compute bounds based on method
     svdbounds_down, svdbounds_up = _compute_svd_bounds(method, S_in, normE, normF, normG, T)
@@ -374,10 +385,22 @@ function _diagonal_ball_matrix(values::Vector{Ball{T, NT}}) where {T, NT}
 end
 
 #=
-Miyajima 2014, Theorem 11 (M4): Full eigendecomposition-based implementation
+Miyajima 2014, Theorem 11 (M4): Eigendecomposition-based singular value verification
 
-This computes verified bounds using the eigendecomposition approach:
-  D̂ + Ê = (AV)ᵀAV  where D̂ is diagonal
+WHAT M4 VERIFIES:
+  - Rigorous bounds on ALL singular values σᵢ(A)
+
+WHAT M4 DOES NOT VERIFY:
+  - Left singular vectors U (returned as placeholder zeros)
+  - Right singular vectors V (approximate, used only for verification)
+  - SVD residual ‖A - UΣVᵀ‖ (returned as Inf)
+
+This is BY DESIGN per Miyajima's method. The singular value bounds come from
+Gershgorin/Parlett analysis on (AV)ᵀAV, requiring only the orthogonality
+defect F = VᵀV - I. No U computation or residual bound is needed or provided.
+
+THEORY:
+  D̂ + Ê = (AV)ᵀAV  where D̂ is diagonal, V from eigendecomposition of AᵀA
 
 For isolated eigenvalues (Gershgorin disc doesn't overlap others), we can
 use Parlett's theorem (Theorem 3 in the paper) for tighter bounds.
@@ -389,6 +412,9 @@ The bounds are:
 where hᵢ is the tighter of either:
   - fᵢ = row sum of |Ê| (Gershgorin radius)
   - gᵢ = ‖Êe⁽ⁱ⁾‖² / (2ρᵢ) via Parlett's theorem (if isolated)
+
+Reference: Miyajima, S. "Verified bounds for all the singular values of matrix"
+           Japan J. Indust. Appl. Math. (2014) 31:513–539
 =#
 function rigorous_svd_m4(A::BallMatrix{T}; apply_vbd::Bool = true) where {T}
     m, n = size(A)
@@ -412,7 +438,16 @@ function rigorous_svd_m4(A::BallMatrix{T}; apply_vbd::Bool = true) where {T}
     # Compute F = VᵀV - I (orthogonality defect)
     F = V' * V - I
     normF = upper_bound_L2_opnorm(F)
-    @assert normF < 1 "It is not possible to verify singular values: ‖VᵀV - I‖ ≥ 1"
+
+    # Verification requires ‖F‖ < 1 for the bounds to be valid
+    if normF >= 1
+        n_sv = size(V, 2)
+        singular_values = [Ball(sqrt(max(λ[i], zero(T))), T(Inf)) for i in 1:n_sv]
+        Σ = _diagonal_ball_matrix(singular_values)
+        @warn "SVD M4 verification failed: ‖VᵀV - I‖ = $normF (must be < 1)"
+        return RigorousSVDResult(BallMatrix(zeros(T, m, q)), singular_values, Σ, V,
+            BallMatrix(zeros(T, m, n)), T(Inf), normF, normF, nothing)
+    end
 
     # Compute AV (or AᵀV if m < n) and then (AV)ᵀAV
     if m >= n
@@ -526,12 +561,14 @@ function rigorous_svd_m4(A::BallMatrix{T}; apply_vbd::Bool = true) where {T}
 
     Σ = _diagonal_ball_matrix(singular_values)
 
-    # Compute U from A and V (optional, for completeness)
-    # For now, return a placeholder
+    # NOTE: Miyajima M4 (Theorem 11) provides verified SINGULAR VALUE BOUNDS only.
+    # It does NOT verify U, V, or compute a verified residual bound.
+    # The singular value bounds come from Gershgorin/Parlett analysis on (AV)ᵀAV,
+    # using only the orthogonality defect F = VᵀV - I.
+    #
+    # We return placeholder U and indicate residual is not bounded (Inf).
     U = BallMatrix(zeros(T, m, q))
-
-    # Compute residual estimate
-    residual_norm = zero(T)
+    residual_norm = T(Inf)  # M4 does not provide a verified residual bound
 
     vbd = nothing
     if apply_vbd

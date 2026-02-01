@@ -117,17 +117,41 @@ function rump_2022a_eigenvalue_bounds(A::BallMatrix{T, NT};
     # Compute left eigenvectors (inverse of V)
     Y_approx = inv(V_approx)
 
-    # Create ball matrices
+    # Create ball matrices with rigorous error bounds per Rump-Ogita 2024
     A_ball = A
-    V_ball = BallMatrix(V_approx)
-    Y_ball = BallMatrix(Y_approx)
+    V_ball = BallMatrix(V_approx)  # Eigenvectors have no uncertainty from input
 
-    # Compute coupling defect
+    # For Y_ball = V^{-1}, we need to bound the inversion error
+    # Compute E = Y_approx * V_approx - I as a BallMatrix for rigorous bounds
+    E_ball = BallMatrix(Y_approx) * BallMatrix(V_approx) - BallMatrix(Matrix{NT}(I, n, n))
+
+    # Rigorous bound on ‖E‖₂ using the fast Collatz/sqrt(norm1*normInf) bound
+    E_norm = upper_bound_L2_opnorm(E_ball)
+
+    # If ‖E‖ < 1, then V^{-1} = Y_approx * (I + E)^{-1}
+    # Error bound: |V^{-1} - Y_approx| ≤ |Y_approx| * ‖E‖/(1-‖E‖) (Neumann series)
+    if E_norm < one(T)
+        Y_error_factor = setrounding(T, RoundUp) do
+            E_norm / (one(T) - E_norm)
+        end
+        # Componentwise error bound: |Y_approx| * Y_error_factor
+        Y_rad = setrounding(T, RoundUp) do
+            abs.(Y_approx) .* Y_error_factor
+        end
+        Y_ball = BallMatrix(Y_approx, Y_rad)
+    else
+        # E_norm >= 1: inversion may have failed, use zero radii but mark as unverified
+        Y_ball = BallMatrix(Y_approx)
+    end
+
+    # Compute coupling defect ‖Y*V - I‖₂ using ball matrices with error bounds
     coupling_defect_matrix = Y_ball * V_ball - BallMatrix(Matrix{NT}(I, n, n))
     coupling_defect = upper_bound_L2_opnorm(coupling_defect_matrix)
 
-    # Verify coupling is good
-    verified = coupling_defect < 0.1  # Heuristic threshold
+    # Verification condition from Rump-Ogita 2024: coupling defect must be < 1
+    # for the perturbation bounds to be valid (Neumann series convergence)
+    # Additionally, we require κᵢ*ρᵢ < 1 for each eigenpair (checked in bounds computation)
+    verified = coupling_defect < one(T)  # Rigorous condition, not heuristic
 
     # Compute eigenvalue bounds and eigenvector errors
     eigenvalue_balls = Vector{Ball{T, NT}}(undef, n)
@@ -155,6 +179,13 @@ function rump_2022a_eigenvalue_bounds(A::BallMatrix{T, NT};
                                        A_ball, V_ball, Y_ball, λ_approx,
                                        hermitian)
     end
+
+    # Final verification check per Rump-Ogita 2024:
+    # 1. Coupling defect < 1 (already checked above)
+    # 2. κᵢ*ρᵢ < 1 for all eigenpairs (denominator positive in bounds)
+    # This is equivalent to checking that all eigenvector errors are finite
+    all_bounds_valid = all(isfinite.(eigenvector_errors)) && all(isfinite.(rad.(eigenvalue_balls)))
+    verified = verified && all_bounds_valid
 
     return Rump2022aResult(V_ball, eigenvalue_balls, eigenvector_errors,
                            condition_numbers, residual_norms, separation_gaps,

@@ -119,8 +119,10 @@ function krawczyk_linear_system(A::BallMatrix{T}, b::BallVector{T};
     E_mid = I - RA_mid
     E_rad = RA_rad
 
-    # Compute spectral radius bound of E
-    E_norm = opnorm(E_mid, Inf) + opnorm(E_rad, Inf)
+    # Compute rigorous upper bound on ‖E‖∞
+    # Use upper_bound_L_inf_opnorm for the interval matrix
+    E_ball = BallMatrix(E_mid, E_rad)
+    E_norm = upper_bound_L_inf_opnorm(E_ball)
 
     # Check if contraction condition holds
     if E_norm >= 1
@@ -295,7 +297,7 @@ function _krawczyk_sylvester_schur(A::AbstractMatrix{T}, B::AbstractMatrix{T},
     # Minimum separation: min|λ_A[i] + λ_B[j]|
     min_sep = minimum(abs(λa + λb) for λa in λ_A, λb in λ_B)
 
-    if min_sep < eps(T) * 100
+    if min_sep < eps(real(T)) * 100
         @warn "Krawczyk Sylvester: Near-zero spectral separation"
         X_mid = Q_A * Y_mid * Q_B'
         return KrawczykResult(
@@ -369,7 +371,7 @@ function _krawczyk_sylvester_direct(A::AbstractMatrix{T}, B::AbstractMatrix{T},
 
     @warn "Direct Krawczyk Sylvester not fully implemented, use use_schur=true"
     return KrawczykResult(
-        BallMatrix(X_approx, abs.(X_approx) * sqrt(eps(T))),
+        BallMatrix(X_approx, abs.(X_approx) * sqrt(eps(real(T)))),
         false, 0, residual_norm, T(NaN)
     )
 end

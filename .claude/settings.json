@@ -14,7 +14,8 @@
       "Bash(timeout*)",
       "Bash(mkdir*)",
       "Bash(rm /tmp/*)",
-      "Bash(git*)"
+      "Bash(git*)",
+      "Bash(gh*)"
     ]
   }
 }

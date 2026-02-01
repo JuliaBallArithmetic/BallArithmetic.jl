@@ -97,6 +97,9 @@ function hbr_method(A::BallMatrix{T}, b::BallVector{T};
     n = size(A, 1)
 
     # Compute preconditioner if not provided
+    # NOTE: The inverse here is an ORACLE - it's used for extremal vertex selection
+    # and its quality is verified A POSTERIORI through convexity conditions.
+    # Per Horacek thesis, the method's rigor doesn't depend on inv() accuracy.
     if preconditioner === nothing
         preconditioner = inv(mid(A))
     end

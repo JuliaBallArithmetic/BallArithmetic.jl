@@ -3,6 +3,7 @@
 #
 # For A ∈ ℂ^{n×n}, compute verified bounds for Q (unitary) and P (positive semidefinite)
 # such that A = QP (right polar) or A = PQ (left polar).
+# Note: _bigfloat_type and _to_bigfloat are defined in verified_lu.jl
 
 """
     VerifiedPolarResult{QM, PM, RT}
@@ -37,7 +38,8 @@ end
 """
     verified_polar(A::AbstractMatrix{T}; precision_bits::Int=256,
                    right::Bool=true,
-                   use_svd::Bool=true) where T
+                   use_svd::Bool=true,
+                   use_bigfloat::Bool=true) where T
 
 Compute verified polar decomposition with rigorous error bounds.
 
@@ -57,9 +59,10 @@ For A = UΣV^H (SVD), the polar decomposition is:
 
 # Arguments
 - `A`: Input square matrix
-- `precision_bits`: BigFloat precision (default: 256)
+- `precision_bits`: BigFloat precision (default: 256, ignored if use_bigfloat=false)
 - `right`: If true, compute A = QP; if false, compute A = PQ (default: true)
 - `use_svd`: Use SVD-based method (default: true; alternative methods not yet implemented)
+- `use_bigfloat`: If true, use BigFloat for high precision; if false, use Float64 (faster)
 
 # Returns
 [`VerifiedPolarResult`](@ref) containing rigorous enclosures of Q and P.
@@ -67,7 +70,8 @@ For A = UΣV^H (SVD), the polar decomposition is:
 # Example
 ```julia
 A = randn(ComplexF64, 50, 50)
-result = verified_polar(A)
+result = verified_polar(A)  # Uses BigFloat by default
+result_fast = verified_polar(A; use_bigfloat=false)  # Uses Float64 (faster)
 @assert result.success
 # Q is unitary, P is positive semidefinite
 # A ≈ Q * P
@@ -80,13 +84,18 @@ result = verified_polar(A)
 function verified_polar(A::AbstractMatrix{T};
                         precision_bits::Int=256,
                         right::Bool=true,
-                        use_svd::Bool=true) where T<:Union{Float64, ComplexF64}
+                        use_svd::Bool=true,
+                        use_bigfloat::Bool=true) where T<:Union{Float64, ComplexF64}
     n = size(A, 1)
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("A must be square for polar decomposition"))
 
     if !use_svd
         throw(ArgumentError("Only SVD-based polar decomposition is currently implemented"))
     end
+
+    # Get working type for this computation
+    WT = _working_type(T, use_bigfloat)
+    RWT = real(WT)
 
     # Step 1: Compute SVD A = U Σ V^H
     # Use Julia's built-in SVD as starting point, then refine
@@ -98,62 +107,64 @@ function verified_polar(A::AbstractMatrix{T};
     # Refine SVD to high precision using Ogita's method
     # (This uses the existing ogita_svd_refine infrastructure)
     old_prec = precision(BigFloat)
-    setprecision(BigFloat, precision_bits)
+    if use_bigfloat
+        setprecision(BigFloat, precision_bits)
+    end
 
     try
-        # Convert to BigFloat
-        A_bf = convert.(BigFloat, A)
-        U_bf = convert.(BigFloat, U_approx)
-        σ_bf = convert.(BigFloat, σ_approx)
-        V_bf = convert.(BigFloat, V_approx)
+        # Convert to working precision
+        A_w = _to_working(A, use_bigfloat)
+        U_w = _to_working(U_approx, use_bigfloat)
+        σ_w = convert.(RWT, σ_approx)  # σ is always real
+        V_w = _to_working(V_approx, use_bigfloat)
 
         # Refine SVD (simple Newton-like iteration)
         # For rigorous bounds, we'd use the full Ogita refinement
         # Here we do a simplified version
         for _ in 1:3
             # Improve V: V_new from A^H U = V Σ
-            AHU = A_bf' * U_bf
+            AHU = A_w' * U_w
             for j in 1:n
-                if σ_bf[j] > eps(BigFloat)
-                    V_bf[:, j] = AHU[:, j] / σ_bf[j]
+                if σ_w[j] > eps(RWT)
+                    V_w[:, j] = AHU[:, j] / σ_w[j]
                 end
             end
             # Re-orthogonalize V
-            V_bf, _ = _gram_schmidt_bigfloat(V_bf)
+            V_w, _ = _gram_schmidt_working(V_w)
 
             # Improve U: U_new from A V = U Σ
-            AV = A_bf * V_bf
+            AV = A_w * V_w
             for j in 1:n
-                if σ_bf[j] > eps(BigFloat)
-                    U_bf[:, j] = AV[:, j] / σ_bf[j]
+                if σ_w[j] > eps(RWT)
+                    U_w[:, j] = AV[:, j] / σ_w[j]
                 end
             end
             # Re-orthogonalize U
-            U_bf, _ = _gram_schmidt_bigfloat(U_bf)
+            U_w, _ = _gram_schmidt_working(U_w)
 
             # Update singular values
             for j in 1:n
-                σ_bf[j] = real(U_bf[:, j]' * A_bf * V_bf[:, j])
+                σ_w[j] = real(U_w[:, j]' * A_w * V_w[:, j])
             end
         end
 
         # Compute error bounds on SVD
         # Residual: A - U Σ V^H
-        Σ_mat = Diagonal(σ_bf)
-        SVD_residual = A_bf - U_bf * Σ_mat * V_bf'
+        Σ_mat = Diagonal(σ_w)
+        SVD_residual = A_w - U_w * Σ_mat * V_w'
         svd_error = maximum(abs.(SVD_residual))
 
         # Step 2: Compute polar factors
         # Q = U V^H
-        Q_mid = U_bf * V_bf'
+        Q_mid = U_w * V_w'
 
         # Error in Q from SVD error
         # |ΔQ| ≤ |ΔU| |V^H| + |U| |ΔV^H|
-        Q_rad = fill(2 * svd_error / minimum(σ_bf[σ_bf .> eps(BigFloat)]), n, n)
+        Q_rad = fill(2 * svd_error / minimum(σ_w[σ_w .> eps(RWT)]), n, n)
 
         if right
             # P = V Σ V^H
-            P_mid = V_bf * Σ_mat * V_bf'
+            P_mid = V_w * Σ_mat * V_w'
             # Symmetrize
             P_mid = (P_mid + P_mid') / 2
 
@@ -161,7 +172,7 @@ function verified_polar(A::AbstractMatrix{T};
             P_rad = fill(2 * svd_error, n, n)
         else
             # P = U Σ U^H
-            P_mid = U_bf * Σ_mat * U_bf'
+            P_mid = U_w * Σ_mat * U_w'
             # Symmetrize
             P_mid = (P_mid + P_mid') / 2
 
@@ -177,23 +188,25 @@ function verified_polar(A::AbstractMatrix{T};
         else
             QP = P_mid * Q_mid
         end
-        residual = QP - A_bf
-        residual_norm = maximum(abs.(residual)) / maximum(abs.(A_bf))
+        residual = QP - A_w
+        residual_norm = maximum(abs.(residual)) / maximum(abs.(A_w))
 
         return VerifiedPolarResult(Q_ball, P_ball, right, true, residual_norm)
 
     finally
-        setprecision(BigFloat, old_prec)
+        if use_bigfloat
+            setprecision(BigFloat, old_prec)
+        end
     end
 end
 
 """
-    _gram_schmidt_bigfloat(V::Matrix{T}) where T
+    _gram_schmidt_working(V::Matrix{T}) where T
 
-Modified Gram-Schmidt orthogonalization for BigFloat matrices.
+Modified Gram-Schmidt orthogonalization for matrices (works with Float64 or BigFloat).
 Returns orthonormalized V and the R factor.
 """
-function _gram_schmidt_bigfloat(V::Matrix{T}) where T
+function _gram_schmidt_working(V::Matrix{T}) where T
     n = size(V, 2)
     Q = copy(V)
     R = zeros(T, n, n)

@@ -2,6 +2,7 @@
 # Based on Section 5 of Rump & Ogita (2024) "Verified Error Bounds for Matrix Decompositions"
 #
 # For A ∈ ℝ^{m×n} with m ≥ n, compute verified bounds for Q (orthogonal) and R (upper triangular).
+# Note: _bigfloat_type and _to_bigfloat are defined in verified_lu.jl
 
 """
     VerifiedQRResult{QM, RM, RT}
@@ -34,7 +35,8 @@ end
 """
     verified_qr(A::AbstractMatrix{T}; precision_bits::Int=256,
                 use_double_precision::Bool=true,
-                compute_full_Q::Bool=false) where T
+                compute_full_Q::Bool=false,
+                use_bigfloat::Bool=true) where T
 
 Compute verified QR decomposition A = QR with rigorous error bounds.
 
@@ -49,9 +51,10 @@ For A ∈ ℝ^{m×n} with m ≥ n:
 
 # Arguments
 - `A`: Input matrix (m × n with m ≥ n)
-- `precision_bits`: BigFloat precision (default: 256)
+- `precision_bits`: BigFloat precision (default: 256, ignored if use_bigfloat=false)
 - `use_double_precision`: Use double-precision products (default: true)
 - `compute_full_Q`: Compute full m×m Q (default: false for economy-size m×n)
+- `use_bigfloat`: If true, use BigFloat for high precision; if false, use Float64 (faster)
 
 # Returns
 [`VerifiedQRResult`](@ref) containing rigorous enclosures of Q and R.
@@ -59,7 +62,8 @@ For A ∈ ℝ^{m×n} with m ≥ n:
 # Example
 ```julia
 A = randn(100, 50)
-result = verified_qr(A)
+result = verified_qr(A)  # Uses BigFloat by default
+result_fast = verified_qr(A; use_bigfloat=false)  # Uses Float64 (faster)
 @assert result.success
 # Q is 100×50 (economy-size), R is 50×50
 ```
@@ -70,37 +74,56 @@ result = verified_qr(A)
 function verified_qr(A::AbstractMatrix{T};
                      precision_bits::Int=256,
                      use_double_precision::Bool=true,
-                     compute_full_Q::Bool=false) where T<:Union{Float64, ComplexF64}
+                     compute_full_Q::Bool=false,
+                     use_bigfloat::Bool=true) where T<:Union{Float64, ComplexF64}
     m, n = size(A)
+
+    # Get working type for this computation
+    WT = _working_type(T, use_bigfloat)
+    RWT = real(WT)
 
     if m < n
         # For m < n, QR of A is obtained from QR of A^T
         # A = QR where Q is m×m orthogonal, R is m×n upper trapezoidal
         # We compute QR of A_m (left m×m block) and extend
         result_sq = verified_qr(A[:, 1:m]; precision_bits=precision_bits,
-                                use_double_precision=use_double_precision)
+                                use_double_precision=use_double_precision,
+                                use_bigfloat=use_bigfloat)
         if !result_sq.success
-            Q_ball = BallMatrix(fill(BigFloat(NaN), m, m), fill(BigFloat(Inf), m, m))
-            R_ball = BallMatrix(fill(BigFloat(NaN), m, n), fill(BigFloat(Inf), m, n))
-            return VerifiedQRResult(Q_ball, R_ball, false, BigFloat(Inf), BigFloat(Inf))
+            Q_ball = BallMatrix(fill(WT(NaN), m, m), fill(RWT(Inf), m, m))
+            R_ball = BallMatrix(fill(WT(NaN), m, n), fill(RWT(Inf), m, n))
+            return VerifiedQRResult(Q_ball, R_ball, false, RWT(Inf), RWT(Inf))
         end
 
         # R = Q^H A for full R
         old_prec = precision(BigFloat)
-        setprecision(BigFloat, precision_bits)
+        if use_bigfloat
+            setprecision(BigFloat, precision_bits)
+        end
         try
-            A_bf = convert.(BigFloat, A)
+            A_w = _to_working(A, use_bigfloat)
             Q_mid = mid(result_sq.Q)
-            R_full_mid = Q_mid' * A_bf
-            # Error propagation
+            R_full_mid = Q_mid' * A_w
+            # Error propagation: account for both Q uncertainty and floating-point error
+            # in Q_mid' * A_w. Using Revol-Théveny formula: error ≤ (k+2)*ε*|Q_mid'|*|A_w| + η/ε
             Q_rad = rad(result_sq.Q)
-            R_full_rad = Q_rad' * abs.(A_bf) + abs.(Q_mid') * zeros(BigFloat, m, n)
+            ε_w = eps(RWT)
+            η_w = floatmin(RWT)  # smallest positive normal number
+            k = m  # inner dimension of Q_mid' * A_w
+            mmul_error = setrounding(RWT, RoundUp) do
+                (k + 2) * ε_w * abs.(Q_mid') * abs.(A_w) .+ η_w / ε_w
+            end
+            R_full_rad = setrounding(RWT, RoundUp) do
+                Q_rad' * abs.(A_w) + mmul_error
+            end
 
             R_ball = BallMatrix(R_full_mid, R_full_rad)
             return VerifiedQRResult(result_sq.Q, R_ball, true,
                                     result_sq.residual_norm, result_sq.orthogonality_defect)
         finally
-            setprecision(BigFloat, old_prec)
+            if use_bigfloat
+                setprecision(BigFloat, old_prec)
+            end
         end
     end
 
@@ -135,22 +158,24 @@ function verified_qr(A::AbstractMatrix{T};
     # Then R = G_E X_R⁻¹ = G_E R̃
 
     # Use the LU approach from Section 4 (Cholesky via LU)
-    L_E_data, U_E_data, _, _, success = _lu_perturbed_identity(E; precision_bits=precision_bits)
+    L_E_data, U_E_data, _, _, success = _lu_perturbed_identity(E; precision_bits=precision_bits, use_bigfloat=use_bigfloat)
 
     if !success
-        Q_ball = BallMatrix(convert.(BigFloat, Q_approx), fill(BigFloat(Inf), m, n))
-        R_ball = BallMatrix(convert.(BigFloat, R_approx), fill(BigFloat(Inf), n, n))
-        return VerifiedQRResult(Q_ball, R_ball, false, BigFloat(Inf), BigFloat(Inf))
+        Q_ball = BallMatrix(_to_working(Q_approx, use_bigfloat), fill(RWT(Inf), m, n))
+        R_ball = BallMatrix(_to_working(R_approx, use_bigfloat), fill(RWT(Inf), n, n))
+        return VerifiedQRResult(Q_ball, R_ball, false, RWT(Inf), RWT(Inf))
     end
 
     L_offset_mid, L_offset_rad = L_E_data
     U_offset_mid, U_offset_rad = U_E_data
 
     old_prec = precision(BigFloat)
-    setprecision(BigFloat, precision_bits)
+    if use_bigfloat
+        setprecision(BigFloat, precision_bits)
+    end
 
     try
-        I_n = Matrix{BigFloat}(I, n, n)
+        I_n = Matrix{WT}(I, n, n)
         L_E_mid = I_n + L_offset_mid
         U_E_mid = I_n + U_offset_mid
 
@@ -160,19 +185,19 @@ function verified_qr(A::AbstractMatrix{T};
 
         # Check positive definiteness
         for i in 1:n
-            if D_mid[i] - D_rad[i] <= 0
-                Q_ball = BallMatrix(convert.(BigFloat, Q_approx), fill(BigFloat(Inf), m, n))
-                R_ball = BallMatrix(convert.(BigFloat, R_approx), fill(BigFloat(Inf), n, n))
-                return VerifiedQRResult(Q_ball, R_ball, false, BigFloat(Inf), BigFloat(Inf))
+            if real(D_mid[i]) - D_rad[i] <= 0
+                Q_ball = BallMatrix(_to_working(Q_approx, use_bigfloat), fill(RWT(Inf), m, n))
+                R_ball = BallMatrix(_to_working(R_approx, use_bigfloat), fill(RWT(Inf), n, n))
+                return VerifiedQRResult(Q_ball, R_ball, false, RWT(Inf), RWT(Inf))
             end
         end
 
         # D^{1/2} with rigorous bounds
         D_sqrt_mid = sqrt.(D_mid)
-        D_sqrt_rad = zeros(BigFloat, n)
+        D_sqrt_rad = zeros(RWT, n)
         for i in 1:n
-            lower = sqrt(D_mid[i] - D_rad[i])
-            upper = sqrt(D_mid[i] + D_rad[i])
+            lower = sqrt(real(D_mid[i]) - D_rad[i])
+            upper = sqrt(real(D_mid[i]) + D_rad[i])
             D_sqrt_mid[i] = (lower + upper) / 2
             D_sqrt_rad[i] = (upper - lower) / 2
         end
@@ -184,27 +209,37 @@ function verified_qr(A::AbstractMatrix{T};
                   Diagonal(D_sqrt_rad) * L_offset_rad'
 
         # R = G_E R̃
-        R_approx_bf = convert.(BigFloat, R_approx)
-        R_mid = G_E_mid * R_approx_bf
-        R_rad = G_E_rad * abs.(R_approx_bf)
+        R_approx_w = _to_working(R_approx, use_bigfloat)
+        R_mid = G_E_mid * R_approx_w
+        # Error propagation: G_E uncertainty + floating-point error in G_E_mid * R_approx_w
+        # Using Revol-Théveny formula: error ≤ (k+2)*ε*|A|*|B| + η/ε
+        ε_w = eps(RWT)
+        η_w = floatmin(RWT)
+        k_r = n  # inner dimension
+        mmul_error_R = setrounding(RWT, RoundUp) do
+            (k_r + 2) * ε_w * abs.(G_E_mid) * abs.(R_approx_w) .+ η_w / ε_w
+        end
+        R_rad = setrounding(RWT, RoundUp) do
+            G_E_rad * abs.(R_approx_w) + mmul_error_R
+        end
 
         # Ensure upper triangular
         for j in 1:n
             for i in (j+1):n
-                R_mid[i, j] = zero(BigFloat)
-                R_rad[i, j] = zero(BigFloat)
+                R_mid[i, j] = zero(WT)
+                R_rad[i, j] = zero(RWT)
             end
         end
 
         # Q = A R⁻¹ or better: Q = C G_E⁻¹
         # Using Q = A X_R G_E⁻¹
-        C_bf = convert.(BigFloat, C)
+        C_w = _to_working(C, use_bigfloat)
 
         # G_E⁻¹ = L_E^{-T} D^{-1/2}
         # Use direct formula for small matrices, iterative for large
         G_E_inv_mid = L_E_mid' \ Diagonal(1 ./ D_sqrt_mid)
 
-        Q_mid = C_bf * G_E_inv_mid
+        Q_mid = C_w * G_E_inv_mid
 
         # Error in Q: need to propagate errors through G_E⁻¹
         # Simplified: use residual-based error bound
@@ -213,23 +248,24 @@ function verified_qr(A::AbstractMatrix{T};
         G_E_rad_norm = maximum(sum(G_E_rad, dims=2))
 
         Q_rad_factor = G_E_inv_norm * G_E_rad_norm * G_E_inv_norm
-        Q_rad = abs.(C_bf) * fill(Q_rad_factor, n, n)
+        Q_rad = abs.(C_w) * fill(Q_rad_factor, n, n)
 
         Q_ball = BallMatrix(Q_mid, Q_rad)
         R_ball = BallMatrix(R_mid, R_rad)
 
-        # Compute residual and orthogonality defect
-        A_bf = convert.(BigFloat, A)
-        residual = Q_mid * R_mid - A_bf
-        residual_norm = maximum(abs.(residual)) / maximum(abs.(A_bf))
+        # Compute rigorous residual and orthogonality defect using Miyajima products
+        A_w = _to_working(A, use_bigfloat)
+        residual_norm = _rigorous_relative_residual_norm(Q_mid, R_mid, A_w)
 
-        QtQ = Q_mid' * Q_mid
-        ortho_defect = maximum(abs.(QtQ - I_n))
+        # Rigorous orthogonality defect: ‖Q'Q - I‖∞
+        ortho_defect = _rigorous_residual_bound(Q_mid', Q_mid, I_n)
 
         return VerifiedQRResult(Q_ball, R_ball, true, residual_norm, ortho_defect)
 
     finally
-        setprecision(BigFloat, old_prec)
+        if use_bigfloat
+            setprecision(BigFloat, old_prec)
+        end
     end
 end
 

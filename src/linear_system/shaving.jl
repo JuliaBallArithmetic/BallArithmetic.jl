@@ -155,6 +155,9 @@ function interval_shaving(A::BallMatrix{T}, b::BallVector{T}, x0::BallVector{T};
     n = size(A, 1)
 
     # Compute preconditioner if not provided
+    # NOTE: The inverse here is an ORACLE - it's used as a preconditioner and
+    # its quality is verified A POSTERIORI through the shaving convergence.
+    # Per Horacek thesis, the method's correctness doesn't depend on inv() accuracy.
     if R === nothing
         R = inv(mid(A))
     end

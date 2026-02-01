@@ -116,15 +116,19 @@ function compute_beta_bound(B::BallMatrix)
     # Compute XL * L̃ (should be close to identity)
     XL_L = X_L * L
 
-    # Error bound for 1-norm
+    # Error bound for 1-norm (use RoundUp for rigorous upper bound)
     s1 = sum(abs.(L), dims=2)[:]
-    ζ_1 = γ_n * norm(XL_L, 1) * norm(s1, 1) +
-          (n * u) / (1 - n * u) * norm(n * ones(n) + diag(abs.(L)), 1)
+    ζ_1 = setrounding(Float64, RoundUp) do
+        γ_n * norm(XL_L, 1) * norm(s1, 1) +
+              (n * u) / (1 - n * u) * norm(n * ones(n) + diag(abs.(L)), 1)
+    end
 
-    # Error bound for ∞-norm
+    # Error bound for ∞-norm (use RoundUp for rigorous upper bound)
     s_inf = maximum(abs.(L), dims=2)[:]
-    ζ_inf = γ_n * norm(XL_L, Inf) * norm(s_inf, Inf) +
-            (n * u) / (1 - n * u) * norm(n * ones(n) + diag(abs.(L)), Inf)
+    ζ_inf = setrounding(Float64, RoundUp) do
+        γ_n * norm(XL_L, Inf) * norm(s_inf, Inf) +
+                (n * u) / (1 - n * u) * norm(n * ones(n) + diag(abs.(L)), Inf)
+    end
 
     # Check convergence conditions
     if ζ_1 >= 1.0 || ζ_inf >= 1.0
@@ -133,15 +137,21 @@ function compute_beta_bound(B::BallMatrix)
         return sqrt(cond(B.c))
     end
 
-    # Compute α bounds
-    α_1 = norm(X_L, 1) / (1 - ζ_1)
-    α_inf = norm(X_L, Inf) / (1 - ζ_inf)
+    # Compute α bounds (use RoundUp for rigorous upper bounds)
+    α_1 = setrounding(Float64, RoundUp) do
+        norm(X_L, 1) / (1 - ζ_1)
+    end
+    α_inf = setrounding(Float64, RoundUp) do
+        norm(X_L, Inf) / (1 - ζ_inf)
+    end
 
-    # Additional error for Cholesky reconstruction
+    # Additional error for Cholesky reconstruction (use RoundUp for rigorous upper bound)
     L_LT = L * L'
     s_c_inf = maximum(sum(abs.(L_LT), dims=2))
-    α_C = γ_n * norm(L_LT, Inf) * s_c_inf +
-          (n * u) / (1 - (n - 1) * u) * norm((n - 1) * ones(n) + diag(abs.(L)), Inf)
+    α_C = setrounding(Float64, RoundUp) do
+        γ_n * norm(L_LT, Inf) * s_c_inf +
+              (n * u) / (1 - (n - 1) * u) * norm((n - 1) * ones(n) + diag(abs.(L)), Inf)
+    end
 
     # Check final condition
     if α_1 * α_inf * α_C >= 1.0
@@ -149,8 +159,10 @@ function compute_beta_bound(B::BallMatrix)
         return sqrt(cond(B.c))
     end
 
-    # Compute β (Theorem 10)
-    β = sqrt((α_1 * α_inf) / (1 - α_1 * α_inf * α_C))
+    # Compute β (Theorem 10) - use RoundUp for rigorous upper bound
+    β = setrounding(Float64, RoundUp) do
+        sqrt((α_1 * α_inf) / (1 - α_1 * α_inf * α_C))
+    end
 
     return β
 end
@@ -258,24 +270,35 @@ function compute_individual_eigenvalue_bounds(A::BallMatrix, B::BallMatrix, X̃:
         Bx_i = B * x_i
         r_i = Ax_i - λ̃[i] * Bx_i
 
-        # Norm of residual
-        norm_r_i = sqrt(sum([x.c^2 + x.r^2 for x in r_i]))  # Upper bound on 2-norm
+        # Rigorous upper bound on ‖r⁽ⁱ⁾‖₂ using existing infrastructure
+        # Uses upper_bound_norm which computes ‖mid‖₂ + ‖rad‖₂ with RoundUp
+        norm_r_i = upper_bound_norm(r_i, 2)
 
         # Gram element gᵢ = x̃⁽ⁱ⁾ᵀBx̃⁽ⁱ⁾
         g_i = dot(x_i, Bx_i)
 
-        # Handle interval Ball type
+        # Rigorous lower bound on √gᵢ for denominator
+        # Since gᵢ is in denominator, we need lower bound to get upper bound on result
         if isa(g_i, Ball)
-            g_i_val = g_i.c  # Use center (should be close to 1 if normalized)
+            # Lower bound on |g_i|: max(0, |g_i.c| - g_i.r)
+            g_i_lower = setrounding(Float64, RoundDown) do
+                max(0.0, abs(g_i.c) - g_i.r)
+            end
         else
-            g_i_val = g_i
+            g_i_lower = abs(g_i)
         end
 
-        if g_i_val <= 0
-            @warn "Individual bound $i: gᵢ ≤ 0, using large bound"
+        if g_i_lower <= 0
+            @warn "Individual bound $i: gᵢ lower bound ≤ 0, using large bound"
             ε[i] = Inf
         else
-            ε[i] = (β * norm_r_i) / sqrt(abs(g_i_val))
+            # Rigorous: β * norm_r_i / sqrt_down(g_i_lower)
+            ε[i] = setrounding(Float64, RoundUp) do
+                sqrt_g_lower = setrounding(Float64, RoundDown) do
+                    sqrt(g_i_lower)
+                end
+                (β * norm_r_i) / sqrt_g_lower
+            end
         end
     end
 
@@ -371,20 +394,31 @@ function compute_eigenvector_bounds(A::BallMatrix, B::BallMatrix, X̃::Matrix, �
         Ax_i = A * x_i
         Bx_i = B * x_i
         r_i = Ax_i - λ̃[i] * Bx_i
-        norm_r_i = sqrt(sum([x.c^2 + x.r^2 for x in r_i]))
+
+        # Rigorous upper bound on ‖r⁽ⁱ⁾‖₂ using directed rounding
+        # Per Rump-Ogita 2024: all certification bounds must use RoundUp
+        # Upper bound on |x|² is (|x.c| + x.r)², NOT x.c² + x.r² (which underestimates)
+        norm_r_i = setrounding(Float64, RoundUp) do
+            sqrt(sum((abs(x.c) + x.r)^2 for x in r_i))
+        end
 
         # Compute ρᵢ: distance to nearest other eigenvalue interval
+        # Use RoundDown since ρᵢ is in denominator
         ρ_i = Inf
 
         if i > 1
-            # Distance to previous eigenvalue
-            dist_prev = (λ̃[i] - η[i]) - (λ̃[i-1] + η[i-1])
+            # Distance to previous eigenvalue (rigorous lower bound)
+            dist_prev = setrounding(Float64, RoundDown) do
+                (λ̃[i] - η[i]) - (λ̃[i-1] + η[i-1])
+            end
             ρ_i = min(ρ_i, dist_prev)
         end
 
         if i < n
-            # Distance to next eigenvalue
-            dist_next = (λ̃[i+1] - η[i+1]) - (λ̃[i] + η[i])
+            # Distance to next eigenvalue (rigorous lower bound)
+            dist_next = setrounding(Float64, RoundDown) do
+                (λ̃[i+1] - η[i+1]) - (λ̃[i] + η[i])
+            end
             ρ_i = min(ρ_i, dist_next)
         end
 
@@ -392,7 +426,10 @@ function compute_eigenvector_bounds(A::BallMatrix, B::BallMatrix, X̃::Matrix, �
             @warn "Eigenvector bound $i: ρᵢ ≤ 0 or infinite, eigenvalues not separated"
             ξ[i] = Inf
         else
-            ξ[i] = (β^2 * norm_r_i) / ρ_i
+            # Rigorous upper bound: numerator up, denominator down
+            ξ[i] = setrounding(Float64, RoundUp) do
+                (β^2 * norm_r_i) / ρ_i
+            end
         end
     end
 

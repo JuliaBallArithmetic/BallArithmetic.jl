@@ -192,6 +192,12 @@ function _identify_clusters(gershgorin_discs::Vector{Ball{T, CT}},
             disc_i = gershgorin_discs[i]
             disc_j = gershgorin_discs[j]
 
+            # NOTE: These distance computations use default rounding (not RoundUp/Down)
+            # because clustering is a HEURISTIC preprocessing step. The clustering
+            # determines which eigenvalues to verify together, but the actual
+            # eigenvalue bounds are computed RIGOROUSLY afterwards. If clustering
+            # is slightly wrong, the verification either succeeds anyway (eigenvalues
+            # well-separated) or fails gracefully (indicates verification incomplete).
             distance = abs(mid(disc_i) - mid(disc_j))
             combined_radius = rad(disc_i) + rad(disc_j)
 

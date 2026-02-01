@@ -356,7 +356,9 @@ function compute_rump_original_bound(comp_matrix::Matrix{T}, residual::BallVecto
     residual_abs = upper_abs(residual)
     bound = D_inv * residual_abs + v * dot(w, residual_abs)
 
-    spectral_radius = opnorm(ED_inv, 2)
+    # Rigorous upper bound on spectral radius using L2 opnorm bound
+    # Convert to BallMatrix for rigorous computation
+    spectral_radius = upper_bound_L2_opnorm(BallMatrix(ED_inv))
 
     return bound, spectral_radius
 end
@@ -418,7 +420,8 @@ function compute_improved_method_a_bound(comp_matrix::Matrix{T}, residual::BallV
         best_bound = min.(best_bound, epsilon_k)
     end
 
-    spectral_radius = opnorm(ED_inv, 2)
+    # Rigorous upper bound on spectral radius using L2 opnorm bound
+    spectral_radius = upper_bound_L2_opnorm(BallMatrix(ED_inv))
 
     return best_bound, spectral_radius
 end
@@ -467,7 +470,8 @@ function compute_improved_method_b_bound(C::BallMatrix{T}, residual::BallVector{
     # Final bound: D^(-1)r + αv
     bound = D_inv * r + α * v
 
-    spectral_radius = opnorm(ED_inv, 2)
+    # Rigorous upper bound on spectral radius using L2 opnorm bound
+    spectral_radius = upper_bound_L2_opnorm(BallMatrix(ED_inv))
 
     return bound, spectral_radius
 end

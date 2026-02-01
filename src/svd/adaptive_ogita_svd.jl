@@ -197,6 +197,10 @@ function _ogita_svd_refine_impl(A::AbstractMatrix{T}, U, Σ, V,
     # - 2 iterations: ~10^-60 (enough for 256-bit)
     # - 3 iterations: ~10^-120 (saturates 256-bit, enough for 512-bit)
     # - 4 iterations: ~10^-240 (enough for 1024-bit)
+    # NOTE: This iterative refinement is an ORACLE computation. The accumulated
+    # errors during iteration are NOT tracked here because the final result is
+    # verified A POSTERIORI by computing rigorous residual bounds. The refinement
+    # improves the approximation quality, but rigor comes from the final verification.
     for iter in 1:max_iterations
         iterations = iter
         # Step 1: Compute residual matrices (Algorithm 1, line 1)

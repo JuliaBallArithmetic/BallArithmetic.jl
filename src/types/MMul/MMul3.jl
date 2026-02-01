@@ -1,7 +1,10 @@
-# As in Revol-Theveny
-# Parallel Implementation of Interval Matrix Multiplication
-# pag. 4
-# please check the values of u and η
+# Revol-Théveny midpoint-radius interval matrix multiplication
+# Reference: N. Revol & P. Théveny, "Parallel Implementation of Interval Matrix Multiplication",
+#            Reliable Computing 19(1), pp. 91-106, 2013. https://hal.science/hal-00801890
+#
+# The midpoint is intentionally computed with RoundNearest (default) for efficiency,
+# while the radius uses RoundUp. The error terms (k+2)*ε in the radius formula
+# rigorously account for floating-point errors in the midpoint computation.
 
 function MMul3(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
     m, k = size(A)

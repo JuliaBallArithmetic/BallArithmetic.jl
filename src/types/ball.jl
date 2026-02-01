@@ -320,7 +320,7 @@ function Base.inv(y::Ball{T}) where {T<:AbstractFloat}
     my, ry = mid(y), rad(y)
     ry < abs(my) || throw(ArgumentError("Ball $y contains zero."))
     one_T = one(T)
-    half_T = one_T / T(2)
+    half_T = one_T / T(2)  # Exact in binary floating point (1 and 0.5 are representable)
     c1 = div_down(one_T, add_up(abs(my), ry))
     c2 = div_up(one_T, sub_down(abs(my), ry))
     c = add_up(c1, mul_up(half_T, sub_up(c2, c1)))
@@ -346,7 +346,7 @@ propagates rounding errors to produce a rigorous result.
 function Base.sqrt(y::Ball{T}) where {T<:AbstractFloat}
     my, ry = mid(y), rad(y)
     ry < my || throw(DomainError("Ball $y contains zero."))
-    half_T = one(T) / T(2)
+    half_T = one(T) / T(2)  # Exact in binary floating point
     c1 = sqrt_down(sub_down(my, ry))
     c2 = sqrt_up(add_up(my, ry))
     c = add_up(c1, mul_up(half_T, sub_up(c2, c1)))
@@ -368,6 +368,8 @@ function Base.abs(x::Ball)
     if abs(x.c) > x.r
         return Ball(abs(x.c), x.r)
     else
+        # NOTE: Division by 2 is exact in IEEE 754 binary floating point
+        # (just decrements the exponent), so no setrounding needed here.
         val = add_up(abs(x.c), x.r) / 2
         return Ball(val, val)
     end
