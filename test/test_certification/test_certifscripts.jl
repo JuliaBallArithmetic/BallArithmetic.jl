@@ -11,6 +11,24 @@ using BallArithmetic
     @test result.resolvent_original >= result.resolvent_schur
 end
 
+@testset "CertifScripts serial with schur_data" begin
+    A = BallArithmetic.BallMatrix(Matrix{ComplexF64}(I, 2, 2))
+    # Pre-compute Schur data once
+    sd = BallArithmetic.CertifScripts.compute_schur_and_error(A)
+    S, errF, errT, norm_Z, norm_Z_inv = sd
+
+    # Reuse the same Schur data for two different circles (avoids recomputation)
+    for center in [0.0, 0.5]
+        circle = BallArithmetic.CertifScripts.CertificationCircle(center, 0.25; samples = 8)
+        result = BallArithmetic.CertifScripts.run_certification(A, circle;
+            schur_data = sd, η = 0.9, check_interval = 4, log_io = IOBuffer())
+        @test !isempty(result.certification_log)
+        @test result.minimum_singular_value > 0
+        @test result.errF == errF
+        @test result.errT == errT
+    end
+end
+
 @testset "CertifScripts distributed" begin
     using Distributed
     circle = BallArithmetic.CertifScripts.CertificationCircle(0.0, 0.25; samples = 8)

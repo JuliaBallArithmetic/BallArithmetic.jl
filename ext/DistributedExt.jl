@@ -47,7 +47,8 @@ function _cleanup_snapshots(basepath)
 end
 
 function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::CertifScripts.CertificationCircle,
-        worker_ids::Vector{Int}; polynomial = nothing, η::Real = 0.5, check_interval::Integer = 100,
+        worker_ids::Vector{Int}; schur_data = nothing, polynomial = nothing,
+        η::Real = 0.5, check_interval::Integer = 100,
         snapshot_path::Union{Nothing, AbstractString} = nothing, log_io::IO = stdout,
         channel_capacity::Integer = 1024, Cbound = 1.0, cleanup_workers::Bool,
         use_ogita_cache::Bool = false,
@@ -72,32 +73,34 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
 
     coeffs = polynomial === nothing ? nothing : collect(polynomial)
 
-    # For BigFloat Ogita mode, use BigFloat Schur computation
-    if use_bigfloat_ogita
-        old_prec = precision(BigFloat)
-        setprecision(BigFloat, target_precision)
-        try
-            # Convert A to BigFloat if needed
-            ET = eltype(A.c)
-            if real(ET) !== BigFloat
-                A_big = BallArithmetic.BallMatrix(
-                    convert.(Complex{BigFloat}, A.c),
-                    convert.(BigFloat, A.r)
-                )
-            else
-                A_big = A
-            end
+    if schur_data === nothing
+        # For BigFloat Ogita mode, use BigFloat Schur computation
+        if use_bigfloat_ogita
+            old_prec = precision(BigFloat)
+            setprecision(BigFloat, target_precision)
+            try
+                # Convert A to BigFloat if needed
+                ET = eltype(A.c)
+                if real(ET) !== BigFloat
+                    A_big = BallArithmetic.BallMatrix(
+                        convert.(Complex{BigFloat}, A.c),
+                        convert.(BigFloat, A.r)
+                    )
+                else
+                    A_big = A
+                end
 
+                schur_data = coeffs === nothing ?
+                    CertifScripts.compute_schur_and_error(A_big) :
+                    CertifScripts.compute_schur_and_error(A_big; polynomial = coeffs)
+            finally
+                setprecision(BigFloat, old_prec)
+            end
+        else
             schur_data = coeffs === nothing ?
-                CertifScripts.compute_schur_and_error(A_big) :
-                CertifScripts.compute_schur_and_error(A_big; polynomial = coeffs)
-        finally
-            setprecision(BigFloat, old_prec)
+                CertifScripts.compute_schur_and_error(A) :
+                CertifScripts.compute_schur_and_error(A; polynomial = coeffs)
         end
-    else
-        schur_data = coeffs === nothing ?
-            CertifScripts.compute_schur_and_error(A) :
-            CertifScripts.compute_schur_and_error(A; polynomial = coeffs)
     end
 
     S, errF, errT, norm_Z, norm_Z_inv = schur_data

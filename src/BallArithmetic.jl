@@ -99,9 +99,11 @@ export Rump2022aResult, rump_2022a_eigenvalue_bounds
 export RumpLange2023Result, rump_lange_2023_cluster_bounds, refine_cluster_bounds
 include("svd/singular_gerschgorin.jl")
 include("svd/miyajima_vbd.jl")
+include("svd/njd_vbd.jl")
 include("svd/svd.jl")
 include("svd/adaptive_ogita_svd.jl")
 include("svd/precision_cascade_svd.jl")
+export NJDVBDResult, JordanBlockInfo, miyajima_vbd_njd
 export MiyajimaVBDResult, RigorousSVDResult, miyajima_vbd, rigorous_svd, svdbox,
     rigorous_svd_m4, refine_svd_bounds_with_vbd,
     OgitaSVDRefinementResult, AdaptiveSVDResult, ogita_svd_refine, adaptive_ogita_svd,

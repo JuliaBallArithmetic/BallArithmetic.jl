@@ -369,12 +369,9 @@ For now, this falls back to M1 bounds but with the note that the VBD
 result can be used for further refinement of isolated singular values.
 =#
 function _compute_svd_bounds(::MiyajimaM4, S::Vector, normE, normF, normG, ::Type{T}) where {T}
-    # Start with M1 bounds as the base
+    @warn "MiyajimaM4 via `rigorous_svd(A; method=MiyajimaM4())` falls back to M1 bounds. " *
+          "Use `rigorous_svd_m4(A)` for the full Theorem 11 eigendecomposition-based approach." maxlog=1
     svdbounds_down, svdbounds_up = _compute_svd_bounds(MiyajimaM1(), S, normE, normF, normG, T)
-
-    # Note: Full M4 implementation would use the VBD isolation to refine
-    # bounds for well-separated singular values. This requires access to
-    # the full matrix A and V, which will be handled in _certify_svd_m4.
     return svdbounds_down, svdbounds_up
 end
 

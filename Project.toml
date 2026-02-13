@@ -20,6 +20,7 @@ SetRounding = "3cc68bcd-71a2-5612-b932-767ffbe40ab0"
 ArbNumerics = "7e558dbc-694d-5a72-987c-6f4ebed21442"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
+GenericSchur = "c145ed77-6b09-5dd9-b285-bf645a82121e"
 IntervalArithmetic = "d1acc4aa-44c8-5952-acd4-ba5d80a2a253"
 
 [extensions]
@@ -28,6 +29,7 @@ DistributedExt = "Distributed"
 DoubleFloatsExt = "DoubleFloats"
 FFTExt = "FFTW"
 GenericLinearAlgebraExt = "GenericLinearAlgebra"
+GenericSchurExt = "GenericSchur"
 IntervalArithmeticExt = "IntervalArithmetic"
 MultiFloatsExt = "MultiFloats"
 
@@ -38,6 +40,7 @@ Coverage = "1.8.1"
 DoubleFloats = "1"
 FFTW = "1"
 GenericLinearAlgebra = "0.3.19"
+GenericSchur = "0.5"
 IntervalArithmetic = "0.20.9"
 JLD2 = "0.6.2"
 MacroTools = "0.5"
@@ -49,8 +52,9 @@ julia = "^1.9"
 
 [extras]
 GenericLinearAlgebra = "14197337-ba66-59df-a3e3-ca00e7dcff7a"
+GenericSchur = "c145ed77-6b09-5dd9-b285-bf645a82121e"
 MultiFloats = "bdf0d083-296b-4888-a5b6-7498122e68a5"
 Test = "8dfed614-5729-5b62-bb73-8f89d75bee26"
 
 [targets]
-test = ["GenericLinearAlgebra", "MultiFloats", "Test"]
+test = ["GenericLinearAlgebra", "GenericSchur", "MultiFloats", "Test"]

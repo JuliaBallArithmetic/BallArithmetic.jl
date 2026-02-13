@@ -231,11 +231,17 @@ Base.convert(::Type{Ball{T, CT}}, c::Number) where {T, CT} = Ball(convert(CT, c)
 Base.convert(::Type{Ball}, c::Number) = Ball(c)
 
 # Conversion from Ball to plain numeric types (extracts midpoint)
-Base.convert(::Type{T}, x::Ball{T, T}) where {T <: AbstractFloat} = x.c
-Base.convert(::Type{T}, x::Ball) where {T <: AbstractFloat} = convert(T, x.c)
-Base.Float64(x::Ball) = Float64(x.c)
-Base.Float32(x::Ball) = Float32(x.c)
-(::Type{T})(x::Ball) where {T <: AbstractFloat} = convert(T, x.c)
+function Base.convert(::Type{T}, x::Ball{T, T}) where {T <: AbstractFloat}
+    throw(DomainError(x, "This conversion breaks rigour"))
+end
+function Base.convert(::Type{T}, x::Ball) where {T <: AbstractFloat}
+    throw(DomainError(x, "This conversion breaks rigour"))
+end
+Base.Float64(x::Ball) = throw(DomainError(x, "This conversion breaks rigour"))
+Base.Float32(x::Ball) = throw(DomainError(x, "This conversion breaks rigour"))
+function (::Type{T})(x::Ball) where {T <: AbstractFloat}
+    throw(DomainError(x, "This conversion breaks rigour"))
+end
 
 #########################
 # ARITHMETIC OPERATIONS #
@@ -316,7 +322,7 @@ Return the multiplicative inverse of a real ball. The method throws an
 inverse can be produced in that case.
 """
 # TODO: this probably is incorrect for complex balls
-function Base.inv(y::Ball{T}) where {T<:AbstractFloat}
+function Base.inv(y::Ball{T}) where {T <: AbstractFloat}
     my, ry = mid(y), rad(y)
     ry < abs(my) || throw(ArgumentError("Ball $y contains zero."))
     one_T = one(T)
@@ -343,7 +349,7 @@ Principal square root of a non-negative real ball. The method verifies
 that the enclosure stays within the domain of the square root and then
 propagates rounding errors to produce a rigorous result.
 """
-function Base.sqrt(y::Ball{T}) where {T<:AbstractFloat}
+function Base.sqrt(y::Ball{T}) where {T <: AbstractFloat}
     my, ry = mid(y), rad(y)
     ry < my || throw(DomainError("Ball $y contains zero."))
     half_T = one(T) / T(2)  # Exact in binary floating point

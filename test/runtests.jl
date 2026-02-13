@@ -43,6 +43,7 @@ using Test
     include("test_svd/test_precision_cascade_svd.jl")
     include("test_svd/test_precision_cascade_core.jl")
     include("test_svd/test_gla_svd.jl")
+    include("test_svd/test_njd_vbd.jl")
 
     # Norm bounds
     include("test_norm_bounds/test_norm_bounds.jl")

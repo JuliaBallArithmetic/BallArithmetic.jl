@@ -193,9 +193,14 @@ end
 _balls_overlap(a::Ball{T, T}, b::Ball{T, T}) where {T} = intersect_ball(a, b) !== nothing
 
 function _balls_overlap(a::Ball{T, Complex{T}}, b::Ball{T, Complex{T}}) where {T}
-    distance = setrounding(T, RoundUp) do
+    # For conservative overlap detection (no false negatives) we need a
+    # rigorous lower bound on the distance between centres.  RoundDown on
+    # abs values followed by RoundDown hypot gives distance_down ≤ true
+    # distance, so distance_down ≤ threshold_up guarantees detection of
+    # every genuine overlap.
+    distance = setrounding(T, RoundDown) do
         diff = mid(a) - mid(b)
-        hypot(real(diff), imag(diff))
+        hypot(abs(real(diff)), abs(imag(diff)))
     end
     threshold = setrounding(T, RoundUp) do
         rad(a) + rad(b)
@@ -260,13 +265,26 @@ function sep_clusters(ints, compA::UnitRange{Int}, compB::UnitRange{Int})
     hullB = reduce(ball_hull, ints[compB])
     T = radtype(typeof(hullA))
 
-    return setrounding(T, RoundUp) do
-        cA, cB = mid(hullA), mid(hullB)
-        rA, rB = rad(hullA), rad(hullB)
-        distance = hypot(real(cA - cB), imag(cA - cB))
-        gap = distance - (rA + rB)
-        gap <= zero(T) ? zero(T) : gap
+    cA, cB = mid(hullA), mid(hullB)
+    rA, rB = rad(hullA), rad(hullB)
+
+    # Rigorous lower bound on the distance between centres.
+    distance_down = setrounding(T, RoundDown) do
+        diff = cA - cB
+        hypot(abs(real(diff)), abs(imag(diff)))
     end
+
+    # Rigorous upper bound on the sum of the hull radii.
+    radii_up = setrounding(T, RoundUp) do
+        rA + rB
+    end
+
+    # Rigorous lower bound on the gap.
+    gap = setrounding(T, RoundDown) do
+        distance_down - radii_up
+    end
+
+    return gap <= zero(T) ? zero(T) : gap
 end
 
 function r2_infty_bound_by_blocks(H::BallMatrix{T}, intervals, clusters::Vector{UnitRange{Int}}) where {T}

@@ -5,6 +5,7 @@ using JLD2
 using Base: dirname, mod1
 
 using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm, inf,
+                        _GENERIC_SCHUR_AVAILABLE,
                         refine_schur_decomposition,
                         ogita_svd_refine, OgitaSVDRefinementResult,
                         rigorous_svd, _certify_svd, MiyajimaM1,
@@ -1132,10 +1133,71 @@ end
 """
     _compute_schur_and_error_bigfloat(A; polynomial = nothing)
 
-BigFloat version of compute_schur_and_error that uses iterative refinement.
-Computes Schur in Float64, refines to BigFloat, then computes certified bounds.
+BigFloat version of compute_schur_and_error.  Dispatches to a direct
+GenericSchur path when available, falling back to Float64-seeded iterative
+refinement otherwise.
 """
 function _compute_schur_and_error_bigfloat(A::BallMatrix{BigFloat}; polynomial = nothing)
+    if _GENERIC_SCHUR_AVAILABLE[]
+        return _compute_schur_bigfloat_direct(A; polynomial)
+    else
+        return _compute_schur_bigfloat_refined(A; polynomial)
+    end
+end
+
+"""
+    _compute_schur_bigfloat_direct(A; polynomial = nothing)
+
+Compute BigFloat Schur decomposition directly via GenericSchur.jl (no Float64
+seed).  Works for matrices whose eigenvalues span many orders of magnitude.
+"""
+function _compute_schur_bigfloat_direct(A::BallMatrix{BigFloat}; polynomial = nothing)
+    S = LinearAlgebra.schur(Complex{BigFloat}.(A.c))
+
+    bZ = BallMatrix(S.Z)
+    errF = svd_bound_L2_opnorm(bZ' * bZ - I)
+
+    bT = BallMatrix(S.T)
+    errT = svd_bound_L2_opnorm(bZ * bT * bZ' - A)
+
+    sigma_Z = svdbox(bZ)
+    max_sigma = sigma_Z[1]
+    min_sigma = sigma_Z[end]
+
+    norm_Z = setrounding(BigFloat, RoundUp) do
+        return BigFloat(abs(max_sigma.c)) + BigFloat(max_sigma.r)
+    end
+
+    min_sigma_lower = setrounding(BigFloat, RoundDown) do
+        return max(BigFloat(min_sigma.c) - BigFloat(min_sigma.r), zero(BigFloat))
+    end
+    min_sigma_lower <= 0 && throw(ArgumentError("Schur factor has non-positive smallest singular value bound"))
+    norm_Z_inv = setrounding(BigFloat, RoundUp) do
+        return one(BigFloat) / min_sigma_lower
+    end
+
+    S_nt = (T=S.T, Z=S.Z, values=S.values)
+
+    if polynomial === nothing
+        return S_nt, errF, errT, norm_Z, norm_Z_inv
+    end
+
+    coeffs = collect(polynomial)
+    pA = _polynomial_matrix(coeffs, A)
+    pT = _polynomial_matrix(coeffs, bT)
+    errT_poly = svd_bound_L2_opnorm(bZ * pT * bZ' - pA)
+
+    return S_nt, errF, errT_poly, norm_Z, norm_Z_inv
+end
+
+"""
+    _compute_schur_bigfloat_refined(A; polynomial = nothing)
+
+Compute BigFloat Schur decomposition by refining a Float64 seed.  This path is
+used when GenericSchur.jl is not loaded and may fail for matrices with
+eigenvalues below ~10⁻¹⁶.
+"""
+function _compute_schur_bigfloat_refined(A::BallMatrix{BigFloat}; polynomial = nothing)
     n = size(A, 1)
 
     # Step 1: Compute Float64 Schur decomposition
@@ -1143,8 +1205,6 @@ function _compute_schur_and_error_bigfloat(A::BallMatrix{BigFloat}; polynomial =
     S_f64 = LinearAlgebra.schur(A_f64)
 
     # Step 2: Refine to BigFloat using iterative refinement
-    # Pass the BigFloat matrix (A.c) for refinement, with Float64 initial guess
-    # Note: refine_schur_decomposition(A, Q0, T0) - Q0=Z (orthogonal), T0=T (triangular)
     target_precision = precision(BigFloat)
     result = refine_schur_decomposition(A.c, S_f64.Z, S_f64.T;
                                         target_precision=target_precision,
@@ -1159,9 +1219,8 @@ function _compute_schur_and_error_bigfloat(A::BallMatrix{BigFloat}; polynomial =
     T_big = result.T
 
     # Create BallMatrix with refinement errors as radii
-    # The radii account for the refinement error (use BigFloat for consistency)
     Q_error = BigFloat(result.orthogonality_defect)
-    A_norm = LinearAlgebra.norm(A.c)  # A.c is already Complex{BigFloat}
+    A_norm = LinearAlgebra.norm(A.c)
     T_error = BigFloat(result.residual_norm) * A_norm
 
     bZ = BallMatrix(Q_big, fill(Q_error, n, n))
@@ -1186,7 +1245,6 @@ function _compute_schur_and_error_bigfloat(A::BallMatrix{BigFloat}; polynomial =
         return one(BigFloat) / min_sigma_lower
     end
 
-    # Create a Schur-like structure for compatibility
     S = (T=T_big, Z=Q_big, values=diag(T_big))
 
     if polynomial === nothing
@@ -1202,7 +1260,7 @@ function _compute_schur_and_error_bigfloat(A::BallMatrix{BigFloat}; polynomial =
 end
 
 """
-    run_certification(A, circle; polynomial = nothing, kwargs...)
+    run_certification(A, circle; schur_data = nothing, polynomial = nothing, kwargs...)
 
 Run the adaptive certification routine on `circle` using a serial evaluator.
 
@@ -1212,6 +1270,12 @@ Run the adaptive certification routine on `circle` using a serial evaluator.
   adaptive refinement.
 
 # Keyword Arguments
+- `schur_data = nothing`: pre-computed Schur data as the 5-tuple
+  `(S, errF, errT, norm_Z, norm_Z_inv)` returned by [`compute_schur_and_error`](@ref).
+  When provided, the expensive Schur computation is skipped entirely. This is
+  useful for reusing the same Schur decomposition across multiple circles or
+  when the default Float64-seeded refinement fails (e.g., matrices with
+  eigenvalues below ~10⁻¹⁶).
 - `polynomial = nothing`: optional coefficients (ascending order) describing a
   polynomial `p`.  When provided the certification is carried out on `p(T)` and
   the returned error corresponds to the reconstruction error of `p(A)`.
@@ -1228,17 +1292,19 @@ accumulated certification log, and the resolvent bounds for both the Schur
 factor and the original matrix.
 """
 function run_certification(A::BallMatrix, circle::CertificationCircle;
-        polynomial = nothing, η::Real = 0.5, check_interval::Integer = 100,
-        log_io::IO = stdout, Cbound = 1.0)
+        schur_data = nothing, polynomial = nothing, η::Real = 0.5,
+        check_interval::Integer = 100, log_io::IO = stdout, Cbound = 1.0)
 
     check_interval < 1 && throw(ArgumentError("check_interval must be positive"))
     η = Float64(η)
     (η <= 0 || η >= 1) && throw(ArgumentError("η must belong to (0, 1)"))
 
     coeffs = polynomial === nothing ? nothing : collect(polynomial)
-    schur_data = coeffs === nothing ?
-        compute_schur_and_error(A) :
-        compute_schur_and_error(A; polynomial = coeffs)
+    if schur_data === nothing
+        schur_data = coeffs === nothing ?
+            compute_schur_and_error(A) :
+            compute_schur_and_error(A; polynomial = coeffs)
+    end
 
     S, errF, errT, norm_Z, norm_Z_inv = schur_data
     bT = BallMatrix(S.T)
@@ -1570,8 +1636,8 @@ Typically 10-100x faster than computing fresh BigFloat SVDs at each point.
 - Other kwargs passed to standard certification
 """
 function run_certification_ogita(A::BallMatrix{T}, circle::CertificationCircle;
-        polynomial = nothing, η::Real = 0.5, check_interval::Integer = 100,
-        log_io::IO = stdout, Cbound = 1.0,
+        schur_data = nothing, polynomial = nothing, η::Real = 0.5,
+        check_interval::Integer = 100, log_io::IO = stdout, Cbound = 1.0,
         target_precision::Int = 256,
         max_ogita_iterations::Int = 3) where T
 
@@ -1599,9 +1665,11 @@ function run_certification_ogita(A::BallMatrix{T}, circle::CertificationCircle;
 
     try
         coeffs = polynomial === nothing ? nothing : collect(polynomial)
-        schur_data = coeffs === nothing ?
-            compute_schur_and_error(A_big) :
-            compute_schur_and_error(A_big; polynomial = coeffs)
+        if schur_data === nothing
+            schur_data = coeffs === nothing ?
+                compute_schur_and_error(A_big) :
+                compute_schur_and_error(A_big; polynomial = coeffs)
+        end
 
         S, errF, errT, norm_Z, norm_Z_inv = schur_data
         bT = BallMatrix(S.T)
@@ -1728,7 +1796,8 @@ result = run_certification_parametric(A, circle; k=10)
 function run_certification_parametric(A::BallMatrix{T}, circle::CertificationCircle;
         k::Union{Nothing, Int} = nothing,
         config::ResolventBoundConfig = config_v2(),
-        polynomial = nothing, η::Real = 0.5, check_interval::Integer = 100,
+        schur_data = nothing, polynomial = nothing, η::Real = 0.5,
+        check_interval::Integer = 100,
         log_io::IO = stdout, Cbound = 1.0) where T
 
     check_interval < 1 && throw(ArgumentError("check_interval must be positive"))
@@ -1736,9 +1805,11 @@ function run_certification_parametric(A::BallMatrix{T}, circle::CertificationCir
     (η <= 0 || η >= 1) && throw(ArgumentError("η must belong to (0, 1)"))
 
     coeffs = polynomial === nothing ? nothing : collect(polynomial)
-    schur_data = coeffs === nothing ?
-        compute_schur_and_error(A) :
-        compute_schur_and_error(A; polynomial = coeffs)
+    if schur_data === nothing
+        schur_data = coeffs === nothing ?
+            compute_schur_and_error(A) :
+            compute_schur_and_error(A; polynomial = coeffs)
+    end
 
     S, errF, errT, norm_Z, norm_Z_inv = schur_data
     bT = BallMatrix(S.T)

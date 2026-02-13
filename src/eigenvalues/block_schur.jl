@@ -16,7 +16,7 @@ The decomposition satisfies:
 - `Q' * Q ≈ I` with rigorous orthogonality defect bounds
 - Each diagonal block `T[cluster_k, cluster_k]` contains eigenvalues from cluster k
 """
-struct RigorousBlockSchurResult{QT, TT, IT, RT}
+struct RigorousBlockSchurResult{QT, TT, IT, RT, VT}
     """Orthogonal/unitary transformation matrix (as ball matrix)."""
     Q::QT
     """Block upper triangular matrix (as ball matrix)."""
@@ -38,7 +38,7 @@ struct RigorousBlockSchurResult{QT, TT, IT, RT}
     """Original matrix."""
     A::BallMatrix
     """VBD result used in construction."""
-    vbd_result::MiyajimaVBDResult
+    vbd_result::VT
 end
 
 Base.length(result::RigorousBlockSchurResult) = length(result.clusters)
@@ -95,15 +95,23 @@ T = result.T
 """
 function rigorous_block_schur(A::BallMatrix{RT, NT};
                                hermitian::Bool = false,
-                               block_structure::Symbol = :quasi_triangular) where {RT, NT}
+                               block_structure::Symbol = :quasi_triangular,
+                               vbd_method::Symbol = :nsd) where {RT, NT}
     n = size(A, 1)
     n == size(A, 2) || throw(ArgumentError("A must be square"))
 
     block_structure ∈ [:diagonal, :quasi_triangular, :full] ||
         throw(ArgumentError("block_structure must be :diagonal, :quasi_triangular, or :full"))
 
+    vbd_method ∈ [:nsd, :njd] ||
+        throw(ArgumentError("vbd_method must be :nsd or :njd"))
+
     # Step 1: Compute VBD to identify clusters and get basis
-    vbd = miyajima_vbd(A; hermitian = hermitian)
+    vbd = if vbd_method == :njd
+        miyajima_vbd_njd(A)
+    else
+        miyajima_vbd(A; hermitian = hermitian)
+    end
 
     # Step 2: Construct orthogonal transformation Q as ball matrix
     Q = BallMatrix(vbd.basis)

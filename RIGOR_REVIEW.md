@@ -174,7 +174,7 @@ to the final radii. The error bound accounts for the ~54 bits lost in the Double
 
 | Location | Issue |
 |----------|-------|
-| `src/types/ball.jl:234-238` | Converting Ball to Float64 silently discards radius |
+| `src/types/ball.jl:234-238` | Converting Ball to Float64 silently discards radius | Now throws exception, silent conversion is a recipe for disaster!
 | `src/types/ball.jl:220-221` | Conversion between Ball types without rounding control |
 | `src/types/ball.jl:462-491` | Comparison operators (`<`, `>`, etc.) compare only midpoints, ignore radii |
 | `src/linear_system/verified_linear_system_hmatrix.jl:256-272` | `mig()` uses unrounded arithmetic |
