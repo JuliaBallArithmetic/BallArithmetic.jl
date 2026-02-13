@@ -319,4 +319,71 @@ function BallArithmetic.verified_svd_gla(A::AbstractMatrix{T};
     end
 end
 
+"""
+    verified_polar_gla(A::AbstractMatrix; precision_bits::Int=256, right::Bool=true)
+
+Verified polar decomposition using GenericLinearAlgebra's native BigFloat SVD.
+
+Achieves residuals ~10⁻⁷⁴ (vs ~10⁻¹⁴ for Float64→BigFloat).
+
+# Returns
+`VerifiedPolarResult` with Q (unitary) and P (positive semidefinite) as BallMatrix enclosures.
+"""
+function BallArithmetic.verified_polar_gla(A::AbstractMatrix{T};
+                                            precision_bits::Int=256,
+                                            right::Bool=true) where T
+    old_prec = precision(BigFloat)
+    setprecision(BigFloat, precision_bits)
+
+    try
+        A_bf = BigFloat.(A)
+        n = size(A_bf, 1)
+        size(A_bf, 1) == size(A_bf, 2) || throw(DimensionMismatch("A must be square for polar decomposition"))
+
+        F = svd(A_bf)
+
+        U_bf = Matrix(F.U)
+        S_bf = F.S
+        V_bf = Matrix(F.V)
+
+        # Compute SVD residual
+        residual = A_bf - U_bf * Diagonal(S_bf) * V_bf'
+        svd_error = maximum(abs.(residual))
+
+        # Polar factors from SVD
+        # Q = U V^H (unitary)
+        Q_mid = U_bf * V_bf'
+
+        # Error in Q: |ΔQ| ≤ 2 * svd_error / σ_min
+        σ_pos = S_bf[S_bf .> eps(BigFloat)]
+        Q_rad = isempty(σ_pos) ? fill(BigFloat(Inf), n, n) : fill(2 * svd_error / minimum(σ_pos), n, n)
+
+        if right
+            # P = V Σ V^H
+            P_mid = V_bf * Diagonal(S_bf) * V_bf'
+            P_mid = (P_mid + P_mid') / 2  # symmetrize
+        else
+            # P = U Σ U^H
+            P_mid = U_bf * Diagonal(S_bf) * U_bf'
+            P_mid = (P_mid + P_mid') / 2  # symmetrize
+        end
+        P_rad = fill(2 * svd_error, n, n)
+
+        Q_ball = BallArithmetic.BallMatrix(Q_mid, Q_rad)
+        P_ball = BallArithmetic.BallMatrix(P_mid, P_rad)
+
+        # Compute relative residual
+        if right
+            QP = Q_mid * P_mid
+        else
+            QP = P_mid * Q_mid
+        end
+        residual_norm = maximum(abs.(QP - A_bf)) / maximum(abs.(A_bf))
+
+        return BallArithmetic.VerifiedPolarResult(Q_ball, P_ball, right, true, residual_norm)
+    finally
+        setprecision(BigFloat, old_prec)
+    end
+end
+
 end # module

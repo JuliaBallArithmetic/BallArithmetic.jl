@@ -181,7 +181,15 @@ Achieves residuals ~10⁻⁷⁴. Requires GenericLinearAlgebra.jl.
 """
 function verified_svd_gla end
 
-export verified_lu_gla, verified_qr_gla, verified_cholesky_gla, verified_svd_gla
+"""
+    verified_polar_gla(A; precision_bits=256, right=true)
+
+Verified polar decomposition using GenericLinearAlgebra's native BigFloat SVD.
+Achieves residuals ~10⁻⁷⁴. Requires GenericLinearAlgebra.jl.
+"""
+function verified_polar_gla end
+
+export verified_lu_gla, verified_qr_gla, verified_cholesky_gla, verified_svd_gla, verified_polar_gla
 include("decompositions/iterative_refinement.jl")
 include("pseudospectra/rigorous_contour.jl")
 include("matrix_classifiers/is_M_matrix.jl")

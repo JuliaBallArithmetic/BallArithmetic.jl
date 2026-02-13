@@ -316,7 +316,12 @@ result_fast = verified_lu(A; use_bigfloat=false)  # Uses Float64 (faster)
 function verified_lu(A::AbstractMatrix{T};
                      precision_bits::Int=256,
                      use_double_precision::Bool=true,
-                     use_bigfloat::Bool=true) where T<:Union{Float64, ComplexF64}
+                     use_bigfloat::Bool=true) where T<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}
+    if real(T) === BigFloat
+        use_bigfloat = true
+        @warn "verified_lu with BigFloat input uses Float64-seeded refinement. " *
+              "For full-precision BigFloat, use `verified_lu_gla` (requires `using GenericLinearAlgebra`)." maxlog=1
+    end
     m, n = size(A)
 
     # Step 1: Compute approximate LU with partial pivoting

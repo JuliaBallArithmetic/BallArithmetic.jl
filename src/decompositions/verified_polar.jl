@@ -85,7 +85,12 @@ function verified_polar(A::AbstractMatrix{T};
                         precision_bits::Int=256,
                         right::Bool=true,
                         use_svd::Bool=true,
-                        use_bigfloat::Bool=true) where T<:Union{Float64, ComplexF64}
+                        use_bigfloat::Bool=true) where T<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}
+    if real(T) === BigFloat
+        use_bigfloat = true
+        @warn "verified_polar with BigFloat input uses Float64-seeded SVD approximation. " *
+              "For full-precision BigFloat, use `verified_polar_gla` (requires `using GenericLinearAlgebra`)." maxlog=1
+    end
     n = size(A, 1)
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("A must be square for polar decomposition"))
 
@@ -99,7 +104,8 @@ function verified_polar(A::AbstractMatrix{T};
 
     # Step 1: Compute SVD A = U Σ V^H
     # Use Julia's built-in SVD as starting point, then refine
-    F = svd(A)
+    # For BigFloat input, compute Float64 SVD as initial approximation
+    F = real(T) === BigFloat ? svd(convert.(Float64, A)) : svd(A)
     U_approx = F.U
     σ_approx = F.S
     V_approx = F.Vt'  # V, not V^H
