@@ -1198,6 +1198,10 @@ used when GenericSchur.jl is not loaded and may fail for matrices with
 eigenvalues below ~10⁻¹⁶.
 """
 function _compute_schur_bigfloat_refined(A::BallMatrix{BigFloat}; polynomial = nothing)
+    @warn "Computing BigFloat Schur decomposition via Float64-seeded iterative refinement. " *
+          "This may fail for matrices with eigenvalues below ~1e-16. " *
+          "For robust BigFloat support, load GenericSchur and GenericLinearAlgebra:\n" *
+          "  using GenericSchur, GenericLinearAlgebra" maxlog=1
     n = size(A, 1)
 
     # Step 1: Compute Float64 Schur decomposition
