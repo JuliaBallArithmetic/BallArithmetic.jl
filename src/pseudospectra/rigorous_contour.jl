@@ -380,9 +380,15 @@ The method outputs an array of tuples:
     - the third element is a list of points on the enclosing line; the resolvent is rigorously
     bound on circles centered at each point and of radius 5/8 the distance to the previous point
 """
-function compute_enclosure(A::BallMatrix, r1, r2, ϵ; max_initial_newton = 30,
+function compute_enclosure(A::BallMatrix{T}, r1, r2, ϵ; max_initial_newton = 30,
         max_steps = Int64(ceil(256 * π)), rel_steps = 16,
-        svd_method::SVDMethod = MiyajimaM1(), apply_vbd::Bool = false)
+        svd_method::SVDMethod = MiyajimaM1(), apply_vbd::Bool = false) where T
+    if real(T) === BigFloat
+        @warn "compute_enclosure casts BigFloat matrices to Float64 for the Schur " *
+              "decomposition. Eigenvalue information below ~1e-16 will be lost. " *
+              "For robust BigFloat support, load GenericSchur and GenericLinearAlgebra:\n" *
+              "  using GenericSchur, GenericLinearAlgebra" maxlog=1
+    end
     F = schur(Complex{Float64}.(A.c))
 
     bZ = BallMatrix(F.Z)

@@ -654,6 +654,12 @@ Q, T, result = rigorous_schur_bigfloat(A; target_precision=512)
 function rigorous_schur_bigfloat(A::BallMatrix{T, NT};
                                   target_precision::Int=256,
                                   max_iterations::Int=20) where {T, NT}
+    if !_GENERIC_SCHUR_AVAILABLE[]
+        @warn "Computing BigFloat Schur decomposition via Float64-seeded iterative refinement. " *
+              "This may fail for matrices with eigenvalues below ~1e-16. " *
+              "For robust BigFloat support, load GenericSchur and GenericLinearAlgebra:\n" *
+              "  using GenericSchur, GenericLinearAlgebra" maxlog=1
+    end
     n = size(A, 1)
 
     # Step 1: Compute approximate Schur in Float64
@@ -998,6 +1004,12 @@ Q, λ, result = rigorous_symmetric_eigen_bigfloat(A; target_precision=256)
 function rigorous_symmetric_eigen_bigfloat(A::BallMatrix{T, NT};
                                             target_precision::Int=256,
                                             max_iterations::Int=20) where {T, NT}
+    if !_GENERIC_SCHUR_AVAILABLE[]
+        @warn "Computing BigFloat symmetric eigendecomposition via Float64-seeded refinement. " *
+              "This may fail for matrices with eigenvalues below ~1e-16. " *
+              "For robust BigFloat support, load GenericSchur and GenericLinearAlgebra:\n" *
+              "  using GenericSchur, GenericLinearAlgebra" maxlog=1
+    end
     n = size(A, 1)
 
     # Step 1: Compute approximate eigen decomposition in Float64
