@@ -173,22 +173,29 @@ function _rigorous_svd_bigfloat(A::BallMatrix{BigFloat}, method::SVDMethod;
     # Quadratic convergence: ~ceil(log2(prec_bits / 15)) iterations
     n_iter = max(2, ceil(Int, log2(prec_bits / 15)))
 
-    # Try to use cached SVD for warm-starting
-    use_cached = false
-    if use_cache && _svd_cache_U[] !== nothing
-        # Cache is available - use it for warm-starting (fewer iterations needed)
-        use_cached = true
+    # Try to use cached SVD for warm-starting.
+    # The cache is only valid when dimensions match AND the matrix hash matches
+    # (same matrix, e.g. repeated certification). Using the SVD of a different
+    # matrix as seed causes Ogita refinement to diverge catastrophically.
+    m, n_cols = size(A)
+    cache_valid = use_cache &&
+                  _svd_cache_U[] !== nothing &&
+                  size(_svd_cache_U[], 1) == m &&
+                  size(_svd_cache_V[], 1) == n_cols &&
+                  _svd_cache_A_hash[] == hash(A.c)
+
+    if cache_valid
         _svd_cache_hits[] += 1
 
         refined = ogita_svd_refine(A.c,
                                    _svd_cache_U[],
                                    _svd_cache_S[],
                                    _svd_cache_V[];
-                                   max_iterations=n_iter,  # Still need full iterations from cached start
+                                   max_iterations=n_iter,
                                    precision_bits=prec_bits,
                                    check_convergence=false)
     else
-        # No cache - compute Float64 SVD first
+        # No usable cache - compute Float64 SVD first
         _svd_cache_misses[] += 1
 
         A_f64 = Complex{Float64}.(A.c)
