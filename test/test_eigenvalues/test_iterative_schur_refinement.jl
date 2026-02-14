@@ -262,6 +262,7 @@ end
                 target_precision=256, schur_seed=(F.Z, F.T))
 
             @test result.converged
+            @test result.iterations == 0  # pre-check detects seed is already converged
             @test all(isfinite, rad(Q_ball))
             # BigFloat seed should give tiny residual
             @test result.residual_norm < BigFloat(10)^(-60)

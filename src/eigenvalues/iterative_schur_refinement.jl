@@ -525,6 +525,22 @@ function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
     # Identity matrix
     I_n = Matrix{HP}(I, n, n)
 
+    # Pre-check: if the seed is already converged, return immediately.
+    # This avoids Newton-Schulz orthogonalization potentially degrading
+    # an already-accurate decomposition (e.g. from GenericSchur at high precision).
+    T_hat_pre = Q' * A_high * Q
+    E_pre = _stril(T_hat_pre)
+    E_norm_pre = upper_bound_L2_opnorm(BallMatrix(E_pre))
+    residual_pre = E_norm_pre / A_norm
+    Y_pre = Q' * Q - I_n
+    orth_pre = upper_bound_L2_opnorm(BallMatrix(Y_pre))
+
+    if residual_pre < target_tol && orth_pre < target_tol
+        return SchurRefinementResult(
+            Q, T_hat_pre - E_pre, 0, residual_pre, orth_pre, true
+        )
+    end
+
     # Step 1: Initial orthogonalization of Q using Newton-Schulz (Algorithm 4, line 2)
     # Q ← ½Q̂(3I - Q̂^H Q̂)
     newton_schulz_orthogonalize!(Q; max_iter=3, tol=target_tol)
