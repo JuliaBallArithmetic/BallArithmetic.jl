@@ -141,6 +141,8 @@ export SymmetricEigenRefinementResult, refine_symmetric_eigen, rigorous_symmetri
 export refine_schur_double64, refine_schur_hybrid, refine_schur_multifloat
 export refine_symmetric_eigen_double64, refine_symmetric_eigen_hybrid, refine_symmetric_eigen_multifloat
 export ogita_svd_refine_fast, ogita_svd_refine_hybrid, ogita_svd_refine_multifloat
+include("eigenvalues/newton_kantorovich_eigenpair.jl")
+export NKEigenpairResult, NKEigenpairsResult, certify_eigenpair, certify_eigenpairs
 
 # Verified matrix decompositions (Rump & Ogita 2024)
 # Rigorous residual computation helpers (must be before decomposition files)
