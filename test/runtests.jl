@@ -32,6 +32,7 @@ using Test
     include("test_eigenvalues/test_rump_2022a.jl")
     include("test_eigenvalues/test_rump_lange_2023.jl")
     include("test_eigenvalues/test_newton_kantorovich_eigenpair.jl")
+    include("test_eigenvalues/test_ordschur_ball.jl")
 
     # SVD
     include("test_decompositions/test_svd/test_svd.jl")

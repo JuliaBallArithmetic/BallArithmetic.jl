@@ -126,6 +126,12 @@ result = compute_spectral_projector_schur(A, 1:2)
 - Complexity: O(n³) for Schur decomposition + O(k²(n-k)²) for Sylvester solver
 - For hermitian matrices, use `compute_spectral_projector_hermitian` instead (more efficient)
 - The projector P satisfies: P² ≈ P and P*A ≈ A*P (modulo idempotency defect)
+- **Caveat**: The Schur decomposition of the midpoint matrix is not itself rigorously
+  enclosed (Q and T carry zero radii). The Sylvester coupling Y is rigorously bounded,
+  but the final projector P = Q·P_Schur·Q† does not account for the Schur approximation
+  error. The idempotency and invariance checks verify self-consistency of the result,
+  but do not guarantee that the true spectral projector lies within the computed ball.
+  For a fully rigorous enclosure, use [`miyajima_spectral_projectors`](@ref) instead.
 
 # References
 - Kato, T. "Perturbation Theory for Linear Operators" (1995), Chapter II.4
@@ -139,7 +145,8 @@ result = compute_spectral_projector_schur(A, 1:2)
 """
 function compute_spectral_projector_schur(A::BallMatrix{T, NT},
                                           cluster_indices::UnitRange{Int};
-                                          verify_idempotency::Bool=true) where {T, NT}
+                                          verify_idempotency::Bool=true,
+                                          schur_data=nothing) where {T, NT}
     n = size(A, 1)
     n == size(A, 2) || throw(DimensionMismatch("A must be square"))
 
@@ -147,30 +154,105 @@ function compute_spectral_projector_schur(A::BallMatrix{T, NT},
     k >= 1 || throw(ArgumentError("Cluster must contain at least one index"))
     k < n || throw(ArgumentError("Cluster cannot contain all indices (would be identity)"))
 
-    # Assuming cluster_indices = 1:k for simplicity
-    # (General case would require reordering Schur form)
-    cluster_indices == 1:k || throw(ArgumentError(
-        "Currently only supports cluster_indices = 1:k. " *
-        "General reordering not yet implemented."))
+    # Step 1: Compute Schur decomposition of the center matrix (or use provided)
+    if schur_data !== nothing
+        Q, Tmat = schur_data
+    else
+        A_center = A.c
+        F = schur(A_center)
+        Q = F.Z  # Unitary Schur basis
+        Tmat = F.T  # Upper triangular Schur form
+    end
 
-    # Step 1: Compute Schur decomposition of the center matrix
-    A_center = A.c
-    F = schur(A_center)
-    Q = F.Z  # Unitary Schur basis
-    Tmat = F.T  # Upper triangular Schur form
+    # Step 1b: If cluster_indices ≠ 1:k, reorder via ordschur
+    if cluster_indices != 1:k
+        select = falses(n)
+        select[cluster_indices] .= true
+        F_schur = Schur(Matrix(Tmat), Matrix(Q), diag(Tmat))
+        F_ord = ordschur(F_schur, BitVector(select))
+        Q = F_ord.Z
+        Tmat = F_ord.T
+    end
 
+    # From here on, the selected eigenvalues are at positions 1:k
+    _spectral_projector_from_ordered_schur(Q, Tmat, k, T, NT, n,
+                                           verify_idempotency)
+end
+
+"""
+    compute_spectral_projector_schur(A::BallMatrix, target_indices::AbstractVector{Int};
+                                     verify_idempotency::Bool=true,
+                                     schur_data=nothing)
+
+Compute rigorous spectral projector for eigenvalues at arbitrary Schur form positions.
+
+Unlike the `UnitRange` method, this accepts any subset of eigenvalue indices. Internally,
+the Schur form is reordered (via `ordschur`) so the target eigenvalues occupy positions
+`1:k`, then the standard Sylvester-based projector pipeline is applied.
+
+# Arguments
+- `A::BallMatrix`: Square interval matrix (n × n)
+- `target_indices::AbstractVector{Int}`: Positions of eigenvalues in Schur form to project onto
+- `verify_idempotency::Bool=true`: Check ‖P² - P‖₂
+- `schur_data=nothing`: Optional pre-computed `(Q, T)` Schur factors to skip internal Schur
+
+# Returns
+[`SchurSpectralProjectorResult`](@ref) with the reordered Schur factors and verified projector.
+
+# Example
+```julia
+A = BallMatrix(randn(5, 5))
+# Project onto 2nd and 4th eigenvalues (arbitrary positions)
+result = compute_spectral_projector_schur(A, [2, 4])
+```
+"""
+function compute_spectral_projector_schur(A::BallMatrix{T, NT},
+                                          target_indices::AbstractVector{Int};
+                                          verify_idempotency::Bool=true,
+                                          schur_data=nothing) where {T, NT}
+    n = size(A, 1)
+    n == size(A, 2) || throw(DimensionMismatch("A must be square"))
+
+    k = length(target_indices)
+    k >= 1 || throw(ArgumentError("Must target at least one eigenvalue"))
+    k < n || throw(ArgumentError("Cannot target all eigenvalues (would be identity)"))
+    all(1 .<= target_indices .<= n) || throw(ArgumentError("Indices must be in 1:$n"))
+
+    # Step 1: Compute Schur decomposition (or use provided)
+    if schur_data !== nothing
+        Q, Tmat = schur_data
+    else
+        A_center = A.c
+        F = schur(A_center)
+        Q = F.Z
+        Tmat = F.T
+    end
+
+    # Step 2: Reorder so target eigenvalues are at positions 1:k
+    select = falses(n)
+    select[target_indices] .= true
+    F_schur = Schur(Matrix(Tmat), Matrix(Q), diag(Tmat))
+    F_ord = ordschur(F_schur, BitVector(select))
+    Q = F_ord.Z
+    Tmat = F_ord.T
+
+    _spectral_projector_from_ordered_schur(Q, Tmat, k, T, NT, n,
+                                           verify_idempotency)
+end
+
+# Internal helper: given Schur factors (Q, Tmat) where the target eigenvalues
+# are already at positions 1:k, compute the spectral projector via Sylvester.
+function _spectral_projector_from_ordered_schur(Q::AbstractMatrix, Tmat::AbstractMatrix,
+                                                k::Int, ::Type{T}, ::Type{NT}, n::Int,
+                                                verify_idempotency::Bool) where {T, NT}
     # Convert to interval matrices
     Q_ball = BallMatrix(Q)
     T_ball = BallMatrix(Tmat)
 
-    # Step 2: Extract blocks
-    # Tmat = [T₁₁  T₁₂]
-    #        [0    T₂₂]
+    # Extract blocks for eigenvalue separation diagnostic
     T11 = Tmat[1:k, 1:k]
-    T12 = Tmat[1:k, (k+1):n]
     T22 = Tmat[(k+1):n, (k+1):n]
 
-    # Compute eigenvalue separation (for diagnostics)
     eig_T11 = eigvals(T11)
     eig_T22 = eigvals(T22)
 
@@ -184,65 +266,38 @@ function compute_spectral_projector_schur(A::BallMatrix{T, NT},
               "Projector may be ill-conditioned."
     end
 
-    # Step 3: Solve Sylvester equation T₁₁*Y - Y*T₂₂ = T₁₂
-    # Use the triangular Sylvester solver
-    # Note: triangular_sylvester_miyajima_enclosure solves T₂₂' * Y₂ - Y₂ * T₁₁' = T₁₂'
-    # which means Y₂ is (n-k)×k, but we need Y to be k×(n-k)
+    # Solve Sylvester equation T₁₁*Y - Y*T₂₂ = T₁₂
     Y_transposed = triangular_sylvester_miyajima_enclosure(Tmat, k)
-
-    # Transpose Y to get the correct dimensions
     Y_ball = BallMatrix(transpose(Y_transposed.c), transpose(Y_transposed.r))
 
-    # Step 4: Construct projector in Schur coordinates
-    # P_Schur = [I   Y]
-    #           [0   0]
-    # Build center and radius matrices separately
-    # NT is the center type, T is the radius type (Float64 for Complex{Float64})
+    # Construct projector in Schur coordinates: P_Schur = [I Y; 0 0]
     P_schur_c = zeros(NT, n, n)
     P_schur_r = zeros(realtype, n, n)
-
-    # Top-left: I (k×k identity)
     P_schur_c[1:k, 1:k] .= Matrix{NT}(I, k, k)
-
-    # Top-right: Y (now k×(n-k))
     P_schur_c[1:k, (k+1):n] .= Y_ball.c
     P_schur_r[1:k, (k+1):n] .= Y_ball.r
-
-    # Bottom blocks are already zeros
-
-    # Assemble P_Schur as BallMatrix
     P_schur = BallMatrix(P_schur_c, P_schur_r)
 
-    # Step 5: Transform back to original coordinates
-    # P = Q * P_Schur * Q^†
+    # Transform back: P = Q * P_Schur * Q^†
     Q_adj_ball = BallMatrix(adjoint(Q))
     P = Q_ball * P_schur * Q_adj_ball
 
-    # Step 6: Estimate projector norm
-    projector_norm = collatz_upper_bound_L2_opnorm(P)
+    # Estimate projector norm
+    projector_norm = upper_bound_L2_opnorm(P)
 
-    # Step 7: Verify idempotency if requested
+    # Verify idempotency
     idempotency_defect = zero(T)
     if verify_idempotency
-        P_squared = P * P
-        P_diff = P_squared - P
-        idempotency_defect = collatz_upper_bound_L2_opnorm(P_diff)
-
+        P_diff = P * P - P
+        idempotency_defect = upper_bound_L2_opnorm(P_diff)
         if idempotency_defect > 1e-6
             @warn "Large idempotency defect: ‖P² - P‖₂ ≈ $idempotency_defect"
         end
     end
 
     return SchurSpectralProjectorResult(
-        P,
-        P_schur,
-        Y_ball,
-        eigenvalue_separation,
-        projector_norm,
-        idempotency_defect,
-        Q,
-        Tmat,
-        cluster_indices
+        P, P_schur, Y_ball, eigenvalue_separation, projector_norm,
+        idempotency_defect, Matrix(Q), Matrix(Tmat), 1:k
     )
 end
 
@@ -303,14 +358,14 @@ function compute_spectral_projector_hermitian(A::BallMatrix{T, NT},
 
     # Verify idempotency
     P_squared = P * P
-    idempotency_defect = collatz_upper_bound_L2_opnorm(P_squared - P)
+    idempotency_defect = upper_bound_L2_opnorm(P_squared - P)
 
     # Projector norm (should be ≈ 1 for projector)
-    projector_norm = collatz_upper_bound_L2_opnorm(P)
+    projector_norm = upper_bound_L2_opnorm(P)
 
     # For Hermitian case, P_schur = P in eigenbasis (no coupling)
     P_schur_diag = zeros(NT, n)
-    P_schur_diag[cluster_indices] .= 1.0
+    P_schur_diag[cluster_indices] .= one(NT)
     P_schur = BallMatrix(Diagonal(P_schur_diag))
 
     return SchurSpectralProjectorResult(
@@ -411,7 +466,7 @@ function verify_spectral_projector_properties(result::SchurSpectralProjectorResu
     if check_commutation
         AP = A * result.projector
         PA = result.projector * A
-        comm_defect = collatz_upper_bound_L2_opnorm(AP - PA)
+        comm_defect = upper_bound_L2_opnorm(AP - PA)
         push!(checks, comm_defect < tol)
     end
 

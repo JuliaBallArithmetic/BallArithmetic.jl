@@ -219,6 +219,8 @@ v_proj = verified_project_onto_eigenspace(v, V_ball, 1:1; hermitian=true)
 
 # Notes
 - Uses interval arithmetic throughout for rigorous error bounds
+- The Gram system `G·c = V_S†·v` is solved rigorously via `krawczyk_linear_system`;
+  if Krawczyk does not verify, a Neumann-series residual bound is used as fallback
 - Result contains all possible projections for vectors/eigenvectors in input intervals
 - More expensive than non-verified version due to interval arithmetic overhead
 - Currently only supports hermitian case (non-normal requires Sylvester solver)
@@ -245,20 +247,45 @@ function verified_project_onto_eigenspace(v::BallVector,
     # Compute V_S^† v with interval arithmetic
     rhs = V_S' * v
 
-    # Solve G * coeffs = rhs rigorously
-    # TODO: Use verified linear system solver
-    # For now, use interval arithmetic directly
-    G_center = G.c
-    coeffs_approx = G_center \ rhs.c
+    # Solve G * coeffs = rhs rigorously using Krawczyk
+    krawczyk_result = krawczyk_linear_system(G, rhs)
 
-    # Residual and verification (simplified - full verification needs Krawczyk)
-    residual = rhs - G * BallVector(coeffs_approx, zeros(length(coeffs_approx)))
+    if krawczyk_result.verified
+        coeffs = krawczyk_result.solution
+    else
+        # Fallback: Neumann-series residual bound
+        # Given Gx = rhs, approximate x̃, preconditioner R ≈ G⁻¹:
+        #   ‖x - x̃‖ ≤ ‖R‖·‖rhs - G·x̃‖ / (1 - ‖I - R·G‖)
+        T = real(eltype(mid(G)))
+        NT = eltype(mid(G))
+        G_center = mid(G)
+        k = size(G_center, 1)
 
-    # Refine with interval arithmetic
-    # coeffs = coeffs_approx + G⁻¹ * residual (in interval arithmetic)
-    correction = G_center \ residual.c  # Approximate correction
+        coeffs_approx = G_center \ mid(rhs)
+        R = inv(G_center)
 
-    coeffs = BallVector(coeffs_approx, abs.(correction) .+ 1e-15)
+        # Rigorous residual: rhs - G * x̃
+        x_ball = BallVector(coeffs_approx)
+        residual_ball = rhs - G * x_ball
+        y = upper_bound_norm(residual_ball, 2)
+
+        # Defect: q = ‖I - R·G‖₂
+        R_ball = BallMatrix(R)
+        I_ball = BallMatrix(Matrix{NT}(I, k, k))
+        defect = R_ball * G - I_ball
+        q = upper_bound_L2_opnorm(defect)
+
+        if q >= one(T)
+            error("Verified projection failed: defect ‖I - R·G‖₂ = $q ≥ 1. " *
+                  "Gram matrix may be too ill-conditioned.")
+        end
+
+        # Error bound: ε = ‖R‖₂ · y / (1 - q)
+        R_norm = upper_bound_L2_opnorm(R_ball)
+        ε = div_up(mul_up(R_norm, y), sub_down(one(T), q))
+
+        coeffs = BallVector(coeffs_approx, fill(ε, k))
+    end
 
     # Compute projection with interval arithmetic
     return V_S * coeffs

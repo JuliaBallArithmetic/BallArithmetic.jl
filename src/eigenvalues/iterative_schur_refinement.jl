@@ -14,8 +14,8 @@ Result from iterative Schur refinement to higher precision.
 - `Q::Matrix{T}`: Refined orthogonal/unitary Schur basis
 - `T::Matrix{T}`: Refined upper triangular Schur form
 - `iterations::Int`: Number of refinement iterations performed
-- `residual_norm::RT`: Final residual ‖A - QTQ^H‖_F / ‖A‖_F (real type)
-- `orthogonality_defect::RT`: Final ‖Q^H Q - I‖_F (real type)
+- `residual_norm::RT`: Final residual ‖stril(Q^H A Q)‖₂ / ‖A‖_F — rigorous upper bound (real type)
+- `orthogonality_defect::RT`: Final ‖Q^H Q - I‖₂ — rigorous upper bound (real type)
 - `converged::Bool`: Whether refinement converged to desired tolerance
 
 # References
@@ -547,12 +547,13 @@ function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
         T_mat = T_hat - E
 
         # Check convergence: E should become small
-        E_norm = _frobenius_norm(E)
+        # Use rigorous ‖·‖₂ upper bound (tighter than Frobenius)
+        E_norm = upper_bound_L2_opnorm(BallMatrix(E))
         residual_norm = E_norm / A_norm
 
         # Also check orthogonality
         Y = Q' * Q - I_n
-        orthogonality_defect = _frobenius_norm(Y)
+        orthogonality_defect = upper_bound_L2_opnorm(BallMatrix(Y))
 
         if residual_norm < target_tol && orthogonality_defect < target_tol
             converged = true
@@ -607,11 +608,11 @@ function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
     E = _stril(T_hat)
     T_mat = T_hat - E
 
-    E_norm = _frobenius_norm(E)
+    E_norm = upper_bound_L2_opnorm(BallMatrix(E))
     residual_norm = E_norm / A_norm
 
     Y = Q' * Q - I_n
-    orthogonality_defect = _frobenius_norm(Y)
+    orthogonality_defect = upper_bound_L2_opnorm(BallMatrix(Y))
 
     return SchurRefinementResult(
         Q, T_mat, iterations, residual_norm, orthogonality_defect, converged

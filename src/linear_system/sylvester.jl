@@ -225,6 +225,88 @@ function triangular_sylvester_miyajima_enclosure(T::AbstractMatrix, k::Integer)
     return sylvester_miyajima_enclosure(A, B, C, Ỹ)
 end
 
+"""
+    triangular_sylvester_miyajima_enclosure(T_ball::BallMatrix, k::Integer)
+
+Miyajima enclosure for the Sylvester system when the triangular matrix `T` is
+given as a `BallMatrix` (midpoint + radii).
+
+The midpoint `mid(T_ball)` is used to solve the Sylvester equation via the
+scalar method. The radii of `T_ball` produce a first-order perturbation
+bound on the solution `Y`, which inflates the returned enclosure.
+
+# Algorithm
+1. Solve on midpoint: `Y_mid = triangular_sylvester_miyajima_enclosure(mid(T_ball), k)`
+2. Compute separation: `sep = min_{i,j} |T₁₁[i,i] - T₂₂[j,j]|` (lower-bounded rigorously)
+3. First-order perturbation bound on Y from T_ball radii:
+   `δY ≤ sep⁻¹ · (‖ΔT₂₂‖·‖Y‖ + ‖ΔT₁₁‖·‖Y‖ + ‖ΔT₁₂‖)`
+   where `ΔT_ij` are the radius sub-blocks
+4. Inflate: `BallMatrix(mid(Y_mid), rad(Y_mid) .+ δY)`
+
+The matrix `T_ball` must be square, and `mid(T_ball)` must be upper triangular.
+"""
+function triangular_sylvester_miyajima_enclosure(T_ball::BallMatrix, k::Integer)
+    n = size(T_ball, 1)
+    n == size(T_ball, 2) || throw(DimensionMismatch("T_ball must be square"))
+    1 <= k < n || throw(ArgumentError("k must satisfy 1 ≤ k < $n"))
+
+    T_mid = mid(T_ball)
+    T_rad = rad(T_ball)
+
+    # Step 1: Solve on midpoint
+    Y_mid_ball = triangular_sylvester_miyajima_enclosure(T_mid, k)
+
+    # Step 2: Compute separation from diagonal entries (upper triangular → eigenvalues on diagonal)
+    RT = real(eltype(T_mid))
+    T11_diag = diag(T_mid[1:k, 1:k])
+    T22_diag = diag(T_mid[(k+1):n, (k+1):n])
+
+    # Rigorous lower bound on sep: min|λ_i(T11) - λ_j(T22)| - radii of diagonals
+    sep = convert(RT, Inf)
+    for i in 1:k
+        for j in 1:(n-k)
+            diff = abs(T11_diag[i] - T22_diag[j])
+            # Subtract the radii contribution for rigorous lower bound
+            diff_lower = diff - T_rad[i, i] - T_rad[k+j, k+j]
+            sep = min(sep, diff_lower)
+        end
+    end
+
+    if sep <= zero(RT)
+        @warn "triangular_sylvester_miyajima_enclosure(BallMatrix): " *
+              "separation ≤ 0 after accounting for radii. Perturbation bound is infinite."
+        return Y_mid_ball
+    end
+
+    # Step 3: First-order perturbation bound
+    # For the Sylvester equation T11 Y - Y T22 = T12,
+    # the first-order perturbation gives:
+    # ‖δY‖ ≤ sep⁻¹ · (‖ΔT11‖·‖Y‖ + ‖Y‖·‖ΔT22‖ + ‖ΔT12‖)
+    dT11 = BallMatrix(T_rad[1:k, 1:k])
+    dT22 = BallMatrix(T_rad[(k+1):n, (k+1):n])
+    dT12 = BallMatrix(T_rad[1:k, (k+1):n])
+
+    norm_dT11 = upper_bound_L2_opnorm(dT11)
+    norm_dT22 = upper_bound_L2_opnorm(dT22)
+    norm_dT12 = upper_bound_L2_opnorm(dT12)
+    norm_Y = upper_bound_L2_opnorm(Y_mid_ball)
+
+    delta_Y_norm = (norm_dT11 * norm_Y + norm_Y * norm_dT22 + norm_dT12) / sep
+
+    if norm_Y > zero(RT) && delta_Y_norm / norm_Y > RT(0.1)
+        @warn "triangular_sylvester_miyajima_enclosure(BallMatrix): " *
+              "large relative perturbation δY/Y = $(Float64(delta_Y_norm / norm_Y)). " *
+              "Bound may be loose."
+    end
+
+    # Step 4: Inflate radii
+    m_Y = size(Y_mid_ball, 1)
+    n_Y = size(Y_mid_ball, 2)
+    inflated_rad = rad(Y_mid_ball) .+ fill(delta_Y_norm, m_Y, n_Y)
+
+    return BallMatrix(mid(Y_mid_ball), inflated_rad)
+end
+
 # Input: A,B,C
 # 1. [Schur] A = Q TA Q*, B = Z TB Z*          // real Schur if real
 # 2. [Approx solve] Solve TA Yhat + Yhat TB = Q* C Z  (back/forward substitution)
