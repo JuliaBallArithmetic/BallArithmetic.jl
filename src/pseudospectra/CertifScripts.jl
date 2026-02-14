@@ -954,7 +954,9 @@ function bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; Cbo
     denominator = one - two * ball_ϵ * factor * ball_l2pseudo
 
     if inf(denominator) <= 0
-        throw(DomainError(denominator, "resolvent bound denominator is not positive"))
+        @warn "bound_res_original: denominator non-positive (ε·‖resolvent‖ too large). " *
+              "Schur perturbation bound cannot certify; returning Inf." maxlog=1
+        return Inf
     end
 
     return _upper_bound(numerator / denominator)
