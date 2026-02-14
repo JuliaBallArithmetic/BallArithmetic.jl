@@ -217,6 +217,68 @@ using LinearAlgebra
 
 end
 
+@testset "certify_schur_decomposition + schur_seed" begin
+
+    @testset "certify_schur_decomposition standalone" begin
+        n = 4
+        A_mid = randn(ComplexF64, n, n)
+        A = BallMatrix(A_mid, fill(1e-10, n, n))
+
+        F = schur(A_mid)
+        result = refine_schur_decomposition(A_mid, F.Z, F.T; target_precision=256)
+        @test result.converged
+
+        Q_ball, T_ball = certify_schur_decomposition(A, result)
+        @test all(isfinite, rad(Q_ball))
+        @test all(r -> r > 0, rad(Q_ball))
+        @test mid(Q_ball) == result.Q
+        @test mid(T_ball) == result.T
+    end
+
+    @testset "schur_seed — Float64 seed matches default" begin
+        n = 4
+        A_mid = randn(n, n)
+        A = BallMatrix(A_mid, fill(1e-10, n, n))
+
+        F = schur(complex(A_mid))
+        Q2, T2, r2 = rigorous_schur_bigfloat(A; target_precision=256,
+                                               schur_seed=(F.Z, F.T))
+        @test r2.converged
+        @test all(isfinite, rad(Q2))
+        @test all(isfinite, rad(T2))
+    end
+
+    @testset "schur_seed — BigFloat seed" begin
+        old_prec = precision(BigFloat)
+        setprecision(BigFloat, 256)
+        try
+            n = 3
+            A_mid = randn(n, n)
+            A = BallMatrix(A_mid, fill(1e-10, n, n))
+
+            Ac = Complex{BigFloat}.(A_mid)
+            F = schur(Ac)
+            Q_ball, T_ball, result = rigorous_schur_bigfloat(A;
+                target_precision=256, schur_seed=(F.Z, F.T))
+
+            @test result.converged
+            @test all(isfinite, rad(Q_ball))
+            # BigFloat seed should give tiny residual
+            @test result.residual_norm < BigFloat(10)^(-60)
+        finally
+            setprecision(BigFloat, old_prec)
+        end
+    end
+
+    @testset "certify_schur_decomposition — dimension mismatch" begin
+        A = BallMatrix(randn(3, 3))
+        F = schur(complex(randn(4, 4)))
+        result = refine_schur_decomposition(complex(randn(4, 4)), F.Z, F.T;
+                                             target_precision=256)
+        @test_throws DimensionMismatch certify_schur_decomposition(A, result)
+    end
+end
+
 @testset "RefSyEv - Symmetric Eigenvalue Refinement (Ogita & Aishima 2018)" begin
 
     @testset "Basic symmetric eigenvalue refinement" begin

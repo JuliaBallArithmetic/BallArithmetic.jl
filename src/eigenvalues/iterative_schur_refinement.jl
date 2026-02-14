@@ -620,20 +620,83 @@ function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
 end
 
 """
+    certify_schur_decomposition(A::BallMatrix, result::SchurRefinementResult)
+
+Wrap a [`SchurRefinementResult`](@ref) in `BallMatrix` form with rigorous error bounds.
+
+Given an input ball matrix `A` and a `SchurRefinementResult` from
+[`refine_schur_decomposition`](@ref), construct `BallMatrix` enclosures of the
+Schur factors `Q` and `T`.  The radii are derived from:
+
+- The **orthogonality defect** `‖Q^H Q - I‖₂` (contributes to `Q` radius)
+- The **residual norm** `‖stril(Q^H A Q)‖₂ / ‖A‖_F` (contributes to `T` radius)
+- The **input uncertainty** `rad(A)` (propagated to both)
+
+The BigFloat precision is automatically matched to the precision of `result.Q`.
+
+# Arguments
+- `A::BallMatrix`: The original input matrix (provides `rad(A)` for uncertainty propagation)
+- `result::SchurRefinementResult`: Refinement output with `Q`, `T`, and diagnostics
+
+# Returns
+`(Q_ball, T_ball)` — `BallMatrix` enclosures of the Schur factors.
+
+# Example
+```julia
+A = BallMatrix(randn(ComplexF64, 5, 5), fill(1e-10, 5, 5))
+F = schur(mid(A))
+result = refine_schur_decomposition(mid(A), F.Z, F.T; target_precision=256)
+Q_ball, T_ball = certify_schur_decomposition(A, result)
+```
+"""
+function certify_schur_decomposition(A::BallMatrix, result::SchurRefinementResult)
+    n = size(A, 1)
+    n == size(A, 2) || throw(DimensionMismatch("A must be square"))
+    size(result.Q) == (n, n) || throw(DimensionMismatch(
+        "result.Q size $(size(result.Q)) does not match A size ($n, $n)"))
+
+    # Match the precision of the refined factors
+    hp_prec = precision(real(result.Q[1,1]))
+    old_prec = precision(BigFloat)
+    setprecision(BigFloat, hp_prec)
+
+    try
+        A_rad_big = convert.(BigFloat, rad(A))
+        input_rad_norm = upper_bound_L2_opnorm(BallMatrix(A_rad_big))
+
+        # Q radius: orthogonality defect + propagated input uncertainty
+        Q_rad = fill(result.orthogonality_defect + input_rad_norm, n, n)
+        Q_ball = BallMatrix(result.Q, Q_rad)
+
+        # T radius: backward error · ‖T‖ + propagated input uncertainty
+        T_rad = fill(result.residual_norm * upper_bound_L2_opnorm(BallMatrix(result.T)) + input_rad_norm, n, n)
+        T_ball = BallMatrix(result.T, T_rad)
+
+        return Q_ball, T_ball
+    finally
+        setprecision(BigFloat, old_prec)
+    end
+end
+
+"""
     rigorous_schur_bigfloat(A::BallMatrix{T}; target_precision::Int=256,
-                            max_iterations::Int=20) where T
+                            max_iterations::Int=20,
+                            schur_seed=nothing) where T
 
 Compute rigorous Schur decomposition with BigFloat precision using iterative refinement.
 
 This combines:
-1. Fast approximate Schur decomposition in Float64
+1. Fast approximate Schur decomposition in Float64 (or use `schur_seed`)
 2. Iterative refinement to BigFloat precision
-3. Rigorous error certification
+3. Rigorous error certification via [`certify_schur_decomposition`](@ref)
 
 # Arguments
 - `A::BallMatrix`: Input ball matrix
 - `target_precision`: Target BigFloat precision in bits (default: 256)
 - `max_iterations`: Maximum refinement iterations (default: 20)
+- `schur_seed`: Optional `(Q0, T0)` tuple — external Schur seed to use instead of
+  computing a Float64 Schur internally.  Useful when an accurate decomposition is
+  already available (e.g. from `GenericSchur.schur` in BigFloat).
 
 # Returns
 A tuple `(Q_ball, T_ball, result)` where:
@@ -646,6 +709,10 @@ A tuple `(Q_ball, T_ball, result)` where:
 A = BallMatrix(randn(10, 10), fill(1e-10, 10, 10))
 Q, T, result = rigorous_schur_bigfloat(A; target_precision=512)
 @show result.converged
+
+# With external seed:
+F = schur(Complex{BigFloat}.(mid(A)))
+Q2, T2, r2 = rigorous_schur_bigfloat(A; schur_seed=(F.Z, F.T))
 ```
 
 # References
@@ -654,17 +721,23 @@ Q, T, result = rigorous_schur_bigfloat(A; target_precision=512)
 """
 function rigorous_schur_bigfloat(A::BallMatrix{T, NT};
                                   target_precision::Int=256,
-                                  max_iterations::Int=20) where {T, NT}
+                                  max_iterations::Int=20,
+                                  schur_seed=nothing) where {T, NT}
     n = size(A, 1)
-
-    # Step 1: Compute approximate Schur in Float64
-    # Handle both real and complex BallMatrix inputs
-    # Always use complex Schur to ensure strictly upper triangular T
-    # (real Schur has 2x2 blocks for complex eigenvalue pairs which the algorithm doesn't handle)
     A_mid = mid(A)
-    A_center = convert.(ComplexF64, A_mid)
-    F = schur(A_center)
-    Q0, T0 = F.Z, F.T
+
+    if schur_seed !== nothing
+        Q0, T0 = Matrix(schur_seed[1]), Matrix(schur_seed[2])
+        # Preserve precision: convert midpoint to seed's element type
+        A_center = convert.(eltype(Q0), A_mid)
+    else
+        # Always use complex Schur to ensure strictly upper triangular T
+        # (real Schur has 2x2 blocks for complex eigenvalue pairs which
+        # the refinement algorithm doesn't handle)
+        A_center = convert.(ComplexF64, A_mid)
+        F = schur(A_center)
+        Q0, T0 = F.Z, F.T
+    end
 
     # Step 2: Refine to BigFloat precision
     result = refine_schur_decomposition(A_center, Q0, T0;
@@ -676,41 +749,8 @@ function rigorous_schur_bigfloat(A::BallMatrix{T, NT};
     end
 
     # Step 3: Certify with rigorous error bounds
-    # The residual gives us the backward error
-    # Forward error is bounded by condition number * backward error
-
-    old_prec = precision(BigFloat)
-    setprecision(BigFloat, target_precision)
-
-    try
-        # Convert input uncertainties to BigFloat
-        A_rad_big = convert.(BigFloat, rad(A))
-
-        # Compute rigorous error bounds
-        # Residual norm gives backward error
-        backward_error = result.residual_norm
-
-        # Orthogonality defect contributes to Q error
-        Q_error = result.orthogonality_defect
-
-        # Build ball matrices with certified errors
-        # NOTE: The radii here are uniform (same for all entries) for simplicity.
-        # This is a valid OVERESTIMATE - each entry's true error may be smaller.
-        # The radii are derived from A POSTERIORI bounds (orthogonality defect,
-        # residual norm) computed after the iterative refinement converges.
-        # Q radius: orthogonality defect + propagated input uncertainty
-        # Use Frobenius norm (upper bound on spectral norm) for BigFloat compatibility
-        Q_rad = fill(Q_error + _frobenius_norm(A_rad_big), n, n)
-        Q_ball = BallMatrix(result.Q, Q_rad)
-
-        # T radius: backward error + propagated input uncertainty
-        T_rad = fill(backward_error * _frobenius_norm(result.T) + _frobenius_norm(A_rad_big), n, n)
-        T_ball = BallMatrix(result.T, T_rad)
-
-        return Q_ball, T_ball, result
-    finally
-        setprecision(BigFloat, old_prec)
-    end
+    Q_ball, T_ball = certify_schur_decomposition(A, result)
+    return Q_ball, T_ball, result
 end
 
 #####################################################
@@ -1030,11 +1070,12 @@ function rigorous_symmetric_eigen_bigfloat(A::BallMatrix{T, NT};
         Q_error = result.orthogonality_defect
 
         # Build ball matrices with certified errors
-        Q_rad = fill(Q_error + _frobenius_norm(A_rad_big), n, n)
+        input_rad_norm = upper_bound_L2_opnorm(BallMatrix(A_rad_big))
+        Q_rad = fill(Q_error + input_rad_norm, n, n)
         Q_ball = BallMatrix(result.Q, Q_rad)
 
         # Eigenvalue errors: perturbation theory gives |λ - λ̂| ≤ ‖E‖ for symmetric
-        λ_rad = fill(backward_error * maximum(abs.(result.λ)) + _frobenius_norm(A_rad_big), n)
+        λ_rad = fill(backward_error * maximum(abs.(result.λ)) + input_rad_norm, n)
         λ_ball = [Ball(result.λ[i], λ_rad[i]) for i in 1:n]
 
         return Q_ball, λ_ball, result
@@ -1103,7 +1144,7 @@ Requires MultiFloats.jl to be loaded.
 function refine_symmetric_eigen_multifloat end
 
 # Export functions
-export SchurRefinementResult, refine_schur_decomposition, rigorous_schur_bigfloat
+export SchurRefinementResult, refine_schur_decomposition, rigorous_schur_bigfloat, certify_schur_decomposition
 export newton_schulz_orthogonalize!, solve_triangular_matrix_equation
 export SymmetricEigenRefinementResult, refine_symmetric_eigen, rigorous_symmetric_eigen_bigfloat
 export refine_schur_double64, refine_schur_hybrid
