@@ -218,7 +218,10 @@ and radius types. This is typically used when promoting collections of
 balls to a common numeric representation.
 """
 function Base.convert(::Type{Ball{T, CT}}, x::Ball) where {T, CT}
-    Ball(convert(CT, mid(x)), convert(T, rad(x)))
+    new_rad = setrounding(T, RoundUp) do
+        convert(T, rad(x))
+    end
+    Ball(convert(CT, mid(x)), new_rad)
 end
 
 """

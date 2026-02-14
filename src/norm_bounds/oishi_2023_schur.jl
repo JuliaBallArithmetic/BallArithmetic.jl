@@ -336,9 +336,17 @@ function _diagonal_scale_left(d::Vector{T}, d_rad::AbstractMatrix{T},
         else
             # 1/d is in [1/d_upper, 1/d_lower] if d > 0
             # or [-1/d_lower, -1/d_upper] if d < 0
-            inv_mid = one(T) / d_i
+            inv_lower = setrounding(T, RoundDown) do
+                one(T) / d_upper
+            end
+            inv_upper = setrounding(T, RoundUp) do
+                one(T) / d_lower
+            end
+            # Derive midpoint and radius from rigorous bounds
+            s = sign(d_i)
+            inv_mid = s * (inv_lower + inv_upper) / 2
             inv_rad = setrounding(T, RoundUp) do
-                max(abs(one(T)/d_lower - inv_mid), abs(one(T)/d_upper - inv_mid))
+                (inv_upper - inv_lower) / 2
             end
 
             for j in 1:n_cols

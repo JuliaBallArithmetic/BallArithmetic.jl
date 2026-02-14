@@ -41,7 +41,13 @@ end
                    use_svd::Bool=true,
                    use_bigfloat::Bool=true) where T
 
-Compute verified polar decomposition with rigorous error bounds.
+Compute polar decomposition with heuristic error bounds.
+
+!!! warning
+    The error bounds on Q and P are approximate (heuristic `2×SVD residual`),
+    not rigorously certified.  A proper analysis would require the perturbation
+    theory of Nakatsukasa & Higham (2013).  Use the residual norm returned in the
+    result to judge quality.
 
 For A = UΣV^H (SVD), the polar decomposition is:
 - Right polar: A = QP where Q = UV^H (unitary), P = VΣV^H (positive semidefinite)
@@ -164,8 +170,8 @@ function verified_polar(A::AbstractMatrix{T};
         # Q = U V^H
         Q_mid = U_w * V_w'
 
-        # Error in Q from SVD error
-        # |ΔQ| ≤ |ΔU| |V^H| + |U| |ΔV^H|
+        # Heuristic error bound on Q from SVD residual (not a rigorous certificate)
+        # |ΔQ| ≤ |ΔU| |V^H| + |U| |ΔV^H| ≈ 2 * svd_error / σ_min
         Q_rad = fill(2 * svd_error / minimum(σ_w[σ_w .> eps(RWT)]), n, n)
 
         if right
@@ -174,7 +180,7 @@ function verified_polar(A::AbstractMatrix{T};
             # Symmetrize
             P_mid = (P_mid + P_mid') / 2
 
-            # Error in P
+            # Heuristic error bound on P (not a rigorous certificate)
             P_rad = fill(2 * svd_error, n, n)
         else
             # P = U Σ U^H
@@ -182,6 +188,7 @@ function verified_polar(A::AbstractMatrix{T};
             # Symmetrize
             P_mid = (P_mid + P_mid') / 2
 
+            # Heuristic error bound on P (not a rigorous certificate)
             P_rad = fill(2 * svd_error, n, n)
         end
 

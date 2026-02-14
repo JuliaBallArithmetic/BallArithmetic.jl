@@ -269,11 +269,10 @@ function is_well_preconditioned(A::BallMatrix{T}, prec::PreconditionerResult{T};
     # Radius part: |C| * A_rad
     CA_rad = abs.(C) * A_rad
 
-    # Norm of interval matrix [I - CA]
-    norm_mid = opnorm(I_minus_CA_mid, Inf)
-    norm_rad = opnorm(CA_rad, Inf)
-
-    total_norm = norm_mid + norm_rad
+    # Norm of interval matrix [I - CA] (round up for rigorous upper bound)
+    total_norm = setrounding(T, RoundUp) do
+        opnorm(I_minus_CA_mid, Inf) + opnorm(CA_rad, Inf)
+    end
 
     return total_norm < threshold
 end

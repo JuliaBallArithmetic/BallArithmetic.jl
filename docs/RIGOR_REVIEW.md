@@ -172,30 +172,30 @@ to the final radii. The error bound accounts for the ~54 bits lost in the Double
 
 ## MEDIUM SEVERITY ISSUES
 
-| Location | Issue |
-|----------|-------|
-| `src/types/ball.jl:234-238` | Converting Ball to Float64 silently discards radius | Now throws exception, silent conversion is a recipe for disaster!
-| `src/types/ball.jl:220-221` | Conversion between Ball types without rounding control |
-| `src/types/ball.jl:462-491` | Comparison operators (`<`, `>`, etc.) compare only midpoints, ignore radii |
-| `src/linear_system/verified_linear_system_hmatrix.jl:256-272` | `mig()` uses unrounded arithmetic |
-| `src/linear_system/verified_linear_system_hmatrix.jl:290-316` | Power iteration norms unverified |
-| `src/linear_system/backward_substitution.jl:19, 38` | Division without explicit RoundUp |
-| `src/linear_system/backward_substitution.jl:40` | `mid/rad` extraction loses rounding info |
-| `src/linear_system/gaussian_elimination.jl:151` | Multiplier computed without RoundUp |
-| `src/linear_system/gaussian_elimination.jl:158-188` | Row elimination and backward substitution without RoundUp |
-| `src/linear_system/preconditioning.jl:273-274` | `opnorm()` for `is_well_preconditioned()` check unrounded |
-| `src/linear_system/preconditioning.jl:121-167` | Condition number computed but not used for error propagation |
-| `src/linear_system/verified_linear_system_hmatrix.jl:448` | `mid_C \ res_mid` unverified |
-| `src/linear_system/hbr_method.jl:152` | `A_sigma \ b_mid` unverified |
-| `src/linear_system/sylvester.jl:221` | Kronecker solve unverified |
-| `src/norm_bounds/oishi_2023_schur.jl:336-339` | `1/d_i` rounding not accounted for midpoint |
-| `src/decompositions/verified_qr.jl:198-200` | Missing `abs()` in `D_sqrt_mid` error bound |
-| `src/decompositions/verified_cholesky.jl:169-171` | Missing `abs()` in `D_sqrt_mid` error bound |
-| `src/decompositions/verified_polar.jl:163, 172, 179` | Heuristic error bounds (`2 * svd_error`), not rigorous |
-| `ext/ArbNumericsExt.jl:22-26` | Incomplete rounding mode application |
-| `ext/ArbNumericsExt.jl:42-59` | Complex radius computation without full RoundUp scope |
-| `ext/DoubleFloatsExt.jl:363-365` | Undocumented `1e10` truncation threshold in triangular solver |
-| `ext/DoubleFloatsExt.jl:692-694` | Heuristic error bound, not certified |
+| Location | Issue | Status |
+|----------|-------|--------|
+| ~~`src/types/ball.jl:234-238`~~ | Converting Ball to Float64 silently discards radius | ✅ FIXED (throws `DomainError`) |
+| ~~`src/types/ball.jl:220-221`~~ | Conversion between Ball types without rounding control | ✅ FIXED (radius conversion now uses `setrounding(T, RoundUp)`) |
+| `src/types/ball.jl:462-491` | Comparison operators (`<`, `>`, etc.) compare only midpoints, ignore radii | NOT A BUG (documented design choice; users directed to `sup(a) < inf(b)`) |
+| ~~`src/linear_system/verified_linear_system_hmatrix.jl:256-272`~~ | `mig()` uses unrounded arithmetic | ✅ FIXED (now uses `setrounding` with `RoundDown`/`RoundUp`) |
+| `src/linear_system/verified_linear_system_hmatrix.jl:290-316` | Power iteration norms unverified | NOT A BUG (approximate Perron vector; H-matrix verification is a posteriori) |
+| `src/linear_system/backward_substitution.jl:19, 38` | Division without explicit RoundUp | NOT A BUG (uses rigorous Ball operators internally) |
+| `src/linear_system/backward_substitution.jl:40` | `mid/rad` extraction loses rounding info | NOT A BUG (uses rigorous Ball operators internally) |
+| `src/linear_system/gaussian_elimination.jl:151` | Multiplier computed without RoundUp | NOT A BUG (uses rigorous Ball operators internally) |
+| `src/linear_system/gaussian_elimination.jl:158-188` | Row elimination and backward substitution without RoundUp | NOT A BUG (uses rigorous Ball operators internally) |
+| ~~`src/linear_system/preconditioning.jl:273-274`~~ | `opnorm()` for `is_well_preconditioned()` check unrounded | ✅ FIXED (wrapped in `setrounding(T, RoundUp)`) |
+| `src/linear_system/preconditioning.jl:121-167` | Condition number computed but not used for error propagation | NOT A BUG (informational only, not used for verification) |
+| ~~`src/linear_system/verified_linear_system_hmatrix.jl:448`~~ | `mid_C \ res_mid` unverified | ✅ FIXED (added one step of iterative refinement) |
+| `src/linear_system/hbr_method.jl:152` | `A_sigma \ b_mid` unverified | NOT A BUG (oracle pattern, verified a posteriori per Horacek thesis) |
+| `src/linear_system/sylvester.jl:221` | Kronecker solve unverified | NOT A BUG (oracle, passed to `sylvester_miyajima_enclosure` for certification) |
+| ~~`src/norm_bounds/oishi_2023_schur.jl:336-339`~~ | `1/d_i` rounding not accounted for midpoint | ✅ FIXED (midpoint derived from rigorous `inv_lower`/`inv_upper` bounds) |
+| `src/decompositions/verified_qr.jl:198-200` | Missing `abs()` in `D_sqrt_mid` error bound | NOT A BUG (positive-definiteness check ensures values are already positive) |
+| `src/decompositions/verified_cholesky.jl:169-171` | Missing `abs()` in `D_sqrt_mid` error bound | NOT A BUG (positive-definiteness check ensures values are already positive) |
+| ~~`src/decompositions/verified_polar.jl:163, 172, 179`~~ | Heuristic error bounds (`2 * svd_error`), not rigorous | ✅ DOCUMENTED (docstring warns bounds are approximate; rigorous analysis requires Nakatsukasa & Higham 2013) |
+| `ext/ArbNumericsExt.jl:22-26` | Incomplete rounding mode application | NOT A BUG (correct rounding mode usage) |
+| `ext/ArbNumericsExt.jl:42-59` | Complex radius computation without full RoundUp scope | NOT A BUG (standard L2 complex norm, correct) |
+| ~~`ext/DoubleFloatsExt.jl:363-365`~~ | Undocumented `1e10` truncation threshold in triangular solver | ✅ FIXED (threshold now scaled relative to matrix norm) |
+| ~~`ext/DoubleFloatsExt.jl:692-694`~~ | Heuristic error bound, not certified | ✅ FIXED (uses Neumann series bound `‖X‖/(1 - ‖R‖‖X‖/‖B‖)/‖B‖`) |
 
 ---
 
@@ -357,14 +357,14 @@ These operators compare only midpoints. If `a = 1 ± 0.5` and `b = 2 ± 0.5`, th
 
 ## Summary Statistics
 
-| Severity | Count | Fixed |
-|----------|-------|-------|
-| CRITICAL | 12 | 12 ✅ |
-| HIGH | 16 | 16 ✅ |
-| MEDIUM | 22 | 0 |
-| LOW/Documentation | 17+ | 0 |
-| STRUCTURAL | 3 | 1 ✅ |
-| **Total** | **67+** | **30** |
+| Severity | Count | Fixed | Not a Bug |
+|----------|-------|-------|-----------|
+| CRITICAL | 12 | 12 ✅ | — |
+| HIGH | 16 | 16 ✅ | — |
+| MEDIUM | 22 | 9 ✅ | 13 |
+| LOW/Documentation | 17+ | 0 | — |
+| STRUCTURAL | 3 | 1 ✅ | — |
+| **Total** | **67+** | **39** | **13** |
 
 ### Fixed Issues (2026-01-31)
 - #1: IntervalArithmeticExt rounding direction
@@ -397,6 +397,18 @@ These operators compare only midpoints. If `a = 1 ± 0.5` and `b = 2 ± 0.5`, th
 - HIGH: rump_lange_2023.jl - NOT A BUG (clustering heuristic, verified a posteriori)
 - Structural: Missing `_gram_schmidt_bigfloat` function definition
 - Medium-term: Rigorous residual computation with Miyajima products
+
+### Fixed Issues (2026-02-14) — MEDIUM severity
+- MEDIUM: ball.jl:234-238 — Already throws `DomainError` (fixed previously)
+- MEDIUM: ball.jl:220-221 — Ball type conversion radius now uses `setrounding(T, RoundUp)`
+- MEDIUM: verified_linear_system_hmatrix.jl:256-272 — `mig()`/`mag()` now use directed rounding
+- MEDIUM: preconditioning.jl:273-274 — `opnorm()` wrapped in `setrounding(T, RoundUp)`
+- MEDIUM: verified_linear_system_hmatrix.jl:448 — Added iterative refinement step to `mid_C \ res_mid`
+- MEDIUM: oishi_2023_schur.jl:336-339 — `1/d_i` midpoint derived from rigorous interval bounds
+- MEDIUM: verified_polar.jl:163,172,179 — Documented heuristic nature of error bounds in docstring
+- MEDIUM: DoubleFloatsExt.jl:363-365 — Truncation threshold scaled relative to matrix norm
+- MEDIUM: DoubleFloatsExt.jl:692-694 — Replaced heuristic with Neumann series bound
+- 13 MEDIUM issues triaged as NOT A BUG (design choices, correct code, oracle patterns)
 
 ---
 

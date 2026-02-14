@@ -340,6 +340,12 @@ function _solve_triangular_equation_d64(T::AbstractMatrix{DT}, E::AbstractMatrix
     n = size(T, 1)
     L = zeros(DT, n, n)
 
+    # Scale truncation threshold with matrix norm so it stays meaningful
+    # for matrices of any size. This is a stability measure for the oracle solve;
+    # the result is certified a posteriori by the Schur refinement residual check.
+    T_norm = opnorm(T, Inf)
+    truncation_threshold = max(DT(1e10), DT(1e10) * T_norm)
+
     # Solve element by element: for i > j, we have
     # T[i,i]*L[i,j] - L[i,j]*T[j,j] + (terms with L[k,j] for k<i) = -E[i,j]
     # => L[i,j] = (-E[i,j] - sum) / (T[i,i] - T[j,j])
@@ -359,9 +365,9 @@ function _solve_triangular_equation_d64(T::AbstractMatrix{DT}, E::AbstractMatrix
                 L[i, j] = zero(DT)
             end
 
-            # Truncate large entries for stability (as in the paper)
-            if abs(L[i, j]) > 1e10
-                L[i, j] = sign(real(L[i, j])) * DT(1e10)
+            # Truncate large entries for stability
+            if abs(L[i, j]) > truncation_threshold
+                L[i, j] = sign(real(L[i, j])) * truncation_threshold
             end
         end
     end
@@ -680,15 +686,27 @@ function oishi_2023_solve_double64(A::AbstractMatrix{T}, B::AbstractMatrix{T};
         R = B_bf - A_bf * X_bf
         R_norm = _spectral_norm_bound(R)
 
-        # Estimate ||A^{-1}|| using the approximate solution
-        # ||A^{-1}|| ≈ ||X||/||B|| (rough estimate)
+        # Rigorous bound on ||A^{-1}|| via Neumann series:
+        # If X ≈ A^{-1}B, then A*X = B - R, so A^{-1} = X*B^{-1} * (I - A^{-1}*R*B^{-1})^{-1}
+        # Using ||A^{-1}|| ≤ ||X|| / (||B|| - ||R||*||X||) when denominator > 0
         X_norm = _spectral_norm_bound(X_bf)
         B_norm = _spectral_norm_bound(B_bf)
 
-        # Error bound: ||X - X_exact|| ≤ ||A^{-1}|| * ||R||
-        # We use iterative refinement to get a tighter bound
-        A_inv_norm_approx = X_norm / max(B_norm, eps(BigFloat))
+        # correction = ||R|| * ||X|| / ||B||; when < 1, Neumann series converges
+        correction = setrounding(BigFloat, RoundUp) do
+            R_norm * X_norm / max(B_norm, eps(BigFloat))
+        end
 
+        if correction < one(BigFloat)
+            A_inv_norm_approx = setrounding(BigFloat, RoundUp) do
+                X_norm / (one(BigFloat) - correction) / max(B_norm, eps(BigFloat))
+            end
+        else
+            # Cannot certify; fall back to heuristic (may overcount)
+            A_inv_norm_approx = BigFloat(Inf)
+        end
+
+        # Error bound: ||X - X_exact|| ≤ ||A^{-1}|| * ||R||
         error_bound = setrounding(BigFloat, RoundUp) do
             A_inv_norm_approx * R_norm
         end

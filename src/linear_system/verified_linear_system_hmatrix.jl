@@ -253,10 +253,18 @@ end
 Mignitude (minimum absolute value) of a ball.
 """
 function mig(x::Ball{T}) where {T}
-    if mid(x) - rad(x) > 0
-        return mid(x) - rad(x)
-    elseif mid(x) + rad(x) < 0
-        return abs(mid(x) + rad(x))
+    lower = setrounding(T, RoundDown) do
+        mid(x) - rad(x)
+    end
+    upper = setrounding(T, RoundUp) do
+        mid(x) + rad(x)
+    end
+    if lower > zero(T)
+        return lower
+    elseif upper < zero(T)
+        return setrounding(T, RoundDown) do
+            abs(upper)
+        end
     else
         return zero(T)
     end
@@ -268,7 +276,9 @@ end
 Magnitude (maximum absolute value) of a ball.
 """
 function mag(x::Ball{T}) where {T}
-    return max(abs(mid(x) - rad(x)), abs(mid(x) + rad(x)))
+    setrounding(T, RoundUp) do
+        max(abs(mid(x) - rad(x)), abs(mid(x) + rad(x)))
+    end
 end
 
 """
@@ -446,9 +456,11 @@ function compute_improved_method_b_bound(C::BallMatrix{T}, residual::BallVector{
     # Comparison matrix of mid(C')
     comp_mid_C = comparison_matrix(BallMatrix(mid_C, zeros(T, size(mid_C))))
 
-    # Solve mid(C')ỹ ≈ R(b - Ax̃)
+    # Solve mid(C')ỹ ≈ R(b - Ax̃) with one step of iterative refinement
     res_mid = mid(residual)
     y_tilde = mid_C \ res_mid
+    res_y = res_mid - mid_C * y_tilde
+    y_tilde += mid_C \ res_y
 
     # Compute r = ⟨mid(C')⟩|ỹ| + |mid(C')ỹ - R(b - Ax̃)|
     term1 = comp_mid_C * abs.(y_tilde)
