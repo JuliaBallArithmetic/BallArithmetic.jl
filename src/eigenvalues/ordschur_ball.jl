@@ -111,6 +111,18 @@ function ordschur_ball(Q_ball::BallMatrix, T_ball::BallMatrix,
     T_ord_ball = G_ball' * T_ball * G_ball
     Q_ord_ball = Q_ball * G_ball
 
+    # Step 6: Enforce upper triangularity of T_ord_ball.
+    # Mathematically, G' T G is upper triangular when T is upper triangular and G
+    # is the ordschur transformation.  Floating-point arithmetic produces tiny
+    # subdiagonal entries; absorb them into radii and zero the midpoint.
+    T_mid = mid(T_ord_ball)
+    T_rad = rad(T_ord_ball)
+    for i in 2:n, j in 1:min(i-1, n)
+        T_rad[i, j] += abs(T_mid[i, j])
+        T_mid[i, j] = zero(eltype(T_mid))
+    end
+    T_ord_ball = BallMatrix(T_mid, T_rad)
+
     return (Q=Q_ord_ball, T=T_ord_ball, values=vals,
             orth_defect=orth_defect, fact_defect=fact_defect)
 end

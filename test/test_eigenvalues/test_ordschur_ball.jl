@@ -96,6 +96,10 @@ using Test
 
         # Midpoint should reconstruct A
         @test mid(result.Q) * mid(result.T) * mid(result.Q)' ≈ Ac atol = 1e-10
+
+        # T_ord midpoint should be upper triangular (regression: ordschur_ball
+        # used to produce non-triangular midpoints from G'*T*G arithmetic)
+        @test istriu(mid(result.T))
     end
 
     @testset "ordschur_ball — BallMatrix with non-zero radii" begin
@@ -158,6 +162,26 @@ using Test
         @test all(isfinite, rad(ord_result.Q))
         @test isfinite(ord_result.orth_defect)
         @test isfinite(ord_result.fact_defect)
+
+        # T midpoint must be upper triangular
+        @test istriu(mid(ord_result.T))
+    end
+
+    @testset "ordschur_ball → Sylvester pipeline (regression)" begin
+        n = 4
+        A_mid = randn(n, n)
+        A_ball = BallMatrix(A_mid, fill(1e-10, n, n))
+
+        Q_ball, T_ball, result = rigorous_schur_bigfloat(A_ball; target_precision=256)
+        @test result.converged
+
+        select = [true, false, false, false]
+        ord = ordschur_ball(Q_ball, T_ball, select)
+
+        # This used to throw ArgumentError("T must be upper triangular")
+        Y = triangular_sylvester_miyajima_enclosure(ord.T, 1)
+        @test all(isfinite, mid(Y))
+        @test all(isfinite, rad(Y))
     end
 end
 
