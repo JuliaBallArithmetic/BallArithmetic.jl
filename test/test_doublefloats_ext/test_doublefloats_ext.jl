@@ -41,8 +41,9 @@ try
         end
 
         @testset "Schur Refinement with Double64" begin
-            # Test matrix with distinct eigenvalues
-            A = [4.0 1.0 0.0; 0.0 3.0 1.0; 0.0 0.0 2.0] + 0.1 * randn(3, 3)
+            # Deterministic test matrix with distinct eigenvalues
+            A = [4.0 1.0 0.0; 0.0 3.0 1.0; 0.0 0.0 2.0] +
+                0.1 * [0.12 -0.34 0.56; 0.78 -0.23 0.45; -0.67 0.89 -0.11]
             F = schur(A)
             Q0, T0 = F.Z, F.T
 
@@ -62,8 +63,12 @@ try
         end
 
         @testset "Symmetric Eigenvalue Refinement with Double64" begin
-            # Symmetric test matrix
-            A_base = randn(5, 5)
+            # Deterministic symmetric test matrix
+            A_base = [0.12 -0.34 0.56 0.78 -0.23;
+                      0.45 -0.67 0.89 -0.11 0.33;
+                     -0.55 0.22 -0.44 0.66 -0.88;
+                      0.19 -0.37 0.51 -0.73 0.95;
+                     -0.14 0.28 -0.42 0.56 -0.70]
             A = A_base + A_base'
             F = eigen(Symmetric(A))
             Q0, λ0 = F.vectors, F.values
@@ -84,9 +89,9 @@ try
         end
 
         @testset "Performance comparison: Double64 vs BigFloat" begin
-            # Larger matrix to see timing difference
+            # Deterministic test matrix
             n = 50
-            A = randn(n, n)
+            A = Float64[sin(i * j + i) for i in 1:n, j in 1:n] + 5I
             U, S, V = svd(A)
 
             # Time Double64 (should be faster)
@@ -109,8 +114,8 @@ try
         end
 
         @testset "Quadratic convergence verification" begin
-            # Verify that iterations follow quadratic convergence
-            A = randn(10, 10)
+            # Deterministic matrix for convergence verification
+            A = Float64[sin(i * j + i) for i in 1:10, j in 1:10] + 5I
             U, S, V = svd(A)
 
             residuals = Float64[]

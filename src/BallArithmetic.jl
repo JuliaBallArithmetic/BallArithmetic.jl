@@ -83,6 +83,7 @@ include("norm_bounds/oishi.jl")
 include("norm_bounds/oishi_triangular.jl")
 include("norm_bounds/rump_oishi_2024.jl")
 include("norm_bounds/oishi_2023_schur.jl")
+include("norm_bounds/triangular_inverse_bounds.jl")
 
 export upper_bound_L1_opnorm, upper_bound_L2_opnorm, upper_bound_L_inf_opnorm
 export rump_oishi_2024_triangular_bound, backward_singular_value_bound
