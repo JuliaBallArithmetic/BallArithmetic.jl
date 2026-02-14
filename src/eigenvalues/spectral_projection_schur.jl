@@ -267,8 +267,10 @@ function _spectral_projector_from_ordered_schur(Q::AbstractMatrix, Tmat::Abstrac
     end
 
     # Solve Sylvester equation T₁₁*Y - Y*T₂₂ = T₁₂
+    # triangular_sylvester_miyajima_enclosure solves T₂₂^H X - X T₁₁^H = T₁₂^H
+    # Taking adjoint: T₁₁ (-X^H) - (-X^H) T₂₂ = T₁₂, so Y = -X^H = -adjoint(X)
     Y_transposed = triangular_sylvester_miyajima_enclosure(Tmat, k)
-    Y_ball = BallMatrix(transpose(Y_transposed.c), transpose(Y_transposed.r))
+    Y_ball = BallMatrix(-adjoint(Y_transposed.c), transpose(Y_transposed.r))
 
     # Construct projector in Schur coordinates: P_Schur = [I Y; 0 0]
     P_schur_c = zeros(NT, n, n)

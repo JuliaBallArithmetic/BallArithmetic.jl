@@ -197,6 +197,11 @@ end
         # Should be rank 1 projector
         @test result.idempotency_defect < 1e-4
         @test isfinite(result.projector_norm)
+
+        # Commutation: PA ≈ AP (regression: sign error gave wrong Y)
+        PA = result.projector * A
+        AP = A * result.projector
+        @test upper_bound_L2_opnorm(PA - AP) < 1e-4
     end
 
     @testset "Consistency: [1,2] via Vector vs 1:2 via UnitRange" begin
@@ -211,13 +216,18 @@ end
         @test norm(P_range - P_vec) < 1e-6
     end
 
-    @testset "Idempotency for reordered projector" begin
+    @testset "Idempotency and commutation for reordered projector" begin
         n = 4
         A_mid = triu(randn(n, n)) .+ Diagonal([1.0, 2.0, 5.0, 6.0])
         A = BallMatrix(A_mid, fill(1e-10, n, n))
 
         result = compute_spectral_projector_schur(A, 3:4)
         @test result.idempotency_defect < 1e-4
+
+        # Commutation check
+        PA = result.projector * A
+        AP = A * result.projector
+        @test upper_bound_L2_opnorm(PA - AP) < 1e-4
     end
 
     @testset "schur_data kwarg bypasses Schur" begin

@@ -744,8 +744,20 @@ function rigorous_schur_bigfloat(A::BallMatrix{T, NT};
 
     if schur_seed !== nothing
         Q0, T0 = Matrix(schur_seed[1]), Matrix(schur_seed[2])
-        # Preserve precision: convert midpoint to seed's element type
-        A_center = convert.(eltype(Q0), A_mid)
+        # Convert midpoint to seed's element type.
+        # If A_mid has tiny imaginary parts (e.g. from Arb→BigFloat conversion
+        # of a real matrix) that are within the input radii, strip them to avoid
+        # the refinement trying to fit complex artifacts.
+        A_for_refine = A_mid
+        ET = eltype(Q0)
+        if ET <: Complex && eltype(A_mid) <: Complex
+            imag_max = maximum(abs.(imag.(A_mid)))
+            rad_max = maximum(rad(A))
+            if imag_max > 0 && imag_max < rad_max
+                A_for_refine = real.(A_mid)
+            end
+        end
+        A_center = convert.(ET, A_for_refine)
     else
         # Always use complex Schur to ensure strictly upper triangular T
         # (real Schur has 2x2 blocks for complex eigenvalue pairs which
