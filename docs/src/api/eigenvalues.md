@@ -107,6 +107,7 @@ verify_spectral_projector_properties
 SchurRefinementResult
 refine_schur_decomposition
 rigorous_schur_bigfloat
+certify_schur_decomposition
 newton_schulz_orthogonalize!
 ```
 
