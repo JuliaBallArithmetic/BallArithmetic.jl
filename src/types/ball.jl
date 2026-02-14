@@ -328,7 +328,6 @@ Return the multiplicative inverse of a real ball. The method throws an
 `ArgumentError` when the interval straddles zero, since no rigorous
 inverse can be produced in that case.
 """
-# TODO: this probably is incorrect for complex balls
 function Base.inv(y::Ball{T}) where {T <: AbstractFloat}
     my, ry = mid(y), rad(y)
     ry < abs(my) || throw(ArgumentError("Ball $y contains zero."))

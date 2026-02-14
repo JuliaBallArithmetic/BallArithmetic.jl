@@ -1,6 +1,7 @@
 # Implementation of Rump2022a: Verified Error Bounds for All Eigenvalues and Eigenvectors
 # Reference: Rump, S.M. (2022), "Verified Error Bounds for All Eigenvalues
-# and Eigenvectors of a Matrix", arXiv preprint
+# and Eigenvectors of a Matrix", SIAM J. Matrix Anal. Appl. 43(4):1736–1754.
+# DOI: 10.1137/21M1451440
 
 using LinearAlgebra
 
@@ -91,7 +92,8 @@ err = result.eigenvector_errors  # Eigenvector error bounds
 
 # Reference
 * Rump, S.M. (2022), "Verified Error Bounds for All Eigenvalues and
-  Eigenvectors of a Matrix", arXiv:2201.xxxxx
+  Eigenvectors of a Matrix", SIAM J. Matrix Anal. Appl. 43(4):1736–1754.
+  DOI: 10.1137/21M1451440
 """
 function rump_2022a_eigenvalue_bounds(A::BallMatrix{T, NT};
                                        method::Symbol = :standard,

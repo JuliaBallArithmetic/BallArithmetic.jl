@@ -5,7 +5,6 @@ authors = ["Luca Ferranti and Isaia Nisoli"]
 
 [deps]
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
-Coverage = "a2441757-f6aa-5fb2-8edb-039e3f45d037"
 DoubleFloats = "497a8b3b-efae-58df-a0af-a86822472b78"
 GenericLinearAlgebra = "14197337-ba66-59df-a3e3-ca00e7dcff7a"
 GenericSchur = "c145ed77-6b09-5dd9-b285-bf645a82121e"
@@ -34,26 +33,22 @@ MultiFloatsExt = "MultiFloats"
 
 [compat]
 ArbNumerics = "1"
-Combinatorics = "1.1.0"
-Coverage = "1.8.1"
+Combinatorics = "1"
 DoubleFloats = "1"
 FFTW = "1"
-GenericLinearAlgebra = "0.3.19"
+GenericLinearAlgebra = "0.3"
 GenericSchur = "0.5"
 IntervalArithmetic = "0.20.9"
-JLD2 = "0.6.2"
+JLD2 = "0.6"
 MacroTools = "0.5"
-MultiFloats = "2.3.0"
-OpenBLASConsistentFPCSR_jll = "0.3.21"
+MultiFloats = "2"
+OpenBLASConsistentFPCSR_jll = "0.3"
 RoundingEmulator = "0.2"
 SetRounding = "0.2"
 julia = "^1.9"
 
 [extras]
-GenericLinearAlgebra = "14197337-ba66-59df-a3e3-ca00e7dcff7a"
-GenericSchur = "c145ed77-6b09-5dd9-b285-bf645a82121e"
-MultiFloats = "bdf0d083-296b-4888-a5b6-7498122e68a5"
 Test = "8dfed614-5729-5b62-bb73-8f89d75bee26"
 
 [targets]
-test = ["GenericLinearAlgebra", "GenericSchur", "MultiFloats", "Test"]
+test = ["Test"]
