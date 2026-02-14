@@ -385,9 +385,7 @@ function compute_enclosure(A::BallMatrix{T}, r1, r2, ϵ; max_initial_newton = 30
         svd_method::SVDMethod = MiyajimaM1(), apply_vbd::Bool = false) where T
     if real(T) === BigFloat
         @warn "compute_enclosure casts BigFloat matrices to Float64 for the Schur " *
-              "decomposition. Eigenvalue information below ~1e-16 will be lost. " *
-              "For robust BigFloat support, load GenericSchur and GenericLinearAlgebra:\n" *
-              "  using GenericSchur, GenericLinearAlgebra" maxlog=1
+              "decomposition. Eigenvalue information below ~1e-16 will be lost." maxlog=1
     end
     F = schur(Complex{Float64}.(A.c))
 

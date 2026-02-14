@@ -21,30 +21,6 @@
 
 using LinearAlgebra
 
-# ── Extension support ────────────────────────────────────────────────
-
-# Flag set to true by GenericSchurExt when GenericSchur.jl is loaded.
-const _GENERIC_SCHUR_AVAILABLE = Ref(false)
-
-"""
-    _set_generic_schur_available(v::Bool)
-
-Called by `GenericSchurExt.__init__` to signal that GenericSchur.jl
-(and GenericLinearAlgebra.jl) are loaded and `schur`/`ordschur`/`svd`
-dispatch works for arbitrary `AbstractFloat` types.
-"""
-_set_generic_schur_available(v::Bool) = (_GENERIC_SCHUR_AVAILABLE[] = v)
-
-function _check_generic_schur_for_type(::Type{T}) where {T}
-    if !(T <: Union{Float32, Float64}) && !_GENERIC_SCHUR_AVAILABLE[]
-        throw(ArgumentError(
-            "miyajima_vbd_njd with element type $T requires GenericSchur.jl " *
-            "and GenericLinearAlgebra.jl.  Load them with:\n" *
-            "  using GenericSchur, GenericLinearAlgebra"
-        ))
-    end
-end
-
 # ── Types ────────────────────────────────────────────────────────────
 
 """
@@ -628,7 +604,6 @@ result = miyajima_vbd_njd(A)
 function miyajima_vbd_njd(A::BallMatrix{T, NT}; tol=nothing) where {T, NT}
     m, n = size(A)
     m == n || throw(ArgumentError("miyajima_vbd_njd expects a square matrix"))
-    _check_generic_schur_for_type(T)
 
     A_mid = mid(A)
 

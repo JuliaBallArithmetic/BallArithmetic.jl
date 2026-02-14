@@ -230,6 +230,10 @@ Embed a plain number into a ball with zero radius whose midpoint matches
 Base.convert(::Type{Ball{T, CT}}, c::Number) where {T, CT} = Ball(convert(CT, c), zero(T))
 Base.convert(::Type{Ball}, c::Number) = Ball(c)
 
+# Single-argument parametric constructor — delegates to convert so that
+# promote_type + T(x) works (used by GKWExperiments and other downstream code).
+Ball{T, CT}(x::Number) where {T <: AbstractFloat, CT} = convert(Ball{T, CT}, x)
+
 # Conversion from Ball to plain numeric types (extracts midpoint)
 function Base.convert(::Type{T}, x::Ball{T, T}) where {T <: AbstractFloat}
     throw(DomainError(x, "This conversion breaks rigour"))

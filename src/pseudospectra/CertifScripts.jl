@@ -5,7 +5,6 @@ using JLD2
 using Base: dirname, mod1
 
 using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm, inf,
-                        _GENERIC_SCHUR_AVAILABLE,
                         refine_schur_decomposition,
                         ogita_svd_refine, OgitaSVDRefinementResult,
                         rigorous_svd, _certify_svd, MiyajimaM1,
@@ -1003,12 +1002,15 @@ function save_snapshot!(arcs, cache, log, pending, basepath::String, toggle::Boo
     return !toggle
 end
 
-function _identity_ballmatrix(n::Integer)
-    return BallMatrix(Matrix{ComplexF64}(I, n, n))
+_identity_ballmatrix(n::Integer) = BallMatrix(Matrix{ComplexF64}(I, n, n))
+_zero_ballmatrix(n::Integer) = BallMatrix(zeros(ComplexF64, n, n))
+
+function _identity_ballmatrix(n::Integer, ::BallMatrix{T, NT}) where {T, NT}
+    return BallMatrix(Matrix{NT}(I, n, n))
 end
 
-function _zero_ballmatrix(n::Integer)
-    return BallMatrix(zeros(ComplexF64, n, n))
+function _zero_ballmatrix(n::Integer, ::BallMatrix{T, NT}) where {T, NT}
+    return BallMatrix(zeros(NT, n, n))
 end
 
 function _as_ball(value)
@@ -1020,6 +1022,11 @@ function _as_ball(value)
     else
         throw(ArgumentError("unsupported value type $(typeof(value)) for ball conversion"))
     end
+end
+
+function _as_ball(value, ::BallMatrix{T, NT}) where {T, NT}
+    value isa Ball && return value
+    return Ball(convert(NT, value), zero(T))
 end
 
 function _upper_bound(value)
@@ -1055,12 +1062,12 @@ function _polynomial_matrix(coeffs, M::BallMatrix)
     end
 
     n = size(M, 1)
-    result = _zero_ballmatrix(n)
-    identity = _identity_ballmatrix(n)
+    result = _zero_ballmatrix(n, M)
+    identity = _identity_ballmatrix(n, M)
     for coeff in reverse(coeffs_vec)
         result = result * M
         if !iszero(coeff)
-            value = _as_ball(coeff)
+            value = _as_ball(coeff, M)
             result += value * identity
         end
     end
@@ -1133,16 +1140,11 @@ end
 """
     _compute_schur_and_error_bigfloat(A; polynomial = nothing)
 
-BigFloat version of compute_schur_and_error.  Dispatches to a direct
-GenericSchur path when available, falling back to Float64-seeded iterative
-refinement otherwise.
+BigFloat version of compute_schur_and_error.  Uses GenericSchur.jl's native
+BigFloat Schur decomposition for full-precision results.
 """
 function _compute_schur_and_error_bigfloat(A::BallMatrix{BigFloat}; polynomial = nothing)
-    if _GENERIC_SCHUR_AVAILABLE[]
-        return _compute_schur_bigfloat_direct(A; polynomial)
-    else
-        return _compute_schur_bigfloat_refined(A; polynomial)
-    end
+    return _compute_schur_bigfloat_direct(A; polynomial)
 end
 
 """
@@ -1193,15 +1195,11 @@ end
 """
     _compute_schur_bigfloat_refined(A; polynomial = nothing)
 
-Compute BigFloat Schur decomposition by refining a Float64 seed.  This path is
-used when GenericSchur.jl is not loaded and may fail for matrices with
-eigenvalues below ~10⁻¹⁶.
+Compute BigFloat Schur decomposition by refining a Float64 seed.
+Seeds from Float64 Schur, then refines iteratively in BigFloat.
+May fail for matrices with eigenvalues below ~10⁻¹⁶.
 """
 function _compute_schur_bigfloat_refined(A::BallMatrix{BigFloat}; polynomial = nothing)
-    @warn "Computing BigFloat Schur decomposition via Float64-seeded iterative refinement. " *
-          "This may fail for matrices with eigenvalues below ~1e-16. " *
-          "For robust BigFloat support, load GenericSchur and GenericLinearAlgebra:\n" *
-          "  using GenericSchur, GenericLinearAlgebra" maxlog=1
     n = size(A, 1)
 
     # Step 1: Compute Float64 Schur decomposition

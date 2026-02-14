@@ -174,16 +174,7 @@ using LinearAlgebra
 
 end
 
-# BigFloat NJD tests require GenericSchur + GenericLinearAlgebra (weakdeps).
-# The extension only triggers under Pkg.test() which resolves [extras].
-# Try loading GenericSchur, then check the flag.
-try
-    using GenericSchur
-catch
-end
-
-if BallArithmetic._GENERIC_SCHUR_AVAILABLE[]
-    @testset "BigFloat NJD via GenericSchur extension" begin
+@testset "BigFloat NJD" begin
         A_bf = BallMatrix(BigFloat.([1.0 1.0; 0.0 1.0]))
         r = miyajima_vbd_njd(A_bf)
         @test isfinite(r.remainder_norm)
@@ -197,6 +188,3 @@ if BallArithmetic._GENERIC_SCHUR_AVAILABLE[]
         @test length(r2.clusters) == 3
         @test r2.max_nilpotent_index == 1
     end
-else
-    @warn "Skipping BigFloat NJD tests: GenericSchur extension not loaded"
-end

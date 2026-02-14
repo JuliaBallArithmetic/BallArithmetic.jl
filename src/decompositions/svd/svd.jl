@@ -169,12 +169,6 @@ if available, which can significantly speed up computation for similar matrices.
 """
 function _rigorous_svd_bigfloat(A::BallMatrix{BigFloat}, method::SVDMethod;
                                  apply_vbd::Bool = true, use_cache::Bool = true)
-    if !_GENERIC_SCHUR_AVAILABLE[]
-        @warn "Computing BigFloat SVD via Float64-seeded Ogita refinement. " *
-              "This may fail for matrices with singular values below ~1e-16. " *
-              "For robust BigFloat support, load GenericSchur and GenericLinearAlgebra:\n" *
-              "  using GenericSchur, GenericLinearAlgebra" maxlog=1
-    end
     prec_bits = precision(BigFloat)
     # Quadratic convergence: ~ceil(log2(prec_bits / 15)) iterations
     n_iter = max(2, ceil(Int, log2(prec_bits / 15)))

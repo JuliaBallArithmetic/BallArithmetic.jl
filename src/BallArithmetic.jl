@@ -18,6 +18,8 @@ module BallArithmetic
 include("numerical_test/multithread.jl")
 
 using LinearAlgebra
+using GenericLinearAlgebra
+using GenericSchur
 
 if Sys.ARCH == :x86_64
     using OpenBLASConsistentFPCSR_jll
@@ -97,12 +99,12 @@ export RigorousGeneralizedEigenvaluesResult, RigorousEigenvaluesResult,
     rigorous_generalized_eigenvalues, rigorous_eigenvalues, gevbox, evbox
 export Rump2022aResult, rump_2022a_eigenvalue_bounds
 export RumpLange2023Result, rump_lange_2023_cluster_bounds, refine_cluster_bounds
-include("svd/singular_gerschgorin.jl")
-include("svd/miyajima_vbd.jl")
-include("svd/njd_vbd.jl")
-include("svd/svd.jl")
-include("svd/adaptive_ogita_svd.jl")
-include("svd/precision_cascade_svd.jl")
+include("decompositions/svd/singular_gerschgorin.jl")
+include("decompositions/svd/miyajima_vbd.jl")
+include("decompositions/svd/njd_vbd.jl")
+include("decompositions/svd/svd.jl")
+include("decompositions/svd/adaptive_ogita_svd.jl")
+include("decompositions/svd/precision_cascade_svd.jl")
 export NJDVBDResult, JordanBlockInfo, miyajima_vbd_njd
 export MiyajimaVBDResult, RigorousSVDResult, miyajima_vbd, rigorous_svd, svdbox,
     rigorous_svd_m4, refine_svd_bounds_with_vbd,
