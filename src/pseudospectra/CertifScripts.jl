@@ -4,7 +4,8 @@ using LinearAlgebra
 using JLD2
 using Base: dirname, mod1
 
-using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm, inf,
+using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm,
+                        upper_bound_L2_opnorm, inf,
                         refine_schur_decomposition,
                         ogita_svd_refine, OgitaSVDRefinementResult,
                         rigorous_svd, _certify_svd, MiyajimaM1,
@@ -1157,25 +1158,25 @@ function _compute_schur_bigfloat_direct(A::BallMatrix{BigFloat}; polynomial = no
     S = LinearAlgebra.schur(Complex{BigFloat}.(A.c))
 
     bZ = BallMatrix(S.Z)
-    errF = svd_bound_L2_opnorm(bZ' * bZ - I)
+    # Use upper_bound_L2_opnorm (Collatz + sqrt(‖·‖₁·‖·‖_∞)) instead of
+    # svd_bound_L2_opnorm which calls svdbox — broken for BigFloat matrices.
+    errF = upper_bound_L2_opnorm(bZ' * bZ - I)
 
     bT = BallMatrix(S.T)
-    errT = svd_bound_L2_opnorm(bZ * bT * bZ' - A)
+    errT = upper_bound_L2_opnorm(bZ * bT * bZ' - A)
 
-    sigma_Z = svdbox(bZ)
-    max_sigma = sigma_Z[1]
-    min_sigma = sigma_Z[end]
+    # Bound σ_max(Z) and 1/σ_min(Z) from the orthogonality defect errF = ‖Z'Z - I‖₂.
+    # Since Z'Z = I + E with ‖E‖₂ ≤ errF, the eigenvalues of Z'Z lie in [1-errF, 1+errF],
+    # so σ_max(Z) ≤ √(1 + errF) and σ_min(Z) ≥ √(1 - errF).
+    errF_val = BigFloat(errF)
+    errF_val >= 1 && throw(ArgumentError(
+        "Schur factor too far from unitary: ‖Z'Z - I‖ = $errF_val"))
 
     norm_Z = setrounding(BigFloat, RoundUp) do
-        return BigFloat(abs(max_sigma.c)) + BigFloat(max_sigma.r)
+        return sqrt(one(BigFloat) + errF_val)
     end
-
-    min_sigma_lower = setrounding(BigFloat, RoundDown) do
-        return max(BigFloat(min_sigma.c) - BigFloat(min_sigma.r), zero(BigFloat))
-    end
-    min_sigma_lower <= 0 && throw(ArgumentError("Schur factor has non-positive smallest singular value bound"))
     norm_Z_inv = setrounding(BigFloat, RoundUp) do
-        return one(BigFloat) / min_sigma_lower
+        return one(BigFloat) / sqrt(one(BigFloat) - errF_val)
     end
 
     S_nt = (T=S.T, Z=S.Z, values=S.values)
@@ -1187,7 +1188,7 @@ function _compute_schur_bigfloat_direct(A::BallMatrix{BigFloat}; polynomial = no
     coeffs = collect(polynomial)
     pA = _polynomial_matrix(coeffs, A)
     pT = _polynomial_matrix(coeffs, bT)
-    errT_poly = svd_bound_L2_opnorm(bZ * pT * bZ' - pA)
+    errT_poly = upper_bound_L2_opnorm(bZ * pT * bZ' - pA)
 
     return S_nt, errF, errT_poly, norm_Z, norm_Z_inv
 end
@@ -1226,25 +1227,21 @@ function _compute_schur_bigfloat_refined(A::BallMatrix{BigFloat}; polynomial = n
     T_error = BigFloat(result.residual_norm) * A_norm
 
     bZ = BallMatrix(Q_big, fill(Q_error, n, n))
-    errF = svd_bound_L2_opnorm(bZ' * bZ - I)
+    errF = upper_bound_L2_opnorm(bZ' * bZ - I)
 
     bT = BallMatrix(T_big, fill(T_error, n, n))
-    errT = svd_bound_L2_opnorm(bZ * bT * bZ' - A)
+    errT = upper_bound_L2_opnorm(bZ * bT * bZ' - A)
 
-    sigma_Z = svdbox(bZ)
-    max_sigma = sigma_Z[1]
-    min_sigma = sigma_Z[end]
+    # Bound σ_max(Z) and 1/σ_min(Z) from orthogonality defect (see _compute_schur_bigfloat_direct)
+    errF_val = BigFloat(errF)
+    errF_val >= 1 && throw(ArgumentError(
+        "Schur factor too far from unitary: ‖Z'Z - I‖ = $errF_val"))
 
     norm_Z = setrounding(BigFloat, RoundUp) do
-        return BigFloat(abs(max_sigma.c)) + BigFloat(max_sigma.r)
+        return sqrt(one(BigFloat) + errF_val)
     end
-
-    min_sigma_lower = setrounding(BigFloat, RoundDown) do
-        return max(BigFloat(min_sigma.c) - BigFloat(min_sigma.r), zero(BigFloat))
-    end
-    min_sigma_lower <= 0 && throw(ArgumentError("Schur factor has non-positive smallest singular value bound"))
     norm_Z_inv = setrounding(BigFloat, RoundUp) do
-        return one(BigFloat) / min_sigma_lower
+        return one(BigFloat) / sqrt(one(BigFloat) - errF_val)
     end
 
     S = (T=T_big, Z=Q_big, values=diag(T_big))
@@ -1256,7 +1253,7 @@ function _compute_schur_bigfloat_refined(A::BallMatrix{BigFloat}; polynomial = n
     coeffs = collect(polynomial)
     pA = _polynomial_matrix(coeffs, A)
     pT = _polynomial_matrix(coeffs, bT)
-    errT_poly = svd_bound_L2_opnorm(bZ * pT * bZ' - pA)
+    errT_poly = upper_bound_L2_opnorm(bZ * pT * bZ' - pA)
 
     return S, errF, errT_poly, norm_Z, norm_Z_inv
 end
