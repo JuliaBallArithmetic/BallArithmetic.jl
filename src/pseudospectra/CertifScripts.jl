@@ -17,6 +17,7 @@ using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm,
                         solve_sylvester_oracle, estimate_2norm, OneInfNorm
 
 export dowork, dowork_ogita, dowork_ogita_bigfloat, adaptive_arcs!, bound_res_original,
+       bound_resolvent_schur, schur_to_original_resolvent,
        choose_snapshot_to_load, save_snapshot!, configure_certification!, set_schur_matrix!,
        compute_schur_and_error, CertificationCircle, points_on, run_certification,
        run_certification_ogita, poly_from_roots, polyconv,
@@ -928,38 +929,66 @@ function adaptive_arcs!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
 end
 
 """
-    bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N)
+    bound_resolvent_schur(l2pseudo, η)
 
-Return an upper bound on the ℓ₁ resolvent norm of the original matrix
-given the bounds obtained from the Schur form.
+Adjust the raw Schur pseudospectral resolvent for the trapezoid rule
+discretization error η. Returns a rigorous upper bound on the Schur resolvent.
 """
-function bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; Cbound = 1.0)
-    l2pseudo_sup = _upper_bound(l2pseudo) / (1 - η)
-    norm_Z_sup = max(_upper_bound_offset(norm_Z, 1), 0.0)
-    norm_Z_inv_sup = max(_upper_bound_offset(norm_Z_inv, 1), 0.0)
-    errF_sup = _upper_bound(errF)
-    errT_sup = _upper_bound(errT)
+function bound_resolvent_schur(l2pseudo, η)
+    return _upper_bound(l2pseudo) / (1 - η)
+end
 
-    ϵ = max(max(errF_sup, errT_sup), max(norm_Z_sup, norm_Z_inv_sup))
-    @info "The ϵ in the Schur theorems $ϵ"
+"""
+    schur_to_original_resolvent(resolvent_schur, ϵ; Cbound=1.0)
 
+Transform a Schur resolvent bound to the original matrix using the
+Schur perturbation theorem. Returns `Inf` when the bound is not
+computable (ε·resolvent too large for the perturbation estimate).
+"""
+function schur_to_original_resolvent(resolvent_schur, ϵ; Cbound=1.0)
     ball_ϵ = Ball(ϵ)
-    ball_l2pseudo = Ball(l2pseudo_sup)
+    ball_R = Ball(resolvent_schur)
     ball_C = Ball(Cbound)
     one = Ball(1.0)
     two = Ball(2.0)
 
     factor = one + ball_ϵ^2
-    numerator = two * factor * ball_l2pseudo * ball_C
-    denominator = one - two * ball_ϵ * factor * ball_l2pseudo
+    numerator = two * factor * ball_R * ball_C
+    denominator = one - two * ball_ϵ * factor * ball_R
 
     if inf(denominator) <= 0
-        @warn "bound_res_original: denominator non-positive (ε·‖resolvent‖ too large). " *
-              "Schur perturbation bound cannot certify; returning Inf." maxlog=1
         return Inf
     end
 
     return _upper_bound(numerator / denominator)
+end
+
+"""
+    bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; Cbound=1.0)
+
+Return an upper bound on the ℓ₁ resolvent norm of the original matrix
+given the bounds obtained from the Schur form.
+
+Thin wrapper that calls [`bound_resolvent_schur`](@ref) and
+[`schur_to_original_resolvent`](@ref).
+"""
+function bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; Cbound = 1.0)
+    resolvent_schur = bound_resolvent_schur(l2pseudo, η)
+
+    norm_Z_sup = max(_upper_bound_offset(norm_Z, 1), 0.0)
+    norm_Z_inv_sup = max(_upper_bound_offset(norm_Z_inv, 1), 0.0)
+    errF_sup = _upper_bound(errF)
+    errT_sup = _upper_bound(errT)
+    ϵ = max(max(errF_sup, errT_sup), max(norm_Z_sup, norm_Z_inv_sup))
+    @info "The ϵ in the Schur theorems $ϵ"
+
+    result = schur_to_original_resolvent(resolvent_schur, ϵ; Cbound)
+    if isinf(result)
+        @warn "bound_res_original: Schur perturbation bound cannot certify " *
+              "(ε=$ϵ, resolvent_schur=$resolvent_schur, ε·R=$(ϵ * resolvent_schur)). " *
+              "Returning Inf." maxlog=1
+    end
+    return result
 end
 
 """
@@ -1330,10 +1359,12 @@ function run_certification(A::BallMatrix, circle::CertificationCircle;
 
     min_sigma = minimum(log -> log.lo_val, certification_log)
     l2pseudo = maximum(log -> log.hi_res, certification_log)
+    resolvent_schur_bound = bound_resolvent_schur(l2pseudo, η)
     resolvent_bound = bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1); Cbound = Cbound)
 
     return (; schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
-        resolvent_schur = l2pseudo, resolvent_original = resolvent_bound, Cbound,
+        resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
+        resolvent_original = resolvent_bound, Cbound,
         errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
         snapshot_base = nothing)
 end
@@ -1730,6 +1761,7 @@ function run_certification_ogita(A::BallMatrix{T}, circle::CertificationCircle;
 
         min_sigma = minimum(log -> log.lo_val, certification_log)
         l2pseudo = maximum(log -> log.hi_res, certification_log)
+        resolvent_schur_bound = bound_resolvent_schur(l2pseudo, η)
         resolvent_bound = bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1); Cbound = Cbound)
 
         # Get cache statistics
@@ -1737,7 +1769,8 @@ function run_certification_ogita(A::BallMatrix{T}, circle::CertificationCircle;
         @info "Cache statistics: $(cache_stats)"
 
         return (; schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
-            resolvent_schur = l2pseudo, resolvent_original = resolvent_bound, Cbound,
+            resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
+            resolvent_original = resolvent_bound, Cbound,
             errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
             snapshot_base = nothing,
             optimization = :ogita_refinement,
@@ -1934,10 +1967,12 @@ function run_certification_parametric(A::BallMatrix{T}, circle::CertificationCir
 
     min_sigma = minimum(log -> log.lo_val, certification_log)
     l2pseudo = maximum(log -> log.hi_res, certification_log)
+    resolvent_schur_bound = bound_resolvent_schur(l2pseudo, η)
     resolvent_bound = bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1); Cbound = Cbound)
 
     return (; schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
-        resolvent_schur = l2pseudo, resolvent_original = resolvent_bound, Cbound,
+        resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
+        resolvent_original = resolvent_bound, Cbound,
         errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
         snapshot_base = nothing, k = k_used, parametric_precomp = precomp)
 end

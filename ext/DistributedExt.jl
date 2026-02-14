@@ -195,17 +195,20 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
 
         min_sigma = minimum(log -> log.lo_val, certification_log)
         l2pseudo = maximum(log -> log.hi_res, certification_log)
+        resolvent_schur_bound = CertifScripts.bound_resolvent_schur(l2pseudo, η)
         resolvent_bound = CertifScripts.bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1); Cbound = Cbound)
 
         # Include parametric info in result if used
         if use_parametric
             return (; schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
-                resolvent_schur = l2pseudo, resolvent_original = resolvent_bound, Cbound,
+                resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
+                resolvent_original = resolvent_bound, Cbound,
                 errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
                 snapshot_base, k = k_used, parametric_precomp)
         else
             return (; schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
-                resolvent_schur = l2pseudo, resolvent_original = resolvent_bound, Cbound,
+                resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
+                resolvent_original = resolvent_bound, Cbound,
                 errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
                 snapshot_base)
         end
