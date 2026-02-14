@@ -182,11 +182,14 @@ Achieves residuals ~10⁻⁷⁴ (vs ~10⁻¹⁴ for Float64→BigFloat).
 """
 function BallArithmetic.verified_lu_gla(A::AbstractMatrix{T};
                                          precision_bits::Int=256) where T
+    is_bigfloat_input = real(T) === BigFloat
     old_prec = precision(BigFloat)
-    setprecision(BigFloat, precision_bits)
+    if !is_bigfloat_input
+        setprecision(BigFloat, precision_bits)
+    end
 
     try
-        A_bf = BigFloat.(A)
+        A_bf = is_bigfloat_input ? A : BigFloat.(A)
         F = lu(A_bf)
 
         L_bf = Matrix(F.L)
@@ -197,13 +200,16 @@ function BallArithmetic.verified_lu_gla(A::AbstractMatrix{T};
         residual = A_bf[p, :] - L_bf * U_bf
         residual_norm = sqrt(sum(abs2, residual))
 
-        # Create BallMatrix enclosures
-        L_ball = BallArithmetic.BallMatrix(Float64.(L_bf), fill(Float64(residual_norm), size(L_bf)))
-        U_ball = BallArithmetic.BallMatrix(Float64.(U_bf), fill(Float64(residual_norm), size(U_bf)))
+        # Create BallMatrix enclosures — preserve BigFloat when input is BigFloat
+        OT = is_bigfloat_input ? real(T) : Float64
+        L_ball = BallArithmetic.BallMatrix(OT.(L_bf), fill(OT(residual_norm), size(L_bf)))
+        U_ball = BallArithmetic.BallMatrix(OT.(U_bf), fill(OT(residual_norm), size(U_bf)))
 
-        return BallArithmetic.VerifiedLUResult(L_ball, U_ball, p, true, Float64(residual_norm))
+        return BallArithmetic.VerifiedLUResult(L_ball, U_ball, p, true, OT(residual_norm))
     finally
-        setprecision(BigFloat, old_prec)
+        if !is_bigfloat_input
+            setprecision(BigFloat, old_prec)
+        end
     end
 end
 
@@ -219,11 +225,14 @@ Achieves residuals ~10⁻⁷⁴ (vs ~10⁻¹⁵ for Float64→BigFloat).
 """
 function BallArithmetic.verified_qr_gla(A::AbstractMatrix{T};
                                          precision_bits::Int=256) where T
+    is_bigfloat_input = real(T) === BigFloat
     old_prec = precision(BigFloat)
-    setprecision(BigFloat, precision_bits)
+    if !is_bigfloat_input
+        setprecision(BigFloat, precision_bits)
+    end
 
     try
-        A_bf = BigFloat.(A)
+        A_bf = is_bigfloat_input ? A : BigFloat.(A)
         F = qr(A_bf)
 
         Q_bf = Matrix(F.Q)
@@ -234,16 +243,20 @@ function BallArithmetic.verified_qr_gla(A::AbstractMatrix{T};
         residual_norm = sqrt(sum(abs2, residual))
 
         # Compute orthogonality defect
-        I_n = Matrix{BigFloat}(I, size(Q_bf, 2), size(Q_bf, 2))
+        RT_bf = real(eltype(A_bf))
+        I_n = Matrix{RT_bf}(I, size(Q_bf, 2), size(Q_bf, 2))
         orthog_defect = maximum(abs.(Q_bf' * Q_bf - I_n))
 
-        # Create BallMatrix enclosures
-        Q_ball = BallArithmetic.BallMatrix(Float64.(Q_bf), fill(Float64(residual_norm), size(Q_bf)))
-        R_ball = BallArithmetic.BallMatrix(Float64.(R_bf), fill(Float64(residual_norm), size(R_bf)))
+        # Create BallMatrix enclosures — preserve BigFloat when input is BigFloat
+        OT = is_bigfloat_input ? real(T) : Float64
+        Q_ball = BallArithmetic.BallMatrix(OT.(Q_bf), fill(OT(residual_norm), size(Q_bf)))
+        R_ball = BallArithmetic.BallMatrix(OT.(R_bf), fill(OT(residual_norm), size(R_bf)))
 
-        return BallArithmetic.VerifiedQRResult(Q_ball, R_ball, true, Float64(residual_norm), Float64(orthog_defect))
+        return BallArithmetic.VerifiedQRResult(Q_ball, R_ball, true, OT(residual_norm), OT(orthog_defect))
     finally
-        setprecision(BigFloat, old_prec)
+        if !is_bigfloat_input
+            setprecision(BigFloat, old_prec)
+        end
     end
 end
 
@@ -259,11 +272,14 @@ Achieves residuals ~10⁻⁷⁴ (vs ~10⁻¹⁶ for Float64→BigFloat).
 """
 function BallArithmetic.verified_cholesky_gla(A::AbstractMatrix{T};
                                                precision_bits::Int=256) where T
+    is_bigfloat_input = real(T) === BigFloat
     old_prec = precision(BigFloat)
-    setprecision(BigFloat, precision_bits)
+    if !is_bigfloat_input
+        setprecision(BigFloat, precision_bits)
+    end
 
     try
-        A_bf = BigFloat.(A)
+        A_bf = is_bigfloat_input ? A : BigFloat.(A)
         F = cholesky(A_bf)
 
         L_bf = Matrix(F.L)
@@ -272,12 +288,15 @@ function BallArithmetic.verified_cholesky_gla(A::AbstractMatrix{T};
         residual = A_bf - L_bf * L_bf'
         residual_norm = sqrt(sum(abs2, residual))
 
-        # Create BallMatrix enclosure
-        L_ball = BallArithmetic.BallMatrix(Float64.(L_bf), fill(Float64(residual_norm), size(L_bf)))
+        # Create BallMatrix enclosure — preserve BigFloat when input is BigFloat
+        OT = is_bigfloat_input ? real(T) : Float64
+        L_ball = BallArithmetic.BallMatrix(OT.(L_bf), fill(OT(residual_norm), size(L_bf)))
 
-        return BallArithmetic.VerifiedCholeskyResult(L_ball, true, Float64(residual_norm))
+        return BallArithmetic.VerifiedCholeskyResult(L_ball, true, OT(residual_norm))
     finally
-        setprecision(BigFloat, old_prec)
+        if !is_bigfloat_input
+            setprecision(BigFloat, old_prec)
+        end
     end
 end
 
@@ -293,11 +312,14 @@ Tuple (U, S, V, residual_norm) where U, V are BallMatrix enclosures.
 """
 function BallArithmetic.verified_svd_gla(A::AbstractMatrix{T};
                                           precision_bits::Int=256) where T
+    is_bigfloat_input = real(T) === BigFloat
     old_prec = precision(BigFloat)
-    setprecision(BigFloat, precision_bits)
+    if !is_bigfloat_input
+        setprecision(BigFloat, precision_bits)
+    end
 
     try
-        A_bf = BigFloat.(A)
+        A_bf = is_bigfloat_input ? A : BigFloat.(A)
         F = svd(A_bf)
 
         U_bf = Matrix(F.U)
@@ -308,14 +330,17 @@ function BallArithmetic.verified_svd_gla(A::AbstractMatrix{T};
         residual = A_bf - U_bf * Diagonal(S_bf) * V_bf'
         residual_norm = sqrt(sum(abs2, residual))
 
-        # Create BallMatrix enclosures
-        U_ball = BallArithmetic.BallMatrix(Float64.(U_bf), fill(Float64(residual_norm), size(U_bf)))
-        V_ball = BallArithmetic.BallMatrix(Float64.(V_bf), fill(Float64(residual_norm), size(V_bf)))
-        S_float = Float64.(S_bf)
+        # Create BallMatrix enclosures — preserve BigFloat when input is BigFloat
+        OT = is_bigfloat_input ? real(T) : Float64
+        U_ball = BallArithmetic.BallMatrix(OT.(U_bf), fill(OT(residual_norm), size(U_bf)))
+        V_ball = BallArithmetic.BallMatrix(OT.(V_bf), fill(OT(residual_norm), size(V_bf)))
+        S_out = OT.(S_bf)
 
-        return (U_ball, S_float, V_ball, Float64(residual_norm))
+        return (U_ball, S_out, V_ball, OT(residual_norm))
     finally
-        setprecision(BigFloat, old_prec)
+        if !is_bigfloat_input
+            setprecision(BigFloat, old_prec)
+        end
     end
 end
 
@@ -332,14 +357,18 @@ Achieves residuals ~10⁻⁷⁴ (vs ~10⁻¹⁴ for Float64→BigFloat).
 function BallArithmetic.verified_polar_gla(A::AbstractMatrix{T};
                                             precision_bits::Int=256,
                                             right::Bool=true) where T
+    is_bigfloat_input = real(T) === BigFloat
     old_prec = precision(BigFloat)
-    setprecision(BigFloat, precision_bits)
+    if !is_bigfloat_input
+        setprecision(BigFloat, precision_bits)
+    end
 
     try
-        A_bf = BigFloat.(A)
+        A_bf = is_bigfloat_input ? A : BigFloat.(A)
         n = size(A_bf, 1)
         size(A_bf, 1) == size(A_bf, 2) || throw(DimensionMismatch("A must be square for polar decomposition"))
 
+        RT_bf = real(eltype(A_bf))
         F = svd(A_bf)
 
         U_bf = Matrix(F.U)
@@ -355,8 +384,8 @@ function BallArithmetic.verified_polar_gla(A::AbstractMatrix{T};
         Q_mid = U_bf * V_bf'
 
         # Error in Q: |ΔQ| ≤ 2 * svd_error / σ_min
-        σ_pos = S_bf[S_bf .> eps(BigFloat)]
-        Q_rad = isempty(σ_pos) ? fill(BigFloat(Inf), n, n) : fill(2 * svd_error / minimum(σ_pos), n, n)
+        σ_pos = S_bf[S_bf .> eps(RT_bf)]
+        Q_rad = isempty(σ_pos) ? fill(RT_bf(Inf), n, n) : fill(2 * svd_error / minimum(σ_pos), n, n)
 
         if right
             # P = V Σ V^H
@@ -382,7 +411,9 @@ function BallArithmetic.verified_polar_gla(A::AbstractMatrix{T};
 
         return BallArithmetic.VerifiedPolarResult(Q_ball, P_ball, right, true, residual_norm)
     finally
-        setprecision(BigFloat, old_prec)
+        if !is_bigfloat_input
+            setprecision(BigFloat, old_prec)
+        end
     end
 end
 

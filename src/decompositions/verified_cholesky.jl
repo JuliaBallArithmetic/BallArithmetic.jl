@@ -76,8 +76,6 @@ function verified_cholesky(A::AbstractMatrix{T};
                            use_bigfloat::Bool=true) where T<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}
     if real(T) === BigFloat
         use_bigfloat = true
-        @warn "verified_cholesky with BigFloat input uses Float64-seeded refinement. " *
-              "For full-precision BigFloat, use `verified_cholesky_gla` (requires `using GenericLinearAlgebra`)." maxlog=1
     end
     n = size(A, 1)
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("A must be square"))

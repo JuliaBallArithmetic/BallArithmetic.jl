@@ -94,8 +94,6 @@ function verified_polar(A::AbstractMatrix{T};
                         use_bigfloat::Bool=true) where T<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}
     if real(T) === BigFloat
         use_bigfloat = true
-        @warn "verified_polar with BigFloat input uses Float64-seeded SVD approximation. " *
-              "For full-precision BigFloat, use `verified_polar_gla` (requires `using GenericLinearAlgebra`)." maxlog=1
     end
     n = size(A, 1)
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("A must be square for polar decomposition"))
@@ -109,9 +107,8 @@ function verified_polar(A::AbstractMatrix{T};
     RWT = real(WT)
 
     # Step 1: Compute SVD A = U Σ V^H
-    # Use Julia's built-in SVD as starting point, then refine
-    # For BigFloat input, compute Float64 SVD as initial approximation
-    F = real(T) === BigFloat ? svd(convert.(Float64, A)) : svd(A)
+    # For BigFloat input, use svd_bigfloat (GLA) for full-precision SVD
+    F = real(T) === BigFloat ? svd_bigfloat(A) : svd(A)
     U_approx = F.U
     σ_approx = F.S
     V_approx = F.Vt'  # V, not V^H
@@ -131,32 +128,33 @@ function verified_polar(A::AbstractMatrix{T};
         V_w = _to_working(V_approx, use_bigfloat)
 
         # Refine SVD (simple Newton-like iteration)
-        # For rigorous bounds, we'd use the full Ogita refinement
-        # Here we do a simplified version
-        for _ in 1:3
-            # Improve V: V_new from A^H U = V Σ
-            AHU = A_w' * U_w
-            for j in 1:n
-                if σ_w[j] > eps(RWT)
-                    V_w[:, j] = AHU[:, j] / σ_w[j]
+        # Skip for BigFloat input — GLA SVD is already high quality (~10⁻⁷⁴ residual)
+        if real(T) !== BigFloat
+            for _ in 1:3
+                # Improve V: V_new from A^H U = V Σ
+                AHU = A_w' * U_w
+                for j in 1:n
+                    if σ_w[j] > eps(RWT)
+                        V_w[:, j] = AHU[:, j] / σ_w[j]
+                    end
                 end
-            end
-            # Re-orthogonalize V
-            V_w, _ = _gram_schmidt_working(V_w)
+                # Re-orthogonalize V
+                V_w, _ = _gram_schmidt_working(V_w)
 
-            # Improve U: U_new from A V = U Σ
-            AV = A_w * V_w
-            for j in 1:n
-                if σ_w[j] > eps(RWT)
-                    U_w[:, j] = AV[:, j] / σ_w[j]
+                # Improve U: U_new from A V = U Σ
+                AV = A_w * V_w
+                for j in 1:n
+                    if σ_w[j] > eps(RWT)
+                        U_w[:, j] = AV[:, j] / σ_w[j]
+                    end
                 end
-            end
-            # Re-orthogonalize U
-            U_w, _ = _gram_schmidt_working(U_w)
+                # Re-orthogonalize U
+                U_w, _ = _gram_schmidt_working(U_w)
 
-            # Update singular values
-            for j in 1:n
-                σ_w[j] = real(U_w[:, j]' * A_w * V_w[:, j])
+                # Update singular values
+                for j in 1:n
+                    σ_w[j] = real(U_w[:, j]' * A_w * V_w[:, j])
+                end
             end
         end
 
