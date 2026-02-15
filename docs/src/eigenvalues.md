@@ -73,6 +73,7 @@ Rigorous block Schur decomposition for eigenvalue clustering.
 - [`extract_cluster_block`](@ref) - Extract diagonal block for cluster
 - [`refine_schur_decomposition`](@ref) - Newton-based iterative refinement
 - [`rigorous_schur_bigfloat`](@ref) - BigFloat precision variant
+- [`certify_schur_decomposition`](@ref) - Wrap a `SchurRefinementResult` in `BallMatrix` form
 
 ### Auxiliary Functions
 
@@ -82,4 +83,60 @@ Rigorous block Schur decomposition for eigenvalue clustering.
 
 - [`RigorousBlockSchurResult`](@ref) - Block Schur result
 - [`SchurRefinementResult`](@ref) - Refinement result
+
+## Limitations of Mixed-Precision Schur Refinement
+
+The iterative Schur refinement algorithm ([BujanovicKressnerSchroder2022](@cite)) achieves
+fast convergence by solving the triangular matrix equation ``\operatorname{stril}(TL - LT) = -E``
+in **low precision** (Float64). This works well when the eigenvalues of ``T`` are
+well-separated in Float64 arithmetic. However, the approach can fail on
+matrices with extreme eigenvalue clustering.
+
+### When does it fail?
+
+The triangular solve requires dividing by eigenvalue differences
+``T_{ii} - T_{jj}``. When these differences fall below Float64 machine epsilon
+(``\approx 2.2 \times 10^{-16}``), the low-precision solver cannot distinguish
+them and zeroes out the corresponding entries of ``L``. This prevents the
+correction ``W = L - L^H`` from fixing the associated components of the residual.
+
+**Symptom:** the orthogonality defect ``\|Q^H Q - I\|`` converges quadratically
+(Newton-Schulz keeps working), but the **residual**
+``\|\operatorname{stril}(Q^H A Q)\|_2 / \|A\|_F`` **stalls** at a fixed value,
+typically around ``10^{-22}`` to ``10^{-16}``, far above the target tolerance.
+
+Solving the triangular equation in BigFloat instead does not help either: when
+eigenvalue gaps are tiny (e.g. ``10^{-60}``), the entries of ``L`` become enormous
+(``\|L\| \gg 1``), violating the small-perturbation assumption of the Newton-like
+iteration, which then diverges.
+
+### Example: GKW transfer operator (257 × 257)
+
+A concrete example arises from Gauss-Kuzmin-Wirsing transfer operators truncated
+at ``K = 256``. The resulting matrix has:
+
+| Property | Value |
+|----------|-------|
+| Condition number | ``\approx 1.5 \times 10^{61}`` |
+| Eigenvalues with ``|\lambda| < 10^{-60}`` | 42 out of 257 |
+| Eigenvalues with ``|\lambda| < 10^{-20}`` | 209 out of 257 |
+| Minimum eigenvalue separation | ``\approx 3.5 \times 10^{-60}`` |
+| Spectral radius | ``\approx 1.0`` |
+
+With a Float64 Schur seed, refinement stalls at residual ``\approx 3.75 \times 10^{-22}``
+(target: ``\approx 8.9 \times 10^{-160}``), because Float64 cannot resolve 80%
+of the eigenvalue spectrum.
+
+### Recommended alternatives
+
+For matrices where the eigenvalue separation is below Float64 resolution:
+
+1. **Direct BigFloat Schur** via `GenericSchur.jl`: compute the Schur decomposition
+   directly at the target precision, bypassing iterative refinement entirely.
+   Pass the result via the `schur_seed` keyword argument of
+   [`rigorous_schur_bigfloat`](@ref) to certify it.
+
+2. **Block Schur refinement**: group nearly-degenerate eigenvalue clusters into
+   blocks and refine the block structure, avoiding division by small eigenvalue
+   differences. See [`rigorous_block_schur`](@ref).
 
