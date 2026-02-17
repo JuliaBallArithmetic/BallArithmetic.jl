@@ -133,7 +133,8 @@ export project_onto_eigenspace, project_onto_schur_subspace,
 include("eigenvalues/spectral_projection_schur.jl")
 export SchurSpectralProjectorResult, compute_spectral_projector_schur,
     compute_spectral_projector_hermitian, project_vector_spectral,
-    verify_spectral_projector_properties
+    verify_spectral_projector_properties,
+    SpectralCoefficientResult, compute_spectral_coefficient
 include("eigenvalues/iterative_schur_refinement.jl")
 export SchurRefinementResult, refine_schur_decomposition, rigorous_schur_bigfloat,
     newton_schulz_orthogonalize!
@@ -248,8 +249,10 @@ export VerifiedLinearSystemResult, verified_linear_solve_hmatrix
 
 include("pseudospectra/sylvester_resolvent_bound.jl")
 include("pseudospectra/CertifScripts.jl")
+include("linear_system/triangular_eigenvectors.jl")
 include("linear_system/sylvester.jl")
 
+export triangular_eigenvectors
 export sylvester_miyajima_enclosure, triangular_sylvester_miyajima_enclosure
 
 # Sylvester-based resolvent bounds

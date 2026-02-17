@@ -391,3 +391,145 @@ end
         @test all(isfinite, mid(Y))
     end
 end
+
+@testset "ordered_schur_data kwarg (Feature 3)" begin
+
+    @testset "Consistency: ordered_schur_data vs schur_data + ordschur" begin
+        A_mid = [4.0 1.0 0.0; 0.0 3.0 0.5; 0.0 0.0 1.0]
+        A = BallMatrix(A_mid, fill(1e-10, 3, 3))
+
+        # Standard path
+        result_std = compute_spectral_projector_schur(A, 1:2)
+
+        # Manually pre-order and pass ordered_schur_data
+        F = schur(A_mid)
+        result_ord = compute_spectral_projector_schur(A, 1:2;
+            ordered_schur_data=(F.Z, F.T, 2))
+
+        @test mid(result_std.projector) ≈ mid(result_ord.projector) atol = 1e-10
+    end
+
+    @testset "ordered_schur_data skips ordschur for non-1:k indices" begin
+        A_mid = triu(randn(4, 4)) .+ Diagonal([1.0, 3.0, 7.0, 10.0])
+        A = BallMatrix(A_mid, fill(1e-10, 4, 4))
+
+        # Use standard path with reordering
+        result_vec = compute_spectral_projector_schur(A, [1, 3])
+
+        # Pre-compute reordered Schur
+        F = schur(A_mid)
+        select = falses(4); select[1] = true; select[3] = true
+        F_ord = ordschur(F, BitVector(select))
+
+        result_pre = compute_spectral_projector_schur(A, [1, 3];
+            ordered_schur_data=(F_ord.Z, F_ord.T, 2))
+
+        @test mid(result_vec.projector) ≈ mid(result_pre.projector) atol = 1e-6
+    end
+
+    @testset "Error on mismatched k" begin
+        A = BallMatrix([1.0 2.0; 0.0 3.0], fill(1e-10, 2, 2))
+        F = schur(A.c)
+        @test_throws ArgumentError compute_spectral_projector_schur(A, 1:1;
+            ordered_schur_data=(F.Z, F.T, 2))  # k=2 vs cluster size 1
+    end
+end
+
+@testset "compute_spectral_coefficient (Feature 2)" begin
+
+    @testset "k=1 scalar: matches full projector" begin
+        A_mid = [1.0 2.0 0.5; 0.0 3.0 1.0; 0.0 0.0 5.0]
+        A = BallMatrix(A_mid, fill(1e-10, 3, 3))
+        v = [1.0, 2.0, 3.0]
+
+        # Full projector path
+        result_full = compute_spectral_projector_schur(A, 1:1)
+        Pv_full = mid(result_full.projector) * v
+
+        # Coefficient path
+        coeff_result = compute_spectral_coefficient(A, v, 1:1)
+        c = mid(coeff_result.coefficients)
+
+        # The spectral coefficient c[1] should equal the first component
+        # of P*v in Schur coordinates, i.e. [I Y] * Q^H * v
+        # The full projected vector is Q * [I Y; 0 0] * Q^H v = Q * [c; 0]
+        Q = coeff_result.schur_basis
+        Pv_from_coeff = Q[:, 1:1] * c
+        @test Pv_from_coeff ≈ Pv_full atol = 1e-8
+    end
+
+    @testset "k=2 cluster: matches full projector" begin
+        A_mid = triu(randn(5, 5)) .+ Diagonal([1.0, 2.0, 7.0, 8.0, 15.0])
+        A = BallMatrix(A_mid, fill(1e-10, 5, 5))
+        v = randn(5)
+
+        result_full = compute_spectral_projector_schur(A, 1:2)
+        Pv_full = mid(result_full.projector) * v
+
+        coeff_result = compute_spectral_coefficient(A, v, 1:2)
+        c = mid(coeff_result.coefficients)
+        Q = coeff_result.schur_basis
+        Pv_from_coeff = Q[:, 1:2] * c
+        @test Pv_from_coeff ≈ Pv_full atol = 1e-6
+    end
+
+    @testset "BallVector input" begin
+        A_mid = [1.0 2.0 0.5; 0.0 3.0 1.0; 0.0 0.0 5.0]
+        A = BallMatrix(A_mid, fill(1e-10, 3, 3))
+        v = BallVector([1.0, 2.0, 3.0], [1e-8, 1e-8, 1e-8])
+
+        coeff_result = compute_spectral_coefficient(A, v, 1:1)
+        @test all(isfinite, mid(coeff_result.coefficients))
+        @test all(r -> r >= 0 && isfinite(r), rad(coeff_result.coefficients))
+        # Radii should be positive due to input radii
+        @test all(r -> r > 0, rad(coeff_result.coefficients))
+    end
+
+    @testset "ordered_schur_data kwarg" begin
+        A_mid = [1.0 2.0 0.5; 0.0 3.0 1.0; 0.0 0.0 5.0]
+        A = BallMatrix(A_mid, fill(1e-10, 3, 3))
+        v = [1.0, 2.0, 3.0]
+
+        F = schur(A_mid)
+
+        # Standard
+        result1 = compute_spectral_coefficient(A, v, 1:1)
+        # With pre-computed ordered Schur
+        result2 = compute_spectral_coefficient(A, v, 1:1;
+            ordered_schur_data=(F.Z, F.T, 1))
+
+        @test mid(result1.coefficients) ≈ mid(result2.coefficients) atol = 1e-12
+    end
+
+    @testset "Non-contiguous indices" begin
+        A_mid = triu(randn(4, 4)) .+ Diagonal([1.0, 5.0, 2.0, 8.0])
+        A = BallMatrix(A_mid, fill(1e-10, 4, 4))
+        v = randn(4)
+
+        # Full projector with reordering
+        result_full = compute_spectral_projector_schur(A, [1, 3])
+        Pv_full = mid(result_full.projector) * v
+
+        # Coefficient
+        coeff_result = compute_spectral_coefficient(A, v, [1, 3])
+        c = mid(coeff_result.coefficients)
+        Q = coeff_result.schur_basis
+        Pv_from_coeff = Q[:, 1:2] * c
+        @test Pv_from_coeff ≈ Pv_full atol = 1e-6
+    end
+
+    @testset "BigFloat precision" begin
+        old_prec = precision(BigFloat)
+        setprecision(BigFloat, 256)
+        try
+            A_mid = BigFloat[1 2 0; 0 5 1; 0 0 9]
+            A = BallMatrix(A_mid)
+            v = BigFloat[1, 2, 3]
+
+            coeff_result = compute_spectral_coefficient(A, v, 1:1)
+            @test all(isfinite, mid(coeff_result.coefficients))
+        finally
+            setprecision(BigFloat, old_prec)
+        end
+    end
+end

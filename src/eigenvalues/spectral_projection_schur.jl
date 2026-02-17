@@ -146,13 +146,22 @@ result = compute_spectral_projector_schur(A, 1:2)
 function compute_spectral_projector_schur(A::BallMatrix{T, NT},
                                           cluster_indices::UnitRange{Int};
                                           verify_idempotency::Bool=true,
-                                          schur_data=nothing) where {T, NT}
+                                          schur_data=nothing,
+                                          ordered_schur_data=nothing) where {T, NT}
     n = size(A, 1)
     n == size(A, 2) || throw(DimensionMismatch("A must be square"))
 
     k = length(cluster_indices)
     k >= 1 || throw(ArgumentError("Cluster must contain at least one index"))
     k < n || throw(ArgumentError("Cluster cannot contain all indices (would be identity)"))
+
+    # Priority: ordered_schur_data > schur_data > compute from A
+    if ordered_schur_data !== nothing
+        Q_ord, T_ord, k_ord = ordered_schur_data
+        k_ord == k || throw(ArgumentError("ordered_schur_data k=$k_ord does not match cluster size $k"))
+        return _spectral_projector_from_ordered_schur(Q_ord, T_ord, k, T, NT, n,
+                                                       verify_idempotency)
+    end
 
     # Step 1: Compute Schur decomposition of the center matrix (or use provided)
     if schur_data !== nothing
@@ -209,7 +218,8 @@ result = compute_spectral_projector_schur(A, [2, 4])
 function compute_spectral_projector_schur(A::BallMatrix{T, NT},
                                           target_indices::AbstractVector{Int};
                                           verify_idempotency::Bool=true,
-                                          schur_data=nothing) where {T, NT}
+                                          schur_data=nothing,
+                                          ordered_schur_data=nothing) where {T, NT}
     n = size(A, 1)
     n == size(A, 2) || throw(DimensionMismatch("A must be square"))
 
@@ -217,6 +227,14 @@ function compute_spectral_projector_schur(A::BallMatrix{T, NT},
     k >= 1 || throw(ArgumentError("Must target at least one eigenvalue"))
     k < n || throw(ArgumentError("Cannot target all eigenvalues (would be identity)"))
     all(1 .<= target_indices .<= n) || throw(ArgumentError("Indices must be in 1:$n"))
+
+    # Priority: ordered_schur_data > schur_data > compute from A
+    if ordered_schur_data !== nothing
+        Q_ord, T_ord, k_ord = ordered_schur_data
+        k_ord == k || throw(ArgumentError("ordered_schur_data k=$k_ord does not match cluster size $k"))
+        return _spectral_projector_from_ordered_schur(Q_ord, T_ord, k, T, NT, n,
+                                                       verify_idempotency)
+    end
 
     # Step 1: Compute Schur decomposition (or use provided)
     if schur_data !== nothing
@@ -253,8 +271,8 @@ function _spectral_projector_from_ordered_schur(Q::AbstractMatrix, Tmat::Abstrac
     T11 = Tmat[1:k, 1:k]
     T22 = Tmat[(k+1):n, (k+1):n]
 
-    eig_T11 = eigvals(T11)
-    eig_T22 = eigvals(T22)
+    eig_T11 = diag(T11)
+    eig_T22 = diag(T22)
 
     eigenvalue_separation = minimum(
         abs(λ1 - λ2) for λ1 in eig_T11 for λ2 in eig_T22
@@ -473,4 +491,144 @@ function verify_spectral_projector_properties(result::SchurSpectralProjectorResu
     end
 
     return all(checks)
+end
+
+
+"""
+    SpectralCoefficientResult{T, NT}
+
+Result of computing spectral coefficients without forming the full projector.
+
+# Fields
+- `coefficients::BallVector{T, NT}`: k-vector of spectral coefficients `[I_k  Y] * Q^H v`
+- `left_eigenvector_schur::BallMatrix{T, NT}`: The `[I_k  Y]` block in Schur basis (k × n)
+- `coupling_matrix::Union{BallMatrix{T, NT}, Nothing}`: Solution Y of Sylvester equation
+- `eigenvalue_separation::T`: Lower bound on min|λᵢ - λⱼ| for i ∈ cluster, j ∉ cluster
+- `schur_basis::Matrix{NT}`: Unitary matrix Q from A = QTQ^†
+- `schur_form::Matrix{NT}`: Upper triangular T from A = QTQ^†
+"""
+struct SpectralCoefficientResult{T, NT}
+    coefficients::BallVector{T, NT}
+    left_eigenvector_schur::BallMatrix{T, NT}
+    coupling_matrix::Union{BallMatrix{T, NT}, Nothing}
+    eigenvalue_separation::T
+    schur_basis::Matrix{NT}
+    schur_form::Matrix{NT}
+end
+
+"""
+    compute_spectral_coefficient(A::BallMatrix, v::AbstractVector,
+                                  cluster_indices;
+                                  schur_data=nothing,
+                                  ordered_schur_data=nothing)
+
+Compute spectral coefficients `P * v` restricted to the cluster subspace, without
+forming the full n × n projector. This is O(n²) per eigenvalue instead of O(n³).
+
+# Algorithm
+Given ordered Schur `A = Q T Q^H` with target eigenvalues at positions 1:k:
+1. Solve the Sylvester equation for the k × (n-k) coupling matrix Y
+2. Compute `q = Q^H v` (matrix-vector multiply, O(n²))
+3. Return `coefficients = q[1:k] + Y * q[(k+1):n]` (O(nk))
+
+# Arguments
+- `A::BallMatrix`: Square interval matrix (n × n)
+- `v::AbstractVector`: Vector to project (length n), can be `BallVector` or plain vector
+- `cluster_indices`: Eigenvalue indices — `UnitRange{Int}` or `AbstractVector{Int}`
+- `schur_data=nothing`: Optional `(Q, T)` Schur factors
+- `ordered_schur_data=nothing`: Optional `(Q_ord, T_ord, k)` — pre-ordered, skips ordschur
+
+# Returns
+[`SpectralCoefficientResult`](@ref) with the k-vector of coefficients and diagnostics.
+"""
+function compute_spectral_coefficient(A::BallMatrix{T, NT},
+                                       v::AbstractVector,
+                                       cluster_indices;
+                                       schur_data=nothing,
+                                       ordered_schur_data=nothing) where {T, NT}
+    n = size(A, 1)
+    n == size(A, 2) || throw(DimensionMismatch("A must be square"))
+    length(v) == n || throw(DimensionMismatch("v must have length $n"))
+
+    k = length(cluster_indices)
+    k >= 1 || throw(ArgumentError("Cluster must contain at least one index"))
+    k < n || throw(ArgumentError("Cluster cannot contain all indices"))
+
+    # Get ordered Schur data
+    if ordered_schur_data !== nothing
+        Q, Tmat, k_ord = ordered_schur_data
+        k_ord == k || throw(ArgumentError("ordered_schur_data k=$k_ord does not match cluster size $k"))
+    else
+        # Compute or use provided Schur decomposition
+        if schur_data !== nothing
+            Q, Tmat = schur_data
+        else
+            A_center = A.c
+            F = schur(A_center)
+            Q = F.Z
+            Tmat = F.T
+        end
+
+        # Reorder if needed
+        if !(cluster_indices isa UnitRange && cluster_indices == 1:k)
+            select = falses(n)
+            if cluster_indices isa UnitRange
+                select[cluster_indices] .= true
+            else
+                for idx in cluster_indices
+                    select[idx] = true
+                end
+            end
+            F_schur = Schur(Matrix(Tmat), Matrix(Q), diag(Tmat))
+            F_ord = ordschur(F_schur, BitVector(select))
+            Q = F_ord.Z
+            Tmat = F_ord.T
+        end
+    end
+
+    # Eigenvalue separation
+    T11 = Tmat[1:k, 1:k]
+    T22 = Tmat[(k+1):n, (k+1):n]
+    eig_T11 = diag(T11)
+    eig_T22 = diag(T22)
+
+    eigenvalue_separation = minimum(
+        abs(λ1 - λ2) for λ1 in eig_T11 for λ2 in eig_T22
+    )
+
+    realtype = float(T)
+    if eigenvalue_separation < 10 * eps(realtype)
+        @warn "Eigenvalue separation very small ($eigenvalue_separation). " *
+              "Coefficients may be ill-conditioned."
+    end
+
+    # Solve Sylvester equation for Y (k × (n-k))
+    Y_transposed = triangular_sylvester_miyajima_enclosure(Tmat, k)
+    Y_ball = BallMatrix(-adjoint(Y_transposed.c), transpose(Y_transposed.r))
+
+    # Construct [I_k  Y] block (k × n) in Schur basis
+    IY_c = zeros(NT, k, n)
+    IY_r = zeros(realtype, k, n)
+    IY_c[1:k, 1:k] .= Matrix{NT}(I, k, k)
+    IY_c[1:k, (k+1):n] .= Y_ball.c
+    IY_r[1:k, (k+1):n] .= Y_ball.r
+    IY_ball = BallMatrix(IY_c, IY_r)
+
+    # Compute q = Q^H * v (O(n^2) matrix-vector product)
+    Q_adj = adjoint(Q)
+    if v isa BallVector
+        q = BallMatrix(Q_adj) * v
+    else
+        q_mid = Q_adj * v
+        q = BallVector(q_mid)
+    end
+
+    # Compute coefficients = [I_k  Y] * q = q[1:k] + Y * q[(k+1):n] (O(nk))
+    coefficients = IY_ball * q
+
+    return SpectralCoefficientResult(
+        coefficients, IY_ball, Y_ball,
+        eigenvalue_separation,
+        Matrix(Q), Matrix(Tmat)
+    )
 end

@@ -935,6 +935,9 @@ Adjust the raw Schur pseudospectral resolvent for the trapezoid rule
 discretization error η. Returns a rigorous upper bound on the Schur resolvent.
 """
 function bound_resolvent_schur(l2pseudo, η)
+    if η >= 1
+        return Inf
+    end
     return _upper_bound(l2pseudo) / (1 - η)
 end
 

@@ -23,16 +23,24 @@ function sylvester_miyajima_enclosure(A::AbstractMatrix, B::AbstractMatrix,
         _real_type(eltype(C)), _real_type(eltype(X̃)))
 
     AMat = Matrix(A)
-    eigA = eigen(AMat)
-    VA = Matrix(eigA.vectors)
-    λA = eigA.values
-    WA = inv(VA)
+    if (istriu(AMat) || istril(AMat)) && _has_distinct_diagonal(AMat, eps(realtype))
+        VA, WA, λA = triangular_eigenvectors(AMat; tol=eps(realtype))
+    else
+        eigA = eigen(AMat)
+        VA = Matrix(eigA.vectors)
+        λA = eigA.values
+        WA = inv(VA)
+    end
 
     BT = Matrix(transpose(B))
-    eigBT = eigen(BT)
-    VB = Matrix(eigBT.vectors)
-    λB = eigBT.values
-    WB = inv(VB)
+    if (istriu(BT) || istril(BT)) && _has_distinct_diagonal(BT, eps(realtype))
+        VB, WB, λB = triangular_eigenvectors(BT; tol=eps(realtype))
+    else
+        eigBT = eigen(BT)
+        VB = Matrix(eigBT.vectors)
+        λB = eigBT.values
+        WB = inv(VB)
+    end
 
     VA_ball = BallMatrix(VA)
     WA_ball = BallMatrix(WA)
@@ -178,7 +186,7 @@ end
 """
     triangular_sylvester_miyajima_enclosure(T, k)
 
-Construct the Miyajima enclosure for the Sylvester system associated with the
+Construct a verified enclosure for the Sylvester system associated with the
 upper-triangular matrix `T` partitioned as
 
 ```
@@ -189,9 +197,10 @@ T = [T₁₁  T₁₂;
 where `T₁₁` is `k × k`.  The enclosure is computed for the solution `Y₂` of the
 transformed Sylvester equation `T₂₂' * Y₂ - Y₂ * T₁₁' = T₁₂'`.  Forming the
 standard Sylvester data `A = T₂₂'`, `B = -T₁₁'`, and `C = T₁₂'`, the routine
-solves for an approximate `Y₂` and then calls [`sylvester_miyajima_enclosure`](@ref)
-to obtain a verified bound.  The returned `BallMatrix` encloses the exact `Y₂`
-entrywise.
+first attempts a Miyajima-style eigenvector-based enclosure, and falls back to
+a direct column-by-column triangular solve in ball arithmetic when the
+eigenvector approach fails (e.g. for large ill-conditioned triangular matrices
+where the eigenvector condition number is too large).
 
 The matrix `T` must be square and upper triangular, and the block size `k`
 must satisfy `1 ≤ k < size(T, 1)`.
@@ -209,20 +218,24 @@ function triangular_sylvester_miyajima_enclosure(T::AbstractMatrix, k::Integer)
     T22 = @view Tmat[(k + 1):n, (k + 1):n]
     T12 = @view Tmat[1:k, (k + 1):n]
 
-    A = Matrix{Ttype}(adjoint(T22))
-    B = -Matrix{Ttype}(adjoint(T11))
+    A = Matrix{Ttype}(adjoint(T22))   # lower triangular
+    B = -Matrix{Ttype}(adjoint(T11))  # lower triangular
     C = Matrix{Ttype}(adjoint(T12))
 
-    mA = size(A, 1)
-    nB = size(B, 1)
-    ImA = Matrix{Ttype}(I, mA, mA)
-    InB = Matrix{Ttype}(I, nB, nB)
-    K = kron(InB, A) + kron(transpose(B), ImA)
-    Y_vec = K \ vec(C)
+    # Approximate solution via column-by-column triangular solve (O(n²k))
+    Ỹ = _sylvester_triangular_columns(A, B, C)
 
-    Ỹ = reshape(Y_vec, mA, nB)
+    # Try Miyajima eigenvector-based enclosure first (tighter bounds)
+    try
+        return sylvester_miyajima_enclosure(A, B, C, Ỹ)
+    catch e
+        if !(e isa ArgumentError)
+            rethrow()
+        end
+    end
 
-    return sylvester_miyajima_enclosure(A, B, C, Ỹ)
+    # Fallback: direct column-by-column solve in ball arithmetic
+    return _sylvester_triangular_direct_ball(A, B, C)
 end
 
 """
@@ -305,6 +318,112 @@ function triangular_sylvester_miyajima_enclosure(T_ball::BallMatrix, k::Integer)
     inflated_rad = rad(Y_mid_ball) .+ fill(delta_Y_norm, m_Y, n_Y)
 
     return BallMatrix(mid(Y_mid_ball), inflated_rad)
+end
+
+# ============================================================================
+# Direct triangular Sylvester solver (no eigenvector decomposition)
+# ============================================================================
+
+"""
+    _sylvester_triangular_columns(A, B, C)
+
+Solve `A * X + X * B = C` column-by-column when A is lower triangular and B is
+lower triangular. Uses forward substitution on triangular systems — O(m²k)
+where m = size(A,1) and k = size(B,1).
+
+For B lower triangular, column j (sweeping j = k, k-1, ..., 1):
+    (A + B[j,j]*I) * x_j = c_j - Σ_{l>j} x_l * B[l,j]
+Each (A + B[j,j]*I) is lower triangular.
+"""
+function _sylvester_triangular_columns(A::AbstractMatrix{T},
+                                        B::AbstractMatrix{T},
+                                        C::AbstractMatrix{T}) where T
+    m = size(A, 1)
+    k = size(B, 1)
+    X = zeros(T, m, k)
+
+    for j in k:-1:1
+        rhs = C[:, j]
+        for l in (j+1):k
+            rhs = rhs .- X[:, l] .* B[l, j]
+        end
+        # Solve (A + B[j,j]*I) * x_j = rhs — lower triangular forward substitution
+        L = A + B[j, j] * I
+        X[:, j] = _forward_substitution(L, rhs)
+    end
+    return X
+end
+
+"""
+    _forward_substitution(L, b)
+
+Solve `L * x = b` where L is lower triangular. Standard forward substitution.
+"""
+function _forward_substitution(L::AbstractMatrix{T}, b::AbstractVector{T}) where T
+    n = length(b)
+    x = zeros(T, n)
+    for i in 1:n
+        s = b[i]
+        for j in 1:(i-1)
+            s -= L[i, j] * x[j]
+        end
+        x[i] = s / L[i, i]
+    end
+    return x
+end
+
+"""
+    _sylvester_triangular_direct_ball(A, B, C)
+
+Solve `A * X + X * B = C` rigorously in ball arithmetic when A is lower
+triangular and B is lower triangular.  Returns a `BallMatrix` enclosure.
+
+Each column solve uses [`forward_substitution`](@ref) on a lower-triangular
+`BallMatrix`, guaranteeing rigorous componentwise bounds. This method never
+requires eigenvector decomposition and works for arbitrarily ill-conditioned
+triangular matrices (provided the diagonal entries of `A + B[j,j]*I` are nonzero).
+"""
+function _sylvester_triangular_direct_ball(A::AbstractMatrix, B::AbstractMatrix,
+                                            C::AbstractMatrix)
+    m = size(A, 1)
+    k = size(B, 1)
+
+    CT = promote_type(eltype(A), eltype(B), eltype(C))
+    RT = _real_type(CT)
+
+    A_ball = BallMatrix(Matrix{CT}(A))
+    B_ball = BallMatrix(Matrix{CT}(B))
+    C_ball = BallMatrix(Matrix{CT}(C))
+
+    X_mid = zeros(CT, m, k)
+    X_rad = zeros(RT, m, k)
+
+    for j in k:-1:1
+        # Build RHS: c_j - Σ_{l>j} x_l * B[l,j]
+        rhs = BallVector(C_ball.c[:, j], C_ball.r[:, j])
+        for l in (j+1):k
+            x_l = BallVector(X_mid[:, l], X_rad[:, l])
+            rhs = rhs - x_l * B_ball[l, j]
+        end
+
+        # Coefficient matrix (A + B[j,j]*I) is lower triangular
+        shift_c = copy(A_ball.c)
+        shift_r = copy(A_ball.r)
+        b_jj = B_ball[j, j]
+        for i in 1:m
+            shift_c[i, i] += mid(b_jj)
+            shift_r[i, i] += rad(b_jj)
+        end
+        L_ball = BallMatrix(shift_c, shift_r)
+
+        sol = forward_substitution(L_ball, rhs)
+        for i in 1:m
+            X_mid[i, j] = mid(sol[i])
+            X_rad[i, j] = rad(sol[i])
+        end
+    end
+
+    return BallMatrix(X_mid, X_rad)
 end
 
 # Input: A,B,C
