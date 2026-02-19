@@ -46,7 +46,7 @@ function collatz_upper_bound_L2_opnorm(A::BallMatrix{T}; iterates = 5) where {T}
     lam = setrounding(T, RoundUp) do
         for _ in 1:iterates
             x_old = x_new
-            x_new = absA' * absA * x_old
+            x_new = absA' * (absA * x_old)
             # @info x_new
             # @info x_old
             # @info maximum(x_new ./ x_old)

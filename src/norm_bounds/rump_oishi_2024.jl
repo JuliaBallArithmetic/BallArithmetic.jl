@@ -236,7 +236,7 @@ function _collatz_strictly_triangular(F::BallMatrix{T}) where {T}
         # More iterations for triangular matrices
         for iter in 1:20
             x_old = x_new
-            x_new = absF' * absF * x_old
+            x_new = absF' * (absF * x_old)
 
             # Normalize to prevent overflow
             scale = maximum(x_new)
