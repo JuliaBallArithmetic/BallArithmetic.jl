@@ -456,11 +456,15 @@ using BallArithmetic
     @testset "Neumann 1/∞ bound" begin
         n = 10
         # Diagonal dominant matrix - Neumann should succeed
+        # Diagonal entries: 5+0.5im, 6+1im, …, 14+5im.
+        # Choose z well-separated from all eigenvalues so the Neumann
+        # condition α < 1 holds robustly regardless of the random
+        # off-diagonal perturbation.
         T22 = diagm(0 => complex.(5.0:14.0, 0.5:0.5:5.0)) +
               0.1 * UpperTriangular(randn(ComplexF64, n, n))
         T22 = Matrix(T22)
 
-        z = 9.0 + 2.0im
+        z = 3.0 + 2.0im
 
         result = neumann_one_inf_bound(T22, z)
 
