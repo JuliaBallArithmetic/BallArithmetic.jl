@@ -205,7 +205,11 @@ where the eigenvector condition number is too large).
 The matrix `T` must be square and upper triangular, and the block size `k`
 must satisfy `1 ≤ k < size(T, 1)`.
 """
-function triangular_sylvester_miyajima_enclosure(T::AbstractMatrix, k::Integer)
+function triangular_sylvester_miyajima_enclosure(T::AbstractMatrix, k::Integer;
+                                                  sylvester_fallback::Symbol=:direct)
+    sylvester_fallback ∈ (:direct, :residual) ||
+        throw(ArgumentError("sylvester_fallback must be :direct or :residual, got :$sylvester_fallback"))
+
     n, m = size(T)
     n == m || throw(DimensionMismatch("T must be square"))
     1 <= k < n || throw(ArgumentError("k must satisfy 1 ≤ k < $n"))
@@ -234,8 +238,12 @@ function triangular_sylvester_miyajima_enclosure(T::AbstractMatrix, k::Integer)
         end
     end
 
-    # Fallback: direct column-by-column solve in ball arithmetic
-    return _sylvester_triangular_direct_ball(A, B, C)
+    # Fallback: select method based on sylvester_fallback kwarg
+    if sylvester_fallback === :residual
+        return _sylvester_residual_ball(A, B, C, Ỹ)
+    else
+        return _sylvester_triangular_direct_ball(A, B, C)
+    end
 end
 
 """
@@ -258,7 +266,8 @@ bound on the solution `Y`, which inflates the returned enclosure.
 
 The matrix `T_ball` must be square, and `mid(T_ball)` must be upper triangular.
 """
-function triangular_sylvester_miyajima_enclosure(T_ball::BallMatrix, k::Integer)
+function triangular_sylvester_miyajima_enclosure(T_ball::BallMatrix, k::Integer;
+                                                  sylvester_fallback::Symbol=:direct)
     n = size(T_ball, 1)
     n == size(T_ball, 2) || throw(DimensionMismatch("T_ball must be square"))
     1 <= k < n || throw(ArgumentError("k must satisfy 1 ≤ k < $n"))
@@ -267,7 +276,8 @@ function triangular_sylvester_miyajima_enclosure(T_ball::BallMatrix, k::Integer)
     T_rad = rad(T_ball)
 
     # Step 1: Solve on midpoint
-    Y_mid_ball = triangular_sylvester_miyajima_enclosure(T_mid, k)
+    Y_mid_ball = triangular_sylvester_miyajima_enclosure(T_mid, k;
+                                                          sylvester_fallback=sylvester_fallback)
 
     # Step 2: Compute separation from diagonal entries (upper triangular → eigenvalues on diagonal)
     RT = real(eltype(T_mid))
@@ -421,6 +431,157 @@ function _sylvester_triangular_direct_ball(A::AbstractMatrix, B::AbstractMatrix,
             X_mid[i, j] = mid(sol[i])
             X_rad[i, j] = rad(sol[i])
         end
+    end
+
+    return BallMatrix(X_mid, X_rad)
+end
+
+"""
+    _rigorous_tri_inv_two_norm_bound(U::AbstractMatrix{CT}) where {CT}
+
+Compute a rigorous upper bound on `‖U⁻¹‖₂` for upper triangular `U` using
+directed rounding throughout.
+
+Unlike [`triangular_inverse_two_norm_bound`](@ref), which uses default
+(round-to-nearest) arithmetic, this version computes:
+
+1. **Diagonal lower bounds** via `setrounding(RoundDown)` — ensures dividing by
+   a smaller denominator gives a larger (safe) quotient.
+2. **∞-norm and 1-norm recursions** via `setrounding(RoundUp)` — all absolute
+   values, products, and sums round upward.
+3. **Final combination** `√(‖U⁻¹‖₁ · ‖U⁻¹‖_∞)` with `RoundUp`.
+
+This guarantees the returned value is a mathematically valid upper bound,
+suitable for rigorous enclosure computations.
+"""
+function _rigorous_tri_inv_two_norm_bound(U::AbstractMatrix{CT}) where {CT}
+    RT = real(CT)
+    m = size(U, 1)
+    m == size(U, 2) || throw(DimensionMismatch("U must be square"))
+
+    # Rigorous lower bounds on |diagonal entries| (denominators in the recursion).
+    # RoundDown ensures diag_lower[i] ≤ |U[i,i]|_exact, so dividing by it
+    # gives an upper bound on the quotient.
+    diag_lower = Vector{RT}(undef, m)
+    setrounding(RT, RoundDown) do
+        for i in 1:m
+            diag_lower[i] = abs(U[i, i])
+        end
+    end
+
+    for i in 1:m
+        if diag_lower[i] ≤ zero(RT)
+            return RT(Inf)
+        end
+    end
+
+    # ∞-norm bound: backward recursion y[i] = (1 + Σ_{j>i} |u[i,j]|·y[j]) / |u[i,i]|
+    y_inf = zeros(RT, m)
+    setrounding(RT, RoundUp) do
+        for i in m:-1:1
+            row_sum = zero(RT)
+            for j in (i+1):m
+                row_sum += abs(U[i, j]) * y_inf[j]
+            end
+            y_inf[i] = (one(RT) + row_sum) / diag_lower[i]
+        end
+    end
+
+    # 1-norm bound: forward recursion z[i] = (1 + Σ_{j<i} |u[j,i]|·z[j]) / |u[i,i]|
+    y_one = zeros(RT, m)
+    setrounding(RT, RoundUp) do
+        for i in 1:m
+            col_sum = zero(RT)
+            for j in 1:(i-1)
+                col_sum += abs(U[j, i]) * y_one[j]
+            end
+            y_one[i] = (one(RT) + col_sum) / diag_lower[i]
+        end
+    end
+
+    norm_inf = maximum(y_inf)
+    norm_one = maximum(y_one)
+
+    return setrounding(RT, RoundUp) do
+        sqrt(norm_one * norm_inf)
+    end
+end
+
+"""
+    _sylvester_residual_ball(A, B, C, X̃)
+
+Solve `A * X + X * B = C` rigorously via residual bounding when A and B are
+lower triangular.  The approximate solution `X̃` (computed in plain arithmetic)
+is enclosed by computing the residual `R = C - A*X̃ - X̃*B` with ball matrix
+multiplication (MMul4, only ~6 `setrounding` calls) and then bounding the
+per-column error via a backward recurrence on triangular inverse norm bounds.
+
+This is asymptotically faster than [`_sylvester_triangular_direct_ball`](@ref)
+for high-precision `BigFloat` because the number of `setrounding` calls is
+O(1) for the matrix multiply plus O(k) for the column recurrence, versus
+O(n²k) for the direct ball solve.
+
+Falls back to [`_sylvester_triangular_direct_ball`](@ref) if any coefficient
+matrix `A + B[j,j]*I` is detected as singular.
+"""
+function _sylvester_residual_ball(A::AbstractMatrix, B::AbstractMatrix,
+                                   C::AbstractMatrix, X̃::AbstractMatrix)
+    m = size(A, 1)
+    k = size(B, 1)
+
+    CT = promote_type(eltype(A), eltype(B), eltype(C), eltype(X̃))
+    RT = _real_type(CT)
+
+    # Step 1: Rigorous residual via BallMatrix multiplication (MMul4)
+    A_ball = BallMatrix(Matrix{CT}(A))
+    B_ball = BallMatrix(Matrix{CT}(B))
+    C_ball = BallMatrix(Matrix{CT}(C))
+    X̃_ball = BallMatrix(Matrix{CT}(X̃))
+
+    R_ball = C_ball - A_ball * X̃_ball - X̃_ball * B_ball
+
+    # Step 2: Per-column error bound via backward recurrence j = k,...,1
+    # For column j: (A + B[j,j]*I) * e_j = R[:,j] - Σ_{l>j} e_l * B[l,j]
+    # so ‖e_j‖₂ ≤ ‖L_j⁻¹‖₂ · (‖R[:,j]‖₂ + Σ_{l>j} ε_l · |B[l,j]|)
+    ε = zeros(RT, k)
+    A_ct = Matrix{CT}(A)
+
+    # Precompute |B[l,j]| as rigorous upper bounds (RoundUp for abs of complex entries)
+    abs_B = setrounding(RT, RoundUp) do
+        RT.(abs.(B))
+    end
+
+    for j in k:-1:1
+        # L_j = A + B[j,j]*I is lower triangular
+        L_j = A_ct + CT(B[j, j]) * I
+
+        # Rigorous upper bound on ‖L_j⁻¹‖₂ via directed-rounding recursion
+        L_j_inv_norm = _rigorous_tri_inv_two_norm_bound(transpose(L_j))
+
+        if !isfinite(L_j_inv_norm)
+            # Singular L_j — fall back to direct ball method
+            return _sylvester_triangular_direct_ball(A, B, C)
+        end
+
+        # Rigorous upper bound on ‖R[:,j]‖₂
+        R_col = BallVector(R_ball.c[:, j], R_ball.r[:, j])
+        R_col_norm = upper_bound_norm(R_col, 2)
+
+        # Coupling from later columns + final bound, all with upward rounding
+        ε[j] = setrounding(RT, RoundUp) do
+            coupling = zero(RT)
+            for l in (j+1):k
+                coupling += ε[l] * abs_B[l, j]
+            end
+            L_j_inv_norm * (R_col_norm + coupling)
+        end
+    end
+
+    # Step 3: Construct BallMatrix with uniform per-column radii
+    X_mid = Matrix{CT}(X̃)
+    X_rad = zeros(RT, m, k)
+    for j in 1:k
+        X_rad[:, j] .= ε[j]
     end
 
     return BallMatrix(X_mid, X_rad)

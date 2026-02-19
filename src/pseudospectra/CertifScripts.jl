@@ -466,10 +466,10 @@ function dowork_ogita_bigfloat(jobs, results;
                 if e isa InvalidStateException
                     # Log cache stats before exiting
                     stats = _bf_ogita_cache_stats()
-                    total = stats.hits + stats.misses + stats.fallbacks
+                    total = stats.local_hits + stats.center_hits + stats.misses + stats.fallbacks
                     if total > 0
-                        hit_rate = stats.hits / total * 100
-                        @debug "BigFloat Ogita cache stats" hits=stats.hits misses=stats.misses fallbacks=stats.fallbacks hit_rate="$(round(hit_rate, digits=1))%"
+                        hit_rate = (stats.local_hits + stats.center_hits) / total * 100
+                        @debug "BigFloat Ogita cache stats" local_hits=stats.local_hits center_hits=stats.center_hits misses=stats.misses fallbacks=stats.fallbacks hit_rate="$(round(hit_rate, digits=1))%"
                     end
                     break
                 else
