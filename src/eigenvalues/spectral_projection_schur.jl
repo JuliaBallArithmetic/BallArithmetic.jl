@@ -148,7 +148,8 @@ function compute_spectral_projector_schur(A::BallMatrix{T, NT},
                                           verify_idempotency::Bool=true,
                                           schur_data=nothing,
                                           ordered_schur_data=nothing,
-                                          sylvester_fallback::Symbol=:direct) where {T, NT}
+                                          sylvester_fallback::Symbol=:direct,
+                                          rigorous_reordering::Bool=true) where {T, NT}
     n = size(A, 1)
     n == size(A, 2) || throw(DimensionMismatch("A must be square"))
 
@@ -160,9 +161,15 @@ function compute_spectral_projector_schur(A::BallMatrix{T, NT},
     if ordered_schur_data !== nothing
         Q_ord, T_ord, k_ord = ordered_schur_data
         k_ord == k || throw(ArgumentError("ordered_schur_data k=$k_ord does not match cluster size $k"))
-        return _spectral_projector_from_ordered_schur(Q_ord, T_ord, k, T, NT, n,
-                                                       verify_idempotency;
-                                                       sylvester_fallback=sylvester_fallback)
+        if Q_ord isa BallMatrix
+            return _spectral_projector_from_ordered_schur(Q_ord, T_ord, k, n,
+                                                           verify_idempotency;
+                                                           sylvester_fallback=sylvester_fallback)
+        else
+            return _spectral_projector_from_ordered_schur(Q_ord, T_ord, k, T, NT, n,
+                                                           verify_idempotency;
+                                                           sylvester_fallback=sylvester_fallback)
+        end
     end
 
     # Step 1: Compute Schur decomposition of the center matrix (or use provided)
@@ -179,6 +186,16 @@ function compute_spectral_projector_schur(A::BallMatrix{T, NT},
     if cluster_indices != 1:k
         select = falses(n)
         select[cluster_indices] .= true
+
+        if rigorous_reordering
+            Q_b = Q isa BallMatrix ? Q : BallMatrix(Q)
+            T_b = Tmat isa BallMatrix ? Tmat : BallMatrix(Tmat)
+            ord = ordschur_ball(Q_b, T_b, select)
+            return _spectral_projector_from_ordered_schur(ord.Q, ord.T, k, n,
+                                                           verify_idempotency;
+                                                           sylvester_fallback=sylvester_fallback)
+        end
+
         F_schur = Schur(Matrix(Tmat), Matrix(Q), diag(Tmat))
         F_ord = ordschur(F_schur, BitVector(select))
         Q = F_ord.Z
@@ -186,6 +203,11 @@ function compute_spectral_projector_schur(A::BallMatrix{T, NT},
     end
 
     # From here on, the selected eigenvalues are at positions 1:k
+    if Q isa BallMatrix
+        return _spectral_projector_from_ordered_schur(Q, Tmat isa BallMatrix ? Tmat : BallMatrix(Tmat), k, n,
+                                                       verify_idempotency;
+                                                       sylvester_fallback=sylvester_fallback)
+    end
     _spectral_projector_from_ordered_schur(Q, Tmat, k, T, NT, n,
                                            verify_idempotency;
                                            sylvester_fallback=sylvester_fallback)
@@ -223,7 +245,8 @@ function compute_spectral_projector_schur(A::BallMatrix{T, NT},
                                           verify_idempotency::Bool=true,
                                           schur_data=nothing,
                                           ordered_schur_data=nothing,
-                                          sylvester_fallback::Symbol=:direct) where {T, NT}
+                                          sylvester_fallback::Symbol=:direct,
+                                          rigorous_reordering::Bool=true) where {T, NT}
     n = size(A, 1)
     n == size(A, 2) || throw(DimensionMismatch("A must be square"))
 
@@ -236,9 +259,15 @@ function compute_spectral_projector_schur(A::BallMatrix{T, NT},
     if ordered_schur_data !== nothing
         Q_ord, T_ord, k_ord = ordered_schur_data
         k_ord == k || throw(ArgumentError("ordered_schur_data k=$k_ord does not match cluster size $k"))
-        return _spectral_projector_from_ordered_schur(Q_ord, T_ord, k, T, NT, n,
-                                                       verify_idempotency;
-                                                       sylvester_fallback=sylvester_fallback)
+        if Q_ord isa BallMatrix
+            return _spectral_projector_from_ordered_schur(Q_ord, T_ord, k, n,
+                                                           verify_idempotency;
+                                                           sylvester_fallback=sylvester_fallback)
+        else
+            return _spectral_projector_from_ordered_schur(Q_ord, T_ord, k, T, NT, n,
+                                                           verify_idempotency;
+                                                           sylvester_fallback=sylvester_fallback)
+        end
     end
 
     # Step 1: Compute Schur decomposition (or use provided)
@@ -254,6 +283,16 @@ function compute_spectral_projector_schur(A::BallMatrix{T, NT},
     # Step 2: Reorder so target eigenvalues are at positions 1:k
     select = falses(n)
     select[target_indices] .= true
+
+    if rigorous_reordering
+        Q_b = Q isa BallMatrix ? Q : BallMatrix(Q)
+        T_b = Tmat isa BallMatrix ? Tmat : BallMatrix(Tmat)
+        ord = ordschur_ball(Q_b, T_b, select)
+        return _spectral_projector_from_ordered_schur(ord.Q, ord.T, k, n,
+                                                       verify_idempotency;
+                                                       sylvester_fallback=sylvester_fallback)
+    end
+
     F_schur = Schur(Matrix(Tmat), Matrix(Q), diag(Tmat))
     F_ord = ordschur(F_schur, BitVector(select))
     Q = F_ord.Z
@@ -326,6 +365,66 @@ function _spectral_projector_from_ordered_schur(Q::AbstractMatrix, Tmat::Abstrac
     return SchurSpectralProjectorResult(
         P, P_schur, Y_ball, eigenvalue_separation, projector_norm,
         idempotency_defect, Matrix(Q), Matrix(Tmat), 1:k
+    )
+end
+
+# BallMatrix dispatch: Q and T already carry radii from ordschur_ball.
+# Passes T_ball to the Sylvester solver (BallMatrix overload inflates Y for T perturbations)
+# and uses Q_ball (with radii) for the back-transform P = Q * P_Schur * Q^†.
+function _spectral_projector_from_ordered_schur(Q_ball::BallMatrix{T, NT}, T_ball::BallMatrix,
+                                                k::Int, n::Int,
+                                                verify_idempotency::Bool;
+                                                sylvester_fallback::Symbol=:direct) where {T, NT}
+    # Eigenvalue separation from midpoint diagonals
+    T_mid = Matrix(mid(T_ball))
+    T11 = T_mid[1:k, 1:k]
+    T22 = T_mid[(k+1):n, (k+1):n]
+
+    eig_T11 = diag(T11)
+    eig_T22 = diag(T22)
+
+    eigenvalue_separation = minimum(
+        abs(λ1 - λ2) for λ1 in eig_T11 for λ2 in eig_T22
+    )
+
+    realtype = float(T)
+    if eigenvalue_separation < 10 * eps(realtype)
+        @warn "Eigenvalue separation very small ($eigenvalue_separation). " *
+              "Projector may be ill-conditioned."
+    end
+
+    # Solve Sylvester equation — BallMatrix overload accounts for T radii
+    Y_transposed = triangular_sylvester_miyajima_enclosure(T_ball, k;
+                                                            sylvester_fallback=sylvester_fallback)
+    Y_ball = BallMatrix(-adjoint(Y_transposed.c), transpose(Y_transposed.r))
+
+    # Construct projector in Schur coordinates: P_Schur = [I Y; 0 0]
+    P_schur_c = zeros(NT, n, n)
+    P_schur_r = zeros(realtype, n, n)
+    P_schur_c[1:k, 1:k] .= Matrix{NT}(I, k, k)
+    P_schur_c[1:k, (k+1):n] .= Y_ball.c
+    P_schur_r[1:k, (k+1):n] .= Y_ball.r
+    P_schur = BallMatrix(P_schur_c, P_schur_r)
+
+    # Transform back: P = Q * P_Schur * Q^† — Q_ball carries radii from ordschur_ball
+    P = Q_ball * P_schur * adjoint(Q_ball)
+
+    # Estimate projector norm
+    projector_norm = upper_bound_L2_opnorm(P)
+
+    # Verify idempotency
+    idempotency_defect = zero(T)
+    if verify_idempotency
+        P_diff = P * P - P
+        idempotency_defect = upper_bound_L2_opnorm(P_diff)
+        if idempotency_defect > 1e-6
+            @warn "Large idempotency defect: ‖P² - P‖₂ ≈ $idempotency_defect"
+        end
+    end
+
+    return SchurSpectralProjectorResult(
+        P, P_schur, Y_ball, eigenvalue_separation, projector_norm,
+        idempotency_defect, Matrix(mid(Q_ball)), Matrix(mid(T_ball)), 1:k
     )
 end
 
@@ -554,7 +653,8 @@ function compute_spectral_coefficient(A::BallMatrix{T, NT},
                                        cluster_indices;
                                        schur_data=nothing,
                                        ordered_schur_data=nothing,
-                                       sylvester_fallback::Symbol=:direct) where {T, NT}
+                                       sylvester_fallback::Symbol=:direct,
+                                       rigorous_reordering::Bool=true) where {T, NT}
     n = size(A, 1)
     n == size(A, 2) || throw(DimensionMismatch("A must be square"))
     length(v) == n || throw(DimensionMismatch("v must have length $n"))
@@ -563,10 +663,14 @@ function compute_spectral_coefficient(A::BallMatrix{T, NT},
     k >= 1 || throw(ArgumentError("Cluster must contain at least one index"))
     k < n || throw(ArgumentError("Cluster cannot contain all indices"))
 
+    # Track whether Q/Tmat are BallMatrix (from ordschur_ball or BallMatrix ordered_schur_data)
+    ball_schur = false
+
     # Get ordered Schur data
     if ordered_schur_data !== nothing
         Q, Tmat, k_ord = ordered_schur_data
         k_ord == k || throw(ArgumentError("ordered_schur_data k=$k_ord does not match cluster size $k"))
+        ball_schur = Q isa BallMatrix
     else
         # Compute or use provided Schur decomposition
         if schur_data !== nothing
@@ -588,16 +692,27 @@ function compute_spectral_coefficient(A::BallMatrix{T, NT},
                     select[idx] = true
                 end
             end
-            F_schur = Schur(Matrix(Tmat), Matrix(Q), diag(Tmat))
-            F_ord = ordschur(F_schur, BitVector(select))
-            Q = F_ord.Z
-            Tmat = F_ord.T
+
+            if rigorous_reordering
+                Q_b = Q isa BallMatrix ? Q : BallMatrix(Q)
+                T_b = Tmat isa BallMatrix ? Tmat : BallMatrix(Tmat)
+                ord = ordschur_ball(Q_b, T_b, select)
+                Q = ord.Q
+                Tmat = ord.T
+                ball_schur = true
+            else
+                F_schur = Schur(Matrix(Tmat), Matrix(Q), diag(Tmat))
+                F_ord = ordschur(F_schur, BitVector(select))
+                Q = F_ord.Z
+                Tmat = F_ord.T
+            end
         end
     end
 
-    # Eigenvalue separation
-    T11 = Tmat[1:k, 1:k]
-    T22 = Tmat[(k+1):n, (k+1):n]
+    # Eigenvalue separation (from midpoints)
+    T_mid = ball_schur ? Matrix(mid(Tmat)) : Matrix(Tmat)
+    T11 = T_mid[1:k, 1:k]
+    T22 = T_mid[(k+1):n, (k+1):n]
     eig_T11 = diag(T11)
     eig_T22 = diag(T22)
 
@@ -612,7 +727,9 @@ function compute_spectral_coefficient(A::BallMatrix{T, NT},
     end
 
     # Solve Sylvester equation for Y (k × (n-k))
-    Y_transposed = triangular_sylvester_miyajima_enclosure(Tmat, k;
+    # When ball_schur, pass BallMatrix T to get perturbation-aware enclosure
+    T_for_sylvester = ball_schur ? Tmat : T_mid
+    Y_transposed = triangular_sylvester_miyajima_enclosure(T_for_sylvester, k;
                                                             sylvester_fallback=sylvester_fallback)
     Y_ball = BallMatrix(-adjoint(Y_transposed.c), transpose(Y_transposed.r))
 
@@ -625,20 +742,30 @@ function compute_spectral_coefficient(A::BallMatrix{T, NT},
     IY_ball = BallMatrix(IY_c, IY_r)
 
     # Compute q = Q^H * v (O(n^2) matrix-vector product)
-    Q_adj = adjoint(Q)
-    if v isa BallVector
-        q = BallMatrix(Q_adj) * v
+    # When ball_schur, Q is BallMatrix — adjoint propagates radii
+    if ball_schur
+        Q_adj_ball = adjoint(Q)
+        v_ball = v isa BallVector ? v : BallVector(v)
+        q = Q_adj_ball * v_ball
     else
-        q_mid = Q_adj * v
-        q = BallVector(q_mid)
+        Q_adj = adjoint(Q)
+        if v isa BallVector
+            q = BallMatrix(Q_adj) * v
+        else
+            q_mid = Q_adj * v
+            q = BallVector(q_mid)
+        end
     end
 
     # Compute coefficients = [I_k  Y] * q = q[1:k] + Y * q[(k+1):n] (O(nk))
     coefficients = IY_ball * q
 
+    Q_store = ball_schur ? Matrix(mid(Q)) : Matrix(Q)
+    T_store = ball_schur ? Matrix(mid(Tmat)) : Matrix(Tmat)
+
     return SpectralCoefficientResult(
         coefficients, IY_ball, Y_ball,
         eigenvalue_separation,
-        Matrix(Q), Matrix(Tmat)
+        Q_store, T_store
     )
 end
