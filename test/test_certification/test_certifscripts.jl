@@ -1,6 +1,7 @@
 using Test
 using LinearAlgebra
 using BallArithmetic
+using JLD2
 
 @testset "CertifScripts serial" begin
     circle = BallArithmetic.CertifScripts.CertificationCircle(0.0, 0.25; samples = 8)
@@ -266,7 +267,6 @@ end
 
 @testset "choose_snapshot_to_load" begin
     CS = BallArithmetic.CertifScripts
-    using JLD2
 
     mktempdir() do dir
         @testset "returns nothing when no files exist" begin
