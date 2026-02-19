@@ -88,11 +88,9 @@ using Test
         @test all(isfinite, rad(result.T))
         @test all(isfinite, rad(result.Q))
 
-        # Orthogonality defect should be small
-        @test result.orth_defect < 1e-12
-
-        # Factorization defect should be small
-        @test result.fact_defect < 1e-10
+        # Radii should be small (defects tracked in radii, not separate fields)
+        @test maximum(rad(result.Q)) < 1e-10
+        @test maximum(rad(result.T)) < 1e-10
 
         # Midpoint should reconstruct A
         @test mid(result.Q) * mid(result.T) * mid(result.Q)' ≈ Ac atol = 1e-10
@@ -139,8 +137,9 @@ using Test
 
             result = ordschur_ball(Q_ball, T_ball, select)
 
-            # Orthogonality defect should be ≈ machine epsilon for BigFloat
-            @test result.orth_defect < BigFloat(10)^(-60)
+            # Radii should be ≈ machine epsilon for BigFloat
+            @test maximum(rad(result.Q)) < BigFloat(10)^(-60)
+            @test maximum(rad(result.T)) < BigFloat(10)^(-60)
         finally
             setprecision(BigFloat, old_prec)
         end
@@ -157,11 +156,9 @@ using Test
         select = [true, false, false, true]
         ord_result = ordschur_ball(Q_ball, T_ball, select)
 
-        # Check all fields are finite
+        # Check all radii are finite
         @test all(isfinite, rad(ord_result.T))
         @test all(isfinite, rad(ord_result.Q))
-        @test isfinite(ord_result.orth_defect)
-        @test isfinite(ord_result.fact_defect)
 
         # T midpoint must be upper triangular
         @test istriu(mid(ord_result.T))
@@ -338,17 +335,19 @@ end
         select = [true, true, false, false]
         ord = ordschur_ball(Q_ball, T_ball, select)
 
-        # Use a hypothetical resolvent bound (just check it runs)
+        # Defects are now tracked in radii (fields are zero); use small
+        # hardcoded values to exercise spectral_projector_error_bound
+        orth_est = BigFloat(maximum(rad(ord.Q)))
+        fact_est = BigFloat(maximum(rad(ord.T)))
+
         bound = spectral_projector_error_bound(
             resolvent_bound_A = BigFloat(100),
             contour_radius = BigFloat("0.5"),
-            orth_defect = ord.orth_defect,
-            fact_defect = ord.fact_defect
+            orth_defect = orth_est,
+            fact_defect = fact_est
         )
         @test isfinite(bound)
         @test bound > 0
-        # Bound is dominated by r · M_A² · fact_defect; fact_defect includes
-        # the input BallMatrix radii (1e-10) propagated through matrix products
         @test bound < BigFloat(1)   # sanity: much smaller than O(1)
     end
 end

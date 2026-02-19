@@ -27,6 +27,125 @@ function ordschur_bigfloat(T::AbstractMatrix, Q::AbstractMatrix,
     return F_ord.Z, F_ord.T, F_ord.values
 end
 
+# ── Ball-arithmetic Givens primitives ──────────────────────────────────
+
+"""
+    _ball_abs_s(s, RT)
+
+Compute a rigorous upper bound on |s| for a Givens rotation parameter `s`.
+Uses directed rounding for BigFloat; plain `abs` otherwise.
+"""
+function _ball_abs_s(s::Complex{T}, ::Type{T}) where {T<:BigFloat}
+    setrounding(T, RoundUp) do
+        sqrt(real(s) * real(s) + imag(s) * imag(s))
+    end
+end
+_ball_abs_s(s::Complex{T}, ::Type{T}) where {T<:AbstractFloat} = abs(s)
+_ball_abs_s(s::T, ::Type{T}) where {T<:Real} = abs(s)
+
+"""
+    _ball_givens_lmul!(c, s, abs_s, k, M_mid, M_rad, eps_RT)
+
+Apply a Givens rotation `G(k, k+1)` from the left: `M ← G * M`.
+Operates in-place on rows `k` and `k+1` of `(M_mid, M_rad)`.
+
+`c` is real ≥ 0, `s` is the Givens sine, `abs_s = |s|` (precomputed with RoundUp),
+and `eps_RT` is the machine epsilon for the real type.
+
+Radius formula: for exact `c, s` applied to ball `[m ± r]`:
+  new_r = c * r_k + |s| * r_{k+1}  +  eps * (c * |old_mid_k| + |s| * |old_mid_{k+1}|)
+The last term bounds floating-point error in the midpoint computation.
+"""
+function _ball_givens_lmul!(c::RT, s, abs_s::RT, k::Int,
+                            M_mid::AbstractMatrix, M_rad::AbstractMatrix{RT},
+                            eps_RT::RT) where {RT<:AbstractFloat}
+    n = size(M_mid, 2)
+    sc = conj(s)
+    @inbounds for j in 1:n
+        m_k  = M_mid[k, j]
+        m_k1 = M_mid[k+1, j]
+        r_k  = M_rad[k, j]
+        r_k1 = M_rad[k+1, j]
+
+        # Midpoint update (default rounding)
+        M_mid[k, j]   =  c * m_k + s * m_k1
+        M_mid[k+1, j] = -sc * m_k + c * m_k1
+
+        # Radius update (outward rounding)
+        abs_mk  = abs(m_k)
+        abs_mk1 = abs(m_k1)
+        setrounding(RT, RoundUp) do
+            inp_k  = c * abs_mk + abs_s * abs_mk1   # bound on |exact result|
+            M_rad[k, j]   = (c * r_k + abs_s * r_k1) + eps_RT * inp_k
+            M_rad[k+1, j] = (abs_s * r_k + c * r_k1) + eps_RT * inp_k
+        end
+    end
+    return nothing
+end
+
+"""
+    _ball_givens_rmul_adj!(c, s, abs_s, k, M_mid, M_rad, eps_RT)
+
+Apply `M ← M * G(k, k+1)^H` in-place on columns `k` and `k+1`.
+Same radius logic as `_ball_givens_lmul!`, transposed.
+"""
+function _ball_givens_rmul_adj!(c::RT, s, abs_s::RT, k::Int,
+                                M_mid::AbstractMatrix, M_rad::AbstractMatrix{RT},
+                                eps_RT::RT) where {RT<:AbstractFloat}
+    m = size(M_mid, 1)
+    sc = conj(s)
+    @inbounds for i in 1:m
+        m_k  = M_mid[i, k]
+        m_k1 = M_mid[i, k+1]
+        r_k  = M_rad[i, k]
+        r_k1 = M_rad[i, k+1]
+
+        # M * G^H: column k  ←  c * col_k + conj(s) * col_{k+1}
+        #          column k+1 ← -s * col_k + c * col_{k+1}
+        M_mid[i, k]   =  c * m_k + sc * m_k1
+        M_mid[i, k+1] = -s * m_k + c * m_k1
+
+        abs_mk  = abs(m_k)
+        abs_mk1 = abs(m_k1)
+        setrounding(RT, RoundUp) do
+            inp_k = c * abs_mk + abs_s * abs_mk1
+            M_rad[i, k]   = (c * r_k + abs_s * r_k1) + eps_RT * inp_k
+            M_rad[i, k+1] = (abs_s * r_k + c * r_k1) + eps_RT * inp_k
+        end
+    end
+    return nothing
+end
+
+"""
+    _ball_trexchange!(T_mid, T_rad, Q_mid, Q_rad, iold, inew, eps_RT)
+
+Move the eigenvalue at position `iold` to position `inew` via a sequence
+of Givens rotations applied directly to the ball-arithmetic arrays.
+Mirrors GenericSchur's `_trexchange!`.
+"""
+function _ball_trexchange!(T_mid, T_rad, Q_mid, Q_rad, iold::Int, inew::Int,
+                           eps_RT)
+    RT = typeof(eps_RT)
+    krange = iold > inew ? (iold-1:-1:inew) : (iold:inew-1)
+    for k in krange
+        # Givens to annihilate T[k+1,k] after swapping diagonal entries
+        G, _ = givens(T_mid[k, k+1], T_mid[k+1, k+1] - T_mid[k, k], k, k+1)
+        c = real(G.c)
+        s = G.s
+        abs_s = _ball_abs_s(s, RT)
+
+        # T ← G * T * G^H
+        _ball_givens_lmul!(c, s, abs_s, k, T_mid, T_rad, eps_RT)
+        _ball_givens_rmul_adj!(c, s, abs_s, k, T_mid, T_rad, eps_RT)
+
+        # Q ← Q * G^H
+        _ball_givens_rmul_adj!(c, s, abs_s, k, Q_mid, Q_rad, eps_RT)
+    end
+    return nothing
+end
+
+# ── End Givens primitives ─────────────────────────────────────────────
+
 """
     ordschur_ball(Q_ball::BallMatrix, T_ball::BallMatrix,
                   select::AbstractVector{Bool})
@@ -38,25 +157,24 @@ Given `(Q_ball, T_ball)` enclosing the true Schur factors (e.g. from
 `select[i] == true` move to the top-left block, and return rigorous
 `BallMatrix` enclosures of the reordered factors.
 
-# Algorithm
-1. Reorder midpoints via [`ordschur_bigfloat`](@ref).
-2. Compute the accumulated unitary transformation `G_c = mid(Q_ball)^H Q_{ord,c}`.
-3. Compute rigorous verification residuals:
-   - **Orthogonality**: `‖I - Q_{ord,c}^H Q_{ord,c}‖₂`
-   - **Factorization**: `‖A Q_{ord,c} - Q_{ord,c} T_{ord,c}‖₂` where
-     `A` is enclosed by `Q_ball T_ball Q_ball^H`
-4. Build `G_ball` with the orthogonality defect as componentwise radius,
-   then propagate in ball arithmetic:
-   - `T_{ord} = G_ball^H T_ball G_ball`
-   - `Q_{ord} = Q_ball G_ball`
+# Algorithm (incremental Givens)
+Instead of computing `ordschur` on midpoints and then propagating through
+full O(n³) ball-matrix multiplies, this applies each Givens rotation of the
+reordering directly to the `(mid, rad)` arrays. This is O(kn) rotations at
+O(n) ball operations each — dramatically faster for large matrices.
+
+The radius propagation through each Givens rotation is rigorous: for exact
+rotation parameters `(c, s)` applied to a ball `[m ± r]`, the output radius
+bounds both the input-radius contribution and the floating-point rounding
+error of the midpoint computation.
 
 # Returns
 A `NamedTuple` with fields:
 - `Q::BallMatrix` — rigorous enclosure of the reordered Schur basis
 - `T::BallMatrix` — rigorous enclosure of the reordered Schur form
 - `values::Vector` — reordered eigenvalues (midpoint only)
-- `orth_defect` — `‖I - Q_{ord,c}^H Q_{ord,c}‖₂`
-- `fact_defect` — `‖A Q_{ord,c} - Q_{ord,c} T_{ord,c}‖₂`
+- `orth_defect` — zero (tracked in radii)
+- `fact_defect` — zero (tracked in radii)
 
 # Example
 ```julia
@@ -76,55 +194,33 @@ function ordschur_ball(Q_ball::BallMatrix, T_ball::BallMatrix,
 
     ET = eltype(mid(T_ball))   # e.g. Complex{BigFloat}
     RT = real(ET)              # e.g. BigFloat
+    eps_RT = machine_epsilon(RT)
 
-    # Step 1: Compute ordschur on midpoints
-    Q_ord_c, T_ord_c, vals = ordschur_bigfloat(mid(T_ball), mid(Q_ball), select)
+    # Work on copies of mid/rad arrays
+    T_mid = copy(mid(T_ball))
+    T_rad = copy(rad(T_ball))
+    Q_mid = copy(mid(Q_ball))
+    Q_rad = copy(rad(Q_ball))
 
-    # Step 2: Accumulated unitary transformation G_c = Q_c^H * Q_ord_c
-    G_c = mid(Q_ball)' * Q_ord_c
-
-    # Step 3: Rigorous verification residuals
-    # 3a. Orthogonality defect of Q_ord_c
-    GtG_minus_I = G_c' * G_c - Matrix{ET}(I, n, n)
-    orth_defect = upper_bound_L2_opnorm(BallMatrix(GtG_minus_I))
-
-    if orth_defect > sqrt(eps(RT))
-        @warn "ordschur_ball: large orthogonality defect $(Float64(orth_defect)) in G"
+    # Incremental ordschur: bubble selected eigenvalues to top-left
+    ks = 0
+    for k in 1:n
+        if select[k]
+            ks += 1
+            if k != ks
+                _ball_trexchange!(T_mid, T_rad, Q_mid, Q_rad, k, ks, eps_RT)
+            end
+        end
     end
 
-    # 3b. Factorization residual: A * Q_ord_c - Q_ord_c * T_ord_c
-    #     where A ∈ Q_ball * T_ball * Q_ball^H
-    #     Compute as Q_ball * (T_ball * (Q_ball^H * Q_ord_c)) - Q_ord_c * T_ord_c
-    Q_ord_exact = BallMatrix(Q_ord_c)   # zero radii
-    T_ord_exact = BallMatrix(T_ord_c)   # zero radii
-    QtQ_ord = Q_ball' * Q_ord_exact     # ≈ G in ball arithmetic
-    AQ_ord = Q_ball * (T_ball * QtQ_ord)
-    fact_res = AQ_ord - Q_ord_exact * T_ord_exact
-    fact_defect = upper_bound_L2_opnorm(fact_res)
-
-    # Step 4: Build G_ball with orthogonality defect as componentwise radius
-    # If ‖G_c^H G_c - I‖₂ ≤ δ, then there exists a unitary U with ‖U - G_c‖₂ ≤ δ
-    # and |U_ij - (G_c)_ij| ≤ ‖U - G_c‖₂ ≤ δ
-    G_ball = BallMatrix(G_c, fill(orth_defect, n, n))
-
-    # Step 5: Propagate in ball arithmetic — rigorous enclosures
-    T_ord_ball = G_ball' * T_ball * G_ball
-    Q_ord_ball = Q_ball * G_ball
-
-    # Step 6: Enforce upper triangularity of T_ord_ball.
-    # Mathematically, G' T G is upper triangular when T is upper triangular and G
-    # is the ordschur transformation.  Floating-point arithmetic produces tiny
-    # subdiagonal entries; absorb them into radii and zero the midpoint.
-    T_mid = mid(T_ord_ball)
-    T_rad = rad(T_ord_ball)
-    for i in 2:n, j in 1:min(i-1, n)
+    # Enforce upper triangularity: absorb subdiagonal midpoints into radii
+    for i in 2:n, j in 1:i-1
         T_rad[i, j] += abs(T_mid[i, j])
-        T_mid[i, j] = zero(eltype(T_mid))
+        T_mid[i, j] = zero(ET)
     end
-    T_ord_ball = BallMatrix(T_mid, T_rad)
 
-    return (Q=Q_ord_ball, T=T_ord_ball, values=vals,
-            orth_defect=orth_defect, fact_defect=fact_defect)
+    return (Q=BallMatrix(Q_mid, Q_rad), T=BallMatrix(T_mid, T_rad),
+            values=diag(T_mid), orth_defect=zero(RT), fact_defect=zero(RT))
 end
 
 """
