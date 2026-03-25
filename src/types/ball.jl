@@ -328,7 +328,7 @@ Return the multiplicative inverse of a real ball. The method throws an
 `ArgumentError` when the interval straddles zero, since no rigorous
 inverse can be produced in that case.
 """
-function Base.inv(y::Ball{T}) where {T <: AbstractFloat}
+function Base.inv(y::Ball{T, T}) where {T <: AbstractFloat}
     my, ry = mid(y), rad(y)
     ry < abs(my) || throw(ArgumentError("Ball $y contains zero."))
     one_T = one(T)
@@ -338,6 +338,29 @@ function Base.inv(y::Ball{T}) where {T <: AbstractFloat}
     c = add_up(c1, mul_up(half_T, sub_up(c2, c1)))
     r = sub_up(c, c1)
     Ball(copysign(c, my), r)
+end
+
+"""
+    inv(x::Ball{T, Complex{T}})
+
+Return the multiplicative inverse of a complex ball. The method throws an
+`ArgumentError` when the ball contains zero. The image of the disk `B(my, ry)`
+under `1/z` is the disk `B(conj(my)/D, ry/D)` where `D = |my|² - ry²`.
+Rounding is outward: `D_lo` is a lower bound on `D` that accounts for the
+≤ 1 ulp error in `abs(my)`, ensuring `ry/D_lo` over-approximates the true
+image radius, and `ϵp*abs(c) + η` covers the floating-point error in the center.
+"""
+function Base.inv(y::Ball{T, Complex{T}}) where {T <: AbstractFloat}
+    my, ry = mid(y), rad(y)
+    ry < abs(my) || throw(ArgumentError("Ball $y contains zero."))
+    # Image of B(my,ry) under 1/z is B(conj(my)/D, ry/D), D = |my|²-ry²
+    # abs(my) has ≤1 ulp relative error, so amy² ≥ |my|²*(1-2ϵp); use this
+    # to form a valid lower bound on D for the radius computation.
+    amy = abs(my)
+    D_lo = @down (1 - 2ϵp) * amy * amy - ry * ry
+    c = conj(my) / (amy * amy - ry * ry)
+    r = @up ry / D_lo + ϵp * abs(c) + η
+    Ball(c, r)
 end
 
 """

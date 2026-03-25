@@ -44,6 +44,20 @@
     x = Ball(rand() + im * rand())
     @test 1.0 ∈ x * inv(x)
 
+    # complex inv with non-zero radius: 1/z must lie in the result ball
+    # and the enclosure must contain 1/my (exact inverse of the center)
+    let my = 3.0 + 4.0im, ry = 0.5
+        y = Ball(my, ry)
+        yi = inv(y)
+        # exact inverse of center: conj(my)/|my|^2
+        exact_inv_center = conj(my) / abs2(my)
+        @test exact_inv_center ∈ yi
+        # 1/y * y should contain 1
+        @test 1.0 ∈ yi * y
+        # zero-contains check
+        @test_throws ArgumentError inv(Ball(0.1 + 0.0im, 0.5))
+    end
+
     # test sqrt on positive ball and domain error on ball containing zero
     x = Ball(4.0, 0.1)
     y = sqrt(x)
