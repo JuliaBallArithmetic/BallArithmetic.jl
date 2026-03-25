@@ -1,0 +1,130 @@
+\documentclass[11pt]{article}
+\usepackage{booktabs,xcolor}
+\definecolor{okgreen}{RGB}{0,128,0}
+\definecolor{failred}{RGB}{200,0,0}
+\begin{document}
+\section*{Test 1: Size and Nonnormality Scaling}
+
+\subsection*{Timing (seconds)}
+
+\paragraph{Miyajima}
+\begin{tabular}{l|rrrr}
+\toprule
+$\nu$ \textbackslash{} $n$ & 20 & 40 & 60 & 80 \\\midrule
+0.5 & 6.552 & 0.005 & 0.010 & 0.014 \\
+1.0 & 0.001 & 0.002 & 0.005 & 0.009 \\
+2.0 & 0.001 & 0.002 & 0.006 & 0.014 \\
+\bottomrule\end{tabular}
+
+
+\paragraph{Ogita}
+\begin{tabular}{l|rrrr}
+\toprule
+$\nu$ \textbackslash{} $n$ & 20 & 40 & 60 & 80 \\\midrule
+0.5 & 0.176 & 1.215 & 4.042 & 10.022 \\
+1.0 & 0.424 & 1.190 & 4.004 & 9.939 \\
+2.0 & 0.176 & 1.282 & 4.012 & 10.089 \\
+\bottomrule\end{tabular}
+
+
+\paragraph{V1}
+\begin{tabular}{l|rrrr}
+\toprule
+$\nu$ \textbackslash{} $n$ & 20 & 40 & 60 & 80 \\\midrule
+0.5 & 0.411 & 0.001 & 0.003 & 0.006 \\
+1.0 & 0.001 & 0.001 & 0.003 & 0.007 \\
+2.0 & 0.001 & 0.002 & 0.003 & 0.005 \\
+\bottomrule\end{tabular}
+
+
+\paragraph{V2}
+\begin{tabular}{l|rrrr}
+\toprule
+$\nu$ \textbackslash{} $n$ & 20 & 40 & 60 & 80 \\\midrule
+0.5 & 0.001 & 0.001 & 0.003 & 0.137 \\
+1.0 & 0.000 & 0.001 & 0.003 & 0.006 \\
+2.0 & 0.000 & 0.001 & 0.002 & 0.006 \\
+\bottomrule\end{tabular}
+
+
+\paragraph{V2.5}
+\begin{tabular}{l|rrrr}
+\toprule
+$\nu$ \textbackslash{} $n$ & 20 & 40 & 60 & 80 \\\midrule
+0.5 & 0.001 & 0.002 & 0.003 & 0.011 \\
+1.0 & 0.000 & 0.002 & 0.003 & 0.005 \\
+2.0 & 0.000 & 0.001 & 0.002 & 0.005 \\
+\bottomrule\end{tabular}
+
+
+\paragraph{V3}
+\begin{tabular}{l|rrrr}
+\toprule
+$\nu$ \textbackslash{} $n$ & 20 & 40 & 60 & 80 \\\midrule
+0.5 & 0.000 & 0.001 & 0.002 & 0.007 \\
+1.0 & 0.000 & 0.001 & 0.003 & 0.005 \\
+2.0 & 0.000 & 0.001 & 0.002 & 0.005 \\
+\bottomrule\end{tabular}
+
+\subsection*{Certified Bounds}
+
+\paragraph{Miyajima}
+\begin{tabular}{l|rrrr}
+\toprule
+$\nu$ \textbackslash{} $n$ & 20 & 40 & 60 & 80 \\\midrule
+0.5 & 1.01e+01 & 7.89e+00 & 7.56e+00 & 6.46e+00 \\
+1.0 & 6.20e+01 & 4.80e+01 & 3.12e+01 & 1.38e+01 \\
+2.0 & 4.63e+03 & 7.61e+03 & 1.31e+03 & 6.59e+02 \\
+\bottomrule\end{tabular}
+
+
+\paragraph{Ogita}
+\begin{tabular}{l|rrrr}
+\toprule
+$\nu$ \textbackslash{} $n$ & 20 & 40 & 60 & 80 \\\midrule
+0.5 & 1.01e+01 & 7.89e+00 & 7.56e+00 & 6.46e+00 \\
+1.0 & 6.20e+01 & 4.80e+01 & 3.12e+01 & 1.38e+01 \\
+2.0 & 4.63e+03 & 7.61e+03 & 1.31e+03 & 6.59e+02 \\
+\bottomrule\end{tabular}
+
+
+\paragraph{V1}
+\begin{tabular}{l|rrrr}
+\toprule
+$\nu$ \textbackslash{} $n$ & 20 & 40 & 60 & 80 \\\midrule
+0.5 & 5.41e+04 & 6.86e+03 & 5.13e+04 & 2.98e+03 \\
+1.0 & 1.49e+09 & 4.58e+07 & 1.29e+11 & 3.29e+09 \\
+2.0 & 8.31e+16 & 1.51e+17 & 6.89e+22 & 3.14e+21 \\
+\bottomrule\end{tabular}
+
+
+\paragraph{V2}
+\begin{tabular}{l|rrrr}
+\toprule
+$\nu$ \textbackslash{} $n$ & 20 & 40 & 60 & 80 \\\midrule
+0.5 & 5.41e+04 & 6.86e+03 & 5.13e+04 & 2.98e+03 \\
+1.0 & 1.49e+09 & 4.58e+07 & 1.29e+11 & 3.29e+09 \\
+2.0 & 8.31e+16 & 1.51e+17 & 6.89e+22 & 3.14e+21 \\
+\bottomrule\end{tabular}
+
+
+\paragraph{V2.5}
+\begin{tabular}{l|rrrr}
+\toprule
+$\nu$ \textbackslash{} $n$ & 20 & 40 & 60 & 80 \\\midrule
+0.5 & 5.41e+04 & 6.86e+03 & 5.13e+04 & 2.98e+03 \\
+1.0 & 1.49e+09 & 4.58e+07 & 1.29e+11 & 3.29e+09 \\
+2.0 & 8.31e+16 & 1.51e+17 & 6.89e+22 & 3.14e+21 \\
+\bottomrule\end{tabular}
+
+
+\paragraph{V3}
+\begin{tabular}{l|rrrr}
+\toprule
+$\nu$ \textbackslash{} $n$ & 20 & 40 & 60 & 80 \\\midrule
+0.5 & 5.41e+04 & 6.86e+03 & 5.13e+04 & 2.98e+03 \\
+1.0 & 1.49e+09 & 4.58e+07 & 1.29e+11 & 3.29e+09 \\
+2.0 & 8.31e+16 & 1.51e+17 & 6.89e+22 & 3.14e+21 \\
+\bottomrule\end{tabular}
+
+\end{document}

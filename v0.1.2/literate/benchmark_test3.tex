@@ -1,0 +1,73 @@
+\documentclass[11pt]{article}
+\usepackage{booktabs,xcolor,pgfplots}
+\pgfplotsset{compat=1.18}
+\definecolor{okgreen}{RGB}{0,128,0}
+\definecolor{failred}{RGB}{200,0,0}
+\definecolor{best}{RGB}{0,100,0}
+\begin{document}
+\section*{Test 3: Parametric Configuration Comparison}
+
+\subsection*{Method Rankings}
+\begin{tabular}{lrrr}
+\toprule
+Method & Avg Bound Ratio & Avg Time (s) & Success Rate \\\midrule
+Ogita & 1.000 & 8.2394 & 100\% \\
+Miyajima & 1.000 & 0.0177 & 100\% \\
+V2.5 & 1435917842122788608.000 & 0.0042 & 100\% \\
+V3 & 1436308056572621056.000 & 0.0040 & 100\% \\
+V2 & 1436308056572621056.000 & 0.0046 & 100\% \\
+V1 & 1440674083456231936.000 & 0.3774 & 100\% \\
+\bottomrule\end{tabular}
+
+\subsection*{Certified Bounds at $\nu=1.0$}
+\begin{tabular}{l|rrrr}
+\toprule
+Method & $n=30$ & $n=50$ & $n=70$ & $n=100$ \\\midrule
+Miyajima & 7.80e+01 & 1.67e+02 & 6.02e+01 & 3.73e+01 \\
+Ogita & 7.80e+01 & 1.67e+02 & 6.02e+01 & 3.73e+01 \\
+V1 & 2.80e+09 & 7.42e+10 & 2.63e+10 & 6.42e+09 \\
+V2 & 2.80e+09 & 7.42e+10 & 2.63e+10 & 6.42e+09 \\
+V2.5 & 2.80e+09 & 7.42e+10 & 2.63e+10 & 6.42e+09 \\
+V3 & 2.80e+09 & 7.42e+10 & 2.63e+10 & 6.42e+09 \\
+\bottomrule\end{tabular}
+
+\subsection*{Timing at $\nu=1.0$ (seconds)}
+\begin{tabular}{l|rrrr}
+\toprule
+Method & $n=30$ & $n=50$ & $n=70$ & $n=100$ \\\midrule
+Miyajima & 0.001 & 0.004 & 0.006 & 0.088 \\
+Ogita & 0.534 & 2.393 & 6.794 & 23.339 \\
+V1 & 0.001 & 0.002 & 0.004 & 0.011 \\
+V2 & 0.001 & 0.002 & 0.003 & 0.014 \\
+V2.5 & 0.001 & 0.002 & 0.003 & 0.012 \\
+V3 & 0.001 & 0.002 & 0.003 & 0.011 \\
+\bottomrule\end{tabular}
+
+\subsection*{Timing Scaling with Matrix Size}
+\begin{tikzpicture}
+\begin{axis}[
+    xlabel={Matrix size $n$},
+    ylabel={Time (s)},
+    legend pos=north west,
+    width=0.9\textwidth,
+    height=0.5\textwidth,
+    grid=major,
+    ymode=log,
+]
+
+\addplot[blue, mark=*, thick] coordinates {(30, 0.0014) (50, 0.0038) (70, 0.0064) (100, 0.0880) };
+\addlegendentry{Miyajima}
+\addplot[red, mark=*, thick] coordinates {(30, 0.5341) (50, 2.3928) (70, 6.7941) (100, 23.3389) };
+\addlegendentry{Ogita}
+\addplot[green!60!black, mark=*, thick] coordinates {(30, 0.0010) (50, 0.0020) (70, 0.0041) (100, 0.0112) };
+\addlegendentry{V1}
+\addplot[orange, mark=*, thick] coordinates {(30, 0.0007) (50, 0.0019) (70, 0.0035) (100, 0.0137) };
+\addlegendentry{V2}
+\addplot[purple, mark=*, thick] coordinates {(30, 0.0006) (50, 0.0017) (70, 0.0034) (100, 0.0117) };
+\addlegendentry{V2.5}
+\addplot[cyan, mark=*, thick] coordinates {(30, 0.0005) (50, 0.0018) (70, 0.0034) (100, 0.0105) };
+\addlegendentry{V3}
+\end{axis}
+\end{tikzpicture}
+
+\end{document}
