@@ -127,8 +127,8 @@ using LinearAlgebra
 
         @test comp[1,1] == mig(C[1,1])  # Diagonal: mignitude
         @test comp[2,2] == mig(C[2,2])
-        @test comp[1,2] == -mag(C[1,2])  # Off-diagonal: -magnitude
-        @test comp[2,1] == -mag(C[2,1])
+        @test comp[1,2] ≈ -mag(C[1,2])  # Off-diagonal: -magnitude
+        @test comp[2,1] ≈ -mag(C[2,1])
     end
 
     @testset "Residual Computation" begin

@@ -357,9 +357,10 @@ function Base.inv(y::Ball{T, Complex{T}}) where {T <: AbstractFloat}
     # abs(my) has ≤1 ulp relative error, so amy² ≥ |my|²*(1-2ϵp); use this
     # to form a valid lower bound on D for the radius computation.
     amy = abs(my)
-    D_lo = @down (1 - 2ϵp) * amy * amy - ry * ry
+    two_eps = mul_up(T(2), ϵp)
+    D_lo = sub_down(mul_down(sub_down(one(T), two_eps), mul_down(amy, amy)), mul_up(ry, ry))
     c = conj(my) / (amy * amy - ry * ry)
-    r = @up ry / D_lo + ϵp * abs(c) + η
+    r = add_up(div_up(ry, D_lo), add_up(mul_up(ϵp, abs(c)), η))
     Ball(c, r)
 end
 
@@ -459,16 +460,6 @@ function Base.in(
     end
 end
 
-"""
-    inv(x::Ball{T, Complex{T}})
-
-Return the multiplicative inverse of a complex ball by using the identity
-`x⁻¹ = conj(x) / |x|²`. The helper relies on the existing real-valued
-operations defined above to keep the enclosure rigorous.
-"""
-function Base.inv(x::Ball{T, Complex{T}}) where {T <: AbstractFloat}
-    return conj(x) / (abs(x)^2)
-end
 
 #==============================================================================#
 # Comparison operators for Ball
