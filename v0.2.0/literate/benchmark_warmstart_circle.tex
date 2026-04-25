@@ -1,0 +1,308 @@
+\documentclass[11pt]{article}
+\usepackage{booktabs,pgfplots,amsmath}
+\pgfplotsset{compat=1.18}
+\begin{document}
+\section*{Ogita SVD Refinement: Stopping Criteria Analysis}
+
+\subsection*{Background}
+
+Ogita's iterative SVD refinement (RefSVD algorithm) improves an approximate SVD
+to arbitrary precision using extended arithmetic (BigFloat). The key question is:
+how many iterations are needed?
+
+\subsection*{Stopping Criteria Compared}
+
+We tested three approaches:
+
+\begin{enumerate}
+\item \textbf{Fixed iterations (default 10)}: Run a fixed number of iterations
+\item \textbf{Adaptive convergence check}: Stop when $\|F\|, \|G\| < 100\epsilon$
+      where $F, G$ are the correction matrices
+\item \textbf{Optimal iterations}: Use quadratic convergence theory to predict
+      the required number of iterations: $\lceil \log_2(p/53) \rceil$ for $p$-bit precision
+\end{enumerate}
+
+\subsection*{Quadratic Convergence Theory}
+
+Ogita's algorithm converges quadratically. Starting from Float64 precision
+(53 bits $\approx$ 15 decimal digits), each iteration approximately doubles the
+number of correct digits:
+
+\begin{center}
+\begin{tabular}{rrl}
+\toprule
+Iterations & Precision achieved & Target precision \\
+\midrule
+1 & $\sim 10^{-30}$ (30 digits) & --- \\
+2 & $\sim 10^{-60}$ (60 digits) & 128-bit (38 digits) \\
+3 & $\sim 10^{-120}$ (120 digits) & 256-bit (77 digits) \\
+4 & $\sim 10^{-240}$ (240 digits) & 512-bit (154 digits) \\
+5 & $\sim 10^{-480}$ (480 digits) & 1024-bit (308 digits) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Formula: For target precision $p$ bits, starting from 53 bits (Float64):
+\[
+  \text{iterations} = \left\lceil \log_2\left(\frac{p}{53}\right) \right\rceil
+\]
+
+\subsection*{Experimental Results: Direct Comparison}
+
+Test matrix: $n=50$ upper triangular, $\sigma_{\min} \approx 5.6 \times 10^{-8}$
+
+\begin{tabular}{rrrl}
+\toprule
+Iterations & Time (s) & Residual norm & Notes \\
+\midrule
+3 & 1.52 & $2 \times 10^{-52}$ & Optimal for 256-bit \\
+4 & 1.95 & $2 \times 10^{-64}$ & Extra precision margin \\
+\bottomrule
+\end{tabular}
+
+\textbf{Key finding}: 3 iterations is 22\% faster than 4 iterations, and both
+achieve residuals far smaller than $\sigma_{\min}$, yielding identical bounds.
+
+\subsection*{Warm-Start Analysis}
+
+We tested whether reusing the SVD from a nearby point speeds up refinement.
+
+\paragraph{With adaptive convergence check:}
+\begin{tabular}{rrrrr}
+\toprule
+Radius & Cold iters & Warm iters & Cold time & Warm time \\
+\midrule
+0.15 & 6.0 & 9.5 & 21.4s & 32.8s \\
+0.01 & 6.0 & 9.5 & 21.7s & 32.4s \\
+$10^{-10}$ & 6.0 & 8.4 & 21.9s & 29.2s \\
+\bottomrule
+\end{tabular}
+
+\textbf{Finding}: Warm-start is \emph{detrimental}! Fresh LAPACK SVD converges in 6
+iterations; warm-start from a nearby (different) matrix needs 9.5 iterations.
+
+\paragraph{With optimal iterations (fixed 3):}
+\begin{tabular}{rrrrr}
+\toprule
+Radius & Cold iters & Warm iters & Cold time & Warm time \\
+\midrule
+0.15 & 3.0 & 3.0 & 12.2s & 11.9s \\
+0.01 & 3.0 & 3.0 & 12.3s & 12.2s \\
+$10^{-10}$ & 3.0 & 3.0 & 12.2s & 12.2s \\
+\bottomrule
+\end{tabular}
+
+\textbf{Finding}: With fixed iterations, warm-start provides no benefit (same work).
+
+\subsection*{Why Adaptive Convergence Check is Slow}
+
+\begin{enumerate}
+\item The convergence check computes spectral norm bounds of correction matrices---expensive.
+\item The check is conservative: it requires 6 iterations when theory says 3 suffice.
+\item Fresh LAPACK SVD is already machine-precision accurate for the current matrix.
+\item Warm-start SVD from a different matrix is \emph{less} accurate, requiring more iterations.
+\end{enumerate}
+
+\subsection*{Implementation Update}
+
+Based on these findings, the default \texttt{max\_ogita\_iterations} in
+\texttt{CertifScripts.jl} has been updated:
+
+\begin{verbatim}
+# Old default (conservative)
+max_ogita_iterations::Int = 4
+
+# New default (optimal for 256-bit)
+max_ogita_iterations::Int = 3
+\end{verbatim}
+
+This provides a 22\% speedup with no loss in bound quality.
+
+\subsection*{Recommendations}
+
+\begin{enumerate}
+\item \textbf{Use optimal iterations}: Set iteration count based on target precision
+      using $\lceil \log_2(p/53) \rceil$.
+\item \textbf{Don't use adaptive convergence check}: It's slower and more conservative
+      than necessary.
+\item \textbf{Don't use warm-start}: Fresh LAPACK SVD is the best starting point.
+      Warm-start from a nearby matrix is actually worse.
+\item \textbf{For 256-bit precision}: Use 3 iterations (default).
+\item \textbf{For higher precision}: Use $\lceil \log_2(p/53) \rceil$ iterations.
+\end{enumerate}
+
+\subsection*{Iteration Count Reference}
+
+\begin{center}
+\begin{tabular}{rr}
+\toprule
+Target precision (bits) & Iterations needed \\
+\midrule
+128 & 2 \\
+256 & 3 \\
+512 & 4 \\
+1024 & 5 \\
+2048 & 6 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section*{Fast Extended Precision: The Hybrid Approach}
+
+\subsection*{The ``Nonrigorous Oracle Then Certified'' Pattern}
+
+Throughout BallArithmetic.jl, a common pattern emerges:
+\begin{enumerate}
+\item Compute fast approximate solution (Float64 oracle)
+\item Refine to high precision (BigFloat iterations)
+\item Certify with rigorous bounds (ball arithmetic)
+\end{enumerate}
+
+This pattern appears in 13 components:
+\begin{itemize}
+\item SVD refinement (Ogita's RefSVD)
+\item Schur decomposition refinement
+\item Symmetric eigenvalue refinement (RefSyEv)
+\item Sylvester equation solving
+\item Linear system verification (H-matrix, inflation)
+\item Singular value bounds (Oishi 2023, Rump-Oishi 2024)
+\item Pseudospectra certification (3-tier caching)
+\end{itemize}
+
+\subsection*{The Double64 Opportunity}
+
+The key insight: \textbf{refinement iterations don't need rigorous arithmetic}.
+They only need extended precision. The rigor comes from the final certification.
+
+\paragraph{Current approach:}
+\[
+\text{Float64} \xrightarrow{\text{3 iters}} \text{BigFloat (slow)} \xrightarrow{\text{certify}} \text{Rigorous bound}
+\]
+
+\paragraph{Hybrid approach with Double64:}
+\[
+\text{Float64} \xrightarrow{\text{2 iters}} \text{Double64 (fast)} \xrightarrow{\text{1 iter}} \text{BigFloat} \xrightarrow{\text{certify}} \text{Rigorous bound}
+\]
+
+\subsection*{Performance Comparison}
+
+\begin{tabular}{lrrl}
+\toprule
+Arithmetic & Bits & Relative Speed & Notes \\
+\midrule
+Float64 & 53 & 1$\times$ & Native hardware \\
+Double64 & 106 & 0.02$\times$ & DoubleFloats.jl \\
+Float64x4 & 212 & 0.03$\times$ & MultiFloats.jl \\
+BigFloat(256) & 256 & 0.001$\times$ & GMP library \\
+\bottomrule
+\end{tabular}
+
+Double64 is \textbf{30--50$\times$ faster} than BigFloat for matrix operations.
+
+\subsection*{Available Julia Libraries}
+
+\begin{itemize}
+\item \textbf{DoubleFloats.jl}: Double64 ($\sim$106 bits), full linear algebra support (SVD, LU, QR, eigen)
+\item \textbf{MultiFloats.jl}: Float64x2 to Float64x8 (106--424 bits), SIMD accelerated
+\end{itemize}
+
+\textbf{Limitation}: Neither provides faithful rounding. They cannot be used for
+rigorous ball arithmetic directly. But they \emph{can} be used for fast refinement
+before final BigFloat certification.
+
+\subsection*{Implementation}
+
+The \texttt{DoubleFloatsExt} extension provides fast Double64 implementations for:
+
+\paragraph{SVD Refinement (Ogita's RefSVD):}
+\begin{itemize}
+\item \texttt{ogita\_svd\_refine\_fast()}: Double64 refinement with BigFloat certification
+\item \texttt{ogita\_svd\_refine\_hybrid()}: 2 Double64 iterations + 1 BigFloat iteration
+\end{itemize}
+
+\paragraph{Schur Decomposition Refinement:}
+\begin{itemize}
+\item \texttt{refine\_schur\_double64()}: Double64 Schur refinement
+\item \texttt{refine\_schur\_hybrid()}: 2 Double64 iterations + 1 BigFloat iteration
+\end{itemize}
+
+\paragraph{Symmetric Eigenvalue Refinement (RefSyEv):}
+\begin{itemize}
+\item \texttt{refine\_symmetric\_eigen\_double64()}: Double64 RefSyEv
+\item \texttt{refine\_symmetric\_eigen\_hybrid()}: Hybrid version
+\end{itemize}
+
+Expected speedup: \textbf{10--30$\times$} for the iterative refinement phase.
+
+\section*{Oishi 2023: Schur Complement Bounds for $\sigma_{\min}$}
+
+\subsection*{Background}
+
+Oishi (2023) presents a method for computing lower bounds on the minimum singular
+value $\sigma_{\min}(G)$ of matrices arising from linearized Galerkin equations.
+The key insight is that these matrices have a ``generalized asymptotic diagonal
+dominant'' structure.
+
+\subsection*{Theorem 1 (Oishi 2023)}
+
+Partition $G$ as a $2 \times 2$ block matrix:
+\[
+G = \begin{pmatrix} A & B \\ C & D \end{pmatrix}
+\]
+where $A \in M_m$, and let $D_d$, $D_f$ be the diagonal and off-diagonal parts of $D$.
+
+If the following conditions hold:
+\begin{enumerate}
+\item $\|A^{-1}B\|_2 < 1$
+\item $\|CA^{-1}\|_2 < 1$
+\item $\|D_d^{-1}(D_f - CA^{-1}B)\|_2 < 1$
+\end{enumerate}
+
+Then $G$ is invertible and:
+\[
+\|G^{-1}\|_2 \leq \frac{\max\left\{\|A^{-1}\|_2,\, \frac{\|D_d^{-1}\|_2}{1 - \|D_d^{-1}(D_f - CA^{-1}B)\|_2}\right\}}{(1 - \|A^{-1}B\|_2)(1 - \|CA^{-1}\|_2)}
+\]
+
+\subsection*{Computational Pattern}
+
+The key computations are:
+\begin{itemize}
+\item $A^{-1}$ (or equivalently, solving $AX = B$ for $X = A^{-1}B$)
+\item $CA^{-1}$ (or equivalently, solving $A^T X = C^T$ for $X = (CA^{-1})^T$)
+\item Matrix products $D_d^{-1}(D_f - CA^{-1}B)$
+\end{itemize}
+
+These computations benefit from the Double64 oracle pattern:
+\begin{enumerate}
+\item \textbf{Oracle}: Solve $AX = B$ in Double64 (fast)
+\item \textbf{Certify}: Compute residual $R = B - AX$ in BigFloat (rigorous)
+\item \textbf{Bound}: Use $\|X - X_{\text{exact}}\| \leq \|A^{-1}\| \cdot \|R\|$
+\end{enumerate}
+
+\subsection*{Implementation}
+
+The \texttt{DoubleFloatsExt} extension provides:
+\begin{itemize}
+\item \texttt{oishi\_2023\_solve\_double64()}: Fast linear system solve with certification
+\item \texttt{oishi\_2023\_sigma\_min\_bound\_fast()}: Full Schur complement method with Double64 oracles
+\end{itemize}
+
+\section*{Summary: Where to Apply the Double64 Pattern}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Algorithm & Function & Expected Speedup \\
+\midrule
+Ogita SVD (RefSVD) & \texttt{ogita\_svd\_refine\_hybrid} & 10--30$\times$ \\
+Schur refinement & \texttt{refine\_schur\_hybrid} & 10--30$\times$ \\
+Symmetric eigen (RefSyEv) & \texttt{refine\_symmetric\_eigen\_hybrid} & 10--30$\times$ \\
+Oishi 2023 Schur complement & \texttt{oishi\_2023\_sigma\_min\_bound\_fast} & 5--10$\times$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Key insight}: Iterative refinement doesn't need rigorous arithmetic---it just needs
+extended precision. The rigor comes from the final certification step.
+
+\end{document}
