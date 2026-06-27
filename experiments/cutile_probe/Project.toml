@@ -1,0 +1,5 @@
+[deps]
+BallArithmetic = "77e4f72b-b5a4-4fb0-ac2a-dcc32095a072"
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+CUDACore = "bd0ed864-bdfe-4181-a5ed-ce625a5fdea2"
+cuTile = "0dea8319-8c4a-4662-a73d-20234d115b9a"
