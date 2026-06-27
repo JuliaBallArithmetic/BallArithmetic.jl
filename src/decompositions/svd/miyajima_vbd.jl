@@ -21,10 +21,124 @@ struct MiyajimaVBDResult{MT, BT, IT, RT, ET}
     clusters::Vector{UnitRange{Int}}
     """Gershgorin-type discs enclosing each diagonal entry."""
     cluster_intervals::Vector{IT}
-    """Upper bound on `‖remainder‖₂` combining Collatz and block-separation bounds."""
+    """Rigorous upper bound on `‖remainder‖₂` (best of the Collatz and ‖·‖₁‖·‖∞ bounds)."""
     remainder_norm::RT
-    """Eigenvalues associated with the diagonal of `mid(transformed)`."""
+    """Recentred (Rayleigh-quotient) eigenvalue estimates `diag(mid(transformed))`."""
     eigenvalues::Vector{ET}
+    """Per-block coupling radii `rᵢ = ‖Ñ[Cᵢ,:]‖₂ + β₂` (block-Gershgorin, one per cluster)."""
+    block_coupling::Vector{RT}
+    """Per-block barycentres `cᵢ = mean(diag Pᵢ)` (the within-block recentring)."""
+    block_centers::Vector{ET}
+    """Per-block within-block non-normality `nᵢ = ‖Pᵢ − cᵢI‖₂`."""
+    block_nonnormality::Vector{RT}
+    """Block-residual slack `β_Λ = ‖R₁‖₂/(1−‖R₂‖₂)`, `R₁ = Y(AW − WΛ)` (certifies `Λ`)."""
+    block_residual_norm::RT
+end
+
+"""
+    _vbd_unitary_basis(result) -> Bool
+
+Trait distinguishing VBD results whose `basis` is genuinely unitary (so that
+`adjoint(basis)` is its inverse) from those whose basis is only block-orthonormal
+(so that consumers must use `inv(basis)`).  `MiyajimaVBDResult` (NSD / Schur /
+Hermitian eigenvectors) is unitary; `SchurNewtonVBDResult` is not.
+"""
+_vbd_unitary_basis(::MiyajimaVBDResult) = true
+
+# PER-ROW certification slack charging the approximate-inverse error `Y ≈ W⁻¹` to each
+# Gershgorin disc.  With `Ã = Y·A·W` (a rigorous ball enclosure) and `R₂ = Y·W − I`, the
+# true collapsed matrix is `M₀ = W⁻¹AW = (I+R₂)⁻¹Ã`, so disc `i` (centre `Ãᵢᵢ`, radius
+# `Σ_{j≠i}|Ãᵢⱼ|`) must be widened by `‖rowᵢ(M₀ − Ã)‖₁`.  Since `M₀ − Ã = −K·Ã` with
+# `K = R₂(I+R₂)⁻¹`:
+#     ‖rowᵢ(M₀−Ã)‖₁ = ‖rowᵢ(K)·Ã‖₁ ≤ ‖rowᵢ(R₂)‖₁ · ‖Ã‖_∞ / (1−‖R₂‖_∞)  =:  βᵢ.
+# The global operator norm `‖R₂‖_∞` (= max row sum) is replaced by the INDIVIDUAL row
+# sum `‖rowᵢ(R₂)‖₁`, so each disc is as tight as its own row of the residual — `βᵢ ≤` the
+# uniform bound `‖R₂‖_∞‖Ã‖_∞/(1−‖R₂‖_∞)` for every `i`, with no extra matrix product.
+# Refuses (throws) when `‖R₂‖_∞ ≥ 1`.  Returns `(β::Vector, ‖R₂‖_∞)`.  For a genuinely
+# unitary frame (`Y = Z'`, Z Hermitian-eigvecs / Schur vectors) the `βᵢ` are tiny but
+# nonzero, and must still be accounted for.
+function _vbd_beta_rows(R2::BallMatrix, transformed::BallMatrix, ::Type{T}) where {T}
+    n = size(R2, 1)
+    nrmR2 = upper_bound_L_inf_opnorm(R2)
+    nrmR2 < 1 ||
+        error("VBD: Neumann condition ‖R₂‖_∞ = $nrmR2 ≥ 1; basis not certifiably " *
+              "nonsingular at this precision")
+    normT = upper_bound_L_inf_opnorm(transformed)     # ‖Ã‖_∞
+    denom = setrounding(T, RoundDown) do
+        one(T) - nrmR2
+    end
+    g = setrounding(T, RoundUp) do
+        normT / denom                                 # ‖Ã‖_∞/(1−‖R₂‖_∞)
+    end
+    absR2 = upper_abs(R2)
+    beta = Vector{T}(undef, n)
+    for i in 1:n
+        beta[i] = setrounding(T, RoundUp) do
+            rowR2 = zero(T)
+            for j in 1:n
+                rowR2 += absR2[i, j]                   # ‖rowᵢ(R₂)‖₁
+            end
+            rowR2 * g
+        end
+    end
+    return beta, nrmR2
+end
+
+# add the per-row certification slack `β[i]` to each Gershgorin disc radius (RoundUp)
+function _inflate_intervals(intervals::AbstractVector{Ball{T, CT}},
+        beta::AbstractVector{T}) where {T, CT}
+    return [Ball(mid(intervals[i]), setrounding(T, RoundUp) do
+        rad(intervals[i]) + beta[i]
+    end) for i in eachindex(intervals)]
+end
+
+# PER-BLOCK enclosure data (draft Thm. enclosure + Prop. blockgersg, with within-block
+# barycentre recentring).  The block-diagonal candidate `Λ = blockdiag(Pᵢ)` may be formed
+# freely (it is a candidate); rigor comes from the two residuals computed here:
+#   * `R₂ = YW − I`  (basis residual, Neumann `‖R₂‖₂ < 1`);
+#   * `R₁ = Y(AW − WΛ)`  (BLOCK residual) ⇒ `M − Λ = (I+R₂)⁻¹R₁`, so the SINGLE slack
+#       `β_Λ = ‖R₁‖₂/(1−‖R₂‖₂)` bounds the full deviation `‖M − Λ‖₂` (inter-block leakage
+#       included — no separate coupling term); `spec(A) ⊆ ⋃ᵢ{z: σ_min(Pᵢ − zI) ≤ β_Λ}`.
+# For each block `Cᵢ` (`Pᵢ = M̃[Cᵢ,Cᵢ]`) we also record:
+#   * barycentre  `cᵢ = mean(diag Pᵢ)`  and within-block non-normality `nᵢ = ‖Pᵢ − cᵢI‖₂`,
+#       so the barycentre floor `σ_min(Pᵢ − zI) ≥ |z − cᵢ| − nᵢ` gives the explicit disc
+#       `D(cᵢ, nᵢ + ρᵢ)` carrying `|Cᵢ|` eigenvalues;
+#   * the sharper localized coupling `rᵢ = ‖Ñ[Cᵢ,:]‖₂ + β₂` (Prop. blockgersg, `Ñ = M̃ − Λ`
+#       = `remainder`, `β₂ = ‖R₂‖₂/(1−‖R₂‖₂)·‖M̃‖₂`): each block charged only its OWN
+#       off-block-row coupling, never the worst block's (`rᵢ ≤ ‖Ñ‖₂ + β₂`, never looser).
+# Returns `(coupling, centres, nonnormality, block_slack)` with `block_slack = β_Λ`.
+function _vbd_block_data(A::BallMatrix, WB::BallMatrix, YB::BallMatrix,
+        transformed::BallMatrix, block::BallMatrix, remainder::BallMatrix,
+        clusters::Vector{UnitRange{Int}}, ::Type{T}) where {T}
+    R2 = YB * WB - I
+    nrmR2 = upper_bound_L2_opnorm(R2)
+    nrmR2 < 1 ||
+        error("VBD: Neumann condition ‖R₂‖₂ = $nrmR2 ≥ 1 while forming block data")
+    denom = setrounding(T, RoundDown) do
+        one(T) - nrmR2
+    end
+    # R₁ = Y(AW − WΛ) certifies the candidate Λ = block: β_Λ = ‖R₁‖₂/(1−‖R₂‖₂).
+    R1 = YB * (A * WB - WB * block)
+    block_slack = setrounding(T, RoundUp) do
+        upper_bound_L2_opnorm(R1) / denom
+    end
+    beta2 = setrounding(T, RoundUp) do
+        nrmR2 * upper_bound_L2_opnorm(transformed) / denom
+    end
+    midT = mid(transformed)
+    CT = eltype(midT)
+    coupling = Vector{T}(undef, length(clusters))
+    centres = Vector{CT}(undef, length(clusters))
+    nonnormality = Vector{T}(undef, length(clusters))
+    for (k, cl) in enumerate(clusters)
+        cj = sum(midT[i, i] for i in cl) / length(cl)        # block barycentre
+        centres[k] = cj
+        nonnormality[k] = upper_bound_L2_opnorm(transformed[cl, cl] - cj * I)  # ‖Pⱼ − cⱼI‖₂
+        coupling[k] = setrounding(T, RoundUp) do
+            upper_bound_L2_opnorm(remainder[cl, :]) + beta2
+        end
+    end
+    return coupling, centres, nonnormality, block_slack
 end
 
 """
@@ -38,23 +152,23 @@ Gershgorin discs are clustered, and a block-diagonal truncation together
 with a rigorous remainder is produced.
 
 Overlapping discs are grouped via their connectivity graph so that each
-cluster becomes contiguous after a basis permutation.  The remainder
-bound combines the classical Collatz estimate with a block-separation
-bound that exploits the verified gaps between clusters.
+cluster becomes contiguous after a basis permutation.  The remainder bound
+is a rigorous upper bound on `‖transformed - block_diagonal‖₂` (the best of
+the Collatz and `‖·‖₁‖·‖∞` interpolation estimates).
 
 When `hermitian = true` the routine expects `A` to be Hermitian and the
 resulting eigenvalues and intervals are real.  Otherwise the Schur form
 is used and the clusters are discs in the complex plane.
 """
+
 function miyajima_vbd(A::BallMatrix{T, NT}; hermitian::Bool = false) where {T, NT}
     m, n = size(A)
     m == n || throw(ArgumentError("miyajima_vbd expects a square matrix"))
 
-    basis, eigenvalues = hermitian ? _hermitian_diagonalisation(mid(A)) : _schur_diagonalisation(mid(A))
+    basis, _ = hermitian ? _hermitian_diagonalisation(mid(A)) : _schur_diagonalisation(mid(A))
     identity_order = collect(1:n)
 
     current_basis = basis
-    current_eigenvalues = eigenvalues
 
     intervals = nothing
     clusters = UnitRange{Int}[]
@@ -66,31 +180,70 @@ function miyajima_vbd(A::BallMatrix{T, NT}; hermitian::Bool = false) where {T, N
         basis_ball = BallMatrix(current_basis)
         basis_adjoint = BallMatrix(adjoint(current_basis))
         transformed = basis_adjoint * A * basis_ball
-        intervals = _vbd_gershgorin_intervals(transformed; hermitian)
+        # per-row β (tied to the current row order, hence recomputed after a permutation);
+        # discs are inflated BEFORE clustering so the overlap-clustering is itself rigorous.
+        R2 = basis_adjoint * basis_ball - I
+        beta, _ = _vbd_beta_rows(R2, transformed, T)
+        intervals = _inflate_intervals(_vbd_gershgorin_intervals(transformed; hermitian), beta)
         clusters, order = _interval_clusters(intervals)
         order == identity_order && break
 
         current_basis = current_basis[:, order]
-        current_eigenvalues = current_eigenvalues[order]
         attempts += 1
         attempts > n && throw(ArgumentError("failed to permute Gershgorin clusters into contiguous blocks"))
     end
 
     basis = current_basis
-    eigenvalues = current_eigenvalues
 
     transformed = Base.something(transformed)
     intervals = Base.something(intervals)
 
+    # Recentred (Rayleigh-quotient) eigenvalue estimates: the diagonal of the collapsed
+    # `M̃ = Z'AZ`, NOT the candidate `D` from eigen/schur — the candidate drops out (draft
+    # Remark "the candidate eigenvalues drop out"; the disc centres are these same `M̃ᵢᵢ`).
+    midT = mid(transformed)
+    eigenvalues = hermitian ? [real(midT[i, i]) for i in 1:n] : [midT[i, i] for i in 1:n]
+
     block = _block_diagonal_part(transformed, clusters)
     remainder = transformed - block
 
-    collatz_bound = collatz_upper_bound_L2_opnorm(remainder)
-    block_bound = r2_infty_bound_by_blocks(transformed, intervals, clusters)
-    remainder_norm = isfinite(block_bound) ? min(collatz_bound, block_bound) : collatz_bound
+    # Rigorous upper bound on ‖remainder‖₂.  We must NOT fold in the
+    # block-separation estimate `r2_infty_bound_by_blocks` here: that quantity
+    # bounds the Sylvester / invariant-subspace correction ‖X‖ ≈ ‖offdiag‖/sep,
+    # which is a *different* and generally *smaller* value than ‖remainder‖₂ for
+    # well-separated clusters.  Taking `min(collatz, block_bound)` therefore
+    # underestimated ‖remainder‖₂ and was not rigorous.  `upper_bound_L2_opnorm`
+    # already returns the best (still rigorous) of the Collatz and ‖·‖₁‖·‖∞ bounds.
+    remainder_norm = upper_bound_L2_opnorm(remainder)
+
+    block_coupling, block_centers, block_nonnormality, block_residual_norm = _vbd_block_data(
+        A, BallMatrix(basis), BallMatrix(adjoint(basis)), transformed, block, remainder, clusters, T)
+    hermitian && (block_centers = real.(block_centers))
 
     return MiyajimaVBDResult(basis, transformed, block, remainder, clusters,
-        intervals, remainder_norm, eigenvalues)
+        intervals, remainder_norm, eigenvalues, block_coupling, block_centers,
+        block_nonnormality, block_residual_norm)
+end
+
+"""
+    block_enclosure(vbd) -> Vector{NamedTuple}
+
+Block-disc enclosure of `σ(A)` from a VBD result (`MiyajimaVBDResult` or
+`SchurNewtonVBDResult`): one disc per cluster, `(center = cᵢ, radius = nᵢ + rᵢ, mult = |Cᵢ|)`
+with the barycentre `cᵢ` (`block_centers`), within-block non-normality `nᵢ`
+(`block_nonnormality`) and localized coupling `rᵢ` (`block_coupling`).
+
+From the barycentre floor `σ_min(Pᵢ − zI) ≥ |z − cᵢ| − nᵢ` and the block-Gershgorin region
+`{z : σ_min(Pᵢ − zI) ≤ rᵢ}`, each disc rigorously contains exactly `|Cᵢ|` eigenvalues of `A`
+(a connected component of overlapping discs holds the summed multiplicities).
+"""
+function block_enclosure(vbd)
+    T = eltype(vbd.block_coupling)
+    return [(center = vbd.block_centers[k],
+                radius = setrounding(T, RoundUp) do
+                    vbd.block_nonnormality[k] + vbd.block_coupling[k]
+                end,
+                mult = length(vbd.clusters[k])) for k in eachindex(vbd.clusters)]
 end
 
 function _hermitian_diagonalisation(H::AbstractMatrix{T}) where {T}
