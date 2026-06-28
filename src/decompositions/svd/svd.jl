@@ -159,6 +159,30 @@ function rigorous_svd(A::BallMatrix{T}; method::SVDMethod = MiyajimaM1(), apply_
 end
 
 """
+    rigorous_svd_gpu(A::BallMatrix{Float64,Float64}; method = MiyajimaM1(),
+                     apply_vbd = true, seed_on = :cpu)
+
+GPU-accelerated rigorous SVD of a (CPU-resident) `Float64` ball matrix,
+returning the same [`RigorousSVDResult`](@ref) as [`rigorous_svd`](@ref).
+
+The certification math is identical to [`rigorous_svd`](@ref) — only the
+`O(n³)` certification products (`UΣVᵀ`, `VᵀV`, `UᵀU`, and the residual
+widening term) are evaluated on the GPU through the rigorous INT8-Ozaki
+`MMul4` dispatch, while the `O(n²)` rigorous norm bounds and singular-value
+enclosures are finished on the CPU with directed rounding. The seed
+factorisation defaults to CPU LAPACK (`seed_on = :cpu`, the *hybrid*
+configuration, which benchmarks fastest on consumer/A40 cards because their
+`Float64` throughput is throttled); pass `seed_on = :gpu` to seed with
+cuSOLVER instead.
+
+This method is only available when the `CUDA` extension is loaded
+(`using CUDA`) and a functional GPU is present. The enclosures it returns
+overlap those of [`rigorous_svd`](@ref); the GPU midpoint truncation makes
+the singular-value radii modestly looser (still rigorous, typically `~10⁻¹⁰`).
+"""
+function rigorous_svd_gpu end
+
+"""
     _rigorous_svd_bigfloat(A, method; apply_vbd, use_cache)
 
 BigFloat version of rigorous SVD using GenericLinearAlgebra's native BigFloat SVD.
@@ -593,41 +617,47 @@ function refine_svd_bounds_with_vbd(result::RigorousSVDResult{UT, ST, ΣT, VT, E
     end
 
     # For isolated singular values, we can potentially use tighter bounds
-    # from the VBD Gershgorin intervals
+    # from the VBD Gershgorin intervals (σ² enclosures).
     T = eltype(result.residual_norm)
     refined_singular_values = copy(result.singular_values)
 
     for idx in isolated_indices
-        if idx <= length(vbd.cluster_intervals) && idx <= length(refined_singular_values)
-            interval = vbd.cluster_intervals[idx]
-            current_sv = result.singular_values[idx]
+        idx <= length(vbd.cluster_intervals) || continue
+        interval = vbd.cluster_intervals[idx]
 
-            # The VBD interval gives bounds on σ²
-            # Extract and take square root
-            λ_lower = max(mid(interval) - rad(interval), zero(T))
-            λ_upper = mid(interval) + rad(interval)
+        # The VBD interval gives bounds on σ²; take the square root for σ.
+        λ_lower = max(real(mid(interval)) - rad(interval), zero(T))
+        λ_upper = real(mid(interval)) + rad(interval)
+        σ_lower = setrounding(T, RoundDown) do
+            sqrt(max(λ_lower, zero(T)))
+        end
+        σ_upper = setrounding(T, RoundUp) do
+            sqrt(max(λ_upper, zero(T)))
+        end
 
-            σ_lower = setrounding(T, RoundDown) do
-                sqrt(max(λ_lower, zero(T)))
+        # Match by VALUE, not index: the VBD discs are in the (permuted) basis order,
+        # while `singular_values` is in the original order.  The σ-interval and the
+        # matching singular value's current enclosure both contain the same true σ, so
+        # they overlap; for an *isolated* cluster exactly one singular value matches.
+        candidates = Int[]
+        for j in eachindex(refined_singular_values)
+            sv = refined_singular_values[j]
+            cl = mid(sv) - rad(sv)
+            cu = mid(sv) + rad(sv)
+            (σ_lower <= cu && cl <= σ_upper) && push!(candidates, j)
+        end
+        length(candidates) == 1 || continue   # ambiguous or no match — skip (stay rigorous)
+        j = candidates[1]
+
+        current_sv = refined_singular_values[j]
+        new_lower = max(σ_lower, mid(current_sv) - rad(current_sv))
+        new_upper = min(σ_upper, mid(current_sv) + rad(current_sv))
+        if new_lower < new_upper
+            new_mid = (new_lower + new_upper) / 2
+            new_rad = setrounding(T, RoundUp) do
+                max(new_upper - new_mid, new_mid - new_lower)
             end
-            σ_upper = setrounding(T, RoundUp) do
-                sqrt(λ_upper)
-            end
-
-            # Only use if tighter than existing bounds
-            current_lower = mid(current_sv) - rad(current_sv)
-            current_upper = mid(current_sv) + rad(current_sv)
-
-            new_lower = max(σ_lower, current_lower)
-            new_upper = min(σ_upper, current_upper)
-
-            if new_lower < new_upper
-                new_mid = (new_lower + new_upper) / 2
-                new_rad = setrounding(T, RoundUp) do
-                    max(new_upper - new_mid, new_mid - new_lower)
-                end
-                refined_singular_values[idx] = Ball(new_mid, new_rad)
-            end
+            refined_singular_values[j] = Ball(new_mid, new_rad)
         end
     end
 

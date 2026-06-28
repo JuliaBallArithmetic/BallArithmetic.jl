@@ -96,29 +96,41 @@ T = result.T
 function rigorous_block_schur(A::BallMatrix{RT, NT};
                                hermitian::Bool = false,
                                block_structure::Symbol = :quasi_triangular,
-                               vbd_method::Symbol = :nsd) where {RT, NT}
+                               vbd_method::Symbol = :auto) where {RT, NT}
     n = size(A, 1)
     n == size(A, 2) || throw(ArgumentError("A must be square"))
 
     block_structure ∈ [:diagonal, :quasi_triangular, :full] ||
         throw(ArgumentError("block_structure must be :diagonal, :quasi_triangular, or :full"))
 
-    vbd_method ∈ [:nsd, :njd] ||
-        throw(ArgumentError("vbd_method must be :nsd or :njd"))
+    vbd_method ∈ [:auto, :nsd, :schur_newton, :njd] ||
+        throw(ArgumentError("vbd_method must be :auto, :nsd, or :schur_newton"))
+    if vbd_method == :njd
+        @warn "vbd_method = :njd is deprecated; use :schur_newton (the O(n³) Schur+Newton VBD)." maxlog=1
+        vbd_method = :schur_newton
+    end
+    # :auto — NSD only diagonalizes a NORMAL matrix; for a non-normal (non-hermitian) matrix
+    # a unitary basis leaves all the non-normality in the off-diagonal (huge coupling), so
+    # default to Schur+Newton, which decouples between clusters and confines the
+    # non-normality to the diagonal blocks.  Hermitian ⇒ NSD (a unitary basis diagonalizes).
+    vbd_method == :auto && (vbd_method = hermitian ? :nsd : :schur_newton)
 
     # Step 1: Compute VBD to identify clusters and get basis
-    vbd = if vbd_method == :njd
-        miyajima_vbd_njd(A)
+    vbd = if vbd_method == :schur_newton
+        schur_newton_vbd(A)
     else
         miyajima_vbd(A; hermitian = hermitian)
     end
 
-    # Step 2: Construct orthogonal transformation Q as ball matrix
+    # Step 2: Construct the basis Q and its inverse.  For a unitary (NSD) basis the
+    # inverse is the adjoint; for the block-orthonormal Schur+Newton basis it is not,
+    # so use inv(W) — otherwise T = Qinv*A*Q is not a similarity and the result is wrong.
+    is_unitary = _vbd_unitary_basis(vbd)
     Q = BallMatrix(vbd.basis)
+    Q_inv = is_unitary ? BallMatrix(adjoint(vbd.basis)) : BallMatrix(inv(vbd.basis))
 
-    # Step 3: Transform matrix: T = Q' * A * Q
-    Q_adj = BallMatrix(adjoint(vbd.basis))
-    T_full = Q_adj * A * Q
+    # Step 3: Transform matrix: T = Q⁻¹ * A * Q
+    T_full = Q_inv * A * Q
 
     # Step 4: Apply block structure truncation
     T = _apply_block_structure(T_full, vbd.clusters, block_structure)
@@ -126,13 +138,15 @@ function rigorous_block_schur(A::BallMatrix{RT, NT};
     # Step 5: Extract diagonal blocks
     diagonal_blocks = [T[cluster, cluster] for cluster in vbd.clusters]
 
-    # Step 6: Verify orthogonality of Q
-    Q_adj_Q = Q_adj * Q
+    # Step 6: Defect of the transformation.  For a unitary basis this is the
+    # orthogonality defect ‖QᴴQ − I‖₂; for the block-orthonormal basis it measures the
+    # inter-block non-orthogonality of W (still ‖Q⁻¹Q − I‖₂ = 0 in exact arithmetic,
+    # so it reports the certified rounding/coupling slack).
     I_ball = BallMatrix(Matrix{NT}(I, n, n))
-    orthogonality_defect = collatz_upper_bound_L2_opnorm(Q_adj_Q - I_ball)
+    orthogonality_defect = collatz_upper_bound_L2_opnorm(Q_inv * Q - I_ball)
 
-    # Step 7: Compute residual ‖A - Q*T*Q'‖₂
-    reconstruction = Q * T * Q_adj
+    # Step 7: Compute residual ‖A - Q*T*Q⁻¹‖₂ (the similarity, not Q*T*Qᴴ)
+    reconstruction = Q * T * Q_inv
     residual = A - reconstruction
     residual_norm = collatz_upper_bound_L2_opnorm(residual)
 

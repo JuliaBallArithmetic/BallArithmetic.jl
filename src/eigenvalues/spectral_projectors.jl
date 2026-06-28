@@ -97,13 +97,21 @@ P2 = result[2]  # Projector for second cluster (eigenvalues ≈ 5.0, 5.1)
 function miyajima_spectral_projectors(A::BallMatrix{T, NT};
                                        hermitian::Bool = false,
                                        verify_invariance::Bool = true,
-                                       vbd_method::Symbol = :nsd) where {T, NT}
-    vbd_method ∈ [:nsd, :njd] ||
-        throw(ArgumentError("vbd_method must be :nsd or :njd"))
+                                       vbd_method::Symbol = :auto) where {T, NT}
+    vbd_method ∈ [:auto, :nsd, :schur_newton, :njd] ||
+        throw(ArgumentError("vbd_method must be :auto, :nsd, or :schur_newton"))
+    if vbd_method == :njd
+        @warn "vbd_method = :njd is deprecated; use :schur_newton (the O(n³) Schur+Newton VBD)." maxlog=1
+        vbd_method = :schur_newton
+    end
+    # :auto — NSD (unitary basis) only diagonalizes a NORMAL matrix; for a non-normal
+    # (non-hermitian) matrix it leaves the non-normality in the off-diagonal, so default to
+    # Schur+Newton (decouples between clusters, non-normality confined to the blocks).
+    vbd_method == :auto && (vbd_method = hermitian ? :nsd : :schur_newton)
 
     # Step 1: Compute VBD
-    vbd = if vbd_method == :njd
-        miyajima_vbd_njd(A)
+    vbd = if vbd_method == :schur_newton
+        schur_newton_vbd(A)
     else
         miyajima_vbd(A; hermitian = hermitian)
     end
@@ -114,9 +122,9 @@ function miyajima_spectral_projectors(A::BallMatrix{T, NT};
     num_clusters = length(vbd.clusters)
 
     # For unitary bases (NSD), P_k = V_k * V_k^† is correct.
-    # For non-unitary bases (NJD), P_k = W_k * (W⁻¹)_k where
+    # For non-unitary bases (Schur+Newton), P_k = W_k * (W⁻¹)_k where
     # W_k = W[:, cluster_k] and (W⁻¹)_k = (W⁻¹)[cluster_k, :].
-    is_unitary_basis = !(vbd isa NJDVBDResult)
+    is_unitary_basis = _vbd_unitary_basis(vbd)
 
     V_inv_ball = if is_unitary_basis
         nothing  # not needed — use adjoint instead
@@ -168,7 +176,7 @@ function miyajima_spectral_projectors(A::BallMatrix{T, NT};
 
     # Verify resolution of identity: ∑ P_k ≈ I
     sum_projectors = sum(projectors)
-    # Match identity element type to projector element type (NJD may produce complex)
+    # Match identity element type to projector element type (Schur+Newton may produce complex)
     proj_eltype = eltype(mid(projectors[1]))
     I_ball = BallMatrix(Matrix{proj_eltype}(I, n, n))
     resolution_defect = upper_bound_L2_opnorm(sum_projectors - I_ball)
