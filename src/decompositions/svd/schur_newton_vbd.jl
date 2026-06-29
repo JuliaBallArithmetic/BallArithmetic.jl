@@ -100,6 +100,7 @@ function _vbd_solve(Bc::Matrix{CT}; sep::Real = -1, maxsteps::Integer = 6) where
     rt(x) = parent[x] == x ? x : (parent[x] = rt(parent[x]))
     uni(a, b) = (ra = rt(a); rb = rt(b); ra == rb ? false : (parent[ra] = rb; true))
     @inbounds for j in 1:n, i in 1:(j - 1)
+
         abs(d[i] - d[j]) < τ && uni(i, j)
     end
     W = copy(Q)
@@ -108,14 +109,33 @@ function _vbd_solve(Bc::Matrix{CT}; sep::Real = -1, maxsteps::Integer = 6) where
         cof = Int[rt(i) for i in 1:n]
         X = zeros(CT, n, n)
         @inbounds for j in 1:n, i in 1:n
+
             cof[i] != cof[j] && (X[i, j] = -A[i, j] / (d[i] - d[j]))
         end
         return X
     end
-    # 3. column-norm merge: a column whose decoupling transform has ‖X[:,j]‖₂ ≥ 1
-    # "fails" (the rigorous fixed point would not contract) ⇒ merge it into its
-    # dominant coupling partner and re-cluster.  Merge-only: clusters grow to a
-    # fixpoint, never split.
+    # one between-cluster Newton sweep (apply): Xᵢⱼ = −Aᵢⱼ/(dᵢ−dⱼ), A ← (I+X)⁻¹A(I+X).
+    function newtonstep!()
+        X = newtonX()
+        iszero(X) && return false
+        IpX = I + X
+        A = IpX \ (A * IpX)
+        W = W * IpX
+        d = diag(A)
+        return true
+    end
+    # 3. WARM UP the Newton BEFORE the merge check. The column-norm criterion below would, on the
+    # raw Schur factor, fire on the *cumulative* off-diagonal coupling Σᵢ|Aᵢⱼ/(dᵢ−dⱼ)| of a column —
+    # large for a non-normal but genuinely SEPARATED band (each gap is real; the Schur off-diagonals
+    # are just big), wrongly collapsing distinct eigenvalues into one block. A few Newton sweeps let
+    # the separable pairs decouple (their ‖X[:,j]‖ → small) so the merge then catches only what STAYS
+    # coupled — true near-defective / dᵢ≈dⱼ chains, where the off-diagonal does NOT shrink.
+    for _ in 1:maxsteps
+        newtonstep!() || break
+    end
+    # 4. column-norm merge: a column whose decoupling transform STILL has ‖X[:,j]‖₂ ≥ 1 after warmup
+    # "fails" (the fixed point does not contract) ⇒ merge into its dominant coupling partner and
+    # re-cluster. Merge-only: clusters grow to a fixpoint, never split.
     Xcap = one(Tr)
     for _ in 1:n
         X = newtonX()
@@ -127,14 +147,9 @@ function _vbd_solve(Bc::Matrix{CT}; sep::Real = -1, maxsteps::Integer = 6) where
         end
         merged || break
     end
-    # 4. Newton refinement of the (now separable) between-cluster structure.
+    # 5. Newton refinement of the (now correctly clustered) between-cluster structure.
     for _ in 1:maxsteps
-        X = newtonX()
-        iszero(X) && break
-        IpX = I + X
-        A = IpX \ (A * IpX)
-        W = W * IpX
-        d = diag(A)
+        newtonstep!() || break
     end
     groups = Dict{Int, Vector{Int}}()
     for i in 1:n
@@ -274,7 +289,8 @@ function schur_newton_vbd(A::BallMatrix{T, NT}; sep::Real = -1,
     midT = mid(transformed)
     eigenvalues = [midT[i, i] for i in 1:n]
 
-    block_coupling, block_centers, block_nonnormality, block_residual_norm = _vbd_block_data(
+    block_coupling, block_centers, block_nonnormality,
+    block_residual_norm = _vbd_block_data(
         Acx, BallMatrix(W), BallMatrix(inv(W)), transformed, block, remainder, clusters, T)
 
     return SchurNewtonVBDResult(W, transformed, block, remainder, clusters,
