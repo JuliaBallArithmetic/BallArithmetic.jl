@@ -615,3 +615,180 @@ function sylvester_krawczyk_enclosure(A::AbstractMatrix,
 
     throw(ErrorException("sylvester_krawczyk_enclosure is not yet implemented"))
 end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Schur-fallback Sylvester enclosure (salvaged from the Sylvester-schur branch).
+# When the eigenvector-based `sylvester_miyajima_enclosure` is inapplicable (e.g.
+# A or B defective / not diagonalizable), fall back to a unitary Schur frame and a
+# verified block-by-block back-substitution that propagates the per-block radii.
+# `_real_type` and `sylvester_miyajima_enclosure(A,B,C,X̃)` are reused from above.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Insert block `B` into `M` at row-range `I`, col-range `J`.
+@inline function place!(M, I::UnitRange{Int}, J::UnitRange{Int}, B)
+    @inbounds M[I, J] .= B
+    return M
+end
+
+"""
+    schur_blocks(T; tol=nothing) -> Vector{UnitRange{Int}}
+
+Diagonal block ranges of a Schur form `T`: all 1×1 for a complex Schur form; for a
+real (quasi-triangular) Schur form, a `2×2` block wherever `abs(T[i+1,i]) > tol`.
+"""
+function schur_blocks(T; tol = nothing)
+    n, m = size(T)
+    n == m || throw(DimensionMismatch("T must be square"))
+    eltype(T) <: Complex && return [i:i for i in 1:n]
+    RT = float(real(one(eltype(T))))
+    if tol === nothing
+        maxrowsum = zero(RT)
+        @inbounds for i in 1:n
+            s = zero(RT)
+            for j in 1:n
+                s += abs(T[i, j])
+            end
+            maxrowsum = max(maxrowsum, s)
+        end
+        tol = sqrt(eps(RT)) * max(maxrowsum, one(RT))
+    end
+    blocks = UnitRange{Int}[]
+    i = 1
+    @inbounds while i <= n
+        if i < n && abs(T[i + 1, i]) > tol
+            push!(blocks, i:(i + 1)); i += 2
+        else
+            push!(blocks, i:i); i += 1
+        end
+    end
+    return blocks
+end
+
+# Fast (non-verified) midpoint for the tiny subproblem `Aii*Y + Y*Bjj = RHS`
+# (1×1 or 2×2 blocks); used only as a candidate.
+function tiny_sylvester_midpoint(Aii, Bjj, RHS)
+    p = size(Aii, 1); q = size(Bjj, 1)
+    if p == 1 && q == 1
+        return RHS / (Aii[1, 1] + Bjj[1, 1])
+    elseif p == 2 && q == 1
+        return (Aii + Bjj[1, 1] * I(2)) \ RHS
+    elseif p == 1 && q == 2
+        return ((Bjj + Aii[1, 1] * I(2))' \ RHS')'
+    elseif p == 2 && q == 2
+        K = kron(I(2), Aii) + kron(Bjj', I(2))
+        return reshape(K \ vec(RHS), 2, 2)
+    else
+        throw(ArgumentError("Unsupported block sizes p=$p, q=$q"))
+    end
+end
+
+"""
+    schur_sylvester_midpoint(A, B, C; prefer_complex_schur=true)
+
+Numerical midpoint for `A*X + X*B = C` via Schur back-substitution (no verification);
+the default candidate `X̃` for [`verified_sylvester_enclosure`](@ref).
+"""
+function schur_sylvester_midpoint(A, B, C; prefer_complex_schur::Bool = true)
+    SA = prefer_complex_schur ? schur(complex.(A)) : schur(A)
+    SB = prefer_complex_schur ? schur(complex.(B)) : schur(B)
+    QA, TA = SA.Z, SA.T
+    QB, TB = SB.Z, SB.T
+    C̃ = QA' * C * QB
+    Ab = schur_blocks(TA); Bb = schur_blocks(TB)
+    Y = zero(C̃)
+    for ii in length(Ab):-1:1
+        IA = Ab[ii]; Aii = TA[IA, IA]
+        for jj in 1:length(Bb)
+            JB = Bb[jj]; Bjj = TB[JB, JB]
+            RHS = C̃[IA, JB]
+            for kk in (ii + 1):length(Ab)
+                IK = Ab[kk]; RHS -= TA[IA, IK] * Y[IK, JB]
+            end
+            for ℓ in 1:(jj - 1)
+                JL = Bb[ℓ]; RHS -= Y[IA, JL] * TB[JL, JB]
+            end
+            place!(Y, IA, JB, tiny_sylvester_midpoint(Aii, Bjj, RHS))
+        end
+    end
+    return QA * Y * QB'
+end
+
+"""
+    schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur=true) -> BallMatrix
+
+Verified enclosure for `A*X + X*B = C` via unitary Schur frames `A=QA TA QAᴴ`,
+`B=QB TB QBᴴ` and reverse-order block back-substitution: each tiny diagonal block is
+enclosed by [`sylvester_miyajima_enclosure`](@ref) on the midpoint RHS, and the
+uncertainty of already-solved blocks is propagated into the per-block radius
+(`ΔRHS`). Use when the eigenvector method is inapplicable (defective `A`/`B`).
+
+With `prefer_complex_schur=true` (default) every block is `1×1`, which is rigorous.
+The real-Schur path (`prefer_complex_schur=false`) can produce `2×2` blocks whose
+radius inflation is not yet rigorous; that case is refused.
+"""
+function schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur::Bool = true)
+    SA = prefer_complex_schur ? schur(complex.(A)) : schur(A)
+    SB = prefer_complex_schur ? schur(complex.(B)) : schur(B)
+    QA, TA = SA.Z, SA.T
+    QB, TB = SB.Z, SB.T
+    C̃ = QA' * C * QB
+    Ab = schur_blocks(TA); Bb = schur_blocks(TB)
+    RT = _real_type(eltype(C̃))
+    Ymid = zero(C̃)
+    Yrad = zeros(RT, size(C̃))
+    for ii in length(Ab):-1:1
+        IA = Ab[ii]; Aii = TA[IA, IA]
+        for jj in 1:length(Bb)
+            JB = Bb[jj]; Bjj = TB[JB, JB]
+            RHS_mid = C̃[IA, JB]
+            for kk in (ii + 1):length(Ab)
+                IK = Ab[kk]; RHS_mid -= TA[IA, IK] * Ymid[IK, JB]
+            end
+            for ℓ in 1:(jj - 1)
+                JL = Bb[ℓ]; RHS_mid -= Ymid[IA, JL] * TB[JL, JB]
+            end
+            # propagate the radii of already-solved blocks into a ΔRHS bound:
+            # |ΔRHS| ≤ Σ |TA[IA,IK]|·Yrad[IK,JB] + Σ Yrad[IA,JL]·|TB[JL,JB]|
+            ΔRHS_abs = zeros(RT, length(IA), length(JB))
+            for kk in (ii + 1):length(Ab)
+                IK = Ab[kk]; ΔRHS_abs .+= abs.(TA[IA, IK]) * Yrad[IK, JB]
+            end
+            for ℓ in (jj + 1):length(Bb)
+                JL = Bb[ℓ]; ΔRHS_abs .+= Yrad[IA, JL] * abs.(TB[JL, JB])
+            end
+            Ỹ = tiny_sylvester_midpoint(Aii, Bjj, RHS_mid)
+            place!(Ymid, IA, JB, Ỹ)
+            Bij = sylvester_miyajima_enclosure(Aii, Bjj, RHS_mid, Ỹ)
+            Eij = rad(Bij)
+            if size(Aii, 1) == 1 && size(Bjj, 1) == 1
+                Eij .+= ΔRHS_abs ./ abs(Aii[1, 1] + Bjj[1, 1])
+            else
+                throw(ArgumentError("schur_sylvester_miyajima_enclosure: rigorous radius " *
+                    "inflation for 2×2 real-Schur blocks is not implemented; call with " *
+                    "prefer_complex_schur=true (all-1×1, rigorous)."))
+            end
+            place!(Yrad, IA, JB, Eij)
+        end
+    end
+    Xmid = QA * Ymid * QB'
+    Xrad = abs.(QA) * Yrad * abs.(QB)'
+    return BallMatrix(Xmid, Xrad)
+end
+
+"""
+    verified_sylvester_enclosure(A, B, C; X̃=nothing, prefer_complex_schur=true) -> BallMatrix
+
+Robust verified enclosure for the Sylvester equation `A*X + X*B = C`: try the fast
+eigenvector-based [`sylvester_miyajima_enclosure`](@ref), and on failure fall back to
+the Schur-frame [`schur_sylvester_miyajima_enclosure`](@ref). A numerical midpoint `X̃`
+is produced via Schur back-substitution if not supplied.
+"""
+function verified_sylvester_enclosure(A, B, C; X̃ = nothing,
+        prefer_complex_schur::Bool = true)
+    X̃ === nothing && (X̃ = schur_sylvester_midpoint(A, B, C; prefer_complex_schur))
+    try
+        return sylvester_miyajima_enclosure(A, B, C, X̃)
+    catch
+        return schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur)
+    end
+end

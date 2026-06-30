@@ -64,6 +64,7 @@ using Test
     include("test_linear_system/test_krawczyk.jl")
     include("test_linear_system/test_shaving.jl")
     include("test_linear_system/test_horacek_methods.jl")
+    include("test_linear_system/test_sylvester_schur.jl")
 
     # Decompositions
     include("test_decompositions/test_iterative_refinement.jl")

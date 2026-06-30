@@ -254,6 +254,7 @@ include("linear_system/sylvester.jl")
 
 export triangular_eigenvectors
 export sylvester_miyajima_enclosure, triangular_sylvester_miyajima_enclosure
+export verified_sylvester_enclosure, schur_sylvester_miyajima_enclosure, schur_sylvester_midpoint
 
 # Sylvester-based resolvent bounds
 export SylvesterResolventResult, SylvesterResolventPointResult
