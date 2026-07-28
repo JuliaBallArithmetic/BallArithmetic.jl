@@ -44,7 +44,7 @@ struct VerifiedLUResult{LM<:BallMatrix, UM<:BallMatrix, RT<:Real}
 end
 
 """
-    _lu_perturbed_identity(E::AbstractMatrix{T}; precision_bits::Int=256, use_bigfloat::Bool=true) where T
+    _lu_perturbed_identity(E::AbstractMatrix{T}; E_rad=nothing, precision_bits::Int=256, use_bigfloat::Bool=true) where T
 
 Compute verified LU decomposition of I + E where E is a small perturbation.
 
@@ -52,6 +52,12 @@ This is the core algorithm from Section 3.1 of Rump & Ogita (2024).
 For ‖E‖∞ < 1, the matrix I + E has a unique LU decomposition.
 
 # Arguments
+- `E_rad`: optional nonnegative radius matrix turning `E` into the interval
+  matrix `E ± E_rad`, so that the returned enclosures are valid for *every*
+  matrix in that interval. All bounds of Section 3.1 depend on `E` only
+  through `|E|` and are monotone in it, so they are evaluated at `|E| + E_rad`;
+  the offsets are centred at `E`, hence `E_rad` is added to their radii.
+  Defaults to an exact (point) `E`.
 - `precision_bits`: Precision for BigFloat computation (ignored if use_bigfloat=false)
 - `use_bigfloat`: If true, use BigFloat for high precision; if false, use Float64 with directed rounding
 
@@ -67,6 +73,7 @@ The key insight is that L[i,k] - E[i,k] can be bounded by an outer product,
 allowing O(n²) computation of verified bounds.
 """
 function _lu_perturbed_identity(E::AbstractMatrix{T};
+                                 E_rad=nothing,
                                  precision_bits::Int=256,
                                  use_bigfloat::Bool=true) where T
     m, n = size(E)
@@ -84,9 +91,24 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
         RWT = real(WT)
         E_w = _to_working(E, use_bigfloat)
 
+        # Radius of the input perturbation.  All the bounds below depend on E
+        # only through |E| and are monotone in it, so they are evaluated at
+        # |E| + E_rad; the offset midpoints stay centred at E and pick up E_rad
+        # in their radii.
+        R_w = E_rad === nothing ? zeros(RWT, m, n) :
+              convert.(RWT, _to_working(E_rad, use_bigfloat))
+        any(<(0), R_w) && throw(ArgumentError("E_rad must be nonnegative"))
+        absE_w = setrounding(RWT, RoundUp) do
+            abs.(E_w) .+ R_w
+        end
+        R_stril = _strict_lower_triangular(R_w)
+        R_triu = _upper_triangular(R_w)
+
         # Check convergence condition: ‖E_n‖∞ < 1
-        E_n = m >= n ? E_w : E_w[1:m, 1:m]
-        E_norm = maximum(sum(abs.(E_n), dims=2))
+        absE_n = m >= n ? absE_w : absE_w[1:m, 1:m]
+        E_norm = setrounding(RWT, RoundUp) do
+            maximum(sum(absE_n, dims=2))
+        end
 
         if E_norm >= 1
             # Cannot verify - perturbation too large
@@ -96,59 +118,86 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
         # Extract triangular parts
         E_stril = _strict_lower_triangular(E_w)  # Strictly lower triangular
         E_triu = _upper_triangular(E_w)          # Upper triangular (including diagonal)
+        absE_stril = _strict_lower_triangular(absE_w)
+        absE_triu = _upper_triangular(absE_w)
 
         # Equation (3.1): Bound on |L^[ℓ] - E^[ℓ]|
         # |L^[ℓ] - E^[ℓ]| ≤ (sum(|E^[ℓ]|, 2) · max(|E^[u]_n|))^[ℓ] / (1 - ‖E_n‖∞)
-        row_sums_E_stril = vec(sum(abs.(E_stril), dims=2))
-        col_maxes_E_triu = vec(maximum(abs.(E_triu[1:mn, 1:mn]), dims=1))
+        row_sums_E_stril = setrounding(RWT, RoundUp) do
+            vec(sum(absE_stril, dims=2))
+        end
+        col_maxes_E_triu = vec(maximum(absE_triu[1:mn, 1:mn], dims=1))
 
-        # Outer product bound (strictly lower triangular part only)
-        denom = 1 - E_norm
+        # Outer product bound (strictly lower triangular part only).  The
+        # denominator is rounded down so that the quotients stay upper bounds.
+        denom = setrounding(RWT, RoundDown) do
+            one(RWT) - E_norm
+        end
+        denom > 0 || return nothing, nothing, nothing, nothing, false
         Delta_L = zeros(RWT, m, mn)
-        for j in 1:(mn-1)
-            for i in (j+1):m
-                Delta_L[i, j] = row_sums_E_stril[i] * col_maxes_E_triu[j] / denom
+        setrounding(RWT, RoundUp) do
+            for j in 1:(mn-1)
+                for i in (j+1):m
+                    Delta_L[i, j] = row_sums_E_stril[i] * col_maxes_E_triu[j] / denom
+                end
             end
         end
 
         # L = I + E^[ℓ] + C^[ℓ] where |C^[ℓ]| ≤ Δ^[ℓ]
         L_offset_mid = E_stril[1:m, 1:mn]
-        L_offset_rad = Delta_L
+        L_offset_rad = setrounding(RWT, RoundUp) do
+            Delta_L .+ R_stril[1:m, 1:mn]
+        end
 
         # Equation (3.4): Bound on L⁻¹
         # L⁻¹ = I - E^[ℓ] + δ where |δ| ≤ Δ^[ℓ] + (sum(G,2)·max(G))^[ℓ] / (1 - ‖G‖∞)
-        G = abs.(L_offset_mid) .+ Delta_L
-        G_norm = maximum(sum(G, dims=2))
+        G, G_norm = setrounding(RWT, RoundUp) do
+            Gm = absE_stril[1:m, 1:mn] .+ Delta_L
+            Gm, maximum(sum(Gm, dims=2))
+        end
 
         if G_norm >= 1
             return nothing, nothing, nothing, nothing, false
         end
 
-        row_sums_G = vec(sum(G, dims=2))
+        row_sums_G = setrounding(RWT, RoundUp) do
+            vec(sum(G, dims=2))
+        end
         col_maxes_G = vec(maximum(G, dims=1))
 
+        G_denom = setrounding(RWT, RoundDown) do
+            one(RWT) - G_norm
+        end
+        G_denom > 0 || return nothing, nothing, nothing, nothing, false
+
         delta_L_inv = copy(Delta_L)
-        for j in 1:(mn-1)
-            for i in (j+1):m
-                delta_L_inv[i, j] += row_sums_G[i] * col_maxes_G[j] / (1 - G_norm)
+        setrounding(RWT, RoundUp) do
+            for j in 1:(mn-1)
+                for i in (j+1):m
+                    delta_L_inv[i, j] += row_sums_G[i] * col_maxes_G[j] / G_denom
+                end
             end
         end
 
         L_inv_offset_mid = -E_stril[1:m, 1:mn]
-        L_inv_offset_rad = delta_L_inv
+        L_inv_offset_rad = setrounding(RWT, RoundUp) do
+            delta_L_inv .+ R_stril[1:m, 1:mn]
+        end
 
         # Equation (3.5): Bound on U
         # U = I_n + E^[u]_n + C^[u] where the bound involves L
         # For m ≥ n case
         if m >= n
-            B = copy(abs.(E_triu[1:n, 1:n]))
+            B = copy(absE_triu[1:n, 1:n])
             for j in 1:(n-1)
                 for i in (j+1):n
                     B[i, j] = Delta_L[i, j]
                 end
             end
 
-            row_sums_GL = vec(sum(G[1:n, 1:n], dims=2))
+            row_sums_GL = setrounding(RWT, RoundUp) do
+                vec(sum(G[1:n, 1:n], dims=2))
+            end
             col_maxes_B = vec(maximum(B, dims=1))
 
             GL_norm = maximum(row_sums_GL)
@@ -156,50 +205,77 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
                 return nothing, nothing, nothing, nothing, false
             end
 
+            GL_denom = setrounding(RWT, RoundDown) do
+                one(RWT) - GL_norm
+            end
+            GL_denom > 0 || return nothing, nothing, nothing, nothing, false
+
             Delta_U = zeros(RWT, n, n)
-            for j in 1:n
-                for i in 1:j  # Upper triangular including diagonal
-                    Delta_U[i, j] = row_sums_GL[i] * col_maxes_B[j] / (1 - GL_norm)
+            setrounding(RWT, RoundUp) do
+                for j in 1:n
+                    for i in 1:j  # Upper triangular including diagonal
+                        Delta_U[i, j] = row_sums_GL[i] * col_maxes_B[j] / GL_denom
+                    end
                 end
             end
 
             U_offset_mid = E_triu[1:n, 1:n]
-            U_offset_rad = Delta_U
+            U_offset_rad = setrounding(RWT, RoundUp) do
+                Delta_U .+ R_triu[1:n, 1:n]
+            end
 
             # U⁻¹ bounds (equation 3.7)
-            GU = abs.(U_offset_mid) .+ Delta_U
-            GU_norm = maximum(sum(GU, dims=2))
+            GU, GU_norm = setrounding(RWT, RoundUp) do
+                GUm = absE_triu[1:n, 1:n] .+ Delta_U
+                GUm, maximum(sum(GUm, dims=2))
+            end
 
             if GU_norm >= 1
                 return nothing, nothing, nothing, nothing, false
             end
 
-            row_sums_GU = vec(sum(GU, dims=2))
+            row_sums_GU = setrounding(RWT, RoundUp) do
+                vec(sum(GU, dims=2))
+            end
             col_maxes_GU = vec(maximum(GU, dims=1))
 
+            GU_denom = setrounding(RWT, RoundDown) do
+                one(RWT) - GU_norm
+            end
+            GU_denom > 0 || return nothing, nothing, nothing, nothing, false
+
             delta_U_inv = copy(Delta_U)
-            for j in 1:n
-                for i in 1:j
-                    delta_U_inv[i, j] += row_sums_GU[i] * col_maxes_GU[j] / (1 - GU_norm)
+            setrounding(RWT, RoundUp) do
+                for j in 1:n
+                    for i in 1:j
+                        delta_U_inv[i, j] += row_sums_GU[i] * col_maxes_GU[j] / GU_denom
+                    end
                 end
             end
 
             U_inv_offset_mid = -E_triu[1:n, 1:n]
-            U_inv_offset_rad = delta_U_inv
+            U_inv_offset_rad = setrounding(RWT, RoundUp) do
+                delta_U_inv .+ R_triu[1:n, 1:n]
+            end
         else
             # m < n case: L is m×m, U is m×n
             # Similar but with different dimensions
             E_m = E_w[1:m, 1:m]
             E_m_triu = _upper_triangular(E_m)
+            absE_m_triu = _upper_triangular(absE_w[1:m, 1:m])
+            R_m_triu = _upper_triangular(R_w[1:m, 1:m])
+            R_U = [R_m_triu R_w[1:m, (m+1):n]]
 
-            B_m = [abs.(E_m_triu) abs.(E_w[1:m, (m+1):n])]
+            B_m = [absE_m_triu absE_w[1:m, (m+1):n]]
             for j in 1:(m-1)
                 for i in (j+1):m
                     B_m[i, j] = Delta_L[i, j]
                 end
             end
 
-            row_sums_GL = vec(sum(G[1:m, 1:m], dims=2))
+            row_sums_GL = setrounding(RWT, RoundUp) do
+                vec(sum(G[1:m, 1:m], dims=2))
+            end
             col_maxes_B = vec(maximum(B_m, dims=1))
 
             GL_norm = maximum(row_sums_GL)
@@ -207,36 +283,59 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
                 return nothing, nothing, nothing, nothing, false
             end
 
+            GL_denom = setrounding(RWT, RoundDown) do
+                one(RWT) - GL_norm
+            end
+            GL_denom > 0 || return nothing, nothing, nothing, nothing, false
+
             Delta_U = zeros(RWT, m, n)
-            for j in 1:n
-                for i in 1:min(j, m)
-                    Delta_U[i, j] = row_sums_GL[i] * col_maxes_B[j] / (1 - GL_norm)
+            setrounding(RWT, RoundUp) do
+                for j in 1:n
+                    for i in 1:min(j, m)
+                        Delta_U[i, j] = row_sums_GL[i] * col_maxes_B[j] / GL_denom
+                    end
                 end
             end
 
             U_offset_mid = [E_m_triu E_w[1:m, (m+1):n]]
-            U_offset_rad = Delta_U
+            U_offset_rad = setrounding(RWT, RoundUp) do
+                Delta_U .+ R_U
+            end
 
             # U⁻¹ for m < n (only left m×m block is invertible)
-            GU = abs.(U_offset_mid[1:m, 1:m]) .+ Delta_U[1:m, 1:m]
-            GU_norm = maximum(sum(GU, dims=2))
+            GU, GU_norm = setrounding(RWT, RoundUp) do
+                GUm = absE_m_triu .+ Delta_U[1:m, 1:m]
+                GUm, maximum(sum(GUm, dims=2))
+            end
 
             if GU_norm >= 1
                 return nothing, nothing, nothing, nothing, false
             end
 
-            row_sums_GU = vec(sum(GU, dims=2))
+            row_sums_GU = setrounding(RWT, RoundUp) do
+                vec(sum(GU, dims=2))
+            end
             col_maxes_GU = vec(maximum(GU, dims=1))
 
+            GU_denom = setrounding(RWT, RoundDown) do
+                one(RWT) - GU_norm
+            end
+            GU_denom > 0 || return nothing, nothing, nothing, nothing, false
+
             delta_U_inv = zeros(RWT, m, m)
-            for j in 1:m
-                for i in 1:j
-                    delta_U_inv[i, j] = Delta_U[i, j] + row_sums_GU[i] * col_maxes_GU[j] / (1 - GU_norm)
+            setrounding(RWT, RoundUp) do
+                for j in 1:m
+                    for i in 1:j
+                        delta_U_inv[i, j] = Delta_U[i, j] +
+                                            row_sums_GU[i] * col_maxes_GU[j] / GU_denom
+                    end
                 end
             end
 
             U_inv_offset_mid = -E_m_triu
-            U_inv_offset_rad = delta_U_inv
+            U_inv_offset_rad = setrounding(RWT, RoundUp) do
+                delta_U_inv .+ R_m_triu
+            end
         end
 
         return (L_offset_mid, L_offset_rad), (U_offset_mid, U_offset_rad),

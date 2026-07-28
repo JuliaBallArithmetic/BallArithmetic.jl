@@ -12,11 +12,14 @@ Result from verified Cholesky decomposition with rigorous error bounds.
 # Fields
 - `G::GM`: Upper triangular Cholesky factor (rigorous enclosure as BallMatrix, A = G^T G)
 - `success::Bool`: Whether verification succeeded (also proves A is positive definite)
-- `residual_norm::RT`: Bound on ‖G^T G - A‖ / ‖A‖
+- `residual_norm::RT`: rigorous upper bound on ‖G^T G - A‖₂ / ‖A‖₂ for the
+  *enclosure* `G`. The numerator is bounded with [`upper_bound_L2_opnorm`](@ref)
+  over the ball product; the denominator uses the rigorous lower bound
+  ‖A‖₂ ≥ maxᵢ Aᵢᵢ, valid for Hermitian positive definite A.
 
 # Mathematical Guarantee
 - If `success == true`, then A is proven to be symmetric positive definite
-- For any G̃ ∈ G: G̃^T G̃ = A
+- There exists G̃ ∈ G with G̃^T G̃ = A (`A` here being the symmetrised (A + A*)/2)
 
 # References
 - [RumpOgita2024](@cite) Rump & Ogita, "Verified Error Bounds for Matrix Decompositions",
@@ -41,16 +44,25 @@ enclosure of the Cholesky factor G.
 # Algorithm (Rump & Ogita 2024, Section 4)
 
 1. Compute approximate Cholesky: A ≈ G̃^T G̃
-2. Precondition: I_E = X_G^T A X_G where X_G ≈ G̃⁻¹
-3. Compute verified LU of I_E: I_E = L_E U_E
+2. Precondition: I_E = G̃⁻ᵀ A G̃⁻¹, enclosed by rigorous triangular solves
+3. Compute verified LU of the interval matrix I_E: I_E = L_E U_E
 4. Extract diagonal D from U_E: G_E = D^{1/2} L_E^T
-5. Transform back: G = G_E X_G⁻¹ = D^{1/2} L_E^T G̃
+5. Transform back: G = G_E G̃ = D^{1/2} L_E^T G̃
+
+Every step is carried out in ball arithmetic, so the perturbation `E = I_E - I`
+handed to the verified LU is an interval matrix rather than a floating-point
+approximation treated as exact.  The preconditioner is applied as `G̃` itself
+(not as a computed `inv(G̃)`), which is what makes the step-5 identity
+`G_E X_G⁻¹ = G_E G̃` exact.
 
 # Arguments
 - `A`: Symmetric positive definite matrix (symmetry is checked, not assumed)
 - `precision_bits`: BigFloat precision for rigorous computation (default: 256, ignored if use_bigfloat=false)
-- `use_double_precision`: Use double-precision products (default: true)
-- `use_bigfloat`: If true, use BigFloat for high precision; if false, use Float64 (faster)
+- `use_double_precision`: retained for backwards compatibility; it no longer has
+  any effect, as the preconditioning is done by rigorous triangular solves
+  instead of a compensated triple product.
+- `use_bigfloat`: If true, use BigFloat for high precision; if false, use Float64
+  (faster, but the factor enclosure is many orders of magnitude wider)
 
 # Returns
 [`VerifiedCholeskyResult`](@ref) containing rigorous enclosure of G.
@@ -90,8 +102,14 @@ function verified_cholesky(A::AbstractMatrix{T};
         @warn "Matrix A is not symmetric (error = $sym_error)"
     end
 
-    # Symmetrize
+    # Symmetrize.  The halved sum is formed with ball arithmetic as well, so the
+    # rounding of aᵢⱼ + aⱼᵢ is enclosed rather than dropped (it is exact when the
+    # input is already Hermitian, but we do not rely on that).
     A_sym = (A + A') / 2
+    A_sym_ball = let Aw = _to_working(A, use_bigfloat)
+        Ab = BallMatrix(Aw)
+        (Ab + BallMatrix(collect(Aw'))) * Ball(one(RWT) / 2, zero(RWT))
+    end
 
     # Step 1: Compute approximate Cholesky
     F = try
@@ -107,22 +125,35 @@ function verified_cholesky(A::AbstractMatrix{T};
 
     G_approx = Matrix(F.U)  # Upper triangular factor
 
-    # Step 2: Compute preconditioner X_G ≈ G̃⁻¹
-    X_G = inv(G_approx)
-
-    # Step 3: Form perturbed identity I_E = X_G^T A X_G
-    if use_double_precision
-        I_E = _double_precision_triple_product_symmetric(X_G, A_sym)
-    else
-        I_E = X_G' * A_sym * X_G
+    # Step 2: preconditioner X_G ≈ G̃⁻¹.
+    #
+    # X_G is *free* in the sense of Miyajima–Rump: it is never required to be the
+    # exact inverse of G̃, because the deviation enters only through the certified
+    # residual R = I - G̃X_G in step 5.  So it is computed in floating point and,
+    # in the BigFloat path, sharpened by one Newton step X ← X(2I - G̃X) in point
+    # arithmetic, which squares ‖R‖ for two matrix products.
+    G_approx_w = _to_working(G_approx, use_bigfloat)
+    X_G_w = _to_working(inv(G_approx), use_bigfloat)
+    if use_bigfloat
+        X_G_w = X_G_w * (2 * one(X_G_w) - G_approx_w * X_G_w)
     end
 
-    # E = I_E - I
-    E = I_E - I
+    # Step 3: Form the perturbed identity I_E = X_G* A X_G as a rigorous
+    # *enclosure*.  The ball products account for every rounding error of the
+    # triple product, so the perturbation handed to the verified LU is an
+    # interval matrix rather than a floating-point approximation treated as
+    # exact.  (Treating it as exact used to lose ~eps‖X_G‖²‖A‖, and the returned
+    # factor then failed to enclose the true one.)
+    X_G_ball = BallMatrix(X_G_w)
+    I_E_ball = (BallMatrix(collect(X_G_w')) * A_sym_ball) * X_G_ball
 
-    # Step 4: Verified LU of I + E
+    # E = I_E - I, as an enclosure
+    E_ball = I_E_ball - BallMatrix(Matrix{WT}(I, n, n))
+
+    # Step 4: Verified LU of I + E over the whole interval matrix E
     # The uniqueness of LU and Cholesky implies G_E = D^{1/2} L_E^T
-    L_E_data, U_E_data, _, _, success = _lu_perturbed_identity(E; precision_bits=precision_bits, use_bigfloat=use_bigfloat)
+    L_E_data, U_E_data, _, _, success = _lu_perturbed_identity(E_ball.c;
+        E_rad=E_ball.r, precision_bits=precision_bits, use_bigfloat=use_bigfloat)
 
     if !success
         G_ball = BallMatrix(_to_working(G_approx, use_bigfloat), fill(RWT(Inf), n, n))
@@ -138,70 +169,97 @@ function verified_cholesky(A::AbstractMatrix{T};
     end
 
     try
-        # Build L_E and U_E
-        I_n = Matrix{WT}(I, n, n)
-        L_E_mid = I_n + L_offset_mid
-        U_E_mid = I_n + U_offset_mid
+        # Build L_E and U_E as enclosures.  Adding the identity is done with ball
+        # arithmetic so that 1 + uᵢᵢ is enclosed rather than silently rounded.
+        I_ball = BallMatrix(Matrix{WT}(I, n, n))
+        L_E_ball = BallMatrix(L_offset_mid, L_offset_rad) + I_ball
+        U_E_ball = BallMatrix(U_offset_mid, U_offset_rad) + I_ball
 
         # Extract diagonal D from U_E
-        D_mid = diag(U_E_mid)
-        D_rad = diag(U_offset_rad)
+        D = [Ball(U_E_ball.c[i, i], U_E_ball.r[i, i]) for i in 1:n]
 
         # Check all diagonal entries are positive (proves positive definiteness)
         for i in 1:n
-            if real(D_mid[i]) - D_rad[i] <= 0
+            if real(D[i].c) - D[i].r <= 0
                 G_ball = BallMatrix(_to_working(G_approx, use_bigfloat), fill(RWT(Inf), n, n))
                 return VerifiedCholeskyResult(G_ball, false, RWT(Inf))
             end
         end
 
-        # Compute D^{1/2} with rigorous bounds
-        # For x ∈ [a-r, a+r] with a > r > 0: √x ∈ [√(a-r), √(a+r)]
-        D_sqrt_mid = sqrt.(D_mid)
-        D_sqrt_rad = zeros(RWT, n)
-        for i in 1:n
-            # Use interval arithmetic for square root
-            lower = sqrt(real(D_mid[i]) - D_rad[i])
-            upper = sqrt(real(D_mid[i]) + D_rad[i])
-            D_sqrt_mid[i] = (lower + upper) / 2
-            D_sqrt_rad[i] = (upper - lower) / 2
+        # Compute D^{1/2} with the rigorous ball square root
+        D_sqrt = [sqrt(Ball(real(D[i].c), D[i].r)) for i in 1:n]
+        D_sqrt_ball = BallMatrix(diagm([WT(b.c) for b in D_sqrt]),
+                                 diagm([b.r for b in D_sqrt]))
+
+        # G_E = D^{1/2} L_E^T (equation 4.1), via the rigorous ball product
+        L_E_adj = BallMatrix(collect(L_E_ball.c'), collect(L_E_ball.r'))
+        G_E_ball = D_sqrt_ball * L_E_adj
+
+        # Step 5: Transform back G = G_E X_G⁻¹.
+        #
+        # X_G⁻¹ is not G̃ — writing it as such is what used to lose ~eps·κ(G̃).
+        # Instead use the Miyajima–Rump inversion bound and never form an
+        # inverse: with the certified residual R = I - G̃X_G,
+        #
+        #     G̃X_G = I - R   ⟹   X_G⁻¹ = (I - R)⁻¹ G̃
+        #     (I - R)⁻¹ = I + R + R²(I - R)⁻¹,   ‖R²(I-R)⁻¹‖₂ ≤ ‖R‖₂²/(1 - ‖R‖₂)
+        #
+        # so the Neumann tail is enclosed by a ball matrix of that uniform radius
+        # (|Tᵢⱼ| = |eᵢ*Teⱼ| ≤ ‖T‖₂).  ‖R‖₂ < 1 simultaneously proves G̃ and X_G
+        # nonsingular.  Everything here is a BLAS-level ball product.
+        G_tilde_ball = BallMatrix(G_approx_w)
+        R_ball = I_ball - G_tilde_ball * X_G_ball
+        nR = upper_bound_L2_opnorm(R_ball)
+        if !(nR < 1)
+            G_fail = BallMatrix(G_approx_w, fill(RWT(Inf), n, n))
+            return VerifiedCholeskyResult(G_fail, false, RWT(Inf))
         end
-
-        # G_E = D^{1/2} L_E^T (equation 4.1)
-        G_E_mid = Diagonal(D_sqrt_mid) * L_E_mid'
-        G_E_rad = Diagonal(D_sqrt_rad) * abs.(L_E_mid') +
-                  Diagonal(D_sqrt_mid) * L_offset_rad' +
-                  Diagonal(D_sqrt_rad) * L_offset_rad'
-
-        # Step 5: Transform back G = G_E X_G⁻¹ = G_E G̃
-        G_approx_w = _to_working(G_approx, use_bigfloat)
-
-        G_mid = G_E_mid * G_approx_w
-        # Error propagation: account for G_E uncertainty and floating-point error
-        # in G_E_mid * G_approx_w. Using Revol-Théveny formula: error ≤ (k+2)*ε*|A|*|B| + η/ε
-        ε_w = eps(RWT)
-        η_w = floatmin(RWT)  # smallest positive normal number
-        k = n  # inner dimension of G_E_mid * G_approx_w
-        mmul_error = setrounding(RWT, RoundUp) do
-            (k + 2) * ε_w * abs.(G_E_mid) * abs.(G_approx_w) .+ η_w / ε_w
+        tail = let denom = setrounding(RWT, RoundDown) do
+                   one(RWT) - nR
+               end
+            setrounding(RWT, RoundUp) do
+                (nR * nR) / denom
+            end
         end
-        G_rad = setrounding(RWT, RoundUp) do
-            G_E_rad * abs.(G_approx_w) + mmul_error
-        end
+        neumann = R_ball + BallMatrix(Matrix{WT}(I, n, n), fill(tail, n, n))
+        G_ball = (G_E_ball * neumann) * G_tilde_ball
 
-        # Ensure upper triangular structure
+        # Enforce the upper triangular structure.  The exact Cholesky factor is
+        # upper triangular by definition, so the strictly lower part is known to
+        # be zero and may be set as such.  The Neumann correction above is a full
+        # matrix, though, so this is no longer a no-op: check that zero really is
+        # inside each of those enclosures, and fail rather than silently tighten
+        # if it is not — that would mean the reconstruction is inconsistent.
+        G_mid = copy(G_ball.c)
+        G_rad = copy(G_ball.r)
         for j in 1:n
             for i in (j+1):n
+                if !(abs(G_mid[i, j]) <= G_rad[i, j])
+                    G_fail = BallMatrix(G_approx_w, fill(RWT(Inf), n, n))
+                    return VerifiedCholeskyResult(G_fail, false, RWT(Inf))
+                end
                 G_mid[i, j] = zero(WT)
                 G_rad[i, j] = zero(RWT)
             end
         end
-
         G_ball = BallMatrix(G_mid, G_rad)
 
-        # Compute rigorous residual using Miyajima products
-        A_w = _to_working(A_sym, use_bigfloat)
-        residual_norm = _rigorous_gram_relative_residual_norm(G_mid, A_w)
+        # Rigorous relative residual of the enclosure itself: an upper bound on
+        # ‖G*G - A‖₂ over a rigorous *lower* bound on ‖A‖₂.  For Hermitian
+        # positive definite A, ‖A‖₂ ≥ maxᵢ Aᵢᵢ = maxᵢ eᵢ*Aeᵢ.
+        G_adj = BallMatrix(collect(G_ball.c'), collect(G_ball.r'))
+        residual_ball = G_adj * G_ball - A_sym_ball
+        residual_abs = upper_bound_L2_opnorm(residual_ball)
+        A_norm_lower = setrounding(RWT, RoundDown) do
+            maximum(i -> real(A_sym_ball.c[i, i]) - A_sym_ball.r[i, i], 1:n)
+        end
+        residual_norm = if A_norm_lower > 0
+            setrounding(RWT, RoundUp) do
+                residual_abs / A_norm_lower
+            end
+        else
+            RWT(Inf)
+        end
 
         return VerifiedCholeskyResult(G_ball, true, residual_norm)
 

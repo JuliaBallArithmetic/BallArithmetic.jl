@@ -62,7 +62,10 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
         use_parametric::Bool = false,
         parametric_k::Union{Nothing, Integer} = nothing,
         parametric_config::BallArithmetic.ResolventBoundConfig = BallArithmetic.config_v2(),
-        parametric_distance_threshold::Real = 1e-4)
+        parametric_distance_threshold::Real = 1e-4,
+        # Gram-weighted certification options
+        gram = nothing, gram_factor = nothing, gram_factor_inv = nothing,
+        gram_kwargs = (;))
 
     isempty(worker_ids) && throw(ArgumentError("no worker processes available for certification"))
     channel_capacity < 1 && throw(ArgumentError("channel_capacity must be positive"))
@@ -70,6 +73,12 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
 
     η = Float64(η)
     (η <= 0 || η >= 1) && throw(ArgumentError("η must belong to (0, 1)"))
+
+    # Change of variables Ã = L·A·L⁻¹ for the weighted norm, applied once on the
+    # driver: the workers only ever see the transformed Schur factor, so no
+    # additional worker state has to be shipped.
+    A, gram_info = CertifScripts._prepare_gram(A, gram, gram_factor, gram_factor_inv,
+        schur_data; gram_kwargs...)
 
     coeffs = polynomial === nothing ? nothing : collect(polynomial)
 
@@ -204,13 +213,13 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
                 resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
                 resolvent_original = resolvent_bound, Cbound,
                 errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
-                snapshot_base, k = k_used, parametric_precomp)
+                snapshot_base, gram = gram_info, k = k_used, parametric_precomp)
         else
             return (; schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
                 resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
                 resolvent_original = resolvent_bound, Cbound,
                 errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
-                snapshot_base)
+                snapshot_base, gram = gram_info)
         end
     finally
         if result_channel !== nothing && pending isa Dict
@@ -380,6 +389,14 @@ certification samples in parallel.
   parametric mode. Options: `config_v1()`, `config_v2()`, `config_v2p5()`, `config_v3()`.
 - `parametric_distance_threshold = 1e-4`: maximum distance for warm-start cache
   reuse in parametric mode.
+- `gram = nothing`: Hermitian positive definite Gram matrix `G`. When given the
+  resolvent is certified in the weighted norm `‖x‖_G = √(x*Gx)` via the exact
+  change of variables `Ã = L·A·L⁻¹` with `G = L*L`. The transform is applied
+  once on the driver before the Schur reduction, so workers are unaffected and
+  no extra state is shipped to them. See
+  [`BallArithmetic.CertifScripts.gram_transform`](@ref).
+- `gram_factor = nothing`, `gram_factor_inv = nothing`, `gram_kwargs = (;)`:
+  precomputed factor data and extra options forwarded to `gram_transform`.
 
 The return value matches the serial flavour, exposing the Schur data,
 certification log, and resolvent bounds in a named tuple.  When new workers are

@@ -6,6 +6,8 @@ using Base: dirname, mod1
 
 using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm,
                         upper_bound_L2_opnorm, inf,
+                        verified_cholesky,
+                        backward_substitution, forward_substitution,
                         refine_schur_decomposition,
                         ogita_svd_refine, OgitaSVDRefinementResult,
                         rigorous_svd, _certify_svd, MiyajimaM1,
@@ -24,7 +26,11 @@ export dowork, dowork_ogita, dowork_ogita_bigfloat, adaptive_arcs!, bound_res_or
        _clear_bf_ogita_cache!, _bf_ogita_cache_stats, _set_center_svd_cache!,
        # Parametric certifier exports
        dowork_parametric, run_certification_parametric,
-       set_parametric_config!, _parametric_cache_stats, _clear_parametric_cache!
+       set_parametric_config!, _parametric_cache_stats, _clear_parametric_cache!,
+       # Gram-weighted certification
+       GramTransform, gram_transform, apply_gram_transform
+
+include("gram_transform.jl")
 
 const _schur_matrix = Ref{Union{Nothing, BallMatrix}}(nothing)
 const _job_channel = Ref{Any}(nothing)
@@ -1319,18 +1325,33 @@ Run the adaptive certification routine on `circle` using a serial evaluator.
 - `log_io = stdout`: destination `IO` for log messages.
 - `Cbound = 1.0`: constant used by [`bound_res_original`](@ref) when lifting
   resolvent bounds back to the original matrix.
+- `gram = nothing`: Hermitian positive definite Gram matrix `G`. When given, the
+  certification is carried out in the weighted norm `‖x‖_G = √(x*Gx)` by the
+  exact change of variables `Ã = L A L⁻¹` with `G = L*L`, so every returned
+  resolvent bound is a bound in the `G`-norm. Unlike folding `√κ₂(G)` into
+  `Cbound`, this costs no condition-number factor. See [`gram_transform`](@ref).
+- `gram_factor = nothing`, `gram_factor_inv = nothing`: precomputed (and, for
+  the inverse, verified before use) factor data — see [`gram_transform`](@ref).
+- `gram_kwargs = (;)`: extra keywords forwarded to [`gram_transform`](@ref),
+  e.g. `(use_bigfloat = true, inverse_method = :verify)`.
 
 The return value is a named tuple containing the computed Schur form, the
 accumulated certification log, and the resolvent bounds for both the Schur
-factor and the original matrix.
+factor and the original matrix.  The `gram` field holds the
+[`GramTransform`](@ref) that was applied, or `nothing`.
 """
 function run_certification(A::BallMatrix, circle::CertificationCircle;
         schur_data = nothing, polynomial = nothing, η::Real = 0.5,
-        check_interval::Integer = 100, log_io::IO = stdout, Cbound = 1.0)
+        check_interval::Integer = 100, log_io::IO = stdout, Cbound = 1.0,
+        gram = nothing, gram_factor = nothing, gram_factor_inv = nothing,
+        gram_kwargs = (;))
 
     check_interval < 1 && throw(ArgumentError("check_interval must be positive"))
     η = Float64(η)
     (η <= 0 || η >= 1) && throw(ArgumentError("η must belong to (0, 1)"))
+
+    A, gram_info = _prepare_gram(A, gram, gram_factor, gram_factor_inv, schur_data;
+        gram_kwargs...)
 
     coeffs = polynomial === nothing ? nothing : collect(polynomial)
     if schur_data === nothing
@@ -1369,7 +1390,7 @@ function run_certification(A::BallMatrix, circle::CertificationCircle;
         resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
         resolvent_original = resolvent_bound, Cbound,
         errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
-        snapshot_base = nothing)
+        snapshot_base = nothing, gram = gram_info)
 end
 
 run_certification(A::AbstractMatrix, circle::CertificationCircle; kwargs...) =
@@ -1668,13 +1689,19 @@ Typically 10-100x faster than computing fresh BigFloat SVDs at each point.
 - `circle`: CertificationCircle describing the contour
 - `target_precision::Int=256`: precision in bits for BigFloat
 - `max_ogita_iterations::Int=3`: Ogita iterations (3 is optimal for 256-bit precision)
+- `gram`, `gram_factor`, `gram_factor_inv`, `gram_kwargs`: certify in the
+  weighted norm `‖x‖_G = √(x*Gx)` — see [`run_certification`](@ref) and
+  [`gram_transform`](@ref). The transform is applied *after* promotion to
+  BigFloat, so the Gram factor is computed at `target_precision`.
 - Other kwargs passed to standard certification
 """
 function run_certification_ogita(A::BallMatrix{T}, circle::CertificationCircle;
         schur_data = nothing, polynomial = nothing, η::Real = 0.5,
         check_interval::Integer = 100, log_io::IO = stdout, Cbound = 1.0,
         target_precision::Int = 256,
-        max_ogita_iterations::Int = 3) where T
+        max_ogita_iterations::Int = 3,
+        gram = nothing, gram_factor = nothing, gram_factor_inv = nothing,
+        gram_kwargs = (;)) where T
 
     check_interval < 1 && throw(ArgumentError("check_interval must be positive"))
     η = Float64(η)
@@ -1699,6 +1726,9 @@ function run_certification_ogita(A::BallMatrix{T}, circle::CertificationCircle;
     setprecision(BigFloat, target_precision)
 
     try
+        A_big, gram_info = _prepare_gram(A_big, gram, gram_factor, gram_factor_inv,
+            schur_data; gram_kwargs...)
+
         coeffs = polynomial === nothing ? nothing : collect(polynomial)
         if schur_data === nothing
             schur_data = coeffs === nothing ?
@@ -1775,7 +1805,7 @@ function run_certification_ogita(A::BallMatrix{T}, circle::CertificationCircle;
             resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
             resolvent_original = resolvent_bound, Cbound,
             errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
-            snapshot_base = nothing,
+            snapshot_base = nothing, gram = gram_info,
             optimization = :ogita_refinement,
             target_precision = target_precision,
             cache_stats = cache_stats)
@@ -1813,6 +1843,9 @@ norm, which can be more efficient than full SVD for large matrices.
 - `check_interval = 100`: number of arcs between progress reports.
 - `log_io = stdout`: destination for log messages.
 - `Cbound = 1.0`: constant for resolvent bound lifting.
+- `gram`, `gram_factor`, `gram_factor_inv`, `gram_kwargs`: certify in the
+  weighted norm `‖x‖_G = √(x*Gx)` — see [`run_certification`](@ref) and
+  [`gram_transform`](@ref).
 
 # Example
 ```julia
@@ -1835,11 +1868,16 @@ function run_certification_parametric(A::BallMatrix{T}, circle::CertificationCir
         config::ResolventBoundConfig = config_v2(),
         schur_data = nothing, polynomial = nothing, η::Real = 0.5,
         check_interval::Integer = 100,
-        log_io::IO = stdout, Cbound = 1.0) where T
+        log_io::IO = stdout, Cbound = 1.0,
+        gram = nothing, gram_factor = nothing, gram_factor_inv = nothing,
+        gram_kwargs = (;)) where T
 
     check_interval < 1 && throw(ArgumentError("check_interval must be positive"))
     η = Float64(η)
     (η <= 0 || η >= 1) && throw(ArgumentError("η must belong to (0, 1)"))
+
+    A, gram_info = _prepare_gram(A, gram, gram_factor, gram_factor_inv, schur_data;
+        gram_kwargs...)
 
     coeffs = polynomial === nothing ? nothing : collect(polynomial)
     if schur_data === nothing
@@ -1977,7 +2015,8 @@ function run_certification_parametric(A::BallMatrix{T}, circle::CertificationCir
         resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
         resolvent_original = resolvent_bound, Cbound,
         errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
-        snapshot_base = nothing, k = k_used, parametric_precomp = precomp)
+        snapshot_base = nothing, gram = gram_info,
+        k = k_used, parametric_precomp = precomp)
 end
 
 run_certification_parametric(A::AbstractMatrix, circle::CertificationCircle; kwargs...) =
