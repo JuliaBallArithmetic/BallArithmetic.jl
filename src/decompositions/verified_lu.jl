@@ -5,16 +5,24 @@
 # then transform back to get verified bounds for original factors.
 
 # Helper to get appropriate BigFloat type (handles Complex)
-_bigfloat_type(::Type{T}) where {T<:Real} = BigFloat
-_bigfloat_type(::Type{Complex{T}}) where {T<:Real} = Complex{BigFloat}
+_bigfloat_type(::Type{T}) where {T <: Real} = BigFloat
+_bigfloat_type(::Type{Complex{T}}) where {T <: Real} = Complex{BigFloat}
 _to_bigfloat(M::AbstractMatrix{T}) where {T} = convert.(_bigfloat_type(T), M)
 _to_bigfloat(v::AbstractVector{T}) where {T} = convert.(_bigfloat_type(T), v)
 
 # Helper to get the working float type (Float64 or BigFloat)
-_working_type(::Type{T}, use_bigfloat::Bool) where {T<:Real} = use_bigfloat ? BigFloat : Float64
-_working_type(::Type{Complex{T}}, use_bigfloat::Bool) where {T<:Real} = use_bigfloat ? Complex{BigFloat} : ComplexF64
-_to_working(M::AbstractMatrix{T}, use_bigfloat::Bool) where {T} = use_bigfloat ? _to_bigfloat(M) : convert.(T <: Complex ? ComplexF64 : Float64, M)
-_to_working(v::AbstractVector{T}, use_bigfloat::Bool) where {T} = use_bigfloat ? _to_bigfloat(v) : convert.(T <: Complex ? ComplexF64 : Float64, v)
+function _working_type(::Type{T}, use_bigfloat::Bool) where {T <: Real}
+    use_bigfloat ? BigFloat : Float64
+end
+function _working_type(::Type{Complex{T}}, use_bigfloat::Bool) where {T <: Real}
+    use_bigfloat ? Complex{BigFloat} : ComplexF64
+end
+function _to_working(M::AbstractMatrix{T}, use_bigfloat::Bool) where {T}
+    use_bigfloat ? _to_bigfloat(M) : convert.(T <: Complex ? ComplexF64 : Float64, M)
+end
+function _to_working(v::AbstractVector{T}, use_bigfloat::Bool) where {T}
+    use_bigfloat ? _to_bigfloat(v) : convert.(T <: Complex ? ComplexF64 : Float64, v)
+end
 
 """
     VerifiedLUResult{LM, UM, RT}
@@ -35,7 +43,7 @@ For any L̃ ∈ L, Ũ ∈ U: L̃Ũ = A[p,:] (the permuted input matrix).
 - [RumpOgita2024](@cite) Rump & Ogita, "Verified Error Bounds for Matrix Decompositions",
   Section 3: LU decomposition.
 """
-struct VerifiedLUResult{LM<:BallMatrix, UM<:BallMatrix, RT<:Real}
+struct VerifiedLUResult{LM <: BallMatrix, UM <: BallMatrix, RT <: Real}
     L::LM
     U::UM
     p::Vector{Int}
@@ -73,9 +81,9 @@ The key insight is that L[i,k] - E[i,k] can be bounded by an outer product,
 allowing O(n²) computation of verified bounds.
 """
 function _lu_perturbed_identity(E::AbstractMatrix{T};
-                                 E_rad=nothing,
-                                 precision_bits::Int=256,
-                                 use_bigfloat::Bool=true) where T
+        E_rad = nothing,
+        precision_bits::Int = 256,
+        use_bigfloat::Bool = true) where {T}
     m, n = size(E)
     mn = min(m, n)
 
@@ -107,7 +115,7 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
         # Check convergence condition: ‖E_n‖∞ < 1
         absE_n = m >= n ? absE_w : absE_w[1:m, 1:m]
         E_norm = setrounding(RWT, RoundUp) do
-            maximum(sum(absE_n, dims=2))
+            maximum(sum(absE_n, dims = 2))
         end
 
         if E_norm >= 1
@@ -124,9 +132,9 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
         # Equation (3.1): Bound on |L^[ℓ] - E^[ℓ]|
         # |L^[ℓ] - E^[ℓ]| ≤ (sum(|E^[ℓ]|, 2) · max(|E^[u]_n|))^[ℓ] / (1 - ‖E_n‖∞)
         row_sums_E_stril = setrounding(RWT, RoundUp) do
-            vec(sum(absE_stril, dims=2))
+            vec(sum(absE_stril, dims = 2))
         end
-        col_maxes_E_triu = vec(maximum(absE_triu[1:mn, 1:mn], dims=1))
+        col_maxes_E_triu = vec(maximum(absE_triu[1:mn, 1:mn], dims = 1))
 
         # Outer product bound (strictly lower triangular part only).  The
         # denominator is rounded down so that the quotients stay upper bounds.
@@ -136,8 +144,8 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
         denom > 0 || return nothing, nothing, nothing, nothing, false
         Delta_L = zeros(RWT, m, mn)
         setrounding(RWT, RoundUp) do
-            for j in 1:(mn-1)
-                for i in (j+1):m
+            for j in 1:(mn - 1)
+                for i in (j + 1):m
                     Delta_L[i, j] = row_sums_E_stril[i] * col_maxes_E_triu[j] / denom
                 end
             end
@@ -153,7 +161,7 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
         # L⁻¹ = I - E^[ℓ] + δ where |δ| ≤ Δ^[ℓ] + (sum(G,2)·max(G))^[ℓ] / (1 - ‖G‖∞)
         G, G_norm = setrounding(RWT, RoundUp) do
             Gm = absE_stril[1:m, 1:mn] .+ Delta_L
-            Gm, maximum(sum(Gm, dims=2))
+            Gm, maximum(sum(Gm, dims = 2))
         end
 
         if G_norm >= 1
@@ -161,9 +169,9 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
         end
 
         row_sums_G = setrounding(RWT, RoundUp) do
-            vec(sum(G, dims=2))
+            vec(sum(G, dims = 2))
         end
-        col_maxes_G = vec(maximum(G, dims=1))
+        col_maxes_G = vec(maximum(G, dims = 1))
 
         G_denom = setrounding(RWT, RoundDown) do
             one(RWT) - G_norm
@@ -172,8 +180,8 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
 
         delta_L_inv = copy(Delta_L)
         setrounding(RWT, RoundUp) do
-            for j in 1:(mn-1)
-                for i in (j+1):m
+            for j in 1:(mn - 1)
+                for i in (j + 1):m
                     delta_L_inv[i, j] += row_sums_G[i] * col_maxes_G[j] / G_denom
                 end
             end
@@ -189,16 +197,16 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
         # For m ≥ n case
         if m >= n
             B = copy(absE_triu[1:n, 1:n])
-            for j in 1:(n-1)
-                for i in (j+1):n
+            for j in 1:(n - 1)
+                for i in (j + 1):n
                     B[i, j] = Delta_L[i, j]
                 end
             end
 
             row_sums_GL = setrounding(RWT, RoundUp) do
-                vec(sum(G[1:n, 1:n], dims=2))
+                vec(sum(G[1:n, 1:n], dims = 2))
             end
-            col_maxes_B = vec(maximum(B, dims=1))
+            col_maxes_B = vec(maximum(B, dims = 1))
 
             GL_norm = maximum(row_sums_GL)
             if GL_norm >= 1
@@ -227,7 +235,7 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
             # U⁻¹ bounds (equation 3.7)
             GU, GU_norm = setrounding(RWT, RoundUp) do
                 GUm = absE_triu[1:n, 1:n] .+ Delta_U
-                GUm, maximum(sum(GUm, dims=2))
+                GUm, maximum(sum(GUm, dims = 2))
             end
 
             if GU_norm >= 1
@@ -235,9 +243,9 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
             end
 
             row_sums_GU = setrounding(RWT, RoundUp) do
-                vec(sum(GU, dims=2))
+                vec(sum(GU, dims = 2))
             end
-            col_maxes_GU = vec(maximum(GU, dims=1))
+            col_maxes_GU = vec(maximum(GU, dims = 1))
 
             GU_denom = setrounding(RWT, RoundDown) do
                 one(RWT) - GU_norm
@@ -264,19 +272,19 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
             E_m_triu = _upper_triangular(E_m)
             absE_m_triu = _upper_triangular(absE_w[1:m, 1:m])
             R_m_triu = _upper_triangular(R_w[1:m, 1:m])
-            R_U = [R_m_triu R_w[1:m, (m+1):n]]
+            R_U = [R_m_triu R_w[1:m, (m + 1):n]]
 
-            B_m = [absE_m_triu absE_w[1:m, (m+1):n]]
-            for j in 1:(m-1)
-                for i in (j+1):m
+            B_m = [absE_m_triu absE_w[1:m, (m + 1):n]]
+            for j in 1:(m - 1)
+                for i in (j + 1):m
                     B_m[i, j] = Delta_L[i, j]
                 end
             end
 
             row_sums_GL = setrounding(RWT, RoundUp) do
-                vec(sum(G[1:m, 1:m], dims=2))
+                vec(sum(G[1:m, 1:m], dims = 2))
             end
-            col_maxes_B = vec(maximum(B_m, dims=1))
+            col_maxes_B = vec(maximum(B_m, dims = 1))
 
             GL_norm = maximum(row_sums_GL)
             if GL_norm >= 1
@@ -297,7 +305,7 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
                 end
             end
 
-            U_offset_mid = [E_m_triu E_w[1:m, (m+1):n]]
+            U_offset_mid = [E_m_triu E_w[1:m, (m + 1):n]]
             U_offset_rad = setrounding(RWT, RoundUp) do
                 Delta_U .+ R_U
             end
@@ -305,7 +313,7 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
             # U⁻¹ for m < n (only left m×m block is invertible)
             GU, GU_norm = setrounding(RWT, RoundUp) do
                 GUm = absE_m_triu .+ Delta_U[1:m, 1:m]
-                GUm, maximum(sum(GUm, dims=2))
+                GUm, maximum(sum(GUm, dims = 2))
             end
 
             if GU_norm >= 1
@@ -313,9 +321,9 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
             end
 
             row_sums_GU = setrounding(RWT, RoundUp) do
-                vec(sum(GU, dims=2))
+                vec(sum(GU, dims = 2))
             end
-            col_maxes_GU = vec(maximum(GU, dims=1))
+            col_maxes_GU = vec(maximum(GU, dims = 1))
 
             GU_denom = setrounding(RWT, RoundDown) do
                 one(RWT) - GU_norm
@@ -339,7 +347,7 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
         end
 
         return (L_offset_mid, L_offset_rad), (U_offset_mid, U_offset_rad),
-               (L_inv_offset_mid, L_inv_offset_rad), (U_inv_offset_mid, U_inv_offset_rad), true
+        (L_inv_offset_mid, L_inv_offset_rad), (U_inv_offset_mid, U_inv_offset_rad), true
 
     finally
         setprecision(BigFloat, old_prec)
@@ -351,11 +359,11 @@ end
 
 Extract strictly lower triangular part of A (below diagonal).
 """
-function _strict_lower_triangular(A::AbstractMatrix{T}) where T
+function _strict_lower_triangular(A::AbstractMatrix{T}) where {T}
     m, n = size(A)
     L = zeros(T, m, n)
-    for j in 1:min(m-1, n)
-        for i in (j+1):m
+    for j in 1:min(m - 1, n)
+        for i in (j + 1):m
             L[i, j] = A[i, j]
         end
     end
@@ -367,7 +375,7 @@ end
 
 Extract upper triangular part of A (including diagonal).
 """
-function _upper_triangular(A::AbstractMatrix{T}) where T
+function _upper_triangular(A::AbstractMatrix{T}) where {T}
     m, n = size(A)
     U = zeros(T, m, n)
     for j in 1:n
@@ -413,9 +421,10 @@ result_fast = verified_lu(A; use_bigfloat=false)  # Uses Float64 (faster)
 - [RumpOgita2024](@cite) Rump & Ogita, Section 3: LU decomposition
 """
 function verified_lu(A::AbstractMatrix{T};
-                     precision_bits::Int=256,
-                     use_double_precision::Bool=true,
-                     use_bigfloat::Bool=true) where T<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}
+        precision_bits::Int = 256,
+        use_double_precision::Bool = true,
+        use_bigfloat::Bool = true) where {T <: Union{
+        Float64, ComplexF64, BigFloat, Complex{BigFloat}}}
     if real(T) === BigFloat
         use_bigfloat = true
     end
@@ -437,7 +446,7 @@ function verified_lu(A::AbstractMatrix{T};
 
     if m >= n
         X_L = inv(L_approx[1:n, 1:n])
-        X_L_full = vcat(X_L, -L_approx[(n+1):m, 1:n] * X_L)
+        X_L_full = vcat(X_L, -L_approx[(n + 1):m, 1:n] * X_L)
     else
         X_L = inv(L_approx)
     end
@@ -460,8 +469,8 @@ function verified_lu(A::AbstractMatrix{T};
     E = I_E - I
 
     # Step 4: Verify LU of I + E
-    L_E_data, U_E_data, _, _, success =
-        _lu_perturbed_identity(E; precision_bits=precision_bits, use_bigfloat=use_bigfloat)
+    L_E_data, U_E_data, _, _, success = _lu_perturbed_identity(
+        E; precision_bits = precision_bits, use_bigfloat = use_bigfloat)
 
     # Get working type for this computation
     WT = _working_type(T, use_bigfloat)
@@ -498,7 +507,8 @@ function verified_lu(A::AbstractMatrix{T};
         # Build L_E and U_E as ball matrices (as perturbations of identity)
         # L_E = I + L_offset
         L_E_mid = Matrix{WT}(I, m, mn) + L_offset_mid
-        U_E_mid = (m >= n ? Matrix{WT}(I, n, n) : Matrix{WT}(I, m, n)[1:m, 1:n]) + U_offset_mid
+        U_E_mid = (m >= n ? Matrix{WT}(I, n, n) : Matrix{WT}(I, m, n)[1:m, 1:n]) +
+                  U_offset_mid
 
         # Compute L = L̃ · L_E with error propagation
         # and U = U_E · Ũ with error propagation
@@ -509,7 +519,7 @@ function verified_lu(A::AbstractMatrix{T};
             L_mid = L_approx_w * L_E_mid
             # For m < n, U is m × n
             U_mid = hcat(U_E_mid * U_approx_w[1:m, 1:m],
-                        L_E_mid \ (_to_working(X_L, use_bigfloat) * A_perm_w[:, (m+1):n]))
+                L_E_mid \ (_to_working(X_L, use_bigfloat) * A_perm_w[:, (m + 1):n]))
         end
 
         # Propagate error bounds
@@ -534,7 +544,7 @@ function verified_lu(A::AbstractMatrix{T};
             end
 
             if L_offset_norm < one(RWT)
-                U_right_mid = U_mid[:, (m+1):n]
+                U_right_mid = U_mid[:, (m + 1):n]
                 L_E_inv_bound = setrounding(RWT, RoundUp) do
                     one(RWT) / (one(RWT) - L_offset_norm)
                 end
@@ -546,7 +556,7 @@ function verified_lu(A::AbstractMatrix{T};
                 # Fallback: conservative bound using Frobenius norm of residual
                 # This path should rarely be taken for well-conditioned problems
                 @warn "LU rectangular case: L_offset_norm >= 1, using conservative bounds"
-                U_right_mid = U_mid[:, (m+1):n]
+                U_right_mid = U_mid[:, (m + 1):n]
                 U_rad_right = setrounding(RWT, RoundUp) do
                     fill(opnorm(L_offset_rad, Inf), m, n - m) .* abs.(U_right_mid)
                 end

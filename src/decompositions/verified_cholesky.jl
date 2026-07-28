@@ -25,7 +25,7 @@ Result from verified Cholesky decomposition with rigorous error bounds.
 - [RumpOgita2024](@cite) Rump & Ogita, "Verified Error Bounds for Matrix Decompositions",
   Section 4: Cholesky decomposition.
 """
-struct VerifiedCholeskyResult{GM<:BallMatrix, RT<:Real}
+struct VerifiedCholeskyResult{GM <: BallMatrix, RT <: Real}
     G::GM
     success::Bool
     residual_norm::RT
@@ -44,22 +44,28 @@ enclosure of the Cholesky factor G.
 # Algorithm (Rump & Ogita 2024, Section 4)
 
 1. Compute approximate Cholesky: A ≈ G̃^T G̃
-2. Precondition: I_E = G̃⁻ᵀ A G̃⁻¹, enclosed by rigorous triangular solves
+2. Precondition with X_G ≈ G̃⁻¹: I_E = X_G* A X_G, enclosed by ball products
 3. Compute verified LU of the interval matrix I_E: I_E = L_E U_E
 4. Extract diagonal D from U_E: G_E = D^{1/2} L_E^T
-5. Transform back: G = G_E G̃ = D^{1/2} L_E^T G̃
+5. Transform back: G = G_E X_G⁻¹ = G_E (I + R + T) G̃
 
 Every step is carried out in ball arithmetic, so the perturbation `E = I_E - I`
 handed to the verified LU is an interval matrix rather than a floating-point
-approximation treated as exact.  The preconditioner is applied as `G̃` itself
-(not as a computed `inv(G̃)`), which is what makes the step-5 identity
-`G_E X_G⁻¹ = G_E G̃` exact.
+approximation treated as exact.
+
+Step 5 does *not* evaluate `X_G⁻¹` as `G̃` — that identity holds only for an exact
+inverse, and assuming it loses `~eps·κ(G̃)`. Instead `X_G` is treated as *free*
+in the sense of Miyajima–Rump: it never has to be the exact inverse, because the
+deviation enters only through the certified residual `R = I - G̃X_G`, giving
+`X_G⁻¹ = (I - R)⁻¹G̃` with the Neumann tail `T` bounded by
+`‖R‖₂²/(1 - ‖R‖₂)`. No inverse is ever formed and everything stays at BLAS
+speed; `‖R‖₂ < 1` also proves `G̃` and `X_G` nonsingular.
 
 # Arguments
 - `A`: Symmetric positive definite matrix (symmetry is checked, not assumed)
 - `precision_bits`: BigFloat precision for rigorous computation (default: 256, ignored if use_bigfloat=false)
 - `use_double_precision`: retained for backwards compatibility; it no longer has
-  any effect, as the preconditioning is done by rigorous triangular solves
+  any effect, as the preconditioned product is enclosed with ball arithmetic
   instead of a compensated triple product.
 - `use_bigfloat`: If true, use BigFloat for high precision; if false, use Float64
   (faster, but the factor enclosure is many orders of magnitude wider)
@@ -83,9 +89,10 @@ result_fast = verified_cholesky(A; use_bigfloat=false)  # Uses Float64 (faster)
 - [RumpOgita2024](@cite) Rump & Ogita, Section 4: Cholesky decomposition
 """
 function verified_cholesky(A::AbstractMatrix{T};
-                           precision_bits::Int=256,
-                           use_double_precision::Bool=true,
-                           use_bigfloat::Bool=true) where T<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}
+        precision_bits::Int = 256,
+        use_double_precision::Bool = true,
+        use_bigfloat::Bool = true) where {T <: Union{
+        Float64, ComplexF64, BigFloat, Complex{BigFloat}}}
     if real(T) === BigFloat
         use_bigfloat = true
     end
@@ -153,7 +160,7 @@ function verified_cholesky(A::AbstractMatrix{T};
     # Step 4: Verified LU of I + E over the whole interval matrix E
     # The uniqueness of LU and Cholesky implies G_E = D^{1/2} L_E^T
     L_E_data, U_E_data, _, _, success = _lu_perturbed_identity(E_ball.c;
-        E_rad=E_ball.r, precision_bits=precision_bits, use_bigfloat=use_bigfloat)
+        E_rad = E_ball.r, precision_bits = precision_bits, use_bigfloat = use_bigfloat)
 
     if !success
         G_ball = BallMatrix(_to_working(G_approx, use_bigfloat), fill(RWT(Inf), n, n))
@@ -189,7 +196,7 @@ function verified_cholesky(A::AbstractMatrix{T};
         # Compute D^{1/2} with the rigorous ball square root
         D_sqrt = [sqrt(Ball(real(D[i].c), D[i].r)) for i in 1:n]
         D_sqrt_ball = BallMatrix(diagm([WT(b.c) for b in D_sqrt]),
-                                 diagm([b.r for b in D_sqrt]))
+            diagm([b.r for b in D_sqrt]))
 
         # G_E = D^{1/2} L_E^T (equation 4.1), via the rigorous ball product
         L_E_adj = BallMatrix(collect(L_E_ball.c'), collect(L_E_ball.r'))
@@ -215,8 +222,8 @@ function verified_cholesky(A::AbstractMatrix{T};
             return VerifiedCholeskyResult(G_fail, false, RWT(Inf))
         end
         tail = let denom = setrounding(RWT, RoundDown) do
-                   one(RWT) - nR
-               end
+                one(RWT) - nR
+            end
             setrounding(RWT, RoundUp) do
                 (nR * nR) / denom
             end
@@ -233,7 +240,7 @@ function verified_cholesky(A::AbstractMatrix{T};
         G_mid = copy(G_ball.c)
         G_rad = copy(G_ball.r)
         for j in 1:n
-            for i in (j+1):n
+            for i in (j + 1):n
                 if !(abs(G_mid[i, j]) <= G_rad[i, j])
                     G_fail = BallMatrix(G_approx_w, fill(RWT(Inf), n, n))
                     return VerifiedCholeskyResult(G_fail, false, RWT(Inf))
@@ -296,4 +303,5 @@ Fast verified Cholesky using MultiFloat oracle. Requires MultiFloats.jl.
 """
 function verified_cholesky_multifloat end
 
-export VerifiedCholeskyResult, verified_cholesky, verified_cholesky_double64, verified_cholesky_multifloat
+export VerifiedCholeskyResult, verified_cholesky, verified_cholesky_double64,
+       verified_cholesky_multifloat

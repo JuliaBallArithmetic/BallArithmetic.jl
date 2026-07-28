@@ -178,7 +178,7 @@ function _gram_factor_inverse(L::BallMatrix, method::Symbol)
 
     if chosen === :backsub
         triangular || throw(ArgumentError("inverse_method = :backsub requires a " *
-                                          "triangular Gram factor; use :verify"))
+                            "triangular Gram factor; use :verify"))
         return _triangular_inverse(L)
     elseif chosen === :verify
         X = BallMatrix(inv(Matrix(L.c)))
@@ -227,16 +227,20 @@ function _diagonal_gram_factor(G::AbstractMatrix{ET}) where {ET}
     n = size(G, 1)
     d = real.(diag(G))
 
-    L_c = zeros(RG, n, n);  L_r = zeros(RG, n, n)
-    Li_c = zeros(RG, n, n); Li_r = zeros(RG, n, n)
+    L_c = zeros(RG, n, n)
+    L_r = zeros(RG, n, n)
+    Li_c = zeros(RG, n, n)
+    Li_r = zeros(RG, n, n)
 
     for i in 1:n
         d[i] > 0 || throw(ArgumentError("the Gram matrix is not positive definite: " *
-                                       "diagonal entry $i is $(d[i])"))
+                            "diagonal entry $i is $(d[i])"))
         s = sqrt(Ball(RG(d[i]), zero(RG)))
         inv_s = Ball(one(RG), zero(RG)) / s
-        L_c[i, i] = s.c;      L_r[i, i] = s.r
-        Li_c[i, i] = inv_s.c; Li_r[i, i] = inv_s.r
+        L_c[i, i] = s.c
+        L_r[i, i] = s.r
+        Li_c[i, i] = inv_s.c
+        Li_r[i, i] = inv_s.r
     end
 
     return BallMatrix(L_c, L_r), BallMatrix(Li_c, Li_r)
@@ -319,7 +323,6 @@ function gram_transform(gram;
         precision_bits::Int = 256,
         inverse_method::Symbol = :auto,
         hermitian_tol::Real = 1e-10)
-
     gram === nothing && factor === nothing &&
         throw(ArgumentError("gram_transform needs either a Gram matrix or a factor"))
     # Validated up front so a typo is caught even on the paths that never consult it
