@@ -88,8 +88,8 @@ end
 function _inflate_intervals(intervals::AbstractVector{Ball{T, CT}},
         beta::AbstractVector{T}) where {T, CT}
     return [Ball(mid(intervals[i]), setrounding(T, RoundUp) do
-        rad(intervals[i]) + beta[i]
-    end) for i in eachindex(intervals)]
+                rad(intervals[i]) + beta[i]
+            end) for i in eachindex(intervals)]
 end
 
 # PER-BLOCK enclosure data (draft Thm. enclosure + Prop. blockgersg, with within-block
@@ -109,16 +109,21 @@ end
 # Returns `(coupling, centres, nonnormality, block_slack)` with `block_slack = β_Λ`.
 function _vbd_block_data(A::BallMatrix, WB::BallMatrix, YB::BallMatrix,
         transformed::BallMatrix, block::BallMatrix, remainder::BallMatrix,
-        clusters::Vector{UnitRange{Int}}, ::Type{T}) where {T}
-    R2 = YB * WB - I
+        clusters::Vector{UnitRange{Int}}, ::Type{T}; FB::BallMatrix = WB) where {T}
+    # `FB` is the frame that `Y` approximately inverts: `W` for the standard
+    # problem `Ax = λx`, and `B·W` for the pencil `Ax = λBx`. It appears exactly
+    # where the frame is paired with `Y` or with the candidate `Λ`; `A·W` is
+    # untouched. That single substitution is the whole generalisation.
+    R2 = YB * FB - I
     nrmR2 = upper_bound_L2_opnorm(R2)
     nrmR2 < 1 ||
         error("VBD: Neumann condition ‖R₂‖₂ = $nrmR2 ≥ 1 while forming block data")
     denom = setrounding(T, RoundDown) do
         one(T) - nrmR2
     end
-    # R₁ = Y(AW − WΛ) certifies the candidate Λ = block: β_Λ = ‖R₁‖₂/(1−‖R₂‖₂).
-    R1 = YB * (A * WB - WB * block)
+    # R₁ = Y(AW − BWΛ) certifies the candidate Λ = block: β_Λ = ‖R₁‖₂/(1−‖R₂‖₂).
+    # (B = I recovers the standard R₁ = Y(AW − WΛ).)
+    R1 = YB * (A * WB - FB * block)
     block_slack = setrounding(T, RoundUp) do
         upper_bound_L2_opnorm(R1) / denom
     end
@@ -165,7 +170,8 @@ function miyajima_vbd(A::BallMatrix{T, NT}; hermitian::Bool = false) where {T, N
     m, n = size(A)
     m == n || throw(ArgumentError("miyajima_vbd expects a square matrix"))
 
-    basis, _ = hermitian ? _hermitian_diagonalisation(mid(A)) : _schur_diagonalisation(mid(A))
+    basis, _ = hermitian ? _hermitian_diagonalisation(mid(A)) :
+               _schur_diagonalisation(mid(A))
     identity_order = collect(1:n)
 
     current_basis = basis
@@ -190,7 +196,8 @@ function miyajima_vbd(A::BallMatrix{T, NT}; hermitian::Bool = false) where {T, N
 
         current_basis = current_basis[:, order]
         attempts += 1
-        attempts > n && throw(ArgumentError("failed to permute Gershgorin clusters into contiguous blocks"))
+        attempts > n &&
+            throw(ArgumentError("failed to permute Gershgorin clusters into contiguous blocks"))
     end
 
     basis = current_basis
@@ -216,8 +223,10 @@ function miyajima_vbd(A::BallMatrix{T, NT}; hermitian::Bool = false) where {T, N
     # already returns the best (still rigorous) of the Collatz and ‖·‖₁‖·‖∞ bounds.
     remainder_norm = upper_bound_L2_opnorm(remainder)
 
-    block_coupling, block_centers, block_nonnormality, block_residual_norm = _vbd_block_data(
-        A, BallMatrix(basis), BallMatrix(adjoint(basis)), transformed, block, remainder, clusters, T)
+    block_coupling, block_centers, block_nonnormality,
+    block_residual_norm = _vbd_block_data(
+        A, BallMatrix(basis), BallMatrix(adjoint(basis)),
+        transformed, block, remainder, clusters, T)
     hermitian && (block_centers = real.(block_centers))
 
     return MiyajimaVBDResult(basis, transformed, block, remainder, clusters,
@@ -287,7 +296,8 @@ function _vbd_gershgorin_intervals(H::BallMatrix{T, NT}; hermitian::Bool) where 
     midH = mid(H)
     radH = rad(H)
 
-    intervals = hermitian ? Vector{Ball{T, T}}(undef, n) : Vector{Ball{T, Complex{T}}}(undef, n)
+    intervals = hermitian ? Vector{Ball{T, T}}(undef, n) :
+                Vector{Ball{T, Complex{T}}}(undef, n)
 
     absH = upper_abs(H)
     for i in 1:n
@@ -381,8 +391,8 @@ function overlap_components(balls::AbstractVector{Ball{T, CT}}) where {T, CT}
     n == 0 && return components
 
     adjacency = [Int[] for _ in 1:n]
-    for i in 1:n-1
-        for j in i+1:n
+    for i in 1:(n - 1)
+        for j in (i + 1):n
             if _balls_overlap(balls[i], balls[j])
                 push!(adjacency[i], j)
                 push!(adjacency[j], i)
@@ -481,4 +491,3 @@ function block_infty_upper(absH::AbstractMatrix{T}, rows, cols) where {T}
     end
     return smax
 end
-

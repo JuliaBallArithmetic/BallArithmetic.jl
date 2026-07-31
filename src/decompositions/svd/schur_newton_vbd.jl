@@ -174,14 +174,20 @@ ball enclosure `Ã = inv(W)·A·W`, the β-inflated Gershgorin discs, and the
 certification record.  Throws if the Neumann condition `‖R₂‖_∞ < 1` fails.
 """
 function _certify_ball(A::BallMatrix{T}, W::AbstractMatrix;
+        B::Union{Nothing, BallMatrix} = nothing,
         kappa_mode::Symbol = :cheap) where {T}
-    Wc = W
-    Y = inv(Wc)
-    WB = BallMatrix(Wc)
+    WB = BallMatrix(W)
+
+    # Frame that Y approximately inverts. For the pencil `Ax = λBx` the change of
+    # variable `x = Wy` gives `(YAW)y = λ(YBW)y`, so with `R₂ = YBW − I` the
+    # collapsed matrix is again `M = (I+R₂)⁻¹Ã`, `Ã = YAW` — the same structure as
+    # the standard problem, which is why every step below is unchanged.
+    FB = B === nothing ? WB : B * WB
+    Y = inv(mid(FB))                                # Y is "free": any float inverse
     YB = BallMatrix(Y)
 
-    R2 = YB * WB - I                                # single residual (Y is "free")
-    transformed = YB * A * WB                       # rigorous enclosure of inv(W)·A·W
+    R2 = YB * FB - I                                # single residual (Y is "free")
+    transformed = YB * A * WB                       # rigorous enclosure of Ã = Y·A·W
 
     # per-row certification slack βᵢ (charges the Y≠W⁻¹ error to each disc using the
     # actual residual rows, not the global ‖R₂‖_∞‖Ã‖_∞); throws if ‖R₂‖_∞ ≥ 1.
@@ -192,8 +198,10 @@ function _certify_ball(A::BallMatrix{T}, W::AbstractMatrix;
     discs = _inflate_intervals(base, beta_rows)
     beta = maximum(beta_rows)                        # scalar summary for the record
 
-    kappa = _vbd_kappa(WB, YB, R2, kappa_mode, T)
-    return transformed, discs, nrmR2, beta, kappa
+    # κ₂ of the frame Y inverts: κ₂(W) for the standard problem, κ₂(B·W) for the
+    # pencil. Reported only; never used in the enclosure.
+    kappa = _vbd_kappa(FB, YB, R2, kappa_mode, T)
+    return transformed, discs, nrmR2, beta, kappa, FB
 end
 
 # κ₂ = ‖W‖₂‖W⁻¹‖₂ — a reported diagnostic, NOT used in the eigenvalue enclosure.
@@ -243,14 +251,66 @@ O(n³)) or `:svdbox` (one verified SVD of `W`).
 """
 function schur_newton_vbd(A::BallMatrix{T, NT}; sep::Real = -1,
         maxsteps::Integer = 6, kappa_mode::Symbol = :cheap) where {T, NT}
+    return _schur_newton_vbd(A, nothing; sep, maxsteps, kappa_mode)
+end
+
+"""
+    schur_newton_vbd(A::BallMatrix, B::BallMatrix; sep = -1, maxsteps = 6,
+                     kappa_mode = :cheap)
+
+Verified block diagonalisation of the **pencil** `Ax = λBx`, by the same Schur +
+Newton route as the one-argument method.
+
+The change of variable `x = Wy` turns the pencil into `(YAW)y = λ(YBW)y`, so
+with an approximate inverse `Y ≈ (BW)⁻¹` and the residual `R₂ = YBW − I` the
+collapsed matrix is again `M = (I+R₂)⁻¹Ã` with `Ã = YAW`. That is *structurally
+identical* to the standard problem, so the per-row certification slack, the
+β-inflated Gershgorin discs, the overlap re-clustering and the block enclosure
+carry over unchanged — the only substitution is `W ⟶ B·W` wherever the frame is
+paired with `Y` or with the candidate `Λ` (`R₁ = Y(AW − BWΛ)`).
+
+`B` is **not** assumed Hermitian or positive definite; its nonsingularity is not
+assumed either but *proved*, by `‖R₂‖_∞ < 1` (which certifies `B`, `W` and `Y`
+nonsingular at once). This follows Miyajima (2014), *Fast enclosure for all
+eigenvalues and invariant subspaces in generalized eigenvalue problems*,
+SIAM J. Matrix Anal. Appl. 35(3), 1205–1225, whose block-diagonalisation
+algorithm (§4) is obtained here through the Schur–Newton frame rather than the
+Kronecker fixed point of that paper.
+
+The candidate basis is produced in floating point from `mid(B) \\ mid(A)`; being
+a candidate it needs no verification of its own, all correctness resting on the
+final certification.
+"""
+function schur_newton_vbd(A::BallMatrix{T, NT}, B::BallMatrix; sep::Real = -1,
+        maxsteps::Integer = 6, kappa_mode::Symbol = :cheap) where {T, NT}
+    size(A) == size(B) ||
+        throw(DimensionMismatch("A and B must have the same size"))
+    return _schur_newton_vbd(A, B; sep, maxsteps, kappa_mode)
+end
+
+function _schur_newton_vbd(A::BallMatrix{T, NT}, B::Union{Nothing, BallMatrix};
+        sep::Real = -1, maxsteps::Integer = 6,
+        kappa_mode::Symbol = :cheap) where {T, NT}
     m, n = size(A)
     m == n || throw(ArgumentError("schur_newton_vbd expects a square matrix"))
 
     CT = Complex{T}
-    Bc = CT.(mid(A))
     # complexify the input ball once so the certification products are unambiguously
     # complex (mid(A) may be real); radii are preserved.
-    Acx = BallMatrix(Bc, rad(A))
+    Acx = BallMatrix(CT.(mid(A)), rad(A))
+    Bcx = B === nothing ? nothing : BallMatrix(CT.(mid(B)), rad(B))
+
+    # Candidate frame: the collapsed midpoint matrix. Float only — a candidate
+    # needs no verification, correctness rests on the certification below.
+    Bc = if B === nothing
+        CT.(mid(A))
+    else
+        try
+            CT.(mid(B)) \ CT.(mid(A))
+        catch
+            throw(ArgumentError("mid(B) is numerically singular: no candidate frame"))
+        end
+    end
     W, cl = _vbd_solve(Bc; sep, maxsteps)
 
     # permute columns so the Newton blocks are contiguous
@@ -258,10 +318,11 @@ function schur_newton_vbd(A::BallMatrix{T, NT}; sep::Real = -1,
     W = W[:, order]
 
     identity_order = collect(1:n)
-    local transformed, discs, nrmR2, beta, kappa, clusters
+    local transformed, discs, nrmR2, beta, kappa, clusters, FB
     attempts = 0
     while true
-        transformed, discs, nrmR2, beta, kappa = _certify_ball(Acx, W; kappa_mode)
+        transformed, discs, nrmR2, beta, kappa, FB = _certify_ball(Acx, W; B = Bcx,
+            kappa_mode)
         clusters, ord = _interval_clusters(discs)
         ord == identity_order && break
         W = W[:, ord]
@@ -280,7 +341,8 @@ function schur_newton_vbd(A::BallMatrix{T, NT}; sep::Real = -1,
         for cl in clusters
             length(cl) > 1 && (W[:, cl] = Matrix(qr(W[:, cl]).Q))
         end
-        transformed, discs, nrmR2, beta, kappa = _certify_ball(Acx, W; kappa_mode)
+        transformed, discs, nrmR2, beta, kappa, FB = _certify_ball(Acx, W; B = Bcx,
+            kappa_mode)
     end
 
     block = _block_diagonal_part(transformed, clusters)
@@ -291,7 +353,8 @@ function schur_newton_vbd(A::BallMatrix{T, NT}; sep::Real = -1,
 
     block_coupling, block_centers, block_nonnormality,
     block_residual_norm = _vbd_block_data(
-        Acx, BallMatrix(W), BallMatrix(inv(W)), transformed, block, remainder, clusters, T)
+        Acx, BallMatrix(W), BallMatrix(inv(mid(FB))), transformed, block, remainder,
+        clusters, T; FB = FB)
 
     return SchurNewtonVBDResult(W, transformed, block, remainder, clusters,
         discs, remainder_norm, eigenvalues, nrmR2, beta, kappa, block_coupling,
