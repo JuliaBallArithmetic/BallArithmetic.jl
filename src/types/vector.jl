@@ -140,16 +140,34 @@ end
 
 Multiply a ball matrix with a plain vector by promoting the vector to a
 column `BallMatrix` and reusing the matrix-matrix multiplication kernel.
+
+Typed on `AbstractVector` rather than `Vector` so that views, ranges and
+sparse vectors take the rigorous kernel too; previously they fell through to
+generic element-wise `Ball` multiplication, which is far slower and returns a
+`Vector{Ball}` instead of a `BallVector`.
 """
-function Base.:*(A::BallMatrix, v::Vector)
+function Base.:*(A::BallMatrix, v::AbstractVector)
     n = length(v)
-    bV = BallMatrix(reshape(mid(v), (n, 1)))
+    # `reshape` refuses some lazy vectors, so materialise when it does. The
+    # radius is carried through explicitly: `rad` is zero for a plain vector,
+    # but this keeps the method correct for any vector-like input.
+    vc = _as_column(mid(v), n)
+    vr = _as_column(rad(v), n)
+    bV = BallMatrix(vc, vr)
 
     w = A * bV
     wc = vec(mid(w))
     wr = vec(rad(w))
 
     return BallVector(wc, wr)
+end
+
+function _as_column(v::AbstractVector, n::Integer)
+    try
+        return reshape(v, (n, 1))
+    catch
+        return reshape(collect(v), (n, 1))
+    end
 end
 
 """

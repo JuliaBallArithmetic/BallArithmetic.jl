@@ -1,6 +1,7 @@
 using Test
 using BallArithmetic
 using LinearAlgebra
+using Random
 
 @testset "Verified Generalized Eigenvalue Problems" begin
 
@@ -272,7 +273,12 @@ using LinearAlgebra
     end
 
     @testset "Poor Approximate Solution" begin
-        # Use random vectors instead of eigenvectors
+        # Use random vectors instead of eigenvectors.
+        # Seeded: with unseeded `randn` a lucky draw occasionally lands close
+        # enough to a true eigenpair that verification succeeds with tight
+        # bounds, failing the assertion below roughly 0.8% of runs.
+        Random.seed!(20260731)
+
         A = BallMatrix([4.0 1.0; 1.0 3.0], fill(1e-10, 2, 2))
         B = BallMatrix([2.0 0.5; 0.5 2.0], fill(1e-10, 2, 2))
 

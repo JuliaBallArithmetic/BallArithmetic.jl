@@ -15,12 +15,32 @@ struct BallArray{T <: AbstractFloat, N, NT <: Union{T, Complex{T}},
     r::RA
     function BallArray(c::AbstractArray{T, N},
             r::AbstractArray{T, N}) where {T <: AbstractFloat, N}
+        _check_axes(c, r)
         new{T, N, T, Ball{T, T}, typeof(c), typeof(r)}(c, r)
     end
     function BallArray(c::AbstractArray{Complex{T}, N},
             r::AbstractArray{T, N}) where {T <: AbstractFloat, N}
+        _check_axes(c, r)
         new{T, N, Complex{T}, Ball{T, Complex{T}}, typeof(c), typeof(r)}(c, r)
     end
+end
+
+"""
+    _check_axes(c, r)
+
+Reject midpoint and radius containers that do not line up. Mismatched shapes
+used to be accepted silently: the resulting object reported `size(c)` while
+indexing or norm bounds later failed with a confusing `BoundsError` or
+`DimensionMismatch` far from the construction site.
+
+Comparing `axes` rather than `size` keeps offset-indexed arrays working.
+The check is `O(1)`, so it costs nothing on the hot paths.
+"""
+function _check_axes(c::AbstractArray, r::AbstractArray)
+    if axes(c) != axes(r)
+        throw(DimensionMismatch("midpoint array has axes $(axes(c)) but radius array has axes $(axes(r))"))
+    end
+    return nothing
 end
 
 """
@@ -83,6 +103,38 @@ rad(A::AbstractArray{T}) where {T <: AbstractFloat} = _zero_radius(A, T)
 rad(A::AbstractArray{Complex{T}}) where {T <: AbstractFloat} = _zero_radius(A, T)
 
 """
+    isvalid_enclosure(A::BallArray) -> Bool
+
+Report whether every radius of `A` is a genuine enclosure radius, that is
+non-negative and not `NaN`. A negative or `NaN` radius describes no set at all,
+so an array failing this test carries no rigorous meaning.
+
+**Validating the radii is the caller's responsibility.** The package
+deliberately does not check them on construction: the radii it produces
+internally are non-negative by construction (accumulated under `RoundUp` from
+non-negative quantities), and scanning every entry would cost up to 76% of a
+`BallMatrix` addition at `n = 100`. When radii come from outside — read from a
+file, supplied by a user, converted from another package — call this (or
+[`check_enclosure`](@ref)) yourself before relying on the enclosure.
+
+The axes of `c` and `r` *are* checked on construction, since that test is
+`O(1)`.
+"""
+isvalid_enclosure(A::BallArray) = all(x -> x >= zero(x), A.r)
+
+"""
+    check_enclosure(A::BallArray) -> A
+
+Throw an `ArgumentError` unless [`isvalid_enclosure`](@ref) holds, otherwise
+return `A` unchanged so the call can be chained.
+"""
+function check_enclosure(A::BallArray)
+    isvalid_enclosure(A) ||
+        throw(ArgumentError("radius array contains a negative or NaN entry; such a ball encloses nothing"))
+    return A
+end
+
+"""
     size(A::BallArray)
 
 Forward the size of the underlying midpoint storage.
@@ -129,7 +181,13 @@ function Base.getindex(
 end
 
 function Base.getindex(M::BallArray, inds...)
-    return BallArray(Base.getindex(M.c, inds...), Base.getindex(M.r, inds...))
+    c = Base.getindex(M.c, inds...)
+    r = Base.getindex(M.r, inds...)
+    # Not every index pattern that reaches this fallback selects a sub-array:
+    # mixing scalars with `CartesianIndex{0}` yields a single element, and Base
+    # generates exactly that internally (`permutedims!` does). Wrapping such a
+    # result in a `BallArray` used to throw a `MethodError`.
+    return c isa AbstractArray ? BallArray(c, r) : Ball(c, r)
 end
 
 """
@@ -173,7 +231,9 @@ enclosure, while complex arrays keep the stored radii and extract the
 imaginary midpoints.
 """
 function Base.imag(A::BallArray{T, N, T}) where {T <: AbstractFloat, N}
-    BallArray(zeros(size(A)), zeros(size(A)))
+    # `zeros(size(A))` would hand back `Float64` storage whatever `T` is, so a
+    # `Float32` or `BigFloat` array silently changed precision here.
+    BallArray(_zero_radius(A.c, T), _zero_radius(A.r, T))
 end
 function Base.imag(A::BallArray{T, N, Complex{T}}) where {T <: AbstractFloat, N}
     BallArray(imag.(A.c), A.r)

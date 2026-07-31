@@ -68,6 +68,7 @@ export Ball, BallF64, BallComplexF64, inf, sup, ball_hull, intersect_ball
 
 include("types/array.jl")
 export BallArray
+export isvalid_enclosure, check_enclosure
 
 include("types/matrix.jl")
 export BallMatrix
