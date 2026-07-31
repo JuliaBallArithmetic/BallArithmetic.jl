@@ -28,6 +28,7 @@ using Test
     include("test_eigenvalues/test_eigen.jl")
     include("test_eigenvalues/test_miyajima_new.jl")
     include("test_eigenvalues/test_verified_gev.jl")
+    include("test_eigenvalues/test_miyajima_gev_enclosure.jl")
     include("test_eigenvalues/test_gev_coherence.jl")
     include("test_eigenvalues/test_riesz_projections.jl")
     include("test_eigenvalues/test_iterative_schur_refinement.jl")

@@ -4,7 +4,6 @@ using LinearAlgebra
 using Random
 
 @testset "Verified Generalized Eigenvalue Problems" begin
-
     @testset "Beta Bound Computation (Theorem 10)" begin
         # Simple diagonal SPD matrix
         B = BallMatrix([2.0 0.0; 0.0 3.0], fill(1e-10, 2, 2))
@@ -83,8 +82,8 @@ using Random
 
     @testset "3×3 System with Well-Separated Eigenvalues" begin
         A = BallMatrix([10.0 1.0 0.5;
-                        1.0  5.0 0.2;
-                        0.5  0.2 2.0], fill(1e-8, 3, 3))
+                        1.0 5.0 0.2;
+                        0.5 0.2 2.0], fill(1e-8, 3, 3))
 
         B = BallMatrix([2.0 0.0 0.0;
                         0.0 2.0 0.0;
@@ -105,7 +104,7 @@ using Random
         # Intervals should be non-overlapping
         for i in 1:2
             λ_i_upper = result.eigenvalue_intervals[i][2]
-            λ_ip1_lower = result.eigenvalue_intervals[i+1][1]
+            λ_ip1_lower = result.eigenvalue_intervals[i + 1][1]
             @test λ_i_upper < λ_ip1_lower
         end
     end
@@ -182,7 +181,7 @@ using Random
 
         # Check that intervals don't overlap
         for i in 1:4
-            @test λ̃[i] + η[i] <= λ̃[i+1] - η[i+1] + 1e-10
+            @test λ̃[i] + η[i] <= λ̃[i + 1] - η[i + 1] + 1e-10
         end
 
         # Well-separated eigenvalues should keep their bounds
@@ -290,7 +289,8 @@ using Random
 
         # Should fail or give very large bounds
         if result.success
-            @test any(result.separation_bounds .> 10.0) || any(result.eigenvector_radii .> 10.0)
+            @test any(result.separation_bounds .> 10.0) ||
+                  any(result.eigenvector_radii .> 10.0)
         else
             @test !result.success
         end
@@ -342,5 +342,4 @@ using Random
 
         @test !isempty(result.message)
     end
-
 end

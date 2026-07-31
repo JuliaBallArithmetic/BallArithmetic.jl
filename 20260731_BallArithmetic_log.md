@@ -144,7 +144,111 @@ anywhere in `src/`, so no main-project dependency was added). New file
 Full suite: **4171 pass, 15 broken (pre-existing), 0 fail**, 6m45s
 (was 4090 pass / 15 broken).
 
-### Still open (audit findings not yet fixed)
+## Remaining four audit findings — fixed
 
-`permutedims` throwing, the missing construction validation, `imag` losing the
-float type, and `*` on views/ranges falling back to the generic path.
+`permutedims` (getindex fallback wrapped scalar results in `BallArray`; now
+returns a `Ball` when the index pattern selects one element), axes validation
+on construction (`DimensionMismatch`, `O(1)`), `imag` keeping `T`, and `*`
+retyped from `Vector` to `AbstractVector`. Radius *sign* validation is
+deliberately left to the caller — see below.
+
+New file `test/test_types/test_indexing_and_validation.jl`.
+
+### Radius validity: caller's responsibility (measured, then decided)
+
+Cost of `all(>=(0), r)` on every construction:
+
+| n | scan | ball `+` | overhead (3 constructions) |
+|---|------|----------|------|
+| 100 | 2.09 µs | 8.2 µs | **76%** |
+| 1000 | 208 µs | 4569 µs | 13.7% |
+
+On `*` it is 1–4%, but 76% on a small `+` is too much to impose, and the radii
+the package produces internally are non-negative by construction. So: axes are
+checked always (`O(1)`), sign is not. `isvalid_enclosure` / `check_enclosure`
+are exported for radii of external provenance.
+
+Also seeded `test_verified_gev.jl:287` ("Poor Approximate Solution"), which fed
+unseeded `randn` into a "should fail or be loose" assertion — measured **0.8%**
+failure rate over 400 trials, pre-existing.
+
+---
+
+## Audit: verified GEV vs Miyajima–Rump (`~/Code/RigPseudospectra.jl`, draft.tex)
+
+`src/eigenvalues/verified_gev.jl` implements Miyajima–Ogita–Rump–Oishi (2010)
+for the symmetric-definite pencil `Ax = λBx`. Compared against
+`RigPseudospectra/src/miyajima_rump.jl` (`_certify`) and draft.tex
+Lemma `lem:neumann` (l.326–341).
+
+### The reference pattern
+
+Draft `lem:neumann`: with `R₂ = YW − I` and `‖R₂‖ < 1`, `W` is nonsingular and
+`‖W⁻¹‖ ≤ ‖Y‖/(1−‖R₂‖)` — "all without forming any inverse". `Y` is *free*: any
+computed approximate inverse works, its quality entering only through `‖R₂‖`.
+`_certify` computes `R₂` in ball arithmetic, so every rounding *and* the input
+uncertainty are absorbed into that one residual.
+
+### Finding 1 (rigor break, demonstrated) — β ignores the radius of B
+
+`compute_beta_bound` must return `β ≥ √‖B⁻¹‖₂` for **every** B in the ball. It
+reads only `B.c` (Cholesky of `Symmetric(B.c)`, `X_L = inv(L)`, error analysis
+on `L`); `B.r` never appears. Measured on `B = [2 0.5; 0.5 2] ± r`:
+
+| r | β returned | worst `√‖B⁻¹‖₂` over the ball | |
+|---|-----------|------------------------------|---|
+| 1e-8 | 1.08769 | 0.816 | ok |
+| 0.5 | 1.08769 | 1.414 | **β < truth** |
+| 1.4 | 1.08769 | ∞ (ball contains singular matrices) | **β finite** |
+
+β is unchanged as r grows — the ball is simply not consulted.
+
+### Finding 2 (rigor break, demonstrated) — the fallback is not a bound
+
+On `ζ ≥ 1` or `α₁α∞α_C ≥ 1` the function `@warn`s and returns
+`sqrt(cond(B.c))`. That is the wrong quantity: `cond = ‖B‖·‖B⁻¹‖`, so it
+undershoots `√‖B⁻¹‖` by `√‖B‖` whenever `‖B‖ < 1` — measured 10×, 100×, 1000×
+for `B = 1e-2 I, 1e-4 I, 1e-6 I`. It is also a non-rigorous LAPACK estimate of
+the *centre*, so it is not an upper bound even of what it computes.
+
+The path is reachable: `B = diag(1,1,1,1/c)` takes it for `c ≳ 1e15`, and β
+then lands *below* the truth at c = 1e15, 1e16, 1e18. β flows straight into
+δ̂, ε and ξ, which are reported as verified — signalled only by `@warn`.
+
+### Finding 3 (dead/broken code)
+
+- `verified_gev.jl:111` computes `s = sum(abs.(B.c), dims=2)[:]`, never used.
+- `src/eigenvalues/miyajima/proceduresMiyajima2010.jl`: both `_encR1ci` and
+  `_encR1ccr` call `setrounding(T, …)` with **`T` undefined** in scope. The
+  file is `include`d but neither function is called anywhere in `src/` or
+  `test/` — they would throw `UndefVarError` on first use.
+
+### Finding 4 (contract, not demonstrated as unsound)
+
+`compute_eigenvalue_separation` requires `λ̃` sorted ascending — undocumented
+and unchecked. Unsorted input makes `gap = (λ̃[j]−λ̃[i])/2` negative; measured
+`η = [-2.0, -2.0, 0.0]`, caught by the `any(η .<= 0)` guard, so it fails
+loudly rather than silently.
+
+The same routine shrinks `ηᵢ` to `gap/2` to force disjointness. Theorem 5 only
+proves an eigenvalue within `εᵢ`, so shrinking below `εᵢ` should lose the
+containment guarantee. **I could not exhibit a violation**: 199 intervals over
+random pencils gave 0 misses, and 400 targeted near-degenerate trials produced
+0 successful runs (the `η ≤ 0` guard rejected them all). Recorded as suspicious,
+not proven.
+
+### Proposed fix
+
+Replace the hand-rolled Theorem 10 analysis in `compute_beta_bound` with the
+package's own Miyajima–Rump inversion bound (already used by
+`verified_cholesky`, and the memory note *reference_rigpseudospectra_inversion_bound*):
+take any float `Y ≈ B⁻¹`, form `R = YB − I` **in ball arithmetic**, and if
+`‖R‖₂ < 1` return `β = √(‖Y‖₂/(1−‖R‖₂))` rounded up. This
+
+* absorbs `B.r` automatically (R is a ball product), fixing Finding 1;
+* needs no fallback — `‖R‖ ≥ 1` is an honest certificate failure, fixing
+  Finding 2;
+* drops the `γ_n`/`eps(Float64)` constants, so the routine stops being
+  Float64-only.
+
+**No GEV code changed yet.**
