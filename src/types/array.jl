@@ -42,13 +42,45 @@ return the stored midpoint data.
 mid(A::AbstractArray) = A
 
 """
+    _zero_radius(A, ::Type{T})
+
+Return an all-zero, `T`-valued array laid out like `A`. Structured and sparse
+midpoints keep their storage type, so `BallMatrix(Diagonal(...))` gets a
+`Diagonal` radius rather than a dense one — for a sparse midpoint the dense
+fallback costs orders of magnitude more memory than the midpoints themselves.
+
+This is sound because every entry a structured type stores implicitly is an
+*exact* zero (or, for the unit triangular types, an exact one), so the
+corresponding radius is exactly zero and needs no storage.
+
+`fill!(similar(A, T), zero(T))` is used rather than `zero(A)`, which would keep
+a complex element type, or `zero(similar(A, T))`, which reads the undefined
+references `similar` leaves behind for `BigFloat`.
+
+For `Adjoint`, `Transpose`, `SubArray` and ranges `similar` already yields a
+plain dense array, matching the previous behaviour.
+"""
+_zero_radius(A::AbstractArray, ::Type{T}) where {T} = fill!(similar(A, T), zero(T))
+
+# The unit triangular types cannot represent a zero diagonal, so store the
+# radius in the corresponding non-unit type: the unit diagonal is exactly one
+# and therefore carries radius zero, which `UpperTriangular` can hold.
+function _zero_radius(A::LinearAlgebra.UnitUpperTriangular, ::Type{T}) where {T}
+    return LinearAlgebra.UpperTriangular(_zero_radius(parent(A), T))
+end
+function _zero_radius(A::LinearAlgebra.UnitLowerTriangular, ::Type{T}) where {T}
+    return LinearAlgebra.LowerTriangular(_zero_radius(parent(A), T))
+end
+
+"""
     rad(A::AbstractArray)
 
 Return a zero array of matching size that serves as the default radius
-for non-ball arrays.
+for non-ball arrays. The storage layout of `A` is preserved; see
+[`_zero_radius`](@ref).
 """
-rad(A::AbstractArray{T}) where {T <: AbstractFloat} = zeros(T, Base.size(A))
-rad(A::AbstractArray{Complex{T}}) where {T <: AbstractFloat} = zeros(T, Base.size(A))
+rad(A::AbstractArray{T}) where {T <: AbstractFloat} = _zero_radius(A, T)
+rad(A::AbstractArray{Complex{T}}) where {T <: AbstractFloat} = _zero_radius(A, T)
 
 """
     size(A::BallArray)

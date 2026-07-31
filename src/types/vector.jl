@@ -47,10 +47,11 @@ mid(A::AbstractVector) = A
     rad(v::AbstractVector)
 
 Default radius for non-ball vectors: a zero vector of the appropriate
-floating-point type.
+floating-point type. The storage layout of `A` is preserved, so a sparse
+vector yields a sparse radius; see [`_zero_radius`](@ref).
 """
-rad(A::AbstractVector{T}) where {T <: AbstractFloat} = zeros(T, size(A))
-rad(A::AbstractVector{Complex{T}}) where {T <: AbstractFloat} = zeros(T, size(A))
+rad(A::AbstractVector{T}) where {T <: AbstractFloat} = _zero_radius(A, T)
+rad(A::AbstractVector{Complex{T}}) where {T <: AbstractFloat} = _zero_radius(A, T)
 
 # # Operations
 """

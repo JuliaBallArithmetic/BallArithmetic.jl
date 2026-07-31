@@ -13,6 +13,7 @@ using Test
     include("test_types/test_vector.jl")
     include("test_types/test_matrix.jl")
     include("test_types/test_array.jl")
+    include("test_types/test_structured_radius.jl")
     include("test_types/test_vector_operations.jl")
 
     # Rounding and BigFloat

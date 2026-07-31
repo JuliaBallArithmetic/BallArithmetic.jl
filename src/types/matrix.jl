@@ -81,8 +81,12 @@ mid(A::AbstractMatrix) = A
 Return a matrix of radii matching the size of `A`. For non-ball matrices
 this defaults to a zero matrix, while for `BallMatrix` values the method
 is overloaded to provide the stored uncertainty information.
+
+The storage layout of `A` is preserved, so a `Diagonal`, triangular or sparse
+midpoint matrix yields a radius matrix of the same type; see
+[`_zero_radius`](@ref).
 """
-rad(A::AbstractMatrix{T}) where {T <: AbstractFloat} = zeros(T, size(A))
+rad(A::AbstractMatrix{T}) where {T <: AbstractFloat} = _zero_radius(A, T)
 # Complex matrices still report a real-valued radius since the uncertainty
 # is measured in the underlying real field.
 """
@@ -92,7 +96,7 @@ Return a matrix of real radii matching the size of the complex matrix `A`.
 Even for complex entries the radius is measured over the underlying real
 field, hence the resulting matrix has element type `T`.
 """
-rad(A::AbstractMatrix{Complex{T}}) where {T <: AbstractFloat} = zeros(T, size(A))
+rad(A::AbstractMatrix{Complex{T}}) where {T <: AbstractFloat} = _zero_radius(A, T)
 
 # LinearAlgebra functions
 """
