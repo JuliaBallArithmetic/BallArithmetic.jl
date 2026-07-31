@@ -48,4 +48,37 @@
         @test IntervalArithmetic.inf(intv) <= c - r
         @test IntervalArithmetic.sup(intv) >= c + r
     end
+
+    @testset "BallVector from intervals" begin
+        # The generic BallVector(::AbstractVector) routes through `rad`, which
+        # has no method for a vector of intervals, so these constructors were
+        # missing while their BallMatrix counterparts worked.
+        x = IntervalArithmetic.interval(-1.0, 1.0)
+
+        v = fill(x, 3)
+        bv = BallVector(v)
+        @test bv.c == zeros(3) && bv.r == ones(3)
+
+        cv = v + im * (v .+ 1.0)
+        bcv = BallVector(cv)
+        @test all(c == im for c in bcv.c) && all(r >= sqrt(2) for r in bcv.r)
+
+        # The complex radius must give a disk containing the rectangle.
+        z = complex(IntervalArithmetic.interval(0.0, 0.5),
+            IntervalArithmetic.interval(0.0, 0.25))
+        b1 = BallVector([z])
+        @test b1.r[1] >= sqrt(0.25^2 + 0.125^2)
+
+        # Arbitrary precision goes through the same path.
+        setprecision(BigFloat, 128) do
+            vb = fill(IntervalArithmetic.interval(BigFloat(-1), BigFloat(1)), 2)
+            bb = BallVector(vb)
+            @test eltype(bb.r) == BigFloat
+            @test bb.c == zeros(BigFloat, 2) && bb.r == ones(BigFloat, 2)
+
+            Mb = fill(IntervalArithmetic.interval(BigFloat(-1), BigFloat(1)), (2, 2))
+            BB = BallMatrix(Mb)
+            @test eltype(BB.r) == BigFloat
+        end
+    end
 end
