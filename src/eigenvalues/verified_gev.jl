@@ -283,68 +283,68 @@ function compute_individual_eigenvalue_bounds(
 end
 
 """
-    compute_eigenvalue_separation(λ̃::Vector, δ̂::Float64, ε::Vector{Float64}) -> Vector{Float64}
+    compute_eigenvalue_separation(λ̃::Vector, δ̂::Float64, ε::Vector{Float64}) -> Vector
 
-Compute separation bounds η using Lemma 2.
+Return the **proven** half-width for each eigenvalue interval,
 
-Finds the largest ηᵢ ≤ min(δ̂, εᵢ) such that intervals [λ̃ᵢ - ηᵢ, λ̃ᵢ + ηᵢ]
-are pairwise disjoint.
+    ηᵢ = min(δ̂, εᵢ) ,
 
-This ensures each interval contains exactly one eigenvalue.
+with `ηᵢ = δ̂` where `εᵢ` is infinite.
 
-# Algorithm
-Iteratively shrink overlapping intervals until all are disjoint.
+This radius is backed by a theorem either way: if `δ̂ ≤ εᵢ` then Theorem 4
+(`|λⱼ - λ̃ⱼ| ≤ δ̂` for all `j`) places `λᵢ` in `[λ̃ᵢ ± δ̂]`; otherwise Theorem 5
+places an eigenvalue in `[λ̃ᵢ ± εᵢ]`. Either way `[λ̃ᵢ ± ηᵢ]` holds at least one
+eigenvalue, so if the `n` intervals are pairwise disjoint each holds exactly one
+(Lemma 2).
+
+!!! warning "This function does not create separation"
+    An earlier version shrank overlapping `ηᵢ` to half the gap between the
+    approximate eigenvalues, so that the intervals became disjoint by
+    construction. That is unsound: below `min(δ̂, εᵢ)` no theorem supports the
+    interval any more, yet the result was still reported as verified. On
+    eigenvalues `{1, 1+1e-9, 5}` with input balls of radius `1e-8` it returned
+    `η = 5.0e-10` against a certified `ε₁ = 5.7e-8` and `δ̂ = 1.9e-7`; sampling
+    the input ball, 63% of eigenvalues fell outside their reported interval,
+    the worst by 40 half-widths.
+
+    Separation is now *verified* by [`eigenvalue_intervals_disjoint`](@ref) and
+    the caller reports failure when it does not hold.
 
 # Complexity
-O(n²) in worst case (highly clustered eigenvalues)
+O(n)
 """
 function compute_eigenvalue_separation(λ̃::Vector, δ̂::Float64, ε::Vector{Float64})
     n = length(λ̃)
-
-    # Initialize with minimum of global and individual bounds
-    η = min.(δ̂, ε)
-
-    # Handle infinite bounds
+    η = Vector{Float64}(undef, n)
     for i in 1:n
-        if isinf(η[i])
-            η[i] = δ̂
-        end
+        η[i] = isinf(ε[i]) ? δ̂ : min(δ̂, ε[i])
     end
-
-    # Iteratively resolve overlaps
-    max_iterations = 100
-    for iter in 1:max_iterations
-        changed = false
-
-        for i in 1:(n - 1)
-            for j in (i + 1):n
-                # Check if intervals [λ̃ᵢ - ηᵢ, λ̃ᵢ + ηᵢ] and [λ̃ⱼ - ηⱼ, λ̃ⱼ + ηⱼ] overlap
-                if λ̃[i] + η[i] > λ̃[j] - η[j]
-                    # They overlap, shrink both to half the gap
-                    gap = (λ̃[j] - λ̃[i]) / 2
-
-                    if η[i] > gap
-                        η[i] = gap
-                        changed = true
-                    end
-                    if η[j] > gap
-                        η[j] = gap
-                        changed = true
-                    end
-                end
-            end
-        end
-
-        if !changed
-            break
-        end
-
-        if iter == max_iterations
-            @warn "Eigenvalue separation did not converge after $max_iterations iterations"
-        end
-    end
-
     return η
+end
+
+"""
+    eigenvalue_intervals_disjoint(λ̃::Vector, η::Vector) -> Bool
+
+Are the intervals `[λ̃ᵢ - ηᵢ, λ̃ᵢ + ηᵢ]` pairwise disjoint?
+
+Disjointness is what upgrades "each interval holds at least one eigenvalue" to
+"each holds exactly one" (Lemma 2), so it must be *checked*, never imposed. The
+comparison is strict: two intervals sharing an endpoint could both be credited
+with an eigenvalue sitting exactly there.
+
+All pairs are tested, so no assumption is made about `λ̃` being sorted.
+"""
+function eigenvalue_intervals_disjoint(λ̃::Vector, η::Vector)
+    n = length(λ̃)
+    for i in 1:(n - 1), j in (i + 1):n
+        # |λ̃ᵢ - λ̃ⱼ| > ηᵢ + ηⱼ, evaluated so rounding cannot report a false gap
+        gap = abs(λ̃[i] - λ̃[j])
+        total = setrounding(Float64, RoundUp) do
+            η[i] + η[j]
+        end
+        gap > total || return false
+    end
+    return true
 end
 
 """
@@ -534,13 +534,23 @@ function verify_generalized_eigenpairs(A::BallMatrix, B::BallMatrix, X̃::Matrix
             @warn "Some individual eigenvalue bounds are infinite"
         end
 
-        # Step 3: Determine η using Lemma 2
+        # Step 3: the proven half-widths ηᵢ = min(δ̂, εᵢ)
         η = compute_eigenvalue_separation(λ̃, δ̂, ε)
 
-        # Check if all eigenvalues are separated
         if any(η .<= 0)
             return GEVResult(false, [], X̃, [], β, δ̂, ε, η, residual_norm,
                 "Failed to separate all eigenvalues (some η ≤ 0)")
+        end
+
+        # Lemma 2 needs the intervals to be pairwise disjoint. This is VERIFIED,
+        # never imposed: shrinking ηᵢ below min(δ̂, εᵢ) to force disjointness
+        # would leave the interval with no theorem behind it.
+        if !eigenvalue_intervals_disjoint(λ̃, η)
+            return GEVResult(false, [], X̃, [], β, δ̂, ε, η, residual_norm,
+                "Eigenvalues too clustered to separate: the intervals [λ̃ᵢ ± min(δ̂, εᵢ)] " *
+                "overlap, so no interval can be certified to hold exactly one eigenvalue. " *
+                "Tighten the input (smaller radii / a better approximate solution) or use " *
+                "miyajima_gev_enclosure, which encloses clusters jointly.")
         end
 
         # Step 4: Compute eigenvector bounds using Theorem 7

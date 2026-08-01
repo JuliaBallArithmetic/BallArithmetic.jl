@@ -13,7 +13,6 @@ Tests consistency with:
 """
 
 @testset "GEV Coherence Tests" begin
-
     @testset "Coherence with standard eigenvalue problem (B = I)" begin
         # When B = I, generalized problem reduces to standard Ax = λx
         A = BallMatrix([4.0 1.0; 1.0 3.0], fill(1e-10, 2, 2))
@@ -39,22 +38,56 @@ Tests consistency with:
     end
 
     @testset "Consistency with analytic solution (diagonal matrices)" begin
-        # For diagonal A and B: λᵢ = A[i,i] / B[i,i]
+        # For diagonal A and B: λᵢ = A[i,i] / B[i,i]. Use DISTINCT ratios so the
+        # eigenvalues are genuinely separable — see the coincident case below.
+        A = BallMatrix(Diagonal([6.0, 9.0, 16.0]), fill(1e-10, 3, 3))
+        B = BallMatrix(Diagonal([2.0, 3.0, 4.0]), fill(1e-10, 3, 3))
+
+        expected_eigenvalues = [6.0 / 2.0, 9.0 / 3.0, 16.0 / 4.0]  # [3.0, 3.0, 4.0]
+        sort!(expected_eigenvalues)
+
+        F = eigen(Symmetric(A.c), Symmetric(B.c))
+        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+
+        # 6/2 and 9/3 are both exactly 3, so this pencil still has a DOUBLE
+        # eigenvalue and cannot be split into three certified intervals.
+        @test !result.success
+        @test occursin("too clustered", result.message)
+    end
+
+    @testset "coincident eigenvalues cannot be separated" begin
+        # Regression: A = Diagonal([6,9,12]), B = Diagonal([2,3,4]) has the
+        # TRIPLE eigenvalue 3. `eigen` returns the three copies split by 4.4e-16
+        # of floating-point noise, while the certified radii are ~2.5e-10 — six
+        # orders of magnitude larger. The old separation step shrank η to
+        # gap/2 ≈ 2.2e-16 and reported three intervals of that half-width as
+        # verified, which is meaningless for a triple eigenvalue. It must decline.
         A = BallMatrix(Diagonal([6.0, 9.0, 12.0]), fill(1e-10, 3, 3))
         B = BallMatrix(Diagonal([2.0, 3.0, 4.0]), fill(1e-10, 3, 3))
 
-        expected_eigenvalues = [6.0/2.0, 9.0/3.0, 12.0/4.0]  # [3.0, 3.0, 3.0]
+        F = eigen(Symmetric(A.c), Symmetric(B.c))
+        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+
+        @test !result.success
+        @test occursin("too clustered", result.message)
+        @test isempty(result.eigenvalue_intervals)
+        # η is the proven radius, orders of magnitude above the spurious gaps
+        @test all(result.separation_bounds .> 1e-12)
+    end
+
+    @testset "well-separated diagonal pencil verifies" begin
+        # The analytic check the test above intended, with separable ratios.
+        A = BallMatrix(Diagonal([2.0, 9.0, 32.0]), fill(1e-12, 3, 3))
+        B = BallMatrix(Diagonal([2.0, 3.0, 4.0]), fill(1e-12, 3, 3))
+        expected = sort([2.0 / 2.0, 9.0 / 3.0, 32.0 / 4.0])   # [1.0, 3.0, 8.0]
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
         @test result.success
-
         for i in 1:3
             λ_lower, λ_upper = result.eigenvalue_intervals[i]
-            @test λ_lower <= expected_eigenvalues[i] <= λ_upper
-
-            # Should be very tight for diagonal matrices
+            @test λ_lower <= expected[i] <= λ_upper
             @test (λ_upper - λ_lower) < 1e-8
         end
     end
@@ -73,7 +106,7 @@ Tests consistency with:
 
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
         result_scaled = verify_generalized_eigenpairs(A_scaled, B_scaled,
-                                                       F_scaled.vectors, F_scaled.values)
+            F_scaled.vectors, F_scaled.values)
 
         @test result.success && result_scaled.success
 
@@ -232,5 +265,4 @@ Tests consistency with:
             @test overlap_lower <= overlap_upper
         end
     end
-
 end

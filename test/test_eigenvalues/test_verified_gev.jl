@@ -179,13 +179,77 @@ using Random
         @test all(η .<= δ̂)
         @test all(η .<= ε)
 
-        # Check that intervals don't overlap
-        for i in 1:4
-            @test λ̃[i] + η[i] <= λ̃[i + 1] - η[i + 1] + 1e-10
-        end
+        # η is exactly the PROVEN half-width min(δ̂, εᵢ). It is never shrunk to
+        # manufacture disjointness: below min(δ̂, εᵢ) no theorem supports the
+        # interval, so a shrunk interval could simply miss its eigenvalue.
+        @test η == min.(δ̂, ε)
 
-        # Well-separated eigenvalues should keep their bounds
+        # These particular eigenvalues are too clustered, and that is reported
+        # rather than papered over.
+        @test !eigenvalue_intervals_disjoint(λ̃, η)
+
+        # Well-separated eigenvalues keep their bounds and do separate.
         @test η[5] ≈ min(δ̂, ε[5]) atol=1e-10
+        @test eigenvalue_intervals_disjoint([1.0, 2.0, 3.0], [0.1, 0.1, 0.1])
+        # touching intervals share an endpoint ⇒ not disjoint
+        @test !eigenvalue_intervals_disjoint([1.0, 2.0], [0.5, 0.5])
+        # all pairs are tested, so sortedness is not assumed
+        @test eigenvalue_intervals_disjoint([3.0, 1.0, 2.0], [0.1, 0.1, 0.1])
+    end
+
+    @testset "clustered eigenvalues are declined, not faked" begin
+        # Regression for a rigor break: compute_eigenvalue_separation used to
+        # shrink overlapping ηᵢ to half the gap between approximate eigenvalues,
+        # making the intervals disjoint by construction and reporting
+        # success = true. With eigenvalues {1, 1+1e-9, 5} and input balls of
+        # radius 1e-8 that returned η₁ = 5.0e-10 against a certified
+        # ε₁ = 5.7e-8 and δ̂ = 1.9e-7; sampling the input ball, 63% of
+        # eigenvalues fell outside their reported interval, the worst by 40
+        # half-widths.
+        Q = Matrix(qr(randn(MersenneTwister(2), 3, 3)).Q)
+        Ac = Matrix(Symmetric(Q * Diagonal([1.0, 1.0 + 1e-9, 5.0]) * Q'))
+        Bc = Matrix(1.0I, 3, 3)
+        A = BallMatrix(Ac, fill(1e-8, 3, 3))
+        B = BallMatrix(Bc, fill(1e-8, 3, 3))
+
+        F = eigen(Symmetric(Ac), Symmetric(Bc))
+        p = sortperm(F.values)
+        res = verify_generalized_eigenpairs(A, B, Matrix(F.vectors)[:, p],
+            collect(F.values)[p])
+
+        @test !res.success
+        @test occursin("too clustered", res.message)
+        # the reported η are the proven ones, not shrunk
+        @test res.separation_bounds ≈ min.(res.global_bound, res.individual_bounds)
+    end
+
+    @testset "successful results really contain the whole input ball" begin
+        # Where verification does succeed, every matrix in the ball must have
+        # its eigenvalues distributed one per reported interval.
+        rng = MersenneTwister(9)
+        for (gap, r) in [(1.0, 1e-10), (2.0, 1e-8), (3.0, 1e-6)]
+            Q = Matrix(qr(randn(rng, 3, 3)).Q)
+            Ac = Matrix(Symmetric(Q * Diagonal([1.0, 1.0 + gap, 5.0]) * Q'))
+            Bc = Matrix(1.0I, 3, 3)
+            A = BallMatrix(Ac, fill(r, 3, 3))
+            B = BallMatrix(Bc, fill(r, 3, 3))
+
+            F = eigen(Symmetric(Ac), Symmetric(Bc))
+            p = sortperm(F.values)
+            res = verify_generalized_eigenpairs(A, B, Matrix(F.vectors)[:, p],
+                collect(F.values)[p])
+            res.success || continue
+
+            for _ in 1:300
+                E = (2rand(rng, 3, 3) .- 1) .* r
+                E = (E + E') / 2
+                ev = sort(eigvals(Symmetric(Ac + E)))
+                for i in 1:3
+                    lo, hi = res.eigenvalue_intervals[i]
+                    @test lo <= ev[i] <= hi
+                end
+            end
+        end
     end
 
     @testset "B = Identity (Standard Eigenvalue Problem)" begin

@@ -223,19 +223,47 @@ then lands *below* the truth at c = 1e15, 1e16, 1e18. β flows straight into
   file is `include`d but neither function is called anywhere in `src/` or
   `test/` — they would throw `UndefVarError` on first use.
 
-### Finding 4 (contract, not demonstrated as unsound)
+### Finding 4 — CONFIRMED UNSOUND and fixed (was "not demonstrated")
 
 `compute_eigenvalue_separation` requires `λ̃` sorted ascending — undocumented
 and unchecked. Unsorted input makes `gap = (λ̃[j]−λ̃[i])/2` negative; measured
 `η = [-2.0, -2.0, 0.0]`, caught by the `any(η .<= 0)` guard, so it fails
 loudly rather than silently.
 
-The same routine shrinks `ηᵢ` to `gap/2` to force disjointness. Theorem 5 only
-proves an eigenvalue within `εᵢ`, so shrinking below `εᵢ` should lose the
-containment guarantee. **I could not exhibit a violation**: 199 intervals over
-random pencils gave 0 misses, and 400 targeted near-degenerate trials produced
-0 successful runs (the `η ≤ 0` guard rejected them all). Recorded as suspicious,
-not proven.
+The same routine shrank `ηᵢ` to `gap/2` to force disjointness. Theorem 5 only
+proves an eigenvalue within `εᵢ`, so shrinking below `min(δ̂, εᵢ)` loses the
+containment guarantee.
+
+My first attempts missed it: 199 intervals over random pencils gave 0 misses,
+and 400 targeted near-degenerate trials produced 0 *successful* runs, because at
+zero input radius `δ̂` collapses to ~1e-15 and the `η ≤ 0` guard rejects
+everything. **Widening the input ball decouples `δ̂` from the eigenvalue gap and
+opens the window.**
+
+Counterexample — eigenvalues `{1, 1+1e-9, 5}`, input balls of radius `1e-8`:
+
+| quantity | value |
+|---|---|
+| certified global `δ̂` | 1.87e-7 |
+| certified individual `ε₁` | 5.71e-8 |
+| **reported `η₁`** | **5.0e-10** |
+
+114× below `ε₁`, 375× below `δ̂`, with `success = true`. Sampling 20 000
+matrices from the input ball: **37 966 of 60 000 eigenvalues (63.3%) fell
+outside their reported interval**, worst miss 2.0e-8 — 40 half-widths.
+
+**Fixed.** `compute_eigenvalue_separation` now returns the proven `ηᵢ =
+min(δ̂, εᵢ)` and nothing else; the new `eigenvalue_intervals_disjoint` *verifies*
+Lemma 2's hypothesis (strictly, so touching intervals do not count, and over all
+pairs so sortedness is not assumed); the driver reports an explicit failure when
+it does not hold. `min(δ̂, εᵢ)` is itself sound — Theorem 4 covers the `δ̂ ≤ εᵢ`
+branch, Theorem 5 the other — so `n` disjoint such intervals still give exactly
+one eigenvalue each.
+
+After the fix: the counterexample declines with a "too clustered" message; five
+genuinely separated configurations still succeed and 60 000 sampled eigenvalues
+were all inside their intervals (0 outside). The old test asserted the shrinking
+behaviour and was rewritten.
 
 ### Proposed fix
 
