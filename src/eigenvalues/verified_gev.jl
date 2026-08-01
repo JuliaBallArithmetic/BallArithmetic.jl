@@ -577,8 +577,10 @@ Result of [`miyajima_gev_enclosure`](@ref).
 # Fields
 - `success::Bool`: whether `‖R₂‖_∞ < 1` held, i.e. whether the enclosure is proved
 - `centers::Vector`: the approximate eigenvalues `λ̃`
-- `radius`: the common radius `ε`; every eigenvalue of the pencil lies in
-  `⋃ᵢ {z : |z - λ̃ᵢ| ≤ ε}`
+- `radius`: a common radius valid for all eigenvalues (the smaller of Theorem 1's
+  `‖R₁‖_∞/(1-‖R₂‖_∞)` and `maximum(radii)`)
+- `radii`: the **per-eigenvalue** radii of Corollary 3.2; every eigenvalue of the
+  pencil lies in `⋃ᵢ {z : |z - λ̃ᵢ| ≤ radii[i]}`, and `radii[i] ≤ radius` always
 - `nrmR1`, `nrmR2`: the two certified residual norms `‖R₁‖_∞`, `‖R₂‖_∞`
 - `message::String`
 """
@@ -586,6 +588,7 @@ struct MiyajimaGEVResult{T, CT}
     success::Bool
     centers::Vector{CT}
     radius::T
+    radii::Vector{T}
     nrmR1::T
     nrmR2::T
     message::String
@@ -608,6 +611,14 @@ If `‖R₂‖_∞ < 1` then `B`, `X̃` and `Y` are nonsingular and every eigenv
 satisfies `minᵢ |λ - λ̃ᵢ| ≤ ε` with
 
     ε = ‖R₁‖_∞ / (1 - ‖R₂‖_∞) .
+
+The returned `radii` are sharper: Corollary 3.2 of Miyajima (2014) replaces the
+two global norms by row sums `u = |R₁|𝟙`, `t = |R₂|𝟙`, giving
+
+    radii = u + ‖u‖_t · t,    ‖v‖_w := maxᵢ vᵢ/(1 - wᵢ),
+
+which satisfies `radii[i] ≤ ε` for every `i` — usually with room to spare, since
+a row with a small residual is no longer charged the worst row's.
 
 `Y` defaults to a floating-point `(B X̃)⁻¹` (Remark 2 of the paper). Its accuracy
 affects only how small `ε` comes out, never correctness — the same "`Y` is free"
@@ -645,14 +656,14 @@ function miyajima_gev_enclosure(A::BallMatrix{T}, B::BallMatrix{T},
         try
             inv(mid(BX))
         catch
-            return MiyajimaGEVResult(false, collect(λ̃), T(Inf), T(Inf), T(Inf),
+            return MiyajimaGEVResult(false, collect(λ̃), T(Inf), T[], T(Inf), T(Inf),
                 "B*X̃ numerically singular: no approximate inverse available")
         end
     else
         collect(Y)
     end
     all(isfinite, Yc) ||
-        return MiyajimaGEVResult(false, collect(λ̃), T(Inf), T(Inf), T(Inf),
+        return MiyajimaGEVResult(false, collect(λ̃), T(Inf), T[], T(Inf), T(Inf),
             "supplied Y contains non-finite entries")
 
     Yb = BallMatrix(Yc)
@@ -662,7 +673,7 @@ function miyajima_gev_enclosure(A::BallMatrix{T}, B::BallMatrix{T},
     nR2 = upper_bound_L_inf_opnorm(R2)
 
     if !(nR2 < 1)
-        return MiyajimaGEVResult(false, collect(λ̃), T(Inf), T(Inf), nR2,
+        return MiyajimaGEVResult(false, collect(λ̃), T(Inf), T[], T(Inf), nR2,
             "‖R₂‖_∞ = $nR2 ≥ 1: B, X̃, Y not certifiably nonsingular")
     end
 
@@ -677,10 +688,49 @@ function miyajima_gev_enclosure(A::BallMatrix{T}, B::BallMatrix{T},
     denom = setrounding(T, RoundDown) do
         one(T) - nR2
     end
-    ε = setrounding(T, RoundUp) do
-        nR1 / denom
+
+    # ── Corollary 3.2 of Miyajima (2014): per-eigenvalue radii ──
+    #
+    # With t := |S|𝟙 and u := |R₁|𝟙 (row sums, S = I − YBX̃ so |S| = |R₂|), and
+    # ‖v‖_w := maxᵢ vᵢ/(1−wᵢ), the radii are  r = u + ‖u‖_t·t.
+    #
+    # These are never worse than Theorem 1's uniform ε = ‖R₁‖_∞/(1−‖R₂‖_∞):
+    # uᵢ ≤ ‖u‖_∞ = ‖R₁‖_∞, tᵢ ≤ ‖t‖_∞ = ‖R₂‖_∞ and
+    # ‖u‖_t = maxⱼ uⱼ/(1−tⱼ) ≤ ‖u‖_∞/(1−‖t‖_∞), so
+    # rᵢ ≤ ‖R₁‖_∞ + ‖R₁‖_∞‖R₂‖_∞/(1−‖R₂‖_∞) = ε, usually with room to spare.
+    absR1 = upper_abs(R1)
+    absR2 = upper_abs(R2)
+    u = setrounding(T, RoundUp) do
+        [sum(view(absR1, i, :)) for i in 1:n]
+    end
+    t = setrounding(T, RoundUp) do
+        [sum(view(absR2, i, :)) for i in 1:n]
     end
 
-    return MiyajimaGEVResult(true, collect(λ̃), ε, nR1, nR2,
-        "All eigenvalues lie in ⋃ᵢ {|z - λ̃ᵢ| ≤ ε}")
+    # ‖u‖_t = maxᵢ uᵢ/(1 − tᵢ): numerators up, denominators down.
+    unorm_t = zero(T)
+    for i in 1:n
+        di = setrounding(T, RoundDown) do
+            one(T) - t[i]
+        end
+        di > 0 || return MiyajimaGEVResult(false, collect(λ̃), T(Inf), T[], nR1, nR2,
+            "row $i of the residual gives 1 - tᵢ ≤ 0")
+        unorm_t = max(unorm_t, setrounding(T, RoundUp) do
+            u[i] / di
+        end)
+    end
+
+    radii = setrounding(T, RoundUp) do
+        [u[i] + unorm_t * t[i] for i in 1:n]
+    end
+
+    # Theorem 1's uniform radius, kept as the scalar summary. `maximum(radii)` is
+    # itself a valid uniform radius and never exceeds it, so report the smaller.
+    ε_uniform = setrounding(T, RoundUp) do
+        nR1 / denom
+    end
+    ε = min(ε_uniform, maximum(radii))
+
+    return MiyajimaGEVResult(true, collect(λ̃), ε, radii, nR1, nR2,
+        "All eigenvalues lie in ⋃ᵢ {|z - λ̃ᵢ| ≤ rᵢ}")
 end

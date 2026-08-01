@@ -132,3 +132,155 @@ using Random
             BallMatrix(Ac), BallMatrix(Bc), complex(rand(3, 3)), [1.0, 2.0])
     end
 end
+
+@testset "Corollary 3.2 per-eigenvalue radii" begin
+    setprecision(BigFloat, 512)
+    Random.seed!(606)
+
+    @testset "never worse than Theorem 1's uniform ε, and still rigorous" begin
+        for _ in 1:12
+            n = rand(3:6)
+            Ac = randn(n, n)
+            Bc = randn(n, n)
+            Bc = Matrix(Bc'Bc + n * I)
+            F = eigen(Bc \ Ac)
+            res = miyajima_gev_enclosure(BallMatrix(complex(Ac)), BallMatrix(complex(Bc)),
+                complex(Matrix(F.vectors)), collect(F.values))
+            @test res.success
+            @test length(res.radii) == n
+            @test all(res.radii .>= 0)
+
+            # Corollary 3.2 ≤ Theorem 1
+            ε_thm1 = res.nrmR1 / (1 - res.nrmR2)
+            @test all(res.radii .<= ε_thm1 * (1 + 1e-12))
+            # the reported scalar radius is the tighter of the two
+            @test res.radius <= ε_thm1 * (1 + 1e-12)
+            @test res.radius >= maximum(res.radii) * (1 - 1e-12)
+
+            # rigor: every eigenvalue inside its own per-row disc
+            tr = eigvals(Complex{BigFloat}.(BigFloat.(Bc) \ BigFloat.(Ac)))
+            for λ in tr
+                @test any(
+                    i -> abs(Complex{BigFloat}(λ) -
+                             Complex{BigFloat}(res.centers[i])) <= res.radii[i],
+                    1:n)
+            end
+        end
+    end
+
+    @testset "failure paths carry an empty radii vector" begin
+        Ac = complex([4.0 1.0; 1.0 3.0])
+        Bc = complex([2.0 0.5; 0.5 2.0])
+        res = miyajima_gev_enclosure(BallMatrix(Ac), BallMatrix(Bc),
+            complex([1.0 1.0; 1.0 1.0]), [1.0, 2.0])
+        @test res.success == false || res.nrmR2 < 1
+        res.success || @test isempty(res.radii)
+    end
+end
+
+@testset "gev_invariant_subspaces (Miyajima 2014 §3.3 via Schur–Newton)" begin
+    setprecision(BigFloat, 512)
+    Random.seed!(707)
+
+    @testset "subspaces are spanned by W and carry their eigenvalues" begin
+        for _ in 1:8
+            n = rand(3:6)
+            Ac = randn(n, n)
+            Bc = randn(n, n)
+            Bc = Matrix(Bc'Bc + n * I)
+
+            subs = gev_invariant_subspaces(BallMatrix(Ac), BallMatrix(Bc))
+
+            # the cluster dimensions partition n
+            @test sum(length(s.indices) for s in subs) == n
+            # each basis is W[:, C]: n rows, |C| columns
+            for s in subs
+                @test size(s.basis) == (n, length(s.indices))
+                @test size(s.block) == (length(s.indices), length(s.indices))
+                @test s.residual >= 0
+                # the certified residual really bounds the midpoint residual
+                rmid = opnorm(
+                    ComplexF64.(Ac * mid(s.basis) -
+                                Bc * mid(s.basis) * mid(s.block)), 2)
+                @test rmid <= s.residual * (1 + 1e-8)
+            end
+
+            # the union of the block spectra is the pencil spectrum
+            tr = sort(eigvals(Complex{BigFloat}.(BigFloat.(Bc) \ BigFloat.(Ac))),
+                by = x -> (real(x), imag(x)))
+            blk = ComplexF64[]
+            for s in subs
+                append!(blk, eigvals(ComplexF64.(mid(s.block))))
+            end
+            # Compare as sets: a conjugate pair's real parts can differ in the
+            # last ulp between the two lists, so index-wise pairing after a
+            # (real, imag) sort would swap the pair and report a false miss.
+            @test length(blk) == n
+            @test all(λ -> minimum(abs(ComplexF64(λ) - b) for b in blk) < 1e-8, tr)
+
+            # every eigenvalue is enclosed by some cluster's discs
+            for λ in tr
+                @test any(subs) do s
+                    any(
+                        d -> abs(Complex{BigFloat}(λ) - Complex{BigFloat}(mid(d))) <=
+                             BigFloat(rad(d)), s.discs)
+                end
+            end
+        end
+    end
+
+    @testset "projectors derived from the bases" begin
+        n = 5
+        Ac = randn(n, n)
+        Bc = randn(n, n)
+        Bc = Matrix(Bc'Bc + n * I)
+        subs = gev_invariant_subspaces(BallMatrix(Ac), BallMatrix(Bc))
+
+        for s in subs
+            P = s.projector
+            @test P !== nothing
+            @test upper_bound_L2_opnorm(P * P - P) < 1e-8      # idempotent
+        end
+        Psum = sum(s.projector for s in subs)
+        @test upper_bound_L2_opnorm(Psum -
+                                    BallMatrix(Matrix{ComplexF64}(I, n, n))) < 1e-8
+
+        # projectors = false skips them
+        cheap = gev_invariant_subspaces(BallMatrix(Ac), BallMatrix(Bc);
+            projectors = false)
+        @test all(s -> s.projector === nothing, cheap)
+        @test length(cheap) == length(subs)
+    end
+
+    @testset "miyajima_spectral_projectors on a pencil" begin
+        n = 5
+        Ac = randn(n, n)
+        Bc = randn(n, n)
+        Bc = Matrix(Bc'Bc + n * I)
+        res = miyajima_spectral_projectors(BallMatrix(Ac), BallMatrix(Bc))
+
+        @test res.idempotency_defect < 1e-8
+        @test res.orthogonality_defect < 1e-8
+        @test res.resolution_defect < 1e-8
+        @test res.invariance_defect < 1e-8
+
+        @test_throws DimensionMismatch miyajima_spectral_projectors(
+            BallMatrix(randn(3, 3)), BallMatrix(randn(4, 4)))
+    end
+
+    @testset "B neither symmetric nor definite" begin
+        Ac = [4.0 1.0 0.0; -2.0 3.0 1.0; 0.0 1.0 5.0]
+        Bc = [2.0 0.5 0.0; -0.3 2.0 0.4; 0.0 0.1 3.0]
+        @test !(Bc ≈ Bc')
+        subs = gev_invariant_subspaces(BallMatrix(Ac), BallMatrix(Bc))
+        @test sum(length(s.indices) for s in subs) == 3
+        tr = eigvals(Complex{BigFloat}.(BigFloat.(Bc) \ BigFloat.(Ac)))
+        for λ in tr
+            @test any(subs) do s
+                any(
+                    d -> abs(Complex{BigFloat}(λ) - Complex{BigFloat}(mid(d))) <=
+                         BigFloat(rad(d)), s.discs)
+            end
+        end
+    end
+end
