@@ -104,15 +104,33 @@ function _vbd_solve(Bc::Matrix{CT}; sep::Real = -1, maxsteps::Integer = 6) where
         abs(d[i] - d[j]) < τ && uni(i, j)
     end
     W = copy(Q)
-    # Newton transform decoupling current cross-cluster pairs: Xᵢⱼ = −Aᵢⱼ/(dᵢ−dⱼ).
+    # Newton transform decoupling current cross-cluster pairs: Xᵢⱼ = −Aᵢⱼ/(dᵢ−dⱼ), but only for
+    # pairs where that division is CONTRACTING. This per-pair gate is Miyajima's (2014a, `bdg.m`:
+    # `if abs(D(i,i)-D(j,j)) > tol % elimination possible`) — a pair whose off-diagonal is not
+    # small against its gap is left alone rather than divided by that gap, which is precisely the
+    # division that makes the sweep diverge on a strongly non-normal band. A skipped pair is NOT
+    # merged; it simply stays coupled, its residual lands in the off-block part, and the
+    # disc-overlap arbiter downstream re-merges it if the enclosures really do overlap.
+    θcontract = Tr(9) / 10
     function newtonX()
         cof = Int[rt(i) for i in 1:n]
         X = zeros(CT, n, n)
         @inbounds for j in 1:n, i in 1:n
-
-            cof[i] != cof[j] && (X[i, j] = -A[i, j] / (d[i] - d[j]))
+            if cof[i] != cof[j]
+                g = abs(d[i] - d[j])
+                abs(A[i, j]) < θcontract * g && (X[i, j] = -A[i, j] / (d[i] - d[j]))
+            end
         end
         return X
+    end
+    # off-block mass — the quantity the refinement exists to drive down (it feeds β_Λ).
+    function offmass()
+        cof = Int[rt(i) for i in 1:n]
+        s = zero(Tr)
+        @inbounds for j in 1:n, i in 1:n
+            cof[i] != cof[j] && (s += abs2(A[i, j]))
+        end
+        return sqrt(s)
     end
     # one between-cluster Newton sweep (apply): Xᵢⱼ = −Aᵢⱼ/(dᵢ−dⱼ), A ← (I+X)⁻¹A(I+X).
     function newtonstep!()
@@ -124,32 +142,34 @@ function _vbd_solve(Bc::Matrix{CT}; sep::Real = -1, maxsteps::Integer = 6) where
         d = diag(A)
         return true
     end
-    # 3. WARM UP the Newton BEFORE the merge check. The column-norm criterion below would, on the
-    # raw Schur factor, fire on the *cumulative* off-diagonal coupling Σᵢ|Aᵢⱼ/(dᵢ−dⱼ)| of a column —
-    # large for a non-normal but genuinely SEPARATED band (each gap is real; the Schur off-diagonals
-    # are just big), wrongly collapsing distinct eigenvalues into one block. A few Newton sweeps let
-    # the separable pairs decouple (their ‖X[:,j]‖ → small) so the merge then catches only what STAYS
-    # coupled — true near-defective / dᵢ≈dⱼ chains, where the off-diagonal does NOT shrink.
+    # 3. Newton refinement of the between-cluster structure, MONOTONE. A sweep is kept only if it
+    # actually decreases the off-block mass; otherwise it is reverted and we stop. Refinement must
+    # never inflate the enclosure, and without this guard it did: on Grcar (n=100) the certified
+    # radii grew 5.17 → 8.32 → 9.04 as maxsteps went 0 → 6 → 12, because the unguarded sweeps ran
+    # while every index was still a singleton and diverged before any clustering had happened.
+    #
+    # NOTE (why there is no coupling-based merge here any more). The clustering is decided in step 2
+    # by DIAGONAL DISTANCE alone, which is exactly Rump's rule (2022, `verifyeigall` step 2:
+    # `dist = mig(d-d.') <= 1e-14*normA; conncomp(graph(dist))`), and Miyajima's (2014a Alg. 3:
+    # `|λ̃ᵢ-λ̃ⱼ| <= tol`). Neither author ever forms a block from the size of a decoupling transform:
+    # Rump does not solve a Sylvester equation at all, and inside a block he simply bypasses the
+    # division. The previous code merged column j whenever ‖X[:,j]‖₂ ≥ 1, which is not in either
+    # paper — it appears to come from reading Rump's Remark 2.3 ("the columns µᵢ in Z, where
+    # |µᵢ| > 1 for a cluster") as a column NORM when |µᵢ| is the CARDINALITY of the index set.
+    # Because that test aggregates Σᵢ|Aᵢⱼ/(dᵢ−dⱼ)| over a whole column, on any strongly non-normal
+    # band (O(1) Schur off-diagonals over O(1) gaps) it exceeded 1 for every column and collapsed
+    # ALL n eigenvalues into one block, even where they are plainly separable. The rigorous arbiter
+    # is, as in Miyajima Alg. 1, the overlap of the certified discs, applied downstream.
     for _ in 1:maxsteps
+        A0 = copy(A); W0 = copy(W); d0 = copy(d)
+        m0 = offmass()
         newtonstep!() || break
-    end
-    # 4. column-norm merge: a column whose decoupling transform STILL has ‖X[:,j]‖₂ ≥ 1 after warmup
-    # "fails" (the fixed point does not contract) ⇒ merge into its dominant coupling partner and
-    # re-cluster. Merge-only: clusters grow to a fixpoint, never split.
-    Xcap = one(Tr)
-    for _ in 1:n
-        X = newtonX()
-        fail = findall(j -> norm(view(X, :, j)) > Xcap, 1:n)
-        isempty(fail) && break
-        merged = false
-        for j in fail
-            uni(argmax(abs.(view(X, :, j))), j) && (merged = true)
+        if !(offmass() < m0)
+            A = A0
+            W = W0
+            d = d0
+            break
         end
-        merged || break
-    end
-    # 5. Newton refinement of the (now correctly clustered) between-cluster structure.
-    for _ in 1:maxsteps
-        newtonstep!() || break
     end
     groups = Dict{Int, Vector{Int}}()
     for i in 1:n
