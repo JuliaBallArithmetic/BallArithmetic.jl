@@ -48,9 +48,19 @@ parametric; extension to other numeric types would require making it GEVResult{T
 - If `success = true`: All eigenvalue intervals are guaranteed to contain exactly
   one true eigenvalue, and all eigenvector balls contain the corresponding normalized
   eigenvector, rigorously accounting for all matrices in the input intervals [A] and [B].
+
+  This holds because each interval is `[λ̃ᵢ ± min(δ̂, εᵢ)]`, a radius backed by
+  Theorem 4 or Theorem 5 and therefore containing at least one eigenvalue, *and*
+  because the `n` intervals were **verified** pairwise disjoint. The radii are
+  never reduced below `min(δ̂, εᵢ)` to make them disjoint: a narrower interval has
+  no theorem behind it and may contain no eigenvalue at all.
 - If `success = false`: Check `message` for diagnostic information. Common failures:
   - Approximate eigenvectors not sufficiently orthogonal (‖I - Gg‖₂ >= 1)
-  - Eigenvalues too clustered to separate
+  - Eigenvalues too clustered to separate — the proven intervals overlap, so no
+    interval can be certified to hold exactly one eigenvalue. Coincident or
+    near-coincident eigenvalues land here by design; use
+    [`miyajima_gev_enclosure`](@ref), which encloses clusters jointly rather than
+    trying to split them.
   - B not positive definite
 """
 struct GEVResult

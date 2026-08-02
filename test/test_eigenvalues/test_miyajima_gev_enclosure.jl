@@ -24,14 +24,17 @@ using Random
 
         B_wide = BallMatrix(Bc, fill(0.5, 2, 2))
         β_wide = compute_beta_bound(B_wide)
+        # One aggregated assertion instead of one per sample.
+        violations = 0
         for _ in 1:200
             E = (2rand(2, 2) .- 1) .* 0.5
             E = (E + E') / 2
             Bp = Bc + E
             if all(eigvals(Symmetric(Bp)) .> 0)
-                @test β_wide >= sqrt(opnorm(inv(BigFloat.(Bp)), 2))
+                β_wide >= sqrt(opnorm(inv(BigFloat.(Bp)), 2)) || (violations += 1)
             end
         end
+        @test violations == 0
 
         # a ball containing singular matrices cannot be certified
         @test compute_beta_bound(BallMatrix(Bc, fill(1.4, 2, 2))) == Inf

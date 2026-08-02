@@ -240,15 +240,20 @@ using Random
                 collect(F.values)[p])
             res.success || continue
 
+            # Aggregate: one assertion per configuration rather than one per
+            # sampled eigenvalue, so the sampling strength is unchanged but the
+            # suite does not gain thousands of @test records.
+            outside = 0
             for _ in 1:300
                 E = (2rand(rng, 3, 3) .- 1) .* r
                 E = (E + E') / 2
                 ev = sort(eigvals(Symmetric(Ac + E)))
                 for i in 1:3
                     lo, hi = res.eigenvalue_intervals[i]
-                    @test lo <= ev[i] <= hi
+                    (lo <= ev[i] <= hi) || (outside += 1)
                 end
             end
+            @test outside == 0
         end
     end
 
