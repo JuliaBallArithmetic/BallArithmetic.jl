@@ -1,14 +1,26 @@
 # Verified Generalized Eigenvalue Problems
 #
-# Implementation of algorithms from:
-# Miyajima, S., Ogita, T., Rump, S. M., Oishi, S. (2010)
-# "Fast Verification for All Eigenpairs in Symmetric Positive Definite
-# Generalized Eigenvalue Problems"
-# Reliable Computing 14, pp. 24-45.
+# Two methods for  Ax = λBx  live here.
 #
-# Problem: Ax = λBx where A is symmetric, B is symmetric positive definite
+# 1. `verify_generalized_eigenpairs` — the symmetric-definite algorithm of
+#      Miyajima, S., Ogita, T., Rump, S. M., Oishi, S. (2010)
+#      "Fast Verification for All Eigenpairs in Symmetric Positive Definite
+#      Generalized Eigenvalue Problems", Reliable Computing 14, pp. 24-45.
+#    Requires A symmetric and B symmetric positive definite. Returns per-
+#    eigenvalue intervals and eigenvector radii, at the price of the prefactor
+#    β ≥ √‖B⁻¹‖₂ (`compute_beta_bound`).
+#
+# 2. `miyajima_gev_enclosure` — Theorem 1 of
+#      Miyajima, S. (2010) "Fast enclosure for all eigenvalues in generalized
+#      eigenvalue problems", J. Comput. Appl. Math. 233, pp. 2994-3004.
+#    The two-residual method: with R₁ = Y(AX̃ - BX̃D̃) and R₂ = YBX̃ - I,
+#    ‖R₂‖_∞ < 1 gives min_i|λ - λ̃ᵢ| ≤ ‖R₁‖_∞/(1 - ‖R₂‖_∞) for every eigenvalue.
+#    Y is arbitrary, so no inverse is ever formed and all conditioning folds
+#    into ‖R₂‖ — the same device as the Miyajima–Rump eigenvalue certification.
+#    Needs neither symmetry, nor positive definiteness, nor β.
 
 export verify_generalized_eigenpairs, compute_beta_bound, GEVResult
+export miyajima_gev_enclosure, MiyajimaGEVResult
 
 using LinearAlgebra
 
@@ -36,9 +48,19 @@ parametric; extension to other numeric types would require making it GEVResult{T
 - If `success = true`: All eigenvalue intervals are guaranteed to contain exactly
   one true eigenvalue, and all eigenvector balls contain the corresponding normalized
   eigenvector, rigorously accounting for all matrices in the input intervals [A] and [B].
+
+  This holds because each interval is `[λ̃ᵢ ± min(δ̂, εᵢ)]`, a radius backed by
+  Theorem 4 or Theorem 5 and therefore containing at least one eigenvalue, *and*
+  because the `n` intervals were **verified** pairwise disjoint. The radii are
+  never reduced below `min(δ̂, εᵢ)` to make them disjoint: a narrower interval has
+  no theorem behind it and may contain no eigenvalue at all.
 - If `success = false`: Check `message` for diagnostic information. Common failures:
   - Approximate eigenvectors not sufficiently orthogonal (‖I - Gg‖₂ >= 1)
-  - Eigenvalues too clustered to separate
+  - Eigenvalues too clustered to separate — the proven intervals overlap, so no
+    interval can be certified to hold exactly one eigenvalue. Coincident or
+    near-coincident eigenvalues land here by design; use
+    [`miyajima_gev_enclosure`](@ref), which encloses clusters jointly rather than
+    trying to split them.
   - B not positive definite
 """
 struct GEVResult
@@ -59,35 +81,41 @@ end
 """
     compute_beta_bound(B::BallMatrix) -> Float64
 
-Compute verified upper bound β ≥ √‖B⁻¹‖₂ using Theorem 10.
-
-This function efficiently computes a bound on the square root of the 2-norm
-of B⁻¹ using Cholesky factorization and an approximate inverse.
-
-# Numeric Type Support
-**Currently supports Float64 only.** The error analysis uses Float64-specific
-rounding error constants (eps(Float64)). Extension to BigFloat would require:
-- Type-parametric unit roundoff: eps(T) instead of eps(Float64)
-- Appropriate error analysis for higher precision
-- Parametric GEVResult struct
-
-The mathematical algorithm itself is not Float64-specific, but the rigorous
-error bounds in the implementation assume IEEE 754 double precision arithmetic.
+Compute a verified upper bound β ≥ √‖B⁻¹‖₂ via the Miyajima–Rump inversion
+bound, valid for every matrix in the ball `B`.
 
 # Arguments
-- `B::BallMatrix`: Symmetric positive definite interval matrix (Float64 elements)
+- `B::BallMatrix`: Symmetric positive definite interval matrix
 
 # Returns
-- `β::Float64`: Upper bound on √‖B⁻¹‖₂
+- `β`: Upper bound on √‖B⁻¹‖₂ valid for **every** matrix in the ball `B`, or
+  `Inf` when the residual condition fails (`B` not certifiably nonsingular).
 
-# Algorithm (Theorem 10)
-1. Compute Cholesky factorization B ≈ LL^T
-2. Compute approximate inverse X_L ≈ L⁻¹
-3. Use interval arithmetic to bound error
-4. Return β = √((α₁α∞)/(1 - α₁α∞αC))
+# Algorithm (Miyajima–Rump inversion bound)
+
+Take any floating-point `Y ≈ B⁻¹` and form the residual `R = I - Y·B` in ball
+arithmetic. If `‖R‖₂ < 1` then every matrix in the ball is nonsingular and
+
+    ‖B⁻¹‖₂ ≤ ‖Y‖₂ / (1 - ‖R‖₂),
+
+so `β = √(‖Y‖₂/(1-‖R‖₂))`, rounded outward. This is the Neumann/approximate-
+inverse lemma used throughout the package (see `verified_cholesky`) and is the
+same two-residual device as Theorem 1 of Miyajima (2010): `Y` is *free*, its
+quality entering only through `‖R‖`, and no inverse is ever formed.
+
+Because `R` is a **ball** product it absorbs the radius of `B` automatically, so
+the bound covers the whole input interval. The previous implementation followed
+Theorem 10 with hand-rolled `γₙ` constants applied to `B.c` alone: it ignored
+`B.r` entirely (returning the same β for `B ± 0` and for a ball containing
+singular matrices) and, when its conditions failed, fell back to
+`sqrt(cond(B.c))` — a non-rigorous estimate of the wrong quantity, since
+`cond = ‖B‖·‖B⁻¹‖` undershoots `√‖B⁻¹‖` by `√‖B‖` whenever `‖B‖ < 1`.
+
+Carrying no unit-roundoff constants, this version is also type-generic rather
+than Float64-only.
 
 # Complexity
-O(n³) for Cholesky and inverse
+O(n³) for the approximate inverse and the ball product.
 
 # Example
 ```julia
@@ -95,76 +123,35 @@ B = BallMatrix([2.0 0.5; 0.5 2.0], fill(1e-10, 2, 2))
 β = compute_beta_bound(B)
 ```
 """
-function compute_beta_bound(B::BallMatrix)
+function compute_beta_bound(B::BallMatrix{T}) where {T}
     n = size(B, 1)
 
-    # Unit roundoff
-    u = eps(Float64) / 2
-
-    # Cholesky factorization of B.c (center)
-    L = cholesky(Symmetric(B.c)).L
-
-    # Compute approximate inverse of L
-    X_L = inv(L)
-
-    # Compute row sums for error analysis
-    s = sum(abs.(B.c), dims=2)[:]  # s_i = Σⱼ|Bᵢⱼ|
-
-    # γₙ = nu/(1-nu)
-    γ_n = (n * u) / (1 - n * u)
-
-    # Compute XL * L̃ (should be close to identity)
-    XL_L = X_L * L
-
-    # Error bound for 1-norm (use RoundUp for rigorous upper bound)
-    s1 = sum(abs.(L), dims=2)[:]
-    ζ_1 = setrounding(Float64, RoundUp) do
-        γ_n * norm(XL_L, 1) * norm(s1, 1) +
-              (n * u) / (1 - n * u) * norm(n * ones(n) + diag(abs.(L)), 1)
+    # Y is free: any floating-point approximate inverse will do. Its quality
+    # only affects how small ‖R‖ comes out.
+    Y = try
+        inv(mid(B))
+    catch
+        return T(Inf)          # midpoint numerically singular: no certificate
     end
+    all(isfinite, Y) || return T(Inf)
 
-    # Error bound for ∞-norm (use RoundUp for rigorous upper bound)
-    s_inf = maximum(abs.(L), dims=2)[:]
-    ζ_inf = setrounding(Float64, RoundUp) do
-        γ_n * norm(XL_L, Inf) * norm(s_inf, Inf) +
-                (n * u) / (1 - n * u) * norm(n * ones(n) + diag(abs.(L)), Inf)
-    end
+    YB = BallMatrix(Y) * B     # ball product: rounding *and* B's radius included
+    R = BallMatrix(Matrix{eltype(mid(B))}(I, n, n)) - YB
 
-    # Check convergence conditions
-    if ζ_1 >= 1.0 || ζ_inf >= 1.0
-        @warn "Beta computation: ζ bounds >= 1, using fallback estimate"
-        # Fallback: use condition number estimate
-        return sqrt(cond(B.c))
-    end
+    nR = upper_bound_L2_opnorm(R)
+    nR < 1 || return T(Inf)    # not certifiably nonsingular over the ball
 
-    # Compute α bounds (use RoundUp for rigorous upper bounds)
-    α_1 = setrounding(Float64, RoundUp) do
-        norm(X_L, 1) / (1 - ζ_1)
-    end
-    α_inf = setrounding(Float64, RoundUp) do
-        norm(X_L, Inf) / (1 - ζ_inf)
-    end
+    nY = upper_bound_L2_opnorm(BallMatrix(Y))
 
-    # Additional error for Cholesky reconstruction (use RoundUp for rigorous upper bound)
-    L_LT = L * L'
-    s_c_inf = maximum(sum(abs.(L_LT), dims=2))
-    α_C = setrounding(Float64, RoundUp) do
-        γ_n * norm(L_LT, Inf) * s_c_inf +
-              (n * u) / (1 - (n - 1) * u) * norm((n - 1) * ones(n) + diag(abs.(L)), Inf)
+    # ‖B⁻¹‖₂ ≤ ‖Y‖₂ / (1 - ‖R‖₂): numerator up, denominator down.
+    denom = setrounding(T, RoundDown) do
+        one(T) - nR
     end
+    denom > 0 || return T(Inf)
 
-    # Check final condition
-    if α_1 * α_inf * α_C >= 1.0
-        @warn "Beta computation: final condition failed, using fallback"
-        return sqrt(cond(B.c))
+    return setrounding(T, RoundUp) do
+        sqrt(nY / denom)
     end
-
-    # Compute β (Theorem 10) - use RoundUp for rigorous upper bound
-    β = setrounding(Float64, RoundUp) do
-        sqrt((α_1 * α_inf) / (1 - α_1 * α_inf * α_C))
-    end
-
-    return β
 end
 
 """
@@ -178,7 +165,6 @@ Uses interval arithmetic to account for uncertainties in A and B.
 O(n³) - dominated by matrix multiplications
 """
 function compute_residual_matrix(A::BallMatrix, B::BallMatrix, X̃::Matrix, λ̃::Vector)
-    n = size(A, 1)
     D̃ = Diagonal(λ̃)
 
     # Convert to Ball matrices for exact arithmetic
@@ -259,7 +245,8 @@ At least one true eigenvalue lies in [λ̃ᵢ - εᵢ, λ̃ᵢ + εᵢ].
 # Complexity
 O(n²) using Technique 3 (reuse Rg and Gg if available)
 """
-function compute_individual_eigenvalue_bounds(A::BallMatrix, B::BallMatrix, X̃::Matrix, λ̃::Vector, β::Float64)
+function compute_individual_eigenvalue_bounds(
+        A::BallMatrix, B::BallMatrix, X̃::Matrix, λ̃::Vector, β::Float64)
     n = length(λ̃)
     ε = zeros(Float64, n)
 
@@ -306,68 +293,68 @@ function compute_individual_eigenvalue_bounds(A::BallMatrix, B::BallMatrix, X̃:
 end
 
 """
-    compute_eigenvalue_separation(λ̃::Vector, δ̂::Float64, ε::Vector{Float64}) -> Vector{Float64}
+    compute_eigenvalue_separation(λ̃::Vector, δ̂::Float64, ε::Vector{Float64}) -> Vector
 
-Compute separation bounds η using Lemma 2.
+Return the **proven** half-width for each eigenvalue interval,
 
-Finds the largest ηᵢ ≤ min(δ̂, εᵢ) such that intervals [λ̃ᵢ - ηᵢ, λ̃ᵢ + ηᵢ]
-are pairwise disjoint.
+    ηᵢ = min(δ̂, εᵢ) ,
 
-This ensures each interval contains exactly one eigenvalue.
+with `ηᵢ = δ̂` where `εᵢ` is infinite.
 
-# Algorithm
-Iteratively shrink overlapping intervals until all are disjoint.
+This radius is backed by a theorem either way: if `δ̂ ≤ εᵢ` then Theorem 4
+(`|λⱼ - λ̃ⱼ| ≤ δ̂` for all `j`) places `λᵢ` in `[λ̃ᵢ ± δ̂]`; otherwise Theorem 5
+places an eigenvalue in `[λ̃ᵢ ± εᵢ]`. Either way `[λ̃ᵢ ± ηᵢ]` holds at least one
+eigenvalue, so if the `n` intervals are pairwise disjoint each holds exactly one
+(Lemma 2).
+
+!!! warning "This function does not create separation"
+    An earlier version shrank overlapping `ηᵢ` to half the gap between the
+    approximate eigenvalues, so that the intervals became disjoint by
+    construction. That is unsound: below `min(δ̂, εᵢ)` no theorem supports the
+    interval any more, yet the result was still reported as verified. On
+    eigenvalues `{1, 1+1e-9, 5}` with input balls of radius `1e-8` it returned
+    `η = 5.0e-10` against a certified `ε₁ = 5.7e-8` and `δ̂ = 1.9e-7`; sampling
+    the input ball, 63% of eigenvalues fell outside their reported interval,
+    the worst by 40 half-widths.
+
+    Separation is now *verified* by [`eigenvalue_intervals_disjoint`](@ref) and
+    the caller reports failure when it does not hold.
 
 # Complexity
-O(n²) in worst case (highly clustered eigenvalues)
+O(n)
 """
 function compute_eigenvalue_separation(λ̃::Vector, δ̂::Float64, ε::Vector{Float64})
     n = length(λ̃)
-
-    # Initialize with minimum of global and individual bounds
-    η = min.(δ̂, ε)
-
-    # Handle infinite bounds
+    η = Vector{Float64}(undef, n)
     for i in 1:n
-        if isinf(η[i])
-            η[i] = δ̂
-        end
+        η[i] = isinf(ε[i]) ? δ̂ : min(δ̂, ε[i])
     end
-
-    # Iteratively resolve overlaps
-    max_iterations = 100
-    for iter in 1:max_iterations
-        changed = false
-
-        for i in 1:n-1
-            for j in i+1:n
-                # Check if intervals [λ̃ᵢ - ηᵢ, λ̃ᵢ + ηᵢ] and [λ̃ⱼ - ηⱼ, λ̃ⱼ + ηⱼ] overlap
-                if λ̃[i] + η[i] > λ̃[j] - η[j]
-                    # They overlap, shrink both to half the gap
-                    gap = (λ̃[j] - λ̃[i]) / 2
-
-                    if η[i] > gap
-                        η[i] = gap
-                        changed = true
-                    end
-                    if η[j] > gap
-                        η[j] = gap
-                        changed = true
-                    end
-                end
-            end
-        end
-
-        if !changed
-            break
-        end
-
-        if iter == max_iterations
-            @warn "Eigenvalue separation did not converge after $max_iterations iterations"
-        end
-    end
-
     return η
+end
+
+"""
+    eigenvalue_intervals_disjoint(λ̃::Vector, η::Vector) -> Bool
+
+Are the intervals `[λ̃ᵢ - ηᵢ, λ̃ᵢ + ηᵢ]` pairwise disjoint?
+
+Disjointness is what upgrades "each interval holds at least one eigenvalue" to
+"each holds exactly one" (Lemma 2), so it must be *checked*, never imposed. The
+comparison is strict: two intervals sharing an endpoint could both be credited
+with an eigenvalue sitting exactly there.
+
+All pairs are tested, so no assumption is made about `λ̃` being sorted.
+"""
+function eigenvalue_intervals_disjoint(λ̃::Vector, η::Vector)
+    n = length(λ̃)
+    for i in 1:(n - 1), j in (i + 1):n
+        # |λ̃ᵢ - λ̃ⱼ| > ηᵢ + ηⱼ, evaluated so rounding cannot report a false gap
+        gap = abs(λ̃[i] - λ̃[j])
+        total = setrounding(Float64, RoundUp) do
+            η[i] + η[j]
+        end
+        gap > total || return false
+    end
+    return true
 end
 
 """
@@ -384,7 +371,8 @@ Guarantees ‖x̂⁽ⁱ⁾ - x̃⁽ⁱ⁾‖₂ ≤ ξᵢ for the true eigenvect
 # Complexity
 O(n²) using Technique 4 (reuse residual norms)
 """
-function compute_eigenvector_bounds(A::BallMatrix, B::BallMatrix, X̃::Matrix, λ̃::Vector, η::Vector{Float64}, β::Float64)
+function compute_eigenvector_bounds(
+        A::BallMatrix, B::BallMatrix, X̃::Matrix, λ̃::Vector, η::Vector{Float64}, β::Float64)
     n = length(λ̃)
     ξ = zeros(Float64, n)
 
@@ -409,7 +397,7 @@ function compute_eigenvector_bounds(A::BallMatrix, B::BallMatrix, X̃::Matrix, �
         if i > 1
             # Distance to previous eigenvalue (rigorous lower bound)
             dist_prev = setrounding(Float64, RoundDown) do
-                (λ̃[i] - η[i]) - (λ̃[i-1] + η[i-1])
+                (λ̃[i] - η[i]) - (λ̃[i - 1] + η[i - 1])
             end
             ρ_i = min(ρ_i, dist_prev)
         end
@@ -417,7 +405,7 @@ function compute_eigenvector_bounds(A::BallMatrix, B::BallMatrix, X̃::Matrix, �
         if i < n
             # Distance to next eigenvalue (rigorous lower bound)
             dist_next = setrounding(Float64, RoundDown) do
-                (λ̃[i+1] - η[i+1]) - (λ̃[i] + η[i])
+                (λ̃[i + 1] - η[i + 1]) - (λ̃[i] + η[i])
             end
             ρ_i = min(ρ_i, dist_next)
         end
@@ -509,12 +497,12 @@ function verify_generalized_eigenpairs(A::BallMatrix, B::BallMatrix, X̃::Matrix
     # Input validation
     if size(A) != (n, n) || size(B) != (n, n)
         return GEVResult(false, [], X̃, [], NaN, NaN, [], [], NaN,
-                        "Matrix dimensions must be square and matching")
+            "Matrix dimensions must be square and matching")
     end
 
     if size(X̃) != (n, n) || length(λ̃) != n
         return GEVResult(false, [], X̃, [], NaN, NaN, [], [], NaN,
-                        "Eigenvector matrix must be n×n and eigenvalue vector must have length n")
+            "Eigenvector matrix must be n×n and eigenvalue vector must have length n")
     end
 
     # Check symmetry (approximately)
@@ -531,7 +519,7 @@ function verify_generalized_eigenpairs(A::BallMatrix, B::BallMatrix, X̃::Matrix
 
         if isinf(β) || isnan(β)
             return GEVResult(false, [], X̃, [], β, NaN, [], [], NaN,
-                            "Failed to compute β bound (B may not be positive definite)")
+                "Failed to compute β bound (B may not be positive definite)")
         end
 
         # Step 2: Compute global and individual bounds
@@ -546,7 +534,7 @@ function verify_generalized_eigenpairs(A::BallMatrix, B::BallMatrix, X̃::Matrix
 
         if isinf(δ̂)
             return GEVResult(false, [], X̃, [], β, δ̂, [], [], residual_norm,
-                            "Global bound failed: approximate eigenvectors not sufficiently orthogonal (‖I - Gg‖₂ >= 1)")
+                "Global bound failed: approximate eigenvectors not sufficiently orthogonal (‖I - Gg‖₂ >= 1)")
         end
 
         ε = compute_individual_eigenvalue_bounds(A, B, X̃, λ̃, β)
@@ -556,13 +544,23 @@ function verify_generalized_eigenpairs(A::BallMatrix, B::BallMatrix, X̃::Matrix
             @warn "Some individual eigenvalue bounds are infinite"
         end
 
-        # Step 3: Determine η using Lemma 2
+        # Step 3: the proven half-widths ηᵢ = min(δ̂, εᵢ)
         η = compute_eigenvalue_separation(λ̃, δ̂, ε)
 
-        # Check if all eigenvalues are separated
         if any(η .<= 0)
             return GEVResult(false, [], X̃, [], β, δ̂, ε, η, residual_norm,
-                            "Failed to separate all eigenvalues (some η ≤ 0)")
+                "Failed to separate all eigenvalues (some η ≤ 0)")
+        end
+
+        # Lemma 2 needs the intervals to be pairwise disjoint. This is VERIFIED,
+        # never imposed: shrinking ηᵢ below min(δ̂, εᵢ) to force disjointness
+        # would leave the interval with no theorem behind it.
+        if !eigenvalue_intervals_disjoint(λ̃, η)
+            return GEVResult(false, [], X̃, [], β, δ̂, ε, η, residual_norm,
+                "Eigenvalues too clustered to separate: the intervals [λ̃ᵢ ± min(δ̂, εᵢ)] " *
+                "overlap, so no interval can be certified to hold exactly one eigenvalue. " *
+                "Tighten the input (smaller radii / a better approximate solution) or use " *
+                "miyajima_gev_enclosure, which encloses clusters jointly.")
         end
 
         # Step 4: Compute eigenvector bounds using Theorem 7
@@ -578,11 +576,181 @@ function verify_generalized_eigenpairs(A::BallMatrix, B::BallMatrix, X̃::Matrix
 
         # Success!
         return GEVResult(true, eigenvalue_intervals, X̃, ξ,
-                        β, δ̂, ε, η, residual_norm,
-                        "All eigenpairs successfully verified")
+            β, δ̂, ε, η, residual_norm,
+            "All eigenpairs successfully verified")
 
     catch e
         return GEVResult(false, [], X̃, [], NaN, NaN, [], [], NaN,
-                        "Verification failed with error: $(e)")
+            "Verification failed with error: $(e)")
     end
+end
+
+# ---------------------------------------------------------------------------
+# Miyajima (2010), Theorem 1 — the two-residual generalized enclosure
+# ---------------------------------------------------------------------------
+
+"""
+    MiyajimaGEVResult
+
+Result of [`miyajima_gev_enclosure`](@ref).
+
+# Fields
+- `success::Bool`: whether `‖R₂‖_∞ < 1` held, i.e. whether the enclosure is proved
+- `centers::Vector`: the approximate eigenvalues `λ̃`
+- `radius`: a common radius valid for all eigenvalues (the smaller of Theorem 1's
+  `‖R₁‖_∞/(1-‖R₂‖_∞)` and `maximum(radii)`)
+- `radii`: the **per-eigenvalue** radii of Corollary 3.2; every eigenvalue of the
+  pencil lies in `⋃ᵢ {z : |z - λ̃ᵢ| ≤ radii[i]}`, and `radii[i] ≤ radius` always
+- `nrmR1`, `nrmR2`: the two certified residual norms `‖R₁‖_∞`, `‖R₂‖_∞`
+- `message::String`
+"""
+struct MiyajimaGEVResult{T, CT}
+    success::Bool
+    centers::Vector{CT}
+    radius::T
+    radii::Vector{T}
+    nrmR1::T
+    nrmR2::T
+    message::String
+end
+
+"""
+    miyajima_gev_enclosure(A::BallMatrix, B::BallMatrix, X̃, λ̃; Y = nothing)
+
+Enclose **all** eigenvalues of the generalized problem `Ax = λBx` by Theorem 1 of
+
+> S. Miyajima, *Fast enclosure for all eigenvalues in generalized eigenvalue
+> problems*, J. Comput. Appl. Math. **233** (2010) 2994–3004.
+
+Given approximate eigenpairs `X̃`, `λ̃` (so that `AX̃ ≈ BX̃D̃`, `D̃ = diag(λ̃)`) and
+an **arbitrary** matrix `Y`, set
+
+    R₁ := Y(AX̃ - BX̃D̃),    R₂ := YBX̃ - I .
+
+If `‖R₂‖_∞ < 1` then `B`, `X̃` and `Y` are nonsingular and every eigenvalue `λ`
+satisfies `minᵢ |λ - λ̃ᵢ| ≤ ε` with
+
+    ε = ‖R₁‖_∞ / (1 - ‖R₂‖_∞) .
+
+The returned `radii` are sharper: Corollary 3.2 of Miyajima (2014) replaces the
+two global norms by row sums `u = |R₁|𝟙`, `t = |R₂|𝟙`, giving
+
+    radii = u + ‖u‖_t · t,    ‖v‖_w := maxᵢ vᵢ/(1 - wᵢ),
+
+which satisfies `radii[i] ≤ ε` for every `i` — usually with room to spare, since
+a row with a small residual is no longer charged the worst row's.
+
+`Y` defaults to a floating-point `(B X̃)⁻¹` (Remark 2 of the paper). Its accuracy
+affects only how small `ε` comes out, never correctness — the same "`Y` is free"
+device as the Miyajima–Rump eigenvalue certification: no inverse is ever formed,
+all conditioning is folded into the single residual `‖R₂‖`.
+
+Both residuals are evaluated in ball arithmetic, so the enclosure covers every
+matrix in the input balls `A` and `B`, including all rounding errors.
+
+Unlike [`verify_generalized_eigenpairs`](@ref) — which implements the
+symmetric-definite algorithm and returns per-eigenvalue intervals plus
+eigenvector bounds — this needs **no** symmetry, **no** positive definiteness and
+**no** `√‖B⁻¹‖₂` prefactor; it returns one common radius for all eigenvalues.
+
+# Example
+```julia
+A = BallMatrix([4.0 1.0; 1.0 3.0])
+B = BallMatrix([2.0 0.5; 0.5 2.0])
+F = eigen(Symmetric(mid(A)), Symmetric(mid(B)))
+res = miyajima_gev_enclosure(A, B, Matrix(F.vectors), collect(F.values))
+res.success && (res.radius)
+```
+"""
+function miyajima_gev_enclosure(A::BallMatrix{T}, B::BallMatrix{T},
+        X̃::AbstractMatrix, λ̃::AbstractVector; Y = nothing) where {T}
+    n = size(A, 1)
+    (size(A) == size(B) == (n, n) && size(X̃) == (n, n) && length(λ̃) == n) ||
+        throw(DimensionMismatch("A, B, X̃ must be n×n and λ̃ of length n"))
+
+    Xb = BallMatrix(collect(X̃))
+    BX = B * Xb
+
+    # Y is arbitrary (Remark 2: Y ≈ (BX̃)⁻¹). A bad Y only inflates ‖R₂‖.
+    Yc = if Y === nothing
+        try
+            inv(mid(BX))
+        catch
+            return MiyajimaGEVResult(false, collect(λ̃), T(Inf), T[], T(Inf), T(Inf),
+                "B*X̃ numerically singular: no approximate inverse available")
+        end
+    else
+        collect(Y)
+    end
+    all(isfinite, Yc) ||
+        return MiyajimaGEVResult(false, collect(λ̃), T(Inf), T[], T(Inf), T(Inf),
+            "supplied Y contains non-finite entries")
+
+    Yb = BallMatrix(Yc)
+
+    # R₂ = Y·B·X̃ - I
+    R2 = Yb * BX - BallMatrix(Matrix{eltype(mid(A))}(I, n, n))
+    nR2 = upper_bound_L_inf_opnorm(R2)
+
+    if !(nR2 < 1)
+        return MiyajimaGEVResult(false, collect(λ̃), T(Inf), T[], T(Inf), nR2,
+            "‖R₂‖_∞ = $nR2 ≥ 1: B, X̃, Y not certifiably nonsingular")
+    end
+
+    # R₁ = Y(A X̃ - B X̃ D̃).  D̃ is wrapped as a BallMatrix: multiplying a
+    # BallMatrix by a bare `Diagonal` falls through to the generic
+    # element-wise path and returns a `Matrix{Ball}`, which the rigorous
+    # operator-norm bounds do not accept.
+    D̃ = BallMatrix(Matrix(Diagonal(collect(λ̃))))
+    R1 = Yb * (A * Xb - BX * D̃)
+    nR1 = upper_bound_L_inf_opnorm(R1)
+
+    denom = setrounding(T, RoundDown) do
+        one(T) - nR2
+    end
+
+    # ── Corollary 3.2 of Miyajima (2014): per-eigenvalue radii ──
+    #
+    # With t := |S|𝟙 and u := |R₁|𝟙 (row sums, S = I − YBX̃ so |S| = |R₂|), and
+    # ‖v‖_w := maxᵢ vᵢ/(1−wᵢ), the radii are  r = u + ‖u‖_t·t.
+    #
+    # These are never worse than Theorem 1's uniform ε = ‖R₁‖_∞/(1−‖R₂‖_∞):
+    # uᵢ ≤ ‖u‖_∞ = ‖R₁‖_∞, tᵢ ≤ ‖t‖_∞ = ‖R₂‖_∞ and
+    # ‖u‖_t = maxⱼ uⱼ/(1−tⱼ) ≤ ‖u‖_∞/(1−‖t‖_∞), so
+    # rᵢ ≤ ‖R₁‖_∞ + ‖R₁‖_∞‖R₂‖_∞/(1−‖R₂‖_∞) = ε, usually with room to spare.
+    absR1 = upper_abs(R1)
+    absR2 = upper_abs(R2)
+    u = setrounding(T, RoundUp) do
+        [sum(view(absR1, i, :)) for i in 1:n]
+    end
+    t = setrounding(T, RoundUp) do
+        [sum(view(absR2, i, :)) for i in 1:n]
+    end
+
+    # ‖u‖_t = maxᵢ uᵢ/(1 − tᵢ): numerators up, denominators down.
+    unorm_t = zero(T)
+    for i in 1:n
+        di = setrounding(T, RoundDown) do
+            one(T) - t[i]
+        end
+        di > 0 || return MiyajimaGEVResult(false, collect(λ̃), T(Inf), T[], nR1, nR2,
+            "row $i of the residual gives 1 - tᵢ ≤ 0")
+        unorm_t = max(unorm_t, setrounding(T, RoundUp) do
+            u[i] / di
+        end)
+    end
+
+    radii = setrounding(T, RoundUp) do
+        [u[i] + unorm_t * t[i] for i in 1:n]
+    end
+
+    # Theorem 1's uniform radius, kept as the scalar summary. `maximum(radii)` is
+    # itself a valid uniform radius and never exceeds it, so report the smaller.
+    ε_uniform = setrounding(T, RoundUp) do
+        nR1 / denom
+    end
+    ε = min(ε_uniform, maximum(radii))
+
+    return MiyajimaGEVResult(true, collect(λ̃), ε, radii, nR1, nR2,
+        "All eigenvalues lie in ⋃ᵢ {|z - λ̃ᵢ| ≤ rᵢ}")
 end

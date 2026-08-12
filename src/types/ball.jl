@@ -357,10 +357,14 @@ function Base.inv(y::Ball{T, Complex{T}}) where {T <: AbstractFloat}
     # abs(my) has ≤1 ulp relative error, so amy² ≥ |my|²*(1-2ϵp); use this
     # to form a valid lower bound on D for the radius computation.
     amy = abs(my)
-    two_eps = mul_up(T(2), ϵp)
+    # Use the type-generic roundoff constants so the method also works for
+    # BigFloat balls (the Float64 `ϵp`/`η` would raise a MethodError there).
+    ϵ_T = machine_epsilon(T)
+    η_T = subnormal_min(T)
+    two_eps = mul_up(T(2), ϵ_T)
     D_lo = sub_down(mul_down(sub_down(one(T), two_eps), mul_down(amy, amy)), mul_up(ry, ry))
     c = conj(my) / (amy * amy - ry * ry)
-    r = add_up(div_up(ry, D_lo), add_up(mul_up(ϵp, abs(c)), η))
+    r = add_up(div_up(ry, D_lo), add_up(mul_up(ϵ_T, abs(c)), η_T))
     Ball(c, r)
 end
 
@@ -459,7 +463,6 @@ function Base.in(
         return false
     end
 end
-
 
 #==============================================================================#
 # Comparison operators for Ball

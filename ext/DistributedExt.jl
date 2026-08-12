@@ -33,7 +33,7 @@ function _set_parametric_config_on_workers(pids, precomp, R, config, k)
     Distributed.@sync begin
         for pid in pids
             Distributed.@async Distributed.remotecall_wait(
-                CertifScripts.set_parametric_config!, pid, precomp, R, config; k=k
+                CertifScripts.set_parametric_config!, pid, precomp, R, config; k = k
             )
         end
     end
@@ -46,7 +46,8 @@ function _cleanup_snapshots(basepath)
     end
 end
 
-function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::CertifScripts.CertificationCircle,
+function _run_certification_distributed(
+        A::BallArithmetic.BallMatrix, circle::CertifScripts.CertificationCircle,
         worker_ids::Vector{Int}; schur_data = nothing, polynomial = nothing,
         η::Real = 0.5, check_interval::Integer = 100,
         snapshot_path::Union{Nothing, AbstractString} = nothing, log_io::IO = stdout,
@@ -62,14 +63,23 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
         use_parametric::Bool = false,
         parametric_k::Union{Nothing, Integer} = nothing,
         parametric_config::BallArithmetic.ResolventBoundConfig = BallArithmetic.config_v2(),
-        parametric_distance_threshold::Real = 1e-4)
-
-    isempty(worker_ids) && throw(ArgumentError("no worker processes available for certification"))
+        parametric_distance_threshold::Real = 1e-4,
+        # Gram-weighted certification options
+        gram = nothing, gram_factor = nothing, gram_factor_inv = nothing,
+        gram_kwargs = (;))
+    isempty(worker_ids) &&
+        throw(ArgumentError("no worker processes available for certification"))
     channel_capacity < 1 && throw(ArgumentError("channel_capacity must be positive"))
     check_interval < 1 && throw(ArgumentError("check_interval must be positive"))
 
     η = Float64(η)
     (η <= 0 || η >= 1) && throw(ArgumentError("η must belong to (0, 1)"))
+
+    # Change of variables Ã = L·A·L⁻¹ for the weighted norm, applied once on the
+    # driver: the workers only ever see the transformed Schur factor, so no
+    # additional worker state has to be shipped.
+    A, gram_info = CertifScripts._prepare_gram(A, gram, gram_factor, gram_factor_inv,
+        schur_data; gram_kwargs...)
 
     coeffs = polynomial === nothing ? nothing : collect(polynomial)
 
@@ -91,15 +101,15 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
                 end
 
                 schur_data = coeffs === nothing ?
-                    CertifScripts.compute_schur_and_error(A_big) :
-                    CertifScripts.compute_schur_and_error(A_big; polynomial = coeffs)
+                             CertifScripts.compute_schur_and_error(A_big) :
+                             CertifScripts.compute_schur_and_error(A_big; polynomial = coeffs)
             finally
                 setprecision(BigFloat, old_prec)
             end
         else
             schur_data = coeffs === nothing ?
-                CertifScripts.compute_schur_and_error(A) :
-                CertifScripts.compute_schur_and_error(A; polynomial = coeffs)
+                         CertifScripts.compute_schur_and_error(A) :
+                         CertifScripts.compute_schur_and_error(A; polynomial = coeffs)
         end
     end
 
@@ -129,12 +139,12 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
 
         T_mat = Matrix(schur_matrix.c)
         T11 = T_mat[1:k_used, 1:k_used]
-        T12 = T_mat[1:k_used, (k_used+1):n]
-        T22 = T_mat[(k_used+1):n, (k_used+1):n]
+        T12 = T_mat[1:k_used, (k_used + 1):n]
+        T22 = T_mat[(k_used + 1):n, (k_used + 1):n]
 
         X = BallArithmetic.solve_sylvester_oracle(T11, T12, T22)
         parametric_R = T12 + T11 * X - X * T22
-        parametric_precomp = BallArithmetic.sylvester_resolvent_precompute(T_mat, k_used; X_oracle=X)
+        parametric_precomp = BallArithmetic.sylvester_resolvent_precompute(T_mat, k_used; X_oracle = X)
 
         if !parametric_precomp.precomputation_success
             error("Sylvester precomputation failed: $(parametric_precomp.failure_reason)")
@@ -151,33 +161,38 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
 
         # Set parametric config on workers if needed
         if use_parametric
-            _set_parametric_config_on_workers(worker_ids, parametric_precomp, parametric_R, parametric_config, k_used)
+            _set_parametric_config_on_workers(
+                worker_ids, parametric_precomp, parametric_R, parametric_config, k_used)
         end
 
         job_channel = RemoteChannel(() -> Channel{_RemoteJob}(channel_capacity))
         result_channel = RemoteChannel(() -> Channel{NamedTuple}(channel_capacity))
 
-        CertifScripts.configure_certification!(; job_channel = job_channel, result_channel = result_channel,
+        CertifScripts.configure_certification!(;
+            job_channel = job_channel, result_channel = result_channel,
             certification_log = certification_log, snapshot = snapshot_base, io = log_io)
 
         worker_tasks = Future[]
         for pid in worker_ids
             if use_parametric
-                push!(worker_tasks, Distributed.@spawnat pid CertifScripts.dowork_parametric(
-                    job_channel, result_channel;
-                    distance_threshold = parametric_distance_threshold))
+                push!(worker_tasks,
+                    Distributed.@spawnat pid CertifScripts.dowork_parametric(
+                        job_channel, result_channel;
+                        distance_threshold = parametric_distance_threshold))
             elseif use_bigfloat_ogita
-                push!(worker_tasks, Distributed.@spawnat pid CertifScripts.dowork_ogita_bigfloat(
-                    job_channel, result_channel;
-                    target_precision = target_precision,
-                    max_ogita_iterations = max_ogita_iterations,
-                    distance_threshold = ogita_distance_threshold))
+                push!(worker_tasks,
+                    Distributed.@spawnat pid CertifScripts.dowork_ogita_bigfloat(
+                        job_channel, result_channel;
+                        target_precision = target_precision,
+                        max_ogita_iterations = max_ogita_iterations,
+                        distance_threshold = ogita_distance_threshold))
             elseif use_ogita_cache
-                push!(worker_tasks, Distributed.@spawnat pid CertifScripts.dowork_ogita(
-                    job_channel, result_channel;
-                    ogita_distance_threshold = ogita_distance_threshold,
-                    ogita_quality_threshold = ogita_quality_threshold,
-                    ogita_iterations = ogita_iterations))
+                push!(worker_tasks,
+                    Distributed.@spawnat pid CertifScripts.dowork_ogita(
+                        job_channel, result_channel;
+                        ogita_distance_threshold = ogita_distance_threshold,
+                        ogita_quality_threshold = ogita_quality_threshold,
+                        ogita_iterations = ogita_iterations))
             else
                 push!(worker_tasks, Distributed.@spawnat pid CertifScripts.dowork(job_channel, result_channel))
             end
@@ -187,30 +202,35 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
         cache = Dict{ComplexF64, Any}()
         pending = Dict{Int, Tuple{ComplexF64, ComplexF64}}()
 
-        CertifScripts.adaptive_arcs!(arcs, cache, pending, η; check_interval = check_interval,
+        CertifScripts.adaptive_arcs!(
+            arcs, cache, pending, η; check_interval = check_interval,
             job_channel = job_channel, result_channel = result_channel,
             certification_log = certification_log, snapshot = snapshot_base, io = log_io)
 
-        isempty(certification_log) && throw(ErrorException("certification produced no samples"))
+        isempty(certification_log) &&
+            throw(ErrorException("certification produced no samples"))
 
         min_sigma = minimum(log -> log.lo_val, certification_log)
         l2pseudo = maximum(log -> log.hi_res, certification_log)
         resolvent_schur_bound = CertifScripts.bound_resolvent_schur(l2pseudo, η)
-        resolvent_bound = CertifScripts.bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1); Cbound = Cbound)
+        resolvent_bound = CertifScripts.bound_res_original(
+            l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1); Cbound = Cbound)
 
         # Include parametric info in result if used
         if use_parametric
-            return (; schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
+            return (; schur = S, schur_matrix, certification_log,
+                minimum_singular_value = min_sigma,
                 resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
                 resolvent_original = resolvent_bound, Cbound,
                 errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
-                snapshot_base, k = k_used, parametric_precomp)
+                snapshot_base, gram = gram_info, k = k_used, parametric_precomp)
         else
-            return (; schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
+            return (; schur = S, schur_matrix, certification_log,
+                minimum_singular_value = min_sigma,
                 resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
                 resolvent_original = resolvent_bound, Cbound,
                 errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
-                snapshot_base)
+                snapshot_base, gram = gram_info)
         end
     finally
         if result_channel !== nothing && pending isa Dict
@@ -243,7 +263,8 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
                 end
             catch err
                 if !(err isa InvalidStateException)
-                    @warn "failed to drain pending certification results" exception=(err, catch_backtrace())
+                    @warn "failed to drain pending certification results" exception=(
+                        err, catch_backtrace())
                 end
             end
         end
@@ -253,7 +274,8 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
                 close(job_channel)
             catch err
                 if !(err isa InvalidStateException)
-                    @warn "failed to close certification job channel" exception=(err, catch_backtrace())
+                    @warn "failed to close certification job channel" exception=(
+                        err, catch_backtrace())
                 end
             end
         end
@@ -283,7 +305,8 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
                 if inner isa InvalidStateException
                     reason = inner
                     message = sprint(showerror, reason)
-                    @info "certification worker stopped after channels closed" reason=reason reason_message=message exception=(reason, bt)
+                    @info "certification worker stopped after channels closed" reason=reason reason_message=message exception=(
+                        reason, bt)
                     continue
                 end
 
@@ -298,7 +321,8 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
                 close(result_channel)
             catch err
                 if !(err isa InvalidStateException)
-                    @warn "failed to close certification result channel" exception=(err, catch_backtrace())
+                    @warn "failed to close certification result channel" exception=(
+                        err, catch_backtrace())
                 end
             end
         end
@@ -307,7 +331,8 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
             try
                 rmprocs(worker_ids)
             catch err
-                @warn "failed to remove certification workers" exception=(err, catch_backtrace())
+                @warn "failed to remove certification workers" exception=(
+                    err, catch_backtrace())
             end
         end
 
@@ -317,7 +342,8 @@ function _run_certification_distributed(A::BallArithmetic.BallMatrix, circle::Ce
         CertifScripts._snapshot_path[] = nothing
         CertifScripts._log_io[] = stdout
 
-        if cleanup_snapshot && (isfile(snapshot_base * "_A.jld2") || isfile(snapshot_base * "_B.jld2"))
+        if cleanup_snapshot &&
+           (isfile(snapshot_base * "_A.jld2") || isfile(snapshot_base * "_B.jld2"))
             _cleanup_snapshots(snapshot_base)
         end
     end
@@ -380,40 +406,57 @@ certification samples in parallel.
   parametric mode. Options: `config_v1()`, `config_v2()`, `config_v2p5()`, `config_v3()`.
 - `parametric_distance_threshold = 1e-4`: maximum distance for warm-start cache
   reuse in parametric mode.
+- `gram = nothing`: Hermitian positive definite Gram matrix `G`. When given the
+  resolvent is certified in the weighted norm `‖x‖_G = √(x*Gx)` via the exact
+  change of variables `Ã = L·A·L⁻¹` with `G = L*L`. The transform is applied
+  once on the driver before the Schur reduction, so workers are unaffected and
+  no extra state is shipped to them. See
+  [`BallArithmetic.CertifScripts.gram_transform`](@ref).
+- `gram_factor = nothing`, `gram_factor_inv = nothing`, `gram_kwargs = (;)`:
+  precomputed factor data and extra options forwarded to `gram_transform`.
 
 The return value matches the serial flavour, exposing the Schur data,
 certification log, and resolvent bounds in a named tuple.  When new workers are
 spawned they are torn down automatically after the run.
 """
-function CertifScripts.run_certification(A::BallArithmetic.BallMatrix, circle::CertifScripts.CertificationCircle,
+function CertifScripts.run_certification(
+        A::BallArithmetic.BallMatrix, circle::CertifScripts.CertificationCircle,
         num_workers::Integer; kwargs...)
     num_workers < 1 && throw(ArgumentError("num_workers must be positive"))
     worker_ids = addprocs(num_workers)
-    return _run_certification_distributed(A, circle, worker_ids; kwargs..., cleanup_workers = true)
+    return _run_certification_distributed(
+        A, circle, worker_ids; kwargs..., cleanup_workers = true)
 end
 
-function CertifScripts.run_certification(A::BallArithmetic.BallMatrix, circle::CertifScripts.CertificationCircle,
+function CertifScripts.run_certification(
+        A::BallArithmetic.BallMatrix, circle::CertifScripts.CertificationCircle,
         pool::Distributed.WorkerPool; kwargs...)
     worker_ids = Distributed.workers(pool)
-    return _run_certification_distributed(A, circle, collect(worker_ids); kwargs..., cleanup_workers = false)
+    return _run_certification_distributed(
+        A, circle, collect(worker_ids); kwargs..., cleanup_workers = false)
 end
 
-function CertifScripts.run_certification(A::BallArithmetic.BallMatrix, circle::CertifScripts.CertificationCircle,
+function CertifScripts.run_certification(
+        A::BallArithmetic.BallMatrix, circle::CertifScripts.CertificationCircle,
         worker_ids::AbstractVector{<:Integer}; kwargs...)
-    return _run_certification_distributed(A, circle, collect(worker_ids); kwargs..., cleanup_workers = false)
+    return _run_certification_distributed(
+        A, circle, collect(worker_ids); kwargs..., cleanup_workers = false)
 end
 
-function CertifScripts.run_certification(A::AbstractMatrix, circle::CertifScripts.CertificationCircle,
+function CertifScripts.run_certification(
+        A::AbstractMatrix, circle::CertifScripts.CertificationCircle,
         num_workers::Integer; kwargs...)
     return CertifScripts.run_certification(BallArithmetic.BallMatrix(A), circle, num_workers; kwargs...)
 end
 
-function CertifScripts.run_certification(A::AbstractMatrix, circle::CertifScripts.CertificationCircle,
+function CertifScripts.run_certification(
+        A::AbstractMatrix, circle::CertifScripts.CertificationCircle,
         pool::Distributed.WorkerPool; kwargs...)
     return CertifScripts.run_certification(BallArithmetic.BallMatrix(A), circle, pool; kwargs...)
 end
 
-function CertifScripts.run_certification(A::AbstractMatrix, circle::CertifScripts.CertificationCircle,
+function CertifScripts.run_certification(
+        A::AbstractMatrix, circle::CertifScripts.CertificationCircle,
         worker_ids::AbstractVector{<:Integer}; kwargs...)
     return CertifScripts.run_certification(BallArithmetic.BallMatrix(A), circle, worker_ids; kwargs...)
 end

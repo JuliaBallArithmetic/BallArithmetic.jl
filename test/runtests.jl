@@ -13,6 +13,8 @@ using Test
     include("test_types/test_vector.jl")
     include("test_types/test_matrix.jl")
     include("test_types/test_array.jl")
+    include("test_types/test_structured_radius.jl")
+    include("test_types/test_indexing_and_validation.jl")
     include("test_types/test_vector_operations.jl")
 
     # Rounding and BigFloat
@@ -26,6 +28,7 @@ using Test
     include("test_eigenvalues/test_eigen.jl")
     include("test_eigenvalues/test_miyajima_new.jl")
     include("test_eigenvalues/test_verified_gev.jl")
+    include("test_eigenvalues/test_miyajima_gev_enclosure.jl")
     include("test_eigenvalues/test_gev_coherence.jl")
     include("test_eigenvalues/test_riesz_projections.jl")
     include("test_eigenvalues/test_iterative_schur_refinement.jl")
@@ -56,6 +59,7 @@ using Test
     # Pseudospectra
     include("test_pseudospectra/test_pseudospectra.jl")
     include("test_pseudospectra/test_sylvester_resolvent.jl")
+    include("test_pseudospectra/test_gram_transform.jl")
 
     # Linear system
     include("test_linear_system/test_inflation.jl")

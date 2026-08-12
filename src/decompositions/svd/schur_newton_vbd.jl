@@ -82,7 +82,8 @@ fixed-separation distance clustering, column-norm merge, between-cluster
 Newton refinement, per-block QR ⇒ block-orthonormal `W`.  `clusters` is a
 `Vector{Vector{Int}}` of (generally non-contiguous) index sets.
 """
-function _vbd_solve(Bc::Matrix{CT}; sep::Real = -1, maxsteps::Integer = 6) where {CT}
+function _vbd_solve(Bc::Matrix{CT}; sep::Real = -1, maxsteps::Integer = 6,
+        mode::Symbol = :entrywise) where {CT}
     n = size(Bc, 1)
     Tr = real(CT)
     # 1. Schur (orthonormal frame); BigFloat via GenericSchur, Float64 fallback.
@@ -104,15 +105,35 @@ function _vbd_solve(Bc::Matrix{CT}; sep::Real = -1, maxsteps::Integer = 6) where
         abs(d[i] - d[j]) < τ && uni(i, j)
     end
     W = copy(Q)
-    # Newton transform decoupling current cross-cluster pairs: Xᵢⱼ = −Aᵢⱼ/(dᵢ−dⱼ).
+    # Newton transform decoupling current cross-cluster pairs: Xᵢⱼ = −Aᵢⱼ/(dᵢ−dⱼ), but only for
+    # pairs where that division is CONTRACTING. This per-pair gate is Miyajima's (2014a, `bdg.m`:
+    # `if abs(D(i,i)-D(j,j)) > tol % elimination possible`) — a pair whose off-diagonal is not
+    # small against its gap is left alone rather than divided by that gap, which is precisely the
+    # division that makes the sweep diverge on a strongly non-normal band. A skipped pair is NOT
+    # merged; it simply stays coupled, its residual lands in the off-block part, and the
+    # disc-overlap arbiter downstream re-merges it if the enclosures really do overlap.
+    θcontract = Tr(9) / 10
     function newtonX()
         cof = Int[rt(i) for i in 1:n]
         X = zeros(CT, n, n)
         @inbounds for j in 1:n, i in 1:n
 
-            cof[i] != cof[j] && (X[i, j] = -A[i, j] / (d[i] - d[j]))
+            if cof[i] != cof[j]
+                g = abs(d[i] - d[j])
+                abs(A[i, j]) < θcontract * g && (X[i, j] = -A[i, j] / (d[i] - d[j]))
+            end
         end
         return X
+    end
+    # off-block mass — the quantity the refinement exists to drive down (it feeds β_Λ).
+    function offmass()
+        cof = Int[rt(i) for i in 1:n]
+        s = zero(Tr)
+        @inbounds for j in 1:n, i in 1:n
+
+            cof[i] != cof[j] && (s += abs2(A[i, j]))
+        end
+        return sqrt(s)
     end
     # one between-cluster Newton sweep (apply): Xᵢⱼ = −Aᵢⱼ/(dᵢ−dⱼ), A ← (I+X)⁻¹A(I+X).
     function newtonstep!()
@@ -124,38 +145,86 @@ function _vbd_solve(Bc::Matrix{CT}; sep::Real = -1, maxsteps::Integer = 6) where
         d = diag(A)
         return true
     end
-    # 3. WARM UP the Newton BEFORE the merge check. The column-norm criterion below would, on the
-    # raw Schur factor, fire on the *cumulative* off-diagonal coupling Σᵢ|Aᵢⱼ/(dᵢ−dⱼ)| of a column —
-    # large for a non-normal but genuinely SEPARATED band (each gap is real; the Schur off-diagonals
-    # are just big), wrongly collapsing distinct eigenvalues into one block. A few Newton sweeps let
-    # the separable pairs decouple (their ‖X[:,j]‖ → small) so the merge then catches only what STAYS
-    # coupled — true near-defective / dᵢ≈dⱼ chains, where the off-diagonal does NOT shrink.
-    for _ in 1:maxsteps
-        newtonstep!() || break
-    end
-    # 4. column-norm merge: a column whose decoupling transform STILL has ‖X[:,j]‖₂ ≥ 1 after warmup
-    # "fails" (the fixed point does not contract) ⇒ merge into its dominant coupling partner and
-    # re-cluster. Merge-only: clusters grow to a fixpoint, never split.
-    Xcap = one(Tr)
-    for _ in 1:n
-        X = newtonX()
-        fail = findall(j -> norm(view(X, :, j)) > Xcap, 1:n)
-        isempty(fail) && break
-        merged = false
-        for j in fail
-            uni(argmax(abs.(view(X, :, j))), j) && (merged = true)
+    # 3. Newton refinement of the between-cluster structure, MONOTONE. A sweep is kept only if it
+    # actually decreases the off-block mass; otherwise it is reverted and we stop. Refinement must
+    # never inflate the enclosure, and without this guard it did: on Grcar (n=100) the certified
+    # radii grew 5.17 → 8.32 → 9.04 as maxsteps went 0 → 6 → 12, because the unguarded sweeps ran
+    # while every index was still a singleton and diverged before any clustering had happened.
+    #
+    # NOTE (why there is no coupling-based merge here any more). The clustering is decided in step 2
+    # by DIAGONAL DISTANCE alone, which is exactly Rump's rule (2022, `verifyeigall` step 2:
+    # `dist = mig(d-d.') <= 1e-14*normA; conncomp(graph(dist))`), and Miyajima's (2014a Alg. 3:
+    # `|λ̃ᵢ-λ̃ⱼ| <= tol`). Neither author ever forms a block from the size of a decoupling transform:
+    # Rump does not solve a Sylvester equation at all, and inside a block he simply bypasses the
+    # division. The previous code merged column j whenever ‖X[:,j]‖₂ ≥ 1, which is not in either
+    # paper — it appears to come from reading Rump's Remark 2.3 ("the columns µᵢ in Z, where
+    # |µᵢ| > 1 for a cluster") as a column NORM when |µᵢ| is the CARDINALITY of the index set.
+    # Because that test aggregates Σᵢ|Aᵢⱼ/(dᵢ−dⱼ)| over a whole column, on any strongly non-normal
+    # band (O(1) Schur off-diagonals over O(1) gaps) it exceeded 1 for every column and collapsed
+    # ALL n eigenvalues into one block, even where they are plainly separable. The rigorous arbiter
+    # is, as in Miyajima Alg. 1, the overlap of the certified discs, applied downstream.
+    if mode === :entrywise
+        for _ in 1:maxsteps
+            A0 = copy(A)
+            W0 = copy(W)
+            d0 = copy(d)
+            m0 = offmass()
+            newtonstep!() || break
+            if !(offmass() < m0)
+                A = A0
+                W = W0
+                d = d0
+                break
+            end
         end
-        merged || break
-    end
-    # 5. Newton refinement of the (now correctly clustered) between-cluster structure.
-    for _ in 1:maxsteps
-        newtonstep!() || break
     end
     groups = Dict{Int, Vector{Int}}()
     for i in 1:n
         push!(get!(groups, rt(i), Int[]), i)
     end
     clusters = collect(values(groups))
+
+    # 4b. EXACT block-Sylvester elimination (Miyajima 2014a `bdg.m`). Where the
+    # entrywise sweep above is a first-order step that needs several iterations
+    # and can stall, this decouples each block from everything after it in ONE
+    # pass and exactly: with A = [A₁₁ A₁₂; 0 A₂₂] block upper triangular and
+    # S = [I V; 0 I], the similarity S⁻¹AS sends A₁₂ ↦ A₁₁V − VA₂₂ + A₁₂, so
+    # solving the Sylvester equation A₁₁V − VA₂₂ = −A₁₂ annihilates the strip.
+    # The basis follows as W ← WS, i.e. W₂ ← W₁V + W₂ — exactly bdg.m's
+    # `X(:,idx+ctr+1:end) = X(:,idx:idx+ctr)*V + X(:,idx+ctr+1:end)`.
+    # `bdg.m` gates this on |dᵢ−dⱼ| > tol, which is precisely "different
+    # cluster", so the block boundaries below already encode it.
+    if mode === :block
+        order = vcat(sort(clusters; by = first)...)
+        A = A[order, order]
+        W = W[:, order]
+        sizes = [length(c) for c in sort(clusters; by = first)]
+        pos = 1
+        for s_k in sizes
+            lo, hi = pos, pos + s_k - 1
+            if hi < n
+                V = try
+                    sylvester(A[lo:hi, lo:hi], -A[(hi + 1):n, (hi + 1):n],
+                        A[lo:hi, (hi + 1):n])
+                catch
+                    nothing            # ill-posed pair: leave the strip coupled
+                end
+                if V !== nothing && all(isfinite, V)
+                    W[:, (hi + 1):n] = W[:, lo:hi] * V + W[:, (hi + 1):n]
+                    A[lo:hi, (hi + 1):n] .= zero(CT)
+                end
+            end
+            pos = hi + 1
+        end
+        # relabel the clusters to the new contiguous positions
+        clusters = Vector{Int}[]
+        pos = 1
+        for s_k in sizes
+            push!(clusters, collect(pos:(pos + s_k - 1)))
+            pos += s_k
+        end
+    end
+
     # 5. orthogonalize each block ⇒ block-orthonormal W.
     for c in clusters
         W[:, c] = Matrix(qr(W[:, c]).Q)
@@ -174,14 +243,20 @@ ball enclosure `Ã = inv(W)·A·W`, the β-inflated Gershgorin discs, and the
 certification record.  Throws if the Neumann condition `‖R₂‖_∞ < 1` fails.
 """
 function _certify_ball(A::BallMatrix{T}, W::AbstractMatrix;
+        B::Union{Nothing, BallMatrix} = nothing,
         kappa_mode::Symbol = :cheap) where {T}
-    Wc = W
-    Y = inv(Wc)
-    WB = BallMatrix(Wc)
+    WB = BallMatrix(W)
+
+    # Frame that Y approximately inverts. For the pencil `Ax = λBx` the change of
+    # variable `x = Wy` gives `(YAW)y = λ(YBW)y`, so with `R₂ = YBW − I` the
+    # collapsed matrix is again `M = (I+R₂)⁻¹Ã`, `Ã = YAW` — the same structure as
+    # the standard problem, which is why every step below is unchanged.
+    FB = B === nothing ? WB : B * WB
+    Y = inv(mid(FB))                                # Y is "free": any float inverse
     YB = BallMatrix(Y)
 
-    R2 = YB * WB - I                                # single residual (Y is "free")
-    transformed = YB * A * WB                       # rigorous enclosure of inv(W)·A·W
+    R2 = YB * FB - I                                # single residual (Y is "free")
+    transformed = YB * A * WB                       # rigorous enclosure of Ã = Y·A·W
 
     # per-row certification slack βᵢ (charges the Y≠W⁻¹ error to each disc using the
     # actual residual rows, not the global ‖R₂‖_∞‖Ã‖_∞); throws if ‖R₂‖_∞ ≥ 1.
@@ -192,8 +267,10 @@ function _certify_ball(A::BallMatrix{T}, W::AbstractMatrix;
     discs = _inflate_intervals(base, beta_rows)
     beta = maximum(beta_rows)                        # scalar summary for the record
 
-    kappa = _vbd_kappa(WB, YB, R2, kappa_mode, T)
-    return transformed, discs, nrmR2, beta, kappa
+    # κ₂ of the frame Y inverts: κ₂(W) for the standard problem, κ₂(B·W) for the
+    # pencil. Reported only; never used in the enclosure.
+    kappa = _vbd_kappa(FB, YB, R2, kappa_mode, T)
+    return transformed, discs, nrmR2, beta, kappa, FB
 end
 
 # κ₂ = ‖W‖₂‖W⁻¹‖₂ — a reported diagnostic, NOT used in the eigenvalue enclosure.
@@ -242,26 +319,116 @@ precision.  `kappa_mode` selects the `κ₂` diagnostic: `:cheap` (Collatz, keep
 O(n³)) or `:svdbox` (one verified SVD of `W`).
 """
 function schur_newton_vbd(A::BallMatrix{T, NT}; sep::Real = -1,
-        maxsteps::Integer = 6, kappa_mode::Symbol = :cheap) where {T, NT}
+        maxsteps::Integer = 6, kappa_mode::Symbol = :cheap,
+        refine::Symbol = :auto) where {T, NT}
+    return _schur_newton_vbd(A, nothing; sep, maxsteps, kappa_mode, refine)
+end
+
+"""
+    schur_newton_vbd(A::BallMatrix, B::BallMatrix; sep = -1, maxsteps = 6,
+                     kappa_mode = :cheap)
+
+Verified block diagonalisation of the **pencil** `Ax = λBx`, by the same Schur +
+Newton route as the one-argument method.
+
+The change of variable `x = Wy` turns the pencil into `(YAW)y = λ(YBW)y`, so
+with an approximate inverse `Y ≈ (BW)⁻¹` and the residual `R₂ = YBW − I` the
+collapsed matrix is again `M = (I+R₂)⁻¹Ã` with `Ã = YAW`. That is *structurally
+identical* to the standard problem, so the per-row certification slack, the
+β-inflated Gershgorin discs, the overlap re-clustering and the block enclosure
+carry over unchanged — the only substitution is `W ⟶ B·W` wherever the frame is
+paired with `Y` or with the candidate `Λ` (`R₁ = Y(AW − BWΛ)`).
+
+`B` is **not** assumed Hermitian or positive definite; its nonsingularity is not
+assumed either but *proved*, by `‖R₂‖_∞ < 1` (which certifies `B`, `W` and `Y`
+nonsingular at once). This follows Miyajima (2014), *Fast enclosure for all
+eigenvalues and invariant subspaces in generalized eigenvalue problems*,
+SIAM J. Matrix Anal. Appl. 35(3), 1205–1225, whose block-diagonalisation
+algorithm (§4) is obtained here through the Schur–Newton frame rather than the
+Kronecker fixed point of that paper.
+
+The candidate basis is produced in floating point from `mid(B) \\ mid(A)`; being
+a candidate it needs no verification of its own, all correctness resting on the
+final certification.
+"""
+function schur_newton_vbd(A::BallMatrix{T, NT}, B::BallMatrix; sep::Real = -1,
+        maxsteps::Integer = 6, kappa_mode::Symbol = :cheap,
+        refine::Symbol = :auto) where {T, NT}
+    size(A) == size(B) ||
+        throw(DimensionMismatch("A and B must have the same size"))
+    return _schur_newton_vbd(A, B; sep, maxsteps, kappa_mode, refine)
+end
+
+function _schur_newton_vbd(A::BallMatrix{T, NT}, B::Union{Nothing, BallMatrix};
+        sep::Real = -1, maxsteps::Integer = 6, kappa_mode::Symbol = :cheap,
+        refine::Symbol = :auto) where {T, NT}
+    refine in (:auto, :none, :entrywise, :block) ||
+        throw(ArgumentError("refine must be :auto, :none, :entrywise or :block"))
     m, n = size(A)
     m == n || throw(ArgumentError("schur_newton_vbd expects a square matrix"))
 
     CT = Complex{T}
-    Bc = CT.(mid(A))
     # complexify the input ball once so the certification products are unambiguously
     # complex (mid(A) may be real); radii are preserved.
-    Acx = BallMatrix(Bc, rad(A))
-    W, cl = _vbd_solve(Bc; sep, maxsteps)
+    Acx = BallMatrix(CT.(mid(A)), rad(A))
+    Bcx = B === nothing ? nothing : BallMatrix(CT.(mid(B)), rad(B))
 
-    # permute columns so the Newton blocks are contiguous
+    # Candidate frame: the collapsed midpoint matrix. Float only — a candidate
+    # needs no verification, correctness rests on the certification below.
+    Bc = if B === nothing
+        CT.(mid(A))
+    else
+        try
+            CT.(mid(B)) \ CT.(mid(A))
+        catch
+            throw(ArgumentError("mid(B) is numerically singular: no candidate frame"))
+        end
+    end
+    modes = refine === :auto ? (:none, :entrywise, :block) : (refine,)
+    best = nothing
+    best_score = nothing
+    failures = String[]
+
+    for m in modes
+        cand = try
+            W, cl = _vbd_solve(Bc; sep, maxsteps, mode = m)
+            _vbd_finish(Acx, Bcx, W, cl, n, kappa_mode, T)
+        catch e
+            push!(failures, "$m: " * first(sprint(showerror, e), 80))
+            nothing
+        end
+        cand === nothing && continue
+        # Score on CERTIFIED quantities only: the worst disc radius (the primary
+        # product), then the off-block remainder (which drives β_Λ and the
+        # deflating-subspace residual). Every candidate has already passed the
+        # same certification, so picking between them cannot affect rigour — the
+        # basis is a candidate and correctness rests on `_certify_ball`.
+        score = (maximum(rad, cand.cluster_intervals), cand.remainder_norm)
+        if best_score === nothing || score < best_score
+            best, best_score = cand, score
+        end
+    end
+
+    best === nothing &&
+        throw(ArgumentError("no VBD candidate could be certified (" *
+                            join(failures, "; ") * ")"))
+    return best
+end
+
+# Certify a candidate basis and assemble the result: disc-overlap re-clustering,
+# per-cluster reorthogonalisation, block data.
+function _vbd_finish(Acx::BallMatrix{T}, Bcx, W, cl, n::Integer,
+        kappa_mode::Symbol, ::Type{T}) where {T}
+    # permute columns so the blocks are contiguous
     order = isempty(cl) ? collect(1:n) : vcat(cl...)
     W = W[:, order]
 
     identity_order = collect(1:n)
-    local transformed, discs, nrmR2, beta, kappa, clusters
+    local transformed, discs, nrmR2, beta, kappa, clusters, FB
     attempts = 0
     while true
-        transformed, discs, nrmR2, beta, kappa = _certify_ball(Acx, W; kappa_mode)
+        transformed, discs, nrmR2, beta, kappa, FB = _certify_ball(Acx, W; B = Bcx,
+            kappa_mode)
         clusters, ord = _interval_clusters(discs)
         ord == identity_order && break
         W = W[:, ord]
@@ -270,17 +437,16 @@ function schur_newton_vbd(A::BallMatrix{T, NT}; sep::Real = -1,
             throw(ArgumentError("failed to permute β-Gershgorin clusters into contiguous blocks"))
     end
 
-    # Reorthogonalize each FINAL cluster.  `_vbd_solve` QR-orthogonalizes per Newton
-    # cluster, but the disc-overlap re-clustering above can MERGE Newton blocks; a merged
-    # block is the concatenation of separately-orthonormalized sub-blocks, so it is not
-    # block-orthonormal as a unit.  Re-QR'ing each final cluster restores that (it preserves
-    # the cluster's invariant subspace, so the clustering is unchanged); re-certify against
-    # the cleaned basis.  Rigor never depended on this — it tightens κ₂ and the block σ_min.
+    # Reorthogonalize each FINAL cluster: the disc-overlap re-clustering can MERGE
+    # blocks, and a merged block is the concatenation of separately-orthonormalized
+    # sub-blocks, so it is not block-orthonormal as a unit. Re-QR'ing preserves the
+    # invariant subspace, so the clustering is unchanged; rigor never depended on it.
     if any(cl -> length(cl) > 1, clusters)
         for cl in clusters
             length(cl) > 1 && (W[:, cl] = Matrix(qr(W[:, cl]).Q))
         end
-        transformed, discs, nrmR2, beta, kappa = _certify_ball(Acx, W; kappa_mode)
+        transformed, discs, nrmR2, beta, kappa, FB = _certify_ball(Acx, W; B = Bcx,
+            kappa_mode)
     end
 
     block = _block_diagonal_part(transformed, clusters)
@@ -291,7 +457,8 @@ function schur_newton_vbd(A::BallMatrix{T, NT}; sep::Real = -1,
 
     block_coupling, block_centers, block_nonnormality,
     block_residual_norm = _vbd_block_data(
-        Acx, BallMatrix(W), BallMatrix(inv(W)), transformed, block, remainder, clusters, T)
+        Acx, BallMatrix(W), BallMatrix(inv(mid(FB))), transformed, block, remainder,
+        clusters, T; FB = FB)
 
     return SchurNewtonVBDResult(W, transformed, block, remainder, clusters,
         discs, remainder_norm, eigenvalues, nrmR2, beta, kappa, block_coupling,

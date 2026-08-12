@@ -57,12 +57,17 @@ end
 Create a `BallMatrix` from a matrix of midpoints `c` and a matrix of
 non-negative radii `r`. Each entry of the resulting `BallMatrix`
 contains the ball `c[i, j] ± r[i, j]`.
+
+The axes of `c` and `r` must agree; that is checked. The entries of `r` must be
+non-negative, and that is **not** checked — it is left to the caller, since the
+scan would cost more than the arithmetic it guards. Use
+[`isvalid_enclosure`](@ref) or [`check_enclosure`](@ref) on radii of external
+provenance.
 """
 function BallMatrix(c::AbstractMatrix, r::AbstractMatrix)
-    # The two-argument form exposes the storage order explicitly.  Lower
-    # level constructors validate sizes, element types, and the
-    # non-negativity of `r`, so higher-level methods can assume consistent
-    # data once construction succeeds.
+    # The two-argument form exposes the storage order explicitly.  The inner
+    # constructor checks that the two containers have matching axes; the sign
+    # of `r` is the caller's responsibility (see `isvalid_enclosure`).
     return BallArray(c, r)
 end
 
@@ -81,8 +86,12 @@ mid(A::AbstractMatrix) = A
 Return a matrix of radii matching the size of `A`. For non-ball matrices
 this defaults to a zero matrix, while for `BallMatrix` values the method
 is overloaded to provide the stored uncertainty information.
+
+The storage layout of `A` is preserved, so a `Diagonal`, triangular or sparse
+midpoint matrix yields a radius matrix of the same type; see
+[`_zero_radius`](@ref).
 """
-rad(A::AbstractMatrix{T}) where {T <: AbstractFloat} = zeros(T, size(A))
+rad(A::AbstractMatrix{T}) where {T <: AbstractFloat} = _zero_radius(A, T)
 # Complex matrices still report a real-valued radius since the uncertainty
 # is measured in the underlying real field.
 """
@@ -92,7 +101,7 @@ Return a matrix of real radii matching the size of the complex matrix `A`.
 Even for complex entries the radius is measured over the underlying real
 field, hence the resulting matrix has element type `T`.
 """
-rad(A::AbstractMatrix{Complex{T}}) where {T <: AbstractFloat} = zeros(T, size(A))
+rad(A::AbstractMatrix{Complex{T}}) where {T <: AbstractFloat} = _zero_radius(A, T)
 
 # LinearAlgebra functions
 """

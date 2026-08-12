@@ -15,12 +15,32 @@ struct BallArray{T <: AbstractFloat, N, NT <: Union{T, Complex{T}},
     r::RA
     function BallArray(c::AbstractArray{T, N},
             r::AbstractArray{T, N}) where {T <: AbstractFloat, N}
+        _check_axes(c, r)
         new{T, N, T, Ball{T, T}, typeof(c), typeof(r)}(c, r)
     end
     function BallArray(c::AbstractArray{Complex{T}, N},
             r::AbstractArray{T, N}) where {T <: AbstractFloat, N}
+        _check_axes(c, r)
         new{T, N, Complex{T}, Ball{T, Complex{T}}, typeof(c), typeof(r)}(c, r)
     end
+end
+
+"""
+    _check_axes(c, r)
+
+Reject midpoint and radius containers that do not line up. Mismatched shapes
+used to be accepted silently: the resulting object reported `size(c)` while
+indexing or norm bounds later failed with a confusing `BoundsError` or
+`DimensionMismatch` far from the construction site.
+
+Comparing `axes` rather than `size` keeps offset-indexed arrays working.
+The check is `O(1)`, so it costs nothing on the hot paths.
+"""
+function _check_axes(c::AbstractArray, r::AbstractArray)
+    if axes(c) != axes(r)
+        throw(DimensionMismatch("midpoint array has axes $(axes(c)) but radius array has axes $(axes(r))"))
+    end
+    return nothing
 end
 
 """
@@ -42,13 +62,77 @@ return the stored midpoint data.
 mid(A::AbstractArray) = A
 
 """
+    _zero_radius(A, ::Type{T})
+
+Return an all-zero, `T`-valued array laid out like `A`. Structured and sparse
+midpoints keep their storage type, so `BallMatrix(Diagonal(...))` gets a
+`Diagonal` radius rather than a dense one — for a sparse midpoint the dense
+fallback costs orders of magnitude more memory than the midpoints themselves.
+
+This is sound because every entry a structured type stores implicitly is an
+*exact* zero (or, for the unit triangular types, an exact one), so the
+corresponding radius is exactly zero and needs no storage.
+
+`fill!(similar(A, T), zero(T))` is used rather than `zero(A)`, which would keep
+a complex element type, or `zero(similar(A, T))`, which reads the undefined
+references `similar` leaves behind for `BigFloat`.
+
+For `Adjoint`, `Transpose`, `SubArray` and ranges `similar` already yields a
+plain dense array, matching the previous behaviour.
+"""
+_zero_radius(A::AbstractArray, ::Type{T}) where {T} = fill!(similar(A, T), zero(T))
+
+# The unit triangular types cannot represent a zero diagonal, so store the
+# radius in the corresponding non-unit type: the unit diagonal is exactly one
+# and therefore carries radius zero, which `UpperTriangular` can hold.
+function _zero_radius(A::LinearAlgebra.UnitUpperTriangular, ::Type{T}) where {T}
+    return LinearAlgebra.UpperTriangular(_zero_radius(parent(A), T))
+end
+function _zero_radius(A::LinearAlgebra.UnitLowerTriangular, ::Type{T}) where {T}
+    return LinearAlgebra.LowerTriangular(_zero_radius(parent(A), T))
+end
+
+"""
     rad(A::AbstractArray)
 
 Return a zero array of matching size that serves as the default radius
-for non-ball arrays.
+for non-ball arrays. The storage layout of `A` is preserved; see
+[`_zero_radius`](@ref).
 """
-rad(A::AbstractArray{T}) where {T <: AbstractFloat} = zeros(T, Base.size(A))
-rad(A::AbstractArray{Complex{T}}) where {T <: AbstractFloat} = zeros(T, Base.size(A))
+rad(A::AbstractArray{T}) where {T <: AbstractFloat} = _zero_radius(A, T)
+rad(A::AbstractArray{Complex{T}}) where {T <: AbstractFloat} = _zero_radius(A, T)
+
+"""
+    isvalid_enclosure(A::BallArray) -> Bool
+
+Report whether every radius of `A` is a genuine enclosure radius, that is
+non-negative and not `NaN`. A negative or `NaN` radius describes no set at all,
+so an array failing this test carries no rigorous meaning.
+
+**Validating the radii is the caller's responsibility.** The package
+deliberately does not check them on construction: the radii it produces
+internally are non-negative by construction (accumulated under `RoundUp` from
+non-negative quantities), and scanning every entry would cost up to 76% of a
+`BallMatrix` addition at `n = 100`. When radii come from outside — read from a
+file, supplied by a user, converted from another package — call this (or
+[`check_enclosure`](@ref)) yourself before relying on the enclosure.
+
+The axes of `c` and `r` *are* checked on construction, since that test is
+`O(1)`.
+"""
+isvalid_enclosure(A::BallArray) = all(x -> x >= zero(x), A.r)
+
+"""
+    check_enclosure(A::BallArray) -> A
+
+Throw an `ArgumentError` unless [`isvalid_enclosure`](@ref) holds, otherwise
+return `A` unchanged so the call can be chained.
+"""
+function check_enclosure(A::BallArray)
+    isvalid_enclosure(A) ||
+        throw(ArgumentError("radius array contains a negative or NaN entry; such a ball encloses nothing"))
+    return A
+end
 
 """
     size(A::BallArray)
@@ -97,7 +181,13 @@ function Base.getindex(
 end
 
 function Base.getindex(M::BallArray, inds...)
-    return BallArray(Base.getindex(M.c, inds...), Base.getindex(M.r, inds...))
+    c = Base.getindex(M.c, inds...)
+    r = Base.getindex(M.r, inds...)
+    # Not every index pattern that reaches this fallback selects a sub-array:
+    # mixing scalars with `CartesianIndex{0}` yields a single element, and Base
+    # generates exactly that internally (`permutedims!` does). Wrapping such a
+    # result in a `BallArray` used to throw a `MethodError`.
+    return c isa AbstractArray ? BallArray(c, r) : Ball(c, r)
 end
 
 """
@@ -141,7 +231,9 @@ enclosure, while complex arrays keep the stored radii and extract the
 imaginary midpoints.
 """
 function Base.imag(A::BallArray{T, N, T}) where {T <: AbstractFloat, N}
-    BallArray(zeros(size(A)), zeros(size(A)))
+    # `zeros(size(A))` would hand back `Float64` storage whatever `T` is, so a
+    # `Float32` or `BigFloat` array silently changed precision here.
+    BallArray(_zero_radius(A.c, T), _zero_radius(A.r, T))
 end
 function Base.imag(A::BallArray{T, N, Complex{T}}) where {T <: AbstractFloat, N}
     BallArray(imag.(A.c), A.r)

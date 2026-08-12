@@ -68,6 +68,7 @@ export Ball, BallF64, BallComplexF64, inf, sup, ball_hull, intersect_ball
 
 include("types/array.jl")
 export BallArray
+export isvalid_enclosure, check_enclosure
 
 include("types/matrix.jl")
 export BallMatrix
@@ -90,7 +91,8 @@ include("norm_bounds/triangular_inverse_bounds.jl")
 export upper_bound_L1_opnorm, upper_bound_L2_opnorm, upper_bound_L_inf_opnorm
 export rump_oishi_2024_triangular_bound, backward_singular_value_bound
 export Oishi2023Result, oishi_2023_sigma_min_bound, oishi_2023_optimal_block_size
-export RumpOishi2024Result, rump_oishi_2024_sigma_min_bound, rump_oishi_2024_optimal_block_size
+export RumpOishi2024Result, rump_oishi_2024_sigma_min_bound,
+       rump_oishi_2024_optimal_block_size
 export psi_schur_factor, pi_norm
 include("eigenvalues/gev.jl")
 include("eigenvalues/upper_bound_spectral.jl")
@@ -99,7 +101,7 @@ include("eigenvalues/miyajima/gev_miyajima_procedures.jl")
 include("eigenvalues/rump_2022a.jl")
 include("eigenvalues/rump_lange_2023.jl")
 export RigorousGeneralizedEigenvaluesResult, RigorousEigenvaluesResult,
-    rigorous_generalized_eigenvalues, rigorous_eigenvalues, gevbox, evbox
+       rigorous_generalized_eigenvalues, rigorous_eigenvalues, gevbox, evbox
 export Rump2022aResult, rump_2022a_eigenvalue_bounds
 export RumpLange2023Result, rump_lange_2023_cluster_bounds, refine_cluster_bounds
 include("decompositions/svd/singular_gerschgorin.jl")
@@ -110,39 +112,43 @@ include("decompositions/svd/adaptive_ogita_svd.jl")
 include("decompositions/svd/precision_cascade_svd.jl")
 export SchurNewtonVBDResult, schur_newton_vbd, block_enclosure
 export MiyajimaVBDResult, RigorousSVDResult, miyajima_vbd, rigorous_svd, svdbox,
-    rigorous_svd_gpu, rigorous_svd_m4, refine_svd_bounds_with_vbd,
-    OgitaSVDRefinementResult, AdaptiveSVDResult, ogita_svd_refine, adaptive_ogita_svd,
-    ogita_iterations_for_precision, ogita_svd_refine_multifloat,
-    SVDMethod, MiyajimaM1, MiyajimaM4, RumpOriginal, _certify_svd,
-    clear_svd_cache!, svd_cache_stats, set_svd_cache!
+       rigorous_svd_gpu, rigorous_svd_m4, refine_svd_bounds_with_vbd,
+       OgitaSVDRefinementResult, AdaptiveSVDResult, ogita_svd_refine, adaptive_ogita_svd,
+       ogita_iterations_for_precision, ogita_svd_refine_multifloat,
+       SVDMethod, MiyajimaM1, MiyajimaM4, RumpOriginal, _certify_svd,
+       clear_svd_cache!, svd_cache_stats, set_svd_cache!
 export PrecisionCascadeSVDResult, ogita_svd_cascade
 export svd_bigfloat, ogita_svd_cascade_gla
 export ogita_svd_refine_fast, ogita_svd_refine_hybrid
 include("eigenvalues/spectral_projectors.jl")
 include("eigenvalues/block_schur.jl")
 export RigorousSpectralProjectorsResult, miyajima_spectral_projectors,
-    compute_invariant_subspace_basis, verify_projector_properties,
-    projector_condition_number
+       compute_invariant_subspace_basis, verify_projector_properties,
+       projector_condition_number
+export GEVInvariantSubspace, gev_invariant_subspaces
 export RigorousBlockSchurResult, rigorous_block_schur, extract_cluster_block,
-    verify_block_schur_properties, estimate_block_separation,
-    refine_off_diagonal_block, compute_block_sylvester_rhs
+       verify_block_schur_properties, estimate_block_separation,
+       refine_off_diagonal_block, compute_block_sylvester_rhs
 include("eigenvalues/verified_gev.jl")
 export GEVResult, verify_generalized_eigenpairs, compute_beta_bound
+export eigenvalue_intervals_disjoint
 include("eigenvalues/riesz_projections.jl")
 export project_onto_eigenspace, project_onto_schur_subspace,
-    verified_project_onto_eigenspace, compute_eigenspace_projector,
-    compute_schur_projector
+       verified_project_onto_eigenspace, compute_eigenspace_projector,
+       compute_schur_projector
 include("eigenvalues/spectral_projection_schur.jl")
 export SchurSpectralProjectorResult, compute_spectral_projector_schur,
-    compute_spectral_projector_hermitian, project_vector_spectral,
-    verify_spectral_projector_properties,
-    SpectralCoefficientResult, compute_spectral_coefficient
+       compute_spectral_projector_hermitian, project_vector_spectral,
+       verify_spectral_projector_properties,
+       SpectralCoefficientResult, compute_spectral_coefficient
 include("eigenvalues/iterative_schur_refinement.jl")
 export SchurRefinementResult, refine_schur_decomposition, rigorous_schur_bigfloat,
-    newton_schulz_orthogonalize!
-export SymmetricEigenRefinementResult, refine_symmetric_eigen, rigorous_symmetric_eigen_bigfloat
+       newton_schulz_orthogonalize!
+export SymmetricEigenRefinementResult, refine_symmetric_eigen,
+       rigorous_symmetric_eigen_bigfloat
 export refine_schur_double64, refine_schur_hybrid, refine_schur_multifloat
-export refine_symmetric_eigen_double64, refine_symmetric_eigen_hybrid, refine_symmetric_eigen_multifloat
+export refine_symmetric_eigen_double64, refine_symmetric_eigen_hybrid,
+       refine_symmetric_eigen_multifloat
 export ogita_svd_refine_fast, ogita_svd_refine_hybrid, ogita_svd_refine_multifloat
 include("eigenvalues/ordschur_ball.jl")
 include("eigenvalues/newton_kantorovich_eigenpair.jl")
@@ -198,7 +204,8 @@ Achieves residuals ~10⁻⁷⁴. Requires GenericLinearAlgebra.jl.
 """
 function verified_polar_gla end
 
-export verified_lu_gla, verified_qr_gla, verified_cholesky_gla, verified_svd_gla, verified_polar_gla
+export verified_lu_gla, verified_qr_gla, verified_cholesky_gla, verified_svd_gla,
+       verified_polar_gla
 include("decompositions/iterative_refinement.jl")
 include("pseudospectra/rigorous_contour.jl")
 include("matrix_classifiers/is_M_matrix.jl")
@@ -234,7 +241,8 @@ export ShavingResult
 export interval_shaving, sherman_morrison_inverse_update
 
 include("linear_system/preconditioning.jl")
-export PreconditionerType, MidpointInverse, LUFactorization, LDLTFactorization, IdentityPreconditioner
+export PreconditionerType, MidpointInverse, LUFactorization, LDLTFactorization,
+       IdentityPreconditioner
 export PreconditionerResult
 export compute_preconditioner, apply_preconditioner, is_well_preconditioned
 
@@ -256,7 +264,8 @@ include("linear_system/sylvester.jl")
 
 export triangular_eigenvectors
 export sylvester_miyajima_enclosure, triangular_sylvester_miyajima_enclosure
-export verified_sylvester_enclosure, schur_sylvester_miyajima_enclosure, schur_sylvester_midpoint
+export verified_sylvester_enclosure, schur_sylvester_miyajima_enclosure,
+       schur_sylvester_midpoint
 
 # Sylvester-based resolvent bounds
 export SylvesterResolventResult, SylvesterResolventPointResult
@@ -264,10 +273,12 @@ export SylvesterResolventPointResultV2, SylvesterResolventPointResultV3
 export CollatzNeumannResult
 export sylvester_resolvent_precompute, sylvester_resolvent_bound
 export sylvester_resolvent_bound_v2, sylvester_resolvent_bound_v3
-export triangular_inverse_inf_norm_bound, triangular_inverse_one_norm_bound, triangular_inverse_two_norm_bound
+export triangular_inverse_inf_norm_bound, triangular_inverse_one_norm_bound,
+       triangular_inverse_two_norm_bound
 export collatz_norm_N_bound, neumann_inverse_bound
 export psi_squared, similarity_condition_number, solve_sylvester_oracle
-export print_sylvester_diagnostics, print_point_result, print_point_result_v2, print_point_result_v3
+export print_sylvester_diagnostics, print_point_result, print_point_result_v2,
+       print_point_result_v3
 export find_optimal_split
 # Unified parametric interface
 export LargeBlockMethod, TriangularBacksub, NeumannCollatz

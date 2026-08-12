@@ -14,7 +14,6 @@ import BallArithmetic: _certify_ball, _vbd_unitary_basis
 enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
 
 @testset "schur_newton_vbd" begin
-
     @testset "rigor: discs enclose true eigenvalues" begin
         rng = MersenneTwister(20260627)
 
@@ -76,7 +75,7 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
         for λ in te
             @test any(eachindex(r.clusters)) do i
                 minimum(svdvals(ComplexF64.(Pblocks[i]) - ComplexF64(λ) * I)) <=
-                    r.block_coupling[i] + 1e-12
+                r.block_coupling[i] + 1e-12
             end
         end
     end
@@ -104,7 +103,8 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
         @test jordan !== nothing
         @test abs(r.block_centers[jordan] - 3.0) < 1e-8
         @test r.block_nonnormality[jordan] > 0.5
-        @test all(r.block_nonnormality[k] < 1e-6 for k in eachindex(r.clusters) if length(r.clusters[k]) == 1)
+        @test all(r.block_nonnormality[k] < 1e-6
+        for k in eachindex(r.clusters) if length(r.clusters[k]) == 1)
 
         # block_enclosure: discs rigorously contain σ(A); multiplicities sum to n
         enc = block_enclosure(r)
@@ -179,5 +179,74 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
             @test length(rd.clusters) == 3
             @test isfinite(rd.remainder_norm)
         end
+    end
+end
+
+@testset "schur_newton_vbd — generalized pencil Ax = λBx" begin
+    setprecision(BigFloat, 512)
+    Random.seed!(20260731)
+
+    # every true eigenvalue must sit inside some β-inflated disc.
+    # `cluster_intervals` holds Balls, so use the file's `enclosed` helper.
+    _outside(res, tr) = count(λ -> !enclosed(λ, res.cluster_intervals), tr)
+
+    @testset "encloses the generalized spectrum" begin
+        for trial in 1:8
+            n = rand(3:6)
+            Ac = randn(n, n)
+            Bc = randn(n, n)
+            Bc = Matrix(Bc'Bc + n * I)                 # SPD
+            trial % 3 == 0 && (Ac = Matrix((Ac + Ac') / 2))
+
+            res = schur_newton_vbd(BallMatrix(Ac), BallMatrix(Bc))
+            @test res.nrmR2 < 1
+            @test isfinite(res.beta)
+            tr = eigvals(Complex{BigFloat}.(BigFloat.(Bc) \ BigFloat.(Ac)))
+            @test _outside(res, tr) == 0
+        end
+    end
+
+    @testset "B = I reproduces the standard problem" begin
+        n = 6
+        Ac = randn(n, n)
+        A = BallMatrix(Ac)
+        r_std = schur_newton_vbd(A)
+        r_pen = schur_newton_vbd(A, BallMatrix(Matrix(1.0I, n, n)))
+
+        key = x -> (real(x), imag(x))
+        @test sort(r_std.eigenvalues, by = key) ≈ sort(r_pen.eigenvalues, by = key)
+        @test r_pen.nrmR2 < 1
+        # the pencil path does one extra ball product (I·W), so its residual is
+        # slightly larger; it must stay the same order of magnitude.
+        @test r_pen.beta < 1e3 * max(r_std.beta, eps(Float64))
+    end
+
+    @testset "B neither symmetric nor positive definite" begin
+        # ‖R₂‖ < 1 *proves* B nonsingular — definiteness is never assumed.
+        Ac = [4.0 1.0 0.0; -2.0 3.0 1.0; 0.0 1.0 5.0]
+        Bc = [2.0 0.5 0.0; -0.3 2.0 0.4; 0.0 0.1 3.0]
+        @test !(Bc ≈ Bc')
+
+        res = schur_newton_vbd(BallMatrix(Ac), BallMatrix(Bc))
+        @test res.nrmR2 < 1
+        tr = eigvals(Complex{BigFloat}.(BigFloat.(Bc) \ BigFloat.(Ac)))
+        @test _outside(res, tr) == 0
+    end
+
+    @testset "interval input widens the certificate" begin
+        betas = Float64[]
+        for rad in (0.0, 1e-10, 1e-6)
+            A = BallMatrix([4.0 1.0; 1.0 3.0], fill(rad, 2, 2))
+            B = BallMatrix([2.0 0.5; 0.5 2.0], fill(rad, 2, 2))
+            res = schur_newton_vbd(A, B)
+            @test res.nrmR2 < 1
+            push!(betas, res.beta)
+        end
+        @test issorted(betas)
+    end
+
+    @testset "argument checking" begin
+        @test_throws DimensionMismatch schur_newton_vbd(
+            BallMatrix(randn(3, 3)), BallMatrix(randn(4, 4)))
     end
 end
