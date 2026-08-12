@@ -83,9 +83,15 @@ function FFTW.fft(v::BallVector{T}) where {T}
     end
     Ŷ = FFTW.fft(v.c)
     n = round(Int, log2(N))
-    bn = _bmp_bn(n, T)
-    sqrt2 = sqrt_up(T(2))
-    x_inf, r_1 = _fiber_inf_and_l1(v.c, v.r, T)
+    # The error bound is a real quantity even when the midpoints are complex, and
+    # the helpers below are declared `where {T <: AbstractFloat}`. Passing T
+    # directly fails on a complex BallVector with
+    # `MethodError: no method matching eps(::Type{ComplexF64})` -- Base defines
+    # no `eps` for Complex on any Julia version, so this is not version-specific.
+    RT = real(T)
+    bn = _bmp_bn(n, RT)
+    sqrt2 = sqrt_up(RT(2))
+    x_inf, r_1 = _fiber_inf_and_l1(v.c, v.r, RT)
     err_val = _fft_err(bn, sqrt2, x_inf, r_1)
     return BallVector(Ŷ, fill(err_val, N))
 end
@@ -114,14 +120,19 @@ function FFTW.fft(A::BallMatrix{T}, dims = (1, 2)) where {T}
     Ŷ = FFTW.fft(A.c, dims_t)
     Ntot = prod(size(A.c, d) for d in dims_t)
     n = round(Int, log2(Ntot))
-    bn = _bmp_bn(n, T)
-    sqrt2 = sqrt_up(T(2))
+    # See the BallVector method above: the error bound is real even for complex
+    # midpoints, so the bound arithmetic runs in real(T). This also keeps `err`
+    # real -- a BallMatrix radius array must be real, and `zeros(T, ...)` would
+    # have allocated a complex one for a complex BallMatrix.
+    RT = real(T)
+    bn = _bmp_bn(n, RT)
+    sqrt2 = sqrt_up(RT(2))
 
     iter_dims = Tuple(setdiff(1:2, dims_t))
-    err = zeros(T, size(A.c))
+    err = zeros(RT, size(A.c))
 
     if isempty(iter_dims)
-        x_inf, r_1 = _fiber_inf_and_l1(A.c, A.r, T)
+        x_inf, r_1 = _fiber_inf_and_l1(A.c, A.r, RT)
         fill!(err, _fft_err(bn, sqrt2, x_inf, r_1))
     else
         iter_sz = ntuple(i -> size(A.c, iter_dims[i]), length(iter_dims))
@@ -136,7 +147,7 @@ function FFTW.fft(A::BallMatrix{T}, dims = (1, 2)) where {T}
             end
             x_inf, r_1 = _fiber_inf_and_l1(view(A.c, slice...),
                                            view(A.r, slice...),
-                                           T)
+                                           RT)
             view(err, slice...) .= _fft_err(bn, sqrt2, x_inf, r_1)
         end
     end
