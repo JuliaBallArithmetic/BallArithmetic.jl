@@ -58,6 +58,27 @@ using BallArithmetic
         end
     end
 
+    @testset "Complex eigenvalues of a non-normal matrix" begin
+        # The rotation matrix above is normal, so its left and right
+        # eigenvectors agree and u'v comes out real; the normalisation of u is
+        # then insensitive to a missing conjugation. This matrix is not normal,
+        # LAPACK returns a left eigenvector with u'v away from the positive
+        # real axis, and dividing u by u'v instead of by conj(u'v) leaves a
+        # residual of modulus up to 2 in the last component of the augmented
+        # map, which made every non-real eigenvalue fail to certify.
+        A_mid = [0.1 0.0 0.2; 0.3 1.1 0.9; -0.6 -1.6 1.0]
+        A = BallMatrix(A_mid)
+        eig = eigen(A_mid)
+
+        for i in 1:3
+            result = certify_eigenpair(A, eig.values[i], eig.vectors[:, i])
+            @test result.verified
+            @test eig.values[i] ∈ result.eigenvalue
+            @test result.enclosure_radius < 1e-12
+            @test result.residual_y < 1e-12
+        end
+    end
+
     @testset "Batch certify_eigenpairs" begin
         A = BallMatrix([4.0 1.0; 1.0 3.0])
         result = certify_eigenpairs(A; hermitian=true)
