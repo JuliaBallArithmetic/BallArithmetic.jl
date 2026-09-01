@@ -106,12 +106,17 @@ function certify_eigenpair(
     else
         u = convert(Vector{NT}, collect(u_approx))
     end
-    # Normalize so u'v = 1
+    # Normalize so u'v = 1. `dot` conjugates its first argument, so the
+    # divisor is conj(u'v): dividing by u'v itself leaves
+    # dot(u/u'v, v) = u'v / conj(u'v), of modulus one and equal to one only
+    # when u'v is real. The second component of F below is then
+    # u'v/conj(u'v) - 1, whose modulus reaches 2, and the test fails on every
+    # eigenvalue that is not real.
     uv = LinearAlgebra.dot(u, v)
     if abs(uv) < eps(T) * 100
         return _unverified_result(T, NT, λ, v, N)
     end
-    u = u / uv
+    u = u / conj(uv)
 
     # --- Step 3: Augmented Jacobian J_mid ---
     J_mid = zeros(NT, N + 1, N + 1)
