@@ -14,14 +14,14 @@ Ref. [Miyajima2012](@cite). The interested reader may refer to the treatment in
 
 - [`rigorous_eigenvalues`](@ref) - General eigenvalue verification
 - [`rump_2022a_eigenvalue_bounds`](@ref) - Individual eigenvector error bounds (Rump 2022a method)
-- [`rump_lange_2023_cluster_bounds`](@ref) - Schur-based cluster bounds
-- [`refine_cluster_bounds`](@ref) - Iterative refinement of cluster bounds
+- [`rump_lange_2023_cluster_bounds`](@ref) - All eigenvalues of a Hermitian matrix, with clusters (Rump-Lange 2023)
+- [`refine_cluster_bounds`](@ref) - The same bounds with the sharper norm estimates
 
 ### Result Types
 
 - [`RigorousEigenvaluesResult`](@ref) - Result from rigorous eigenvalue computation
 - [`Rump2022aResult`](@ref) - Result with individual eigenvector bounds
-- [`RumpLange2023Result`](@ref) - Schur-based result
+- [`RumpLange2023Result`](@ref) - Result with the cluster structure of the enclosures
 
 ## Generalized Eigenvalue Problems
 

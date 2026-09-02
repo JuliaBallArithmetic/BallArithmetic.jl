@@ -42,7 +42,7 @@ Multiple algorithms for computing rigorous eigenvalue bounds:
 |-----------|-----------|-------------|
 | `miyajima_eigenvalue_bounds` | Miyajima 2012 | Block-diagonalization approach |
 | `rump_2022a_eigenvalue_bounds` | Rump 2022a | Individual eigenvector error bounds |
-| `rump_lange_2023` | Rump-Lange 2023 | Schur-based eigenvalue enclosure |
+| `rump_lange_2023_cluster_bounds` | Rump-Lange 2023 | All eigenvalues of a Hermitian matrix, with clusters |
 | `verified_gev_enclosure` | Various | Generalized eigenvalue problem Ax = λBx |
 
 Features include:
