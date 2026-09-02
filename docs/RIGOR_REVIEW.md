@@ -160,7 +160,7 @@ to the final radii. The error bound accounts for the ~54 bits lost in the Double
 | ~~`src/eigenvalues/iterative_schur_refinement.jl:71-94`~~ | ~~Newton-Schulz convergence not verified~~ ✅ NOT A BUG (oracle certified a posteriori) |
 | ~~`src/eigenvalues/iterative_schur_refinement.jl:693-698`~~ | ~~Oversimplified constant radii for all Schur entries~~ ✅ NOT A BUG (oracle certified a posteriori) |
 | ~~`src/svd/miyajima_vbd.jl:106-109`~~ | ~~Eigenvalues from `eigen()` have no error bounds~~ ✅ NOT A BUG (Miyajima VBD method computes rigorous bounds for eigenvalues) |
-| ~~`src/eigenvalues/rump_lange_2023.jl:195-202`~~ | ~~Cluster identification relies on approximate distances~~ ✅ NOT A BUG (clustering is heuristic, verified a posteriori) |
+| `src/eigenvalues/rump_lange_2023.jl` | Clusters were connected components of the Gershgorin discs of `A`, whose index has no relation to the index of the eigenvalue approximation, and the per-eigenvalue enclosure asserted that eigenvalue `i` lies in disc `i` | ✅ FIXED (rewritten as Algorithm `verifyeigall` of Section 4 of the paper: intervals `Λ̃ⱼⱼ ± ‖Eeⱼ‖/‖X̃eⱼ‖`, clustered by intersection and widened blockwise until the partition is stable) |
 | ~~`src/linear_system/inflation.jl:55, 79`~~ | ~~`inv(mid(A))` computed without error bounds~~ ✅ NOT A BUG (spectral radius check validates approximation quality) |
 | ~~`src/linear_system/krawczyk_complete.jl:100`~~ | ~~`inv(mid(A))` no error bounds~~ ✅ NOT A BUG (contraction check validates approximation) |
 | ~~`src/linear_system/krawczyk_complete.jl:113`~~ | ~~`opnorm()` without RoundUp~~ ✅ FIXED (uses `upper_bound_L_inf_opnorm` for rigorous bound) |
@@ -394,7 +394,7 @@ These operators compare only midpoints. If `a = 1 ± 0.5` and `b = 2 ± 0.5`, th
 - HIGH: adaptive_ogita_svd.jl - NOT A BUG (oracle certified a posteriori)
 - HIGH: iterative_schur_refinement.jl (Newton-Schulz) - NOT A BUG (oracle certified a posteriori)
 - HIGH: iterative_schur_refinement.jl (radii) - NOT A BUG (oracle certified a posteriori)
-- HIGH: rump_lange_2023.jl - NOT A BUG (clustering heuristic, verified a posteriori)
+- HIGH: rump_lange_2023.jl - FIXED (the individual enclosures were not enclosures; see the entry above)
 - Structural: Missing `_gram_schmidt_bigfloat` function definition
 - Medium-term: Rigorous residual computation with Miyajima products
 

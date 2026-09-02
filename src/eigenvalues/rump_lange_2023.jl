@@ -1,30 +1,36 @@
-# Implementation of RumpLange2023: Fast Cluster Bounds for Eigenvalues and Singular Values
-# Reference: Rump, S.M. & Lange, M. (2023), "Fast Computation of Error Bounds for All
-# Eigenpairs of a Hermitian and All Singular Pairs of a Rectangular Matrix With
-# Emphasis on Eigen and Singular Value Clusters"
+# Implementation of RumpLange2023: verified bounds for all eigenvalues of a
+# Hermitian matrix, with emphasis on clusters.
+#
+# Reference: Rump, S.M. & Lange, M., "Fast computation of error bounds for all
+# eigenpairs of a Hermitian and all singular pairs of a rectangular matrix with
+# emphasis on eigen- and singular value clusters", J. Comput. Appl. Math. 434
+# (2023) 115332.
+#
+# This file follows Section 4 of that paper, i.e. Algorithm verifyeigall.
 
 using LinearAlgebra
 
 """
     RumpLange2023Result
 
-Container for RumpLange2023 eigenvalue cluster bounds.
-
-Emphasizes fast computation with clustering information:
-- Cluster structure identification
-- Per-cluster error bounds
-- Fast bounds optimized for clustered spectra
+Container for the eigenvalue enclosures of [`rump_lange_2023_cluster_bounds`](@ref).
 
 # Fields
-- `eigenvectors::VT`: Approximate eigenvectors (as ball matrix)
-- `eigenvalues::ΛT`: Certified eigenvalue enclosures
-- `cluster_assignments::Vector{Int}`: Cluster assignments (cluster index for each eigenvalue)
-- `cluster_bounds::Vector{Ball{T, T}}`: Cluster bounds (interval enclosure for each cluster)
-- `num_clusters::Int`: Number of clusters identified
-- `cluster_residuals::Vector{T}`: Per-cluster residual norms
-- `cluster_separations::Vector{T}`: Per-cluster separation gaps
-- `cluster_sizes::Vector{Int}`: Cluster sizes
-- `verified::Bool`: Overall verification status
+- `eigenvectors::VT`: the approximate eigenvectors `X̃` used to build the bounds.
+- `eigenvalues::ΛT`: the intervals `Lⱼ = Λ̃ⱼⱼ ± δⱼ`.
+- `cluster_assignments::Vector{Int}`: the cluster index of each `Lⱼ`.
+- `cluster_bounds::Vector{Ball{T, T}}`: the hull `⋃_{i ∈ µⱼ} Lᵢ` of each cluster.
+- `num_clusters::Int`: the number of clusters.
+- `cluster_residuals::Vector{T}`: the radius `δ` shared by the members of each cluster.
+- `cluster_separations::Vector{T}`: the gap from each cluster hull to the nearest other hull.
+- `cluster_sizes::Vector{Int}`: the number of eigenvalues in each cluster.
+- `verified::Bool`: whether the algorithm reached a partition with mutually
+  disjoint cluster hulls and finite radii.
+
+When `verified` is true the following holds for every Hermitian matrix inside the
+input ball matrix: there is a numbering of its eigenvalues with `λⱼ ∈ eigenvalues[j]`
+for all `j`, the cluster hulls are mutually disjoint, and the hull of cluster `k`
+contains exactly `cluster_sizes[k]` eigenvalues counted with multiplicity.
 """
 struct RumpLange2023Result{T, VT, ΛT}
     eigenvectors::VT
@@ -44,412 +50,314 @@ Base.getindex(result::RumpLange2023Result, i::Int) = result.eigenvalues[i]
 """
     rump_lange_2023_cluster_bounds(A::BallMatrix; hermitian=false, cluster_tol=1e-6, fast=true)
 
-Compute fast error bounds for eigenvalues with emphasis on cluster structure,
-following Rump & Lange (2023).
+Compute verified enclosures for all eigenvalues of a Hermitian matrix, together
+with the cluster structure of those enclosures; this is Algorithm `verifyeigall`
+of Rump and Lange (2023).
 
-This method excels when eigenvalues form clusters, providing:
-1. Fast identification of eigenvalue clusters
-2. Tight bounds within each cluster
-3. Optimized computation exploiting cluster structure
-4. Scaling to large matrices via cluster-wise processing
+Let `AX̃ ≈ X̃Λ̃` be an approximate eigendecomposition of the midpoint of `A` and let
+`E := AX̃ - X̃Λ̃` be computed in ball arithmetic. Kahan's theorem, in the form given
+by Theorem 4.1 of the paper, says that for any index set `µ` there exist `|µ|`
+eigenvalues of `A` within
+
+    δ(µ) := ‖E(:, µ)‖ / σ_min(X̃(:, µ))
+
+of the `Λ̃ᵢᵢ` with `i ∈ µ`. Taking `µ = {j}` gives `δⱼ = ‖Eeⱼ‖ / ‖X̃eⱼ‖` and the
+interval `Lⱼ := Λ̃ⱼⱼ ± δⱼ`, which contains an eigenvalue. The union of the `Lⱼ`
+need not contain the whole spectrum, and Section 4 of the paper gives two
+matrices where an eigenvalue lies in no `Lⱼ`; the remedy is to collect clusters
+recursively. The algorithm therefore loops: it takes the connected components of
+the intersection graph of the `Lⱼ`, recomputes `δ` blockwise for every component
+of size at least two, which widens the intervals and may merge further
+components, and repeats until the partition stops changing. At that fixed point
+the cluster hulls are mutually disjoint, so each hull contains exactly as many
+eigenvalues as it has members and the spectrum is contained in their union.
 
 # Arguments
-- `A::BallMatrix`: Square matrix for eigenvalue problem
-- `hermitian::Bool`: Whether A is Hermitian (enables faster algorithms)
-- `cluster_tol::Real`: Tolerance for cluster identification (default: 1e-6)
-- `fast::Bool`: Use fast approximations vs. rigorous bounds (default: true)
+- `A::BallMatrix`: the matrix. Some Hermitian matrix must lie inside it, i.e.
+  `|A[i,j] - conj(A[j,i])|` must not exceed the sum of the two radii; otherwise
+  an `ArgumentError` is thrown. The bounds are then valid for every Hermitian
+  matrix inside `A`.
 
-# Method Description
-
-## Cluster identification:
-Uses Gershgorin discs with connectivity analysis to identify clusters of
-eigenvalues that are close together. Two eigenvalues belong to the same
-cluster if their Gershgorin discs overlap.
-
-## Per-cluster bounds:
-For each cluster C_k with eigenvalues {λᵢ}ᵢ∈C_k:
-1. Compute cluster interval: [min λᵢ - δᵢ, max λᵢ + δᵢ]
-2. Refine using projected residuals within cluster
-3. Apply separation bounds between clusters
-
-## Fast mode:
-When `fast=true`, uses:
-- Single power iteration for norms (vs. convergence)
-- Simplified residual bounds
-- Cluster-level (vs. individual) error propagation
-Results in ~10x speedup with typically <2x looser bounds.
+# Keyword arguments
+- `hermitian::Bool = false`: accepted for backwards compatibility and ignored;
+  the method applies to Hermitian matrices only.
+- `cluster_tol::Real = 1e-6`: eigenvalue approximations closer than this are put
+  in the same cluster even when their intervals are disjoint. This is the `kappa`
+  of Section 6 of the paper; it only merges clusters, so it cannot invalidate the
+  enclosures, and setting it to zero clusters by interval overlap alone.
+- `fast::Bool = true`: bound the block norms by `√(‖·‖₁‖·‖_∞)`. With `fast = false`
+  the Perron root bound of Section 3 is used as well and the smaller of the two is
+  taken, which gives radii that are never larger and often smaller.
 
 # Returns
-[`RumpLange2023Result`](@ref) containing cluster structure and bounds.
+A [`RumpLange2023Result`](@ref).
 
-# Example
-Example usage for a matrix with two eigenvalue clusters:
-- Create interval matrix with clustered spectrum
-- Call `rump_lange_2023_cluster_bounds(A; hermitian=true)`
-- Result contains cluster assignments and per-cluster bounds
+# Notes
+The method is for Hermitian matrices; for a general matrix use
+[`rump_2022a_eigenvalue_bounds`](@ref), which implements the algorithm the paper
+cites as its reference [13].
 
-# Performance Notes
-- For n×n matrix: O(n²) flops in fast mode, O(n³) in rigorous mode
-- Cluster count << n gives significant speedup
-- Most effective when cluster separation >> cluster width
+# References
 
-# Reference
-* Rump, S.M. & Lange, M. (2023), "Fast Computation of Error Bounds...",
-  SIAM J. Matrix Anal. Appl., to appear
+* Rump S.M. and Lange M., J. Comput. Appl. Math. 434 (2023) 115332
 """
 function rump_lange_2023_cluster_bounds(A::BallMatrix{T, NT};
-                                         hermitian::Bool = false,
-                                         cluster_tol::Real = 1e-6,
-                                         fast::Bool = true) where {T, NT}
+                                        hermitian::Bool = false,
+                                        cluster_tol::Real = 1e-6,
+                                        fast::Bool = true) where {T, NT}
     size(A, 1) == size(A, 2) || throw(ArgumentError("A must be square"))
+    _check_hermitian_ball(A)
 
     n = size(A, 1)
 
-    # Step 1: Compute approximate eigendecomposition
-    A_mid = mid(A)
-    if hermitian
-        eig = eigen(Hermitian(A_mid))
-    else
-        eig = eigen(A_mid)
+    # Approximate eigendecomposition of the midpoint. Only the upper triangle is
+    # read, so the approximation is that of a Hermitian matrix; nothing about the
+    # enclosures depends on it being a good one.
+    F = eigen(Hermitian(mid(A)))
+    λ = F.values
+    X = F.vectors
+    bX = BallMatrix(X)
+
+    # E := A X̃ - X̃ Λ̃, in ball arithmetic.
+    E = A * bX - bX * BallMatrix(Matrix(Diagonal(λ)))
+
+    # δⱼ = ‖E eⱼ‖ / ‖X̃ eⱼ‖ for the singletons; each Lⱼ contains an eigenvalue.
+    δ = Vector{T}(undef, n)
+    for j in 1:n
+        num = upper_bound_norm(E[:, j], 2)
+        den = _column_norm_lower(X, j)
+        δ[j] = den > zero(T) ? (@up num / den) : T(Inf)
     end
 
-    λ_approx = eig.values
-    V_approx = eig.vectors
+    clusters = _cluster_loop!(δ, λ, E, bX, T(cluster_tol), fast)
 
-    # Step 2: Compute Gershgorin disc enclosures
-    gershgorin_discs = _compute_gershgorin_discs(A, hermitian)
-
-    # Step 3: Identify clusters via disc overlap
-    cluster_assignments, num_clusters = _identify_clusters(gershgorin_discs,
-                                                            λ_approx, cluster_tol)
-
-    # Step 4: Compute per-cluster bounds
-    V_ball = BallMatrix(V_approx)
-
-    eigenvalue_balls, cluster_bounds, cluster_residuals, cluster_separations,
-    cluster_sizes, verified = _compute_cluster_bounds(A, V_ball, λ_approx,
-                                                        cluster_assignments,
-                                                        num_clusters,
-                                                        gershgorin_discs,
-                                                        hermitian, fast)
-
-    return RumpLange2023Result(V_ball, eigenvalue_balls, cluster_assignments,
-                               cluster_bounds, num_clusters, cluster_residuals,
-                               cluster_separations, cluster_sizes, verified)
+    return _assemble_result(bX, λ, δ, clusters)
 end
 
 """
-    _compute_gershgorin_discs(A, hermitian)
+    _check_hermitian_ball(A::BallMatrix)
 
-Compute Gershgorin disc for each diagonal entry.
+Throw an `ArgumentError` unless some Hermitian matrix lies inside `A`, i.e.
+unless `|A[i,j] - conj(A[j,i])| ≤ rad(A[i,j]) + rad(A[j,i])` for all `i, j`.
 """
-function _compute_gershgorin_discs(A::BallMatrix{T, NT}, hermitian::Bool) where {T, NT}
+function _check_hermitian_ball(A::BallMatrix{T, NT}) where {T, NT}
+    Ac = mid(A)
+    Ar = rad(A)
     n = size(A, 1)
-    discs = Vector{Ball{T, NT}}(undef, n)
+    for i in 1:n, j in i:n
+        # The gap is rounded up and the tolerance down, so a matrix is rejected
+        # only when it certainly holds no Hermitian matrix.
+        gap = setrounding(T, RoundUp) do
+            abs(Ac[i, j] - conj(Ac[j, i]))
+        end
+        tol = setrounding(T, RoundDown) do
+            Ar[i, j] + Ar[j, i]
+        end
+        if gap > tol
+            throw(ArgumentError(
+                "rump_lange_2023_cluster_bounds applies to Hermitian matrices, and no " *
+                "Hermitian matrix lies inside A: entries ($i,$j) and ($j,$i) differ by " *
+                "$gap, more than the sum $tol of their radii. Use " *
+                "rump_2022a_eigenvalue_bounds for a general matrix."))
+        end
+    end
+    return nothing
+end
 
-    A_mid = mid(A)
-    A_rad = rad(A)
+"""
+    _column_norm_lower(X::AbstractMatrix, j::Int)
 
-    for i in 1:n
-        # Center: diagonal entry
-        center = hermitian ? real(A_mid[i, i]) : A_mid[i, i]
+Lower bound for the Euclidean norm of the `j`-th column of the floating point
+matrix `X`.
+"""
+function _column_norm_lower(X::AbstractMatrix, j::Int)
+    T = real(eltype(X))
+    s = setrounding(T, RoundDown) do
+        acc = zero(T)
+        for i in axes(X, 1)
+            acc += abs2(X[i, j])
+        end
+        acc
+    end
+    return sqrt_down(s)
+end
 
-        # Radius: sum of off-diagonal magnitudes + uncertainties
+"""
+    _block_norm_upper(M::BallMatrix, fast::Bool)
+
+Upper bound for the spectral norm of `M`. With `fast` the simple bound
+`√(‖M‖₁‖M‖_∞)` is used; otherwise the Perron root bound of Section 3 of the paper
+is computed as well and the smaller of the two is returned.
+"""
+function _block_norm_upper(M::BallMatrix{T, NT}, fast::Bool) where {T, NT}
+    n1 = upper_bound_L1_opnorm(M)
+    ninf = upper_bound_L_inf_opnorm(M)
+    simple = sqrt_up(@up n1 * ninf)
+    return fast ? simple : min(simple, collatz_upper_bound_L2_opnorm(M))
+end
+
+"""
+    _sigma_min_lower(Y::BallMatrix)
+
+Lower bound for the smallest singular value of `Y`, from `‖I - Y*Y‖ ≤ α < 1`
+implying `σ_min(Y) ≥ √(1 - α)`; this is `singmin` of Section 3 of the paper. The
+bound is zero when `α ≥ 1`.
+"""
+function _sigma_min_lower(Y::BallMatrix{T, NT}) where {T, NT}
+    p = size(Y, 2)
+    G = BallMatrix(Matrix{NT}(I, p, p)) - Y' * Y
+    α = min(one(T), _block_norm_upper(G, false))
+    α >= one(T) && return zero(T)
+    return sqrt_down(@down one(T) - α)
+end
+
+"""
+    _cluster_loop!(δ, λ, E, bX, tol, fast)
+
+The while-loop of Algorithm `verifyeigall`. Starting from the columnwise radii
+`δ`, take the connected components of the intersection graph of the intervals
+`λⱼ ± δⱼ`, recompute `δ` blockwise on every component of size at least two, and
+repeat until the number of components stops decreasing. Returns the final
+partition as a vector of index vectors; `δ` is modified in place.
+"""
+function _cluster_loop!(δ::Vector{T}, λ, E, bX, tol::T, fast::Bool) where {T}
+    n = length(δ)
+    clusters = [[j] for j in 1:n]
+    previous = n
+
+    while true
+        clusters = _components(λ, δ, tol)
+        big = [v for v in clusters if length(v) > 1]
+
+        (isempty(big) || length(clusters) == previous) && break
+        previous = length(clusters)
+
+        for v in big
+            s = _sigma_min_lower(bX[:, v])
+            e = _block_norm_upper(E[:, v], fast)
+            d = s > zero(T) ? (@up e / s) : T(Inf)
+            for j in v
+                δ[j] = d
+            end
+        end
+    end
+
+    return clusters
+end
+
+"""
+    _components(λ, δ, tol)
+
+Connected components of the graph on `1:n` whose edges join `i` and `j` when the
+intervals `λᵢ ± δᵢ` and `λⱼ ± δⱼ` intersect, or when `|λᵢ - λⱼ| ≤ tol`. Both
+conditions are overlaps of the intervals `λⱼ ± max(δⱼ, tol/2)`, so the components
+are found by one sweep over those intervals sorted by their lower end, and the
+components produced have mutually disjoint hulls, which is what the theorem
+behind the algorithm needs. The `tol` edges only merge, and merging is always
+safe: a hull containing several components still contains as many eigenvalues as
+it has members. Returns a vector of index vectors ordered by the hull.
+"""
+function _components(λ, δ::Vector{T}, tol::T) where {T}
+    n = length(δ)
+    half = tol / 2
+
+    lo = setrounding(T, RoundDown) do
+        [λ[j] - max(δ[j], half) for j in 1:n]
+    end
+    hi = setrounding(T, RoundUp) do
+        [λ[j] + max(δ[j], half) for j in 1:n]
+    end
+
+    order = sortperm(lo)
+    out = Vector{Vector{Int}}()
+    current = [order[1]]
+    reach = hi[order[1]]
+
+    for idx in @view order[2:end]
+        if lo[idx] <= reach
+            push!(current, idx)
+            reach = max(reach, hi[idx])
+        else
+            push!(out, sort!(current))
+            current = [idx]
+            reach = hi[idx]
+        end
+    end
+    push!(out, sort!(current))
+
+    return out
+end
+
+"""
+    _assemble_result(bX, λ, δ, clusters)
+
+Package the intervals `λⱼ ± δⱼ` and the partition into a [`RumpLange2023Result`](@ref).
+"""
+function _assemble_result(bX, λ, δ::Vector{T}, clusters) where {T}
+    n = length(δ)
+    k = length(clusters)
+
+    eigenvalues = [Ball(λ[j], δ[j]) for j in 1:n]
+
+    assignments = zeros(Int, n)
+    sizes = zeros(Int, k)
+    bounds = Vector{Ball{T, T}}(undef, k)
+    residuals = zeros(T, k)
+
+    for (c, v) in enumerate(clusters)
+        sizes[c] = length(v)
+        residuals[c] = maximum(δ[j] for j in v)
+        for j in v
+            assignments[j] = c
+        end
+        lower = setrounding(T, RoundDown) do
+            minimum(λ[j] - δ[j] for j in v)
+        end
+        upper = setrounding(T, RoundUp) do
+            maximum(λ[j] + δ[j] for j in v)
+        end
+        centre = setrounding(T, RoundNearest) do
+            (lower + upper) / 2
+        end
         radius = setrounding(T, RoundUp) do
-            sum_offdiag = zero(T)
-            for j in 1:n
-                if j != i
-                    sum_offdiag += abs(A_mid[i, j]) + A_rad[i, j]
-                end
-            end
-            # Add diagonal uncertainty
-            sum_offdiag + A_rad[i, i]
+            max(upper - centre, centre - lower)
         end
-
-        discs[i] = Ball(center, radius)
+        bounds[c] = Ball(centre, radius)
     end
 
-    return discs
-end
-
-"""
-    _identify_clusters(gershgorin_discs, λ_approx, tol)
-
-Identify clusters using disc overlap and eigenvalue proximity.
-"""
-function _identify_clusters(gershgorin_discs::Vector{Ball{T, CT}},
-                             λ_approx::Vector, tol::Real) where {T, CT}
-    n = length(gershgorin_discs)
-
-    # Build adjacency graph: two eigenvalues are connected if:
-    # 1. Their Gershgorin discs overlap, OR
-    # 2. They are within tol of each other
-    adjacency = [Int[] for _ in 1:n]
-
-    for i in 1:n-1
-        for j in i+1:n
-            # Check disc overlap
-            disc_i = gershgorin_discs[i]
-            disc_j = gershgorin_discs[j]
-
-            # NOTE: These distance computations use default rounding (not RoundUp/Down)
-            # because clustering is a HEURISTIC preprocessing step. The clustering
-            # determines which eigenvalues to verify together, but the actual
-            # eigenvalue bounds are computed RIGOROUSLY afterwards. If clustering
-            # is slightly wrong, the verification either succeeds anyway (eigenvalues
-            # well-separated) or fails gracefully (indicates verification incomplete).
-            distance = abs(mid(disc_i) - mid(disc_j))
-            combined_radius = rad(disc_i) + rad(disc_j)
-
-            discs_overlap = distance ≤ combined_radius
-
-            # Check eigenvalue proximity
-            λ_distance = abs(λ_approx[i] - λ_approx[j])
-            λ_close = λ_distance ≤ tol
-
-            if discs_overlap || λ_close
-                push!(adjacency[i], j)
-                push!(adjacency[j], i)
-            end
-        end
+    separations = fill(T(Inf), k)
+    disjoint = true
+    for a in 1:k, b in 1:k
+        a == b && continue
+        gap = max(inf(bounds[a]) - sup(bounds[b]), inf(bounds[b]) - sup(bounds[a]))
+        gap <= zero(T) && (disjoint = false)
+        separations[a] = min(separations[a], max(zero(T), gap))
     end
+    k == 1 && (separations[1] = T(Inf))
 
-    # Find connected components (clusters)
-    visited = falses(n)
-    cluster_assignments = zeros(Int, n)
-    num_clusters = 0
+    verified = disjoint && all(isfinite, δ)
 
-    for start in 1:n
-        visited[start] && continue
-
-        # BFS to find connected component
-        num_clusters += 1
-        queue = [start]
-        visited[start] = true
-        cluster_assignments[start] = num_clusters
-
-        while !isempty(queue)
-            current = popfirst!(queue)
-            for neighbor in adjacency[current]
-                if !visited[neighbor]
-                    visited[neighbor] = true
-                    cluster_assignments[neighbor] = num_clusters
-                    push!(queue, neighbor)
-                end
-            end
-        end
-    end
-
-    return cluster_assignments, num_clusters
-end
-
-"""
-    _compute_cluster_bounds(...)
-
-Compute bounds for each eigenvalue with cluster-aware refinement.
-"""
-function _compute_cluster_bounds(A, V, λ_approx, cluster_assignments,
-                                  num_clusters, gershgorin_discs,
-                                  ::Bool, fast)  # hermitian unused but kept for API
-    n = length(λ_approx)
-    T = radtype(eltype(A))
-
-    eigenvalue_balls = Vector{Ball{T, T}}(undef, n)
-    cluster_bounds = Vector{Ball{T, T}}(undef, num_clusters)
-    cluster_residuals = zeros(T, num_clusters)
-    cluster_separations = zeros(T, num_clusters)
-    cluster_sizes = zeros(Int, num_clusters)
-
-    # Compute cluster sizes
-    for i in 1:n
-        k = cluster_assignments[i]
-        cluster_sizes[k] += 1
-    end
-
-    # Process each cluster
-    for k in 1:num_clusters
-        cluster_indices = findall(==(k), cluster_assignments)
-        cluster_size = length(cluster_indices)
-
-        # Compute cluster-wide residual
-        residual_sum = zero(T)
-        for i in cluster_indices
-            vᵢ = V[:, i]
-            λᵢ = λ_approx[i]
-
-            # Residual: rᵢ = A*vᵢ - λᵢ*vᵢ
-            Avᵢ = A * vᵢ
-            rᵢ = Avᵢ - λᵢ * vᵢ
-
-            if fast
-                # Fast approximation: use Frobenius norm estimate
-                ρᵢ = setrounding(T, RoundUp) do
-                    sqrt(sum(abs2, mid(rᵢ)) + sum(abs2, rad(rᵢ)))
-                end
-            else
-                # Rigorous bound
-                ρᵢ = upper_bound_norm(rᵢ, 2)
-            end
-
-            residual_sum = setrounding(T, RoundUp) do
-                residual_sum + ρᵢ
-            end
-        end
-
-        cluster_residuals[k] = residual_sum / cluster_size
-
-        # Compute cluster interval
-        cluster_λ = λ_approx[cluster_indices]
-        cluster_discs = gershgorin_discs[cluster_indices]
-
-        # Lower bound: min(λᵢ - radius_i)
-        cluster_lower = setrounding(T, RoundDown) do
-            minimum([mid(disc) - rad(disc) for disc in cluster_discs])
-        end
-
-        # Upper bound: max(λᵢ + radius_i)
-        cluster_upper = setrounding(T, RoundUp) do
-            maximum([mid(disc) + rad(disc) for disc in cluster_discs])
-        end
-
-        cluster_center = setrounding(T, RoundNearest) do
-            (cluster_lower + cluster_upper) / 2
-        end
-
-        cluster_radius = setrounding(T, RoundUp) do
-            (cluster_upper - cluster_lower) / 2
-        end
-
-        cluster_bounds[k] = Ball(cluster_center, cluster_radius)
-
-        # Compute separation to nearest other cluster
-        min_sep = T(Inf)
-        for j in 1:num_clusters
-            if j != k
-                other_cluster_λ = λ_approx[findall(==(j), cluster_assignments)]
-                for λᵢ in cluster_λ
-                    for λⱼ in other_cluster_λ
-                        sep = abs(λᵢ - λⱼ)
-                        min_sep = min(min_sep, sep)
-                    end
-                end
-            end
-        end
-        cluster_separations[k] = min_sep
-
-        # Assign individual eigenvalue bounds within cluster
-        for i in cluster_indices
-            # Use Gershgorin disc refined by cluster bound
-            gersh_disc = gershgorin_discs[i]
-
-            # Intersect with cluster bound
-            intersection = intersect_ball(gersh_disc, cluster_bounds[k])
-
-            if intersection !== nothing
-                eigenvalue_balls[i] = intersection
-            else
-                # No intersection - use the tighter bound
-                if rad(gersh_disc) < rad(cluster_bounds[k])
-                    eigenvalue_balls[i] = gersh_disc
-                else
-                    eigenvalue_balls[i] = cluster_bounds[k]
-                end
-            end
-        end
-    end
-
-    # Overall verification status
-    verified = all(r -> r < 0.1, cluster_residuals)
-
-    return eigenvalue_balls, cluster_bounds, cluster_residuals,
-           cluster_separations, cluster_sizes, verified
+    return RumpLange2023Result(bX, eigenvalues, assignments, bounds, k,
+                               residuals, separations, sizes, verified)
 end
 
 """
     refine_cluster_bounds(result::RumpLange2023Result, A::BallMatrix; iterations=1)
 
-Refine cluster bounds using iterative residual computation.
+Recompute the bounds of `result` with the sharper norm estimates, that is with
+`fast = false`, so that every block norm is bounded by the smaller of the Perron
+root bound and `√(‖·‖₁‖·‖_∞)`. The radii returned are never larger than those of
+a run with `fast = true`, and the partition is never coarser.
 
-Takes an existing `RumpLange2023Result` and performs additional refinement
-iterations to tighten the bounds, particularly for well-separated clusters.
-
-# Arguments
-- `result`: Initial cluster bound result
-- `A`: Original ball matrix
-- `iterations`: Number of refinement iterations (default: 1)
-
-# Returns
-New `RumpLange2023Result` with refined bounds.
+The refinement of the eigenvalue approximations by Rayleigh quotients, Section 5
+of the paper, is not implemented; `iterations` is accepted for backwards
+compatibility and ignored, since the recomputation is not iterative.
 """
 function refine_cluster_bounds(result::RumpLange2023Result,
-                                A::BallMatrix{T, NT};
-                                iterations::Int = 1) where {T, NT}
-    iterations ≥ 1 || throw(ArgumentError("iterations must be ≥ 1"))
-
-    current_result = result
-
-    for _ in 1:iterations
-        # Use current eigenvalue balls as improved approximations
-        V = result.eigenvectors
-
-        # Recompute Gershgorin discs using refined eigenvalues
-        # (In practice, this would involve a more sophisticated refinement)
-
-        # For now, simply tighten bounds using residual information
-        new_eigenvalues = copy(current_result.eigenvalues)
-
-        for k in 1:current_result.num_clusters
-            cluster_indices = findall(==(k), current_result.cluster_assignments)
-
-            # Compute improved residual bound for this cluster
-            improved_residual = zero(T)
-
-            for i in cluster_indices
-                vᵢ = V[:, i]
-                λᵢ = mid(new_eigenvalues[i])
-
-                # Residual with current bounds
-                Avᵢ = A * vᵢ
-                rᵢ = Avᵢ - λᵢ * vᵢ
-                ρᵢ = upper_bound_norm(rᵢ, 2)
-
-                improved_residual = setrounding(T, RoundUp) do
-                    improved_residual + ρᵢ
-                end
-            end
-
-            improved_residual /= length(cluster_indices)
-
-            # Tighten eigenvalue bounds using improved residual
-            # (simplified - full algorithm would use Krawczyk-style refinement)
-            scale_factor = setrounding(T, RoundUp) do
-                min(one(T), improved_residual / current_result.cluster_residuals[k])
-            end
-
-            for i in cluster_indices
-                current_ball = new_eigenvalues[i]
-                new_radius = setrounding(T, RoundUp) do
-                    rad(current_ball) * scale_factor
-                end
-                new_eigenvalues[i] = Ball(mid(current_ball), new_radius)
-            end
-        end
-
-        # Update result (keeping other fields the same)
-        current_result = RumpLange2023Result(
-            result.eigenvectors,
-            new_eigenvalues,
-            result.cluster_assignments,
-            result.cluster_bounds,
-            result.num_clusters,
-            result.cluster_residuals,
-            result.cluster_separations,
-            result.cluster_sizes,
-            result.verified
-        )
-    end
-
-    return current_result
+                               A::BallMatrix{T, NT};
+                               iterations::Int = 1) where {T, NT}
+    iterations >= 1 || throw(ArgumentError("iterations must be ≥ 1"))
+    return rump_lange_2023_cluster_bounds(A; fast = false)
 end
 
 # Export
