@@ -37,7 +37,9 @@ const _job_channel = Ref{Any}(nothing)
 const _result_channel = Ref{Any}(nothing)
 const _certification_log = Ref{Any}(nothing)
 const _snapshot_path = Ref{Union{Nothing, AbstractString}}(nothing)
-const _log_io = Ref{IO}(stdout)
+# `stdout` captured here would be the handle of the precompilation process, which is not a valid
+# stream when the module is loaded; it is resolved in `__init__` instead.
+const _log_io = Ref{IO}(devnull)
 
 # Worker-local SVD cache for Ogita optimization (Float64)
 const _last_svd_U = Ref{Union{Nothing, Matrix}}(nothing)
@@ -744,7 +746,7 @@ end
 
 function _adaptive_arcs_serial!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
         cache::Dict{ComplexF64, Any}, pending, η::Float64, certification_log,
-        snapshot, io, check_interval::Integer, evaluator)
+        snapshot, io, check_interval::Integer, evaluator; maxarcs::Integer = 0)
     io = io === nothing ? stdout : io
     certification_log === nothing && (certification_log = Any[])
 
@@ -763,6 +765,17 @@ function _adaptive_arcs_serial!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
             σ_a = result.val
         end
 
+        # A bound that is zero, negative or not finite cannot be refined away: the test below
+        # would ask for ℓ/0 ≤ η at every depth, so the arc would be bisected for ever while ℓ
+        # shrinks and σ_a stays put. Refinement is the wrong answer there and the caller has to
+        # hear about it.
+        lo_σ = _lower_bound(σ_a)
+        if !(isfinite(lo_σ) && lo_σ > 0)
+            @info "Adaptive refinement stopped: the bound is not positive" z=z_a σ=σ_a
+            return (; ok = false, reason = :nonpositive, z = z_a, processed,
+                evaluations = length(cache), remaining = length(arcs) + 1)
+        end
+
         ℓ = abs(z_b - z_a)
         ε = ℓ / σ_a
 
@@ -773,6 +786,11 @@ function _adaptive_arcs_serial!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
         end
 
         if sup_ε > η
+            if maxarcs > 0 && length(cache) >= maxarcs
+                @info "Adaptive refinement stopped: the evaluation cap was reached" maxarcs
+                return (; ok = false, reason = :cap, z = z_a, processed,
+                    evaluations = length(cache), remaining = length(arcs) + 1)
+            end
             z_m = (z_a + z_b) / 2
             push!(arcs, (z_m, z_b))
             push!(arcs, (z_a, z_m))
@@ -791,7 +809,8 @@ function _adaptive_arcs_serial!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
         end
     end
 
-    return nothing
+    return (; ok = true, reason = :complete, z = ComplexF64(NaN), processed,
+        evaluations = length(cache), remaining = 0)
 end
 
 function _adaptive_arcs_distributed!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
@@ -902,7 +921,8 @@ function _adaptive_arcs_distributed!(arcs::Vector{Tuple{ComplexF64, ComplexF64}}
     end
 
     @info "Adaptive refinement complete"
-    return nothing
+    return (; ok = true, reason = :complete, z = ComplexF64(NaN), processed = 0,
+        evaluations = length(cache), remaining = 0)
 end
 
 """
@@ -911,12 +931,23 @@ end
 Drive the adaptive refinement routine.  When job channels are provided the
 refinement uses asynchronous workers; otherwise the evaluation is carried out
 serially using the supplied evaluator.
+
+Returns a named tuple `(; ok, reason, z, processed, evaluations, remaining)`. `ok` is false when
+the refinement stopped without covering the contour, with `reason` either `:nonpositive`, the
+evaluator returned a bound that was zero, negative or not finite at `z`, which no amount of
+bisection repairs, or `:cap`, the optional `maxarcs` ceiling on the number of evaluations was
+reached. `maxarcs = 0`, the default, leaves the refinement uncapped.
+
+Bisection takes the midpoint of the chord, so after the first refinement the samples lie on the
+polygon inscribed in the circle rather than on the circle itself. That is the contour the run
+certifies, which is a closed contour like any other; a caller checking a region condition should
+use the inradius `r·cos(Δθ/2)` and not `r`.
 """
 function adaptive_arcs!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
         cache::Dict{ComplexF64, Any}, pending, η::Float64;
         check_interval::Integer = 1000, job_channel = nothing,
         result_channel = nothing, certification_log = nothing,
-        snapshot = nothing, io = nothing, evaluator = nothing)
+        snapshot = nothing, io = nothing, evaluator = nothing, maxarcs::Integer = 0)
     job_channel = _resolve(job_channel, _job_channel)
     result_channel = _resolve(result_channel, _result_channel)
     certification_log = _ensure_certification_log(certification_log)
@@ -927,7 +958,7 @@ function adaptive_arcs!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
         evaluator === nothing &&
             throw(ArgumentError("serial refinement requires an evaluator"))
         return _adaptive_arcs_serial!(arcs, cache, pending, η, certification_log,
-            snapshot, io, check_interval, evaluator)
+            snapshot, io, check_interval, evaluator; maxarcs)
     end
 
     return _adaptive_arcs_distributed!(arcs, cache, pending, η, job_channel,
@@ -1076,6 +1107,15 @@ function _upper_bound(value)
     T = typeof(real(ball.c))
     return setrounding(T, RoundUp) do
         T(abs(ball.c)) + T(ball.r)
+    end
+end
+
+"The lower end of a ball, rounded down; negative when the ball straddles zero."
+function _lower_bound(value)
+    ball = _as_ball(value)
+    T = typeof(real(ball.c))
+    return setrounding(T, RoundDown) do
+        T(real(ball.c)) - T(ball.r)
     end
 end
 
@@ -2055,6 +2095,13 @@ function poly_from_roots(roots::AbstractVector)
         coeffs = polyconv(coeffs, [-r, 1.0])
     end
     return coeffs
+end
+
+
+function __init__()
+    # streams cannot be captured at precompilation time
+    _log_io[] = stdout
+    return nothing
 end
 
 end # module
