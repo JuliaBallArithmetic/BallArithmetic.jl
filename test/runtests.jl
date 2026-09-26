@@ -47,6 +47,7 @@ using Test
     include("test_decompositions/test_svd/test_gla_svd.jl")
     include("test_decompositions/test_svd/test_schur_newton_vbd.jl")
     include("test_decompositions/test_svd/test_vbd_remainder_norm.jl")
+    include("test_decompositions/test_svd/test_vbd_block_merge.jl")
     include("test_decompositions/test_svd/test_rigorous_svd_gpu.jl")
 
     # Norm bounds
