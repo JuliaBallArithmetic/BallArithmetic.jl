@@ -199,22 +199,40 @@ function _vbd_solve(Bc::Matrix{CT}; sep::Real = -1, maxsteps::Integer = 6,
         A = A[order, order]
         W = W[:, order]
         sizes = [length(c) for c in sort(clusters; by = first)]
+        # The transform is W <- W[I V; 0 I], whose conditioning is
+        # kappa = ((||V||_2 + sqrt(||V||_2^2+4))/2)^2 ~ ||V||_2^2, and whose rounding enters the
+        # certification slack beta_Lambda at about u*||V||_2*||A||. Applying an unbounded V
+        # therefore buys a block-diagonal candidate at the price of a basis the Neumann test
+        # ||R2|| < 1 then rejects, losing the candidate entirely: on a defective matrix this
+        # built kappa(W) = 1.8e15 and failed with ||R2||_inf = 1.46. Two near-coincident
+        # clusters are better merged than separated, so a V above the threshold merges the
+        # current block with the next and solves again. The norm is the spectral one: ||V||_F
+        # overestimates it by up to sqrt(min(size(V)...)), which merges earlier than needed.
+        xmax = sqrt(one(real(CT)) / eps(real(CT)))
+        k = 1
         pos = 1
-        for s_k in sizes
-            lo, hi = pos, pos + s_k - 1
+        while k <= length(sizes)
+            lo, hi = pos, pos + sizes[k] - 1
             if hi < n
                 V = try
                     sylvester(A[lo:hi, lo:hi], -A[(hi + 1):n, (hi + 1):n],
                         A[lo:hi, (hi + 1):n])
                 catch
-                    nothing            # ill-posed pair: leave the strip coupled
+                    nothing            # ill-posed pair: merge below, or leave the strip coupled
                 end
-                if V !== nothing && all(isfinite, V)
-                    W[:, (hi + 1):n] = W[:, lo:hi] * V + W[:, (hi + 1):n]
-                    A[lo:hi, (hi + 1):n] .= zero(CT)
+                if V === nothing || !all(isfinite, V) || opnorm(V) > xmax
+                    if k < length(sizes)
+                        sizes[k] += sizes[k + 1]
+                        deleteat!(sizes, k + 1)
+                        continue       # same position, one bigger block, solve again
+                    end
+                    break              # nothing left to merge: leave the strip coupled
                 end
+                W[:, (hi + 1):n] = W[:, lo:hi] * V + W[:, (hi + 1):n]
+                A[lo:hi, (hi + 1):n] .= zero(CT)
             end
             pos = hi + 1
+            k += 1
         end
         # relabel the clusters to the new contiguous positions
         clusters = Vector{Int}[]
