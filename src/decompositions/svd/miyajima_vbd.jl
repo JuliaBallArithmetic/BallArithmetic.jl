@@ -103,9 +103,18 @@ end
 #   * barycentre  `cᵢ = mean(diag Pᵢ)`  and within-block non-normality `nᵢ = ‖Pᵢ − cᵢI‖₂`,
 #       so the barycentre floor `σ_min(Pᵢ − zI) ≥ |z − cᵢ| − nᵢ` gives the explicit disc
 #       `D(cᵢ, nᵢ + ρᵢ)` carrying `|Cᵢ|` eigenvalues;
-#   * the sharper localized coupling `rᵢ = ‖Ñ[Cᵢ,:]‖₂ + β₂` (Prop. blockgersg, `Ñ = M̃ − Λ`
-#       = `remainder`, `β₂ = ‖R₂‖₂/(1−‖R₂‖₂)·‖M̃‖₂`): each block charged only its OWN
-#       off-block-row coupling, never the worst block's (`rᵢ ≤ ‖Ñ‖₂ + β₂`, never looser).
+#   * the localized coupling `rᵢ` (Prop. blockgersg, `Ñ = M̃ − Λ` = `remainder`,
+#       `β₂ = ‖R₂‖₂/(1−‖R₂‖₂)·‖M̃‖₂`): each block charged only its OWN off-block row, never
+#       the worst block's.  Two forms of that row bound are available and BOTH are needed,
+#       because neither dominates the other; `rᵢ` is their minimum.  Writing the eigenvector
+#       in blocks and taking `i` with `‖xᵢ‖` largest, block row `i` of `(M̃ − zI)x = 0` gives
+#           σ_min(Pᵢ − zI)‖xᵢ‖ ≤ ‖Ñ[Cᵢ,:] x̂‖,      x̂ = x with the `Cᵢ` block zeroed,
+#       and the right-hand side is bounded either by `Σ_{j≠i} ‖Ñ[Cᵢ,Cⱼ]‖₂ ‖xᵢ‖`, the
+#       Feingold–Varga row sum, or by `‖Ñ[Cᵢ,:]‖₂ ‖x̂‖ ≤ √(q−1) ‖Ñ[Cᵢ,:]‖₂ ‖xᵢ‖`, since `x̂`
+#       has at most `q−1` nonzero blocks each of norm at most `‖xᵢ‖`.  The bare strip norm
+#       `‖Ñ[Cᵢ,:]‖₂`, without the `√(q−1)`, bounds NEITHER and is not rigorous: see
+#       `test/test_decompositions/test_svd/test_vbd_block_coupling.jl`, where an eigenvalue
+#       of a 10×10 matrix falls outside the union of discs it produces.
 # Returns `(coupling, centres, nonnormality, block_slack)` with `block_slack = β_Λ`.
 function _vbd_block_data(A::BallMatrix, WB::BallMatrix, YB::BallMatrix,
         transformed::BallMatrix, block::BallMatrix, remainder::BallMatrix,
@@ -135,12 +144,28 @@ function _vbd_block_data(A::BallMatrix, WB::BallMatrix, YB::BallMatrix,
     coupling = Vector{T}(undef, length(clusters))
     centres = Vector{CT}(undef, length(clusters))
     nonnormality = Vector{T}(undef, length(clusters))
+    q = length(clusters)
+    # √(q−1), rounded up, for the strip form of the row bound
+    sqrtqm1 = setrounding(T, RoundUp) do
+        sqrt(T(max(q - 1, 0)))
+    end
     for (k, cl) in enumerate(clusters)
         cj = sum(midT[i, i] for i in cl) / length(cl)        # block barycentre
         centres[k] = cj
         nonnormality[k] = upper_bound_L2_opnorm(transformed[cl, cl] - cj * I)  # ‖Pⱼ − cⱼI‖₂
+        rowsum = setrounding(T, RoundUp) do
+            acc = zero(T)
+            for (j, cj2) in enumerate(clusters)
+                j == k && continue
+                acc += upper_bound_L2_opnorm(remainder[cl, cj2])
+            end
+            acc
+        end
+        strip = setrounding(T, RoundUp) do
+            sqrtqm1 * upper_bound_L2_opnorm(remainder[cl, :])
+        end
         coupling[k] = setrounding(T, RoundUp) do
-            upper_bound_L2_opnorm(remainder[cl, :]) + beta2
+            min(rowsum, strip) + beta2
         end
     end
     return coupling, centres, nonnormality, block_slack
