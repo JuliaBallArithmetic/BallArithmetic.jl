@@ -392,3 +392,33 @@ function _miyajima2014_thm10_bounds(S, normR, normF, normG, tall::Bool, ::Type{T
     end
     return lo, hi
 end
+
+"""
+    _svd_auto_theorem(A::BallMatrix) -> Symbol
+
+Which of the two economy enclosures to use for `A`: Theorem 10 when the input is exact, Theorem 7
+when it carries a radius.
+
+This is **not** a result of either paper; it is a selection rule, and the reason for it is that
+the two theorems put the input in different places. Theorem 10's residual is `AV̂ − ÛΣ̂`, which
+multiplies the interval `A` by `V̂`, so an input radius propagates through a ball product;
+Theorem 7's is `ÛΣ̂V̂ᵀ − A`, whose product is formed from floating-point factors alone, so the
+input radius enters once. Maximum radii measured on `randn` matrices:
+
+| `rad(A)` | n | Theorem 10 | Theorem 7 | ratio |
+|---|---|---|---|---|
+| 0 | 6 | 1.954e-14 | 2.220e-14 | 0.88 |
+| 1e-16 | 6 | 2.132e-14 | 2.220e-14 | 0.96 |
+| 1e-12 | 6 | 1.204e-11 | 6.022e-12 | 2.00 |
+| 0 | 20 | 8.882e-14 | 1.066e-13 | 0.83 |
+| 1e-16 | 20 | 9.770e-14 | 1.084e-13 | 0.90 |
+| 1e-12 | 20 | 7.330e-11 | 2.011e-11 | 3.65 |
+
+The switch is on exactness rather than on a threshold in `rad(A)`, and that is a deliberate choice
+rather than an optimal one: the crossover sits somewhere between `1e-16` and `1e-14`, so at a very
+small nonzero radius this rule gives up the 4 to 10 per cent that Theorem 10 would still have won.
+Locating the crossover would mean fitting a threshold, and in exchange the rule never pays the
+factor of 2 to 3.7 that grows with `n`. Pass `method` explicitly to override it.
+"""
+_svd_auto_theorem(A::BallMatrix) =
+    iszero(rad(A)) ? :miyajima2014_thm10 : :miyajima2014_thm7

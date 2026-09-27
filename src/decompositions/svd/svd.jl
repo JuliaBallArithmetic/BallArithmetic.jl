@@ -6,6 +6,18 @@ Abstract type for selecting SVD certification algorithms.
 abstract type SVDMethod end
 
 """
+    MiyajimaAuto <: SVDMethod
+
+The default of [`rigorous_svd`](@ref): [`MiyajimaM3`](@ref), Theorem 10, for an exact input, and
+[`MiyajimaM1`](@ref), Theorem 7, for one carrying a radius.
+
+This is a selection rule of this package and not a result of Miyajima (2014); the reason and the
+measurements are in [`_svd_auto_theorem`](@ref), which is the same rule [`svdbox`](@ref) uses, so
+the two entry points agree. Pass `method` explicitly to override it.
+"""
+struct MiyajimaAuto <: SVDMethod end
+
+"""
     MiyajimaM3 <: SVDMethod
 
 Miyajima 2014, Theorem 10, the algorithm his numerical section labels M3, and the default.
@@ -150,8 +162,9 @@ to `false`, the `block_diagonalisation` field is `nothing`.
   Japan J. Indust. Appl. Math. 31, 513–539.
 * Rump S.M. (2011), "Verified bounds for singular values", BIT 51, 367–384.
 """
-function rigorous_svd(A::BallMatrix{T}; method::SVDMethod = MiyajimaM3(), apply_vbd::Bool = true) where {T}
+function rigorous_svd(A::BallMatrix{T}; method::SVDMethod = MiyajimaAuto(), apply_vbd::Bool = true) where {T}
     RT = real(T)
+    method = _resolve_svd_method(method, A)
 
     # For BigFloat, use GenericLinearAlgebra's native BigFloat SVD
     if RT === BigFloat
@@ -232,7 +245,7 @@ function _rigorous_svd_bigfloat(A::BallMatrix{BigFloat}, method::SVDMethod;
 end
 
 """
-    svdbox(A::BallMatrix; method = :miyajima2014_thm10) -> Vector{Ball}
+    svdbox(A::BallMatrix; method = :auto) -> Vector{Ball}
 
 Verified enclosures of all the singular values of `A`, one ball each, in the order the chosen
 theorem produces them.
@@ -243,6 +256,7 @@ named for the theorem it implements, so a deviation from a paper is visible in t
 
 | `method` | routine | what it is |
 |---|---|---|
+| `:auto` | [`_svd_auto_theorem`](@ref) | **the default**: Theorem 10 for an exact input, Theorem 7 for one with a radius. Not a theorem but a selection rule, with the measurements behind it in its docstring |
 | `:miyajima2014_thm10` | [`_miyajima2014_thm10`](@ref) | the default: the same economy frames as Theorem 7 with the one-sided residual `‖AV̂ − ÛΣ̂‖₂`, which the paper's tables make at least as tight and which costs `22Qq²` against `24Qq²` |
 | `:miyajima2014_thm7` | [`_miyajima2014_thm7`](@ref) | the economy enclosure `Σ̂ᵢᵢ√((1∓‖F̂‖)(1∓‖Ĝ‖)) ∓ ‖Ê‖`, residual measured against `A` |
 | `:miyajima2014_thm4` | [`_miyajima2014_thm4`](@ref) | Oishi's, square frames, `Σᵢᵢ ± (Σᵢᵢmax(‖F‖,‖G‖) + ‖E‖)`; Theorem 8 proves Theorem 7 is never worse |
@@ -255,9 +269,9 @@ and R2 = Theorem 6. Theorem 9, the sharpening of Rump's Theorem 5, has no econom
 shows the upper half of it fails on an economy frame and leaves the improvement as an open
 challenge.
 
-Prefer the default. It is anchored to `Σ̂ᵢᵢ` of the SVD, so the `i`-th interval encloses `σᵢ(A)`
-with no permutation caveat, unlike `:rump2011_thm3_1`; it does not degrade with conditioning,
-unlike `:miyajima2014_thm11`; and it is the cheapest of the two-frame enclosures.
+Prefer the default. Both enclosures it chooses between are anchored to `Σ̂ᵢᵢ` of the SVD, so the
+`i`-th interval encloses `σᵢ(A)` with no permutation caveat, unlike `:rump2011_thm3_1`, and
+neither degrades with conditioning, unlike `:miyajima2014_thm11`.
 
 For the singular vectors, the residual and the block refinement as well as the values, use
 [`rigorous_svd`](@ref).
@@ -267,15 +281,23 @@ For the singular vectors, the residual and the block refinement as well as the v
 S. Miyajima, *Verified bounds for all the singular values of matrix*, Japan J. Indust. Appl.
 Math. **31** (2014) 513-539, doi 10.1007/s13160-014-0145-5.
 """
-function svdbox(A::BallMatrix{T}; method::Symbol = :miyajima2014_thm10) where {T}
+function svdbox(A::BallMatrix{T}; method::Symbol = :auto) where {T}
+    method === :auto && (method = _svd_auto_theorem(A))
     method === :miyajima2014_thm10 && return _miyajima2014_thm10(A)
     method === :miyajima2014_thm7 && return _miyajima2014_thm7(A)
     method === :miyajima2014_thm4 && return _miyajima2014_thm4(A)
     method === :miyajima2014_thm11 && return _miyajima2014_thm11(A)
     method === :rump2011_thm3_1 && return _rump2011_thm3_1(A)
     throw(ArgumentError("svdbox: unknown method $(repr(method)); the implemented methods are " *
-                        ":miyajima2014_thm10, :miyajima2014_thm7, :miyajima2014_thm4, " *
-                        ":miyajima2014_thm11 and :rump2011_thm3_1"))
+                        ":auto, :miyajima2014_thm10, :miyajima2014_thm7, " *
+                        ":miyajima2014_thm4, :miyajima2014_thm11 and :rump2011_thm3_1"))
+end
+
+# MiyajimaAuto is resolved before anything downstream sees it, so no routine ever receives a
+# method that is a rule rather than a theorem.
+_resolve_svd_method(method::SVDMethod, ::BallMatrix) = method
+function _resolve_svd_method(::MiyajimaAuto, A::BallMatrix)
+    return _svd_auto_theorem(A) === :miyajima2014_thm10 ? MiyajimaM3() : MiyajimaM1()
 end
 
 function _certify_svd(A::BallMatrix{T}, svdA::SVD, method::SVDMethod; apply_vbd::Bool = true) where {T}
@@ -288,6 +310,7 @@ function _certify_svd(A::BallMatrix{T}, svdA::NamedTuple{(:U, :S, :V, :Vt)}, met
 end
 
 function _certify_svd_impl(A::BallMatrix{T}, U_in, S_in, V_in, Vt_in, method::SVDMethod; apply_vbd::Bool = true) where {T}
+    method = _resolve_svd_method(method, A)
     U = BallMatrix(U_in)
     V = BallMatrix(V_in)
     Vt = BallMatrix(Vt_in)

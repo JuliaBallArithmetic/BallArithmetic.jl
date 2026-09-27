@@ -26,9 +26,8 @@ end
 
     @testset "the caller" begin
         A = BallMatrix(randn(MersenneTwister(1), 6, 6))
-        # the default is Theorem 10, the paper's M3: the economy frames of Theorem 7 with the
-        # one-sided residual ||A Vhat - Uhat Sigmahat||, cheaper and at least as tight in the
-        # paper's own tables
+        # the default is :auto, which for an exact input picks Theorem 10, the paper's M3
+        @test svdbox(A) == svdbox(A; method = :auto)
         @test svdbox(A) == svdbox(A; method = :miyajima2014_thm10)
         @test svdbox(A) != svdbox(A; method = :miyajima2014_thm7)
         @test_throws ArgumentError svdbox(A; method = :nonsense)
@@ -140,6 +139,51 @@ end
         strue = svdvals(BigFloat.(M))
         for method in (:miyajima2014_thm10, :miyajima2014_thm7)
             sv = svdbox(wide; method)
+            for i in 1:n
+                @test BigFloat(mid(sv[i])) - BigFloat(rad(sv[i])) <= strue[i] <=
+                      BigFloat(mid(sv[i])) + BigFloat(rad(sv[i]))
+            end
+        end
+    end
+
+    @testset ":auto picks by exactness, and both entry points agree" begin
+        rng = MersenneTwister(41)
+        n = 12
+        M = randn(rng, n, n)
+        point = BallMatrix(M)
+        wide = BallMatrix(M, fill(1e-12, n, n))
+
+        # exact input: Theorem 10, which is tighter there
+        @test svdbox(point) == svdbox(point; method = :miyajima2014_thm10)
+        @test maximum(rad.(svdbox(point))) <
+              maximum(rad.(svdbox(point; method = :miyajima2014_thm7)))
+
+        # input with a radius: Theorem 7, avoiding the factor Theorem 10 pays there
+        @test svdbox(wide) == svdbox(wide; method = :miyajima2014_thm7)
+        @test maximum(rad.(svdbox(wide))) <
+              maximum(rad.(svdbox(wide; method = :miyajima2014_thm10)))
+
+        # svdbox and rigorous_svd resolve the rule the same way, so their values agree
+        for A in (point, wide)
+            @test svdbox(A) == rigorous_svd(A; apply_vbd = false).singular_values
+        end
+
+        # MiyajimaAuto resolves to a theorem, so nothing downstream sees the rule itself
+        @test BA._resolve_svd_method(MiyajimaAuto(), point) isa MiyajimaM3
+        @test BA._resolve_svd_method(MiyajimaAuto(), wide) isa MiyajimaM1
+        @test BA._resolve_svd_method(MiyajimaM4(), point) isa MiyajimaM4
+
+        # an explicit method overrides the rule in both directions
+        @test svdbox(wide; method = :miyajima2014_thm10) !=
+              svdbox(wide; method = :miyajima2014_thm7)
+        @test rigorous_svd(wide; method = MiyajimaM3(),
+            apply_vbd = false).singular_values ==
+              svdbox(wide; method = :miyajima2014_thm10)
+
+        # and the rule never costs soundness: both branches enclose
+        strue = svdvals(BigFloat.(M))
+        for A in (point, wide)
+            sv = svdbox(A)
             for i in 1:n
                 @test BigFloat(mid(sv[i])) - BigFloat(rad(sv[i])) <= strue[i] <=
                       BigFloat(mid(sv[i])) + BigFloat(rad(sv[i]))
