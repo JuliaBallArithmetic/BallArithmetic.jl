@@ -105,6 +105,7 @@ export RigorousGeneralizedEigenvaluesResult, RigorousEigenvaluesResult,
 export Rump2022aResult, rump_2022a_eigenvalue_bounds
 export RumpLange2023Result, rump_lange_2023_cluster_bounds, refine_cluster_bounds
 include("decompositions/svd/singular_gerschgorin.jl")
+include("eigenvalues/rump_verifyeigall.jl")
 include("decompositions/svd/miyajima_vbd.jl")
 include("decompositions/svd/schur_newton_vbd.jl")
 include("decompositions/svd/svd.jl")

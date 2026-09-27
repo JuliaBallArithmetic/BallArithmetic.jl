@@ -26,6 +26,7 @@ using Test
 
     # Eigenvalues
     include("test_eigenvalues/test_eigen.jl")
+    include("test_eigenvalues/test_rump_verifyeigall.jl")
     include("test_eigenvalues/test_miyajima_new.jl")
     include("test_eigenvalues/test_verified_gev.jl")
     include("test_eigenvalues/test_miyajima_gev_enclosure.jl")
