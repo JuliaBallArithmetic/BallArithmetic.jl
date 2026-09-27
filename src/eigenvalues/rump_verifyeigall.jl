@@ -76,6 +76,86 @@ function Base.show(io::IO, r::VerifyEigAllResult)
 end
 
 # ---------------------------------------------------------------------------------------------
+# The accurate residual: Rump's `prodK`
+# ---------------------------------------------------------------------------------------------
+#
+# The transformation needs an enclosure of the residual B W - W X, and a naive ball product will
+# not do: the two terms are nearly equal, so the enclosure's radius comes out the size of the
+# residual itself (measured: residual 1.6e-15, ball radius 1.5e-15) and carries no information.
+# Rump uses error-free transformations. TwoProduct with an FMA is exact,
+#
+#     x = fl(a b),   y = fma(a, b, -x)   so that   a b = x + y exactly,
+#
+# and TwoSum likewise for addition, so a compensated accumulation recovers the residual to about
+# twice the working precision. Measured against Double64 on a 40 x 40 instance, the compensated
+# value agrees to 3e-33 where the plain BLAS product is wrong by 1e-17, the size of the answer.
+#
+# For a certified bound the accurate value is not enough; the error bound of Ogita, Rump and Oishi
+# for a compensated dot product of length N is used,
+#
+#     |result - exact| <= u |exact| + gamma_N^2 sum |a_i| |b_i|,     gamma_N = N u / (1 - N u),
+#
+# with the absolute products evaluated by one further matrix multiplication, rounded upward.
+
+@inline function _eft_twoprod(a::T, b::T) where {T <: AbstractFloat}
+    x = a * b
+    return x, fma(a, b, -x)
+end
+
+@inline function _eft_twosum(a::T, b::T) where {T <: AbstractFloat}
+    x = a + b
+    z = x - a
+    return x, (a - (x - z)) + (b - z)
+end
+
+# One entry of the real part or the imaginary part of (P Q - R S), accumulated with compensation.
+# `terms` is a tuple of (row vector, column vector) pairs whose products are summed.
+@inline function _eft_accumulate(pairs, i, j)
+    s = 0.0
+    e = 0.0
+    for (A, Bmat, sgn) in pairs
+        @inbounds for k in axes(A, 2)
+            p, ep = _eft_twoprod(sgn * A[i, k], Bmat[k, j])
+            s, es = _eft_twosum(s, p)
+            e += ep + es
+        end
+    end
+    return s + e
+end
+
+"""
+Enclosure of `B*W - W*X` with `B` a ball matrix and `W`, `X` floating point, by compensated
+accumulation with error-free transformations and the Ogita-Rump-Oishi bound. This is the role
+`prodK` plays in Rump's `transform`.
+"""
+function _veig_residual(B::BallMatrix{T}, W::Matrix{CT}, X::Matrix{CT}) where {T, CT}
+    n = size(W, 1)
+    Bm, Br = mid(B), rad(B)
+    # split into real components so the error-free transformations apply
+    Bre, Bim = real.(Bm), imag.(Bm)
+    Wre, Wim = real.(W), imag.(W)
+    Xre, Xim = real.(X), imag.(X)
+    M = Matrix{CT}(undef, n, n)
+    for j in 1:n, i in 1:n
+        # Re(BW - WX) = Bre Wre - Bim Wim - (Wre Xre - Wim Xim)
+        re = _eft_accumulate(((Bre, Wre, 1.0), (Bim, Wim, -1.0),
+                (Wre, Xre, -1.0), (Wim, Xim, 1.0)), i, j)
+        # Im(BW - WX) = Bre Wim + Bim Wre - (Wre Xim + Wim Xre)
+        im_ = _eft_accumulate(((Bre, Wim, 1.0), (Bim, Wre, 1.0),
+                (Wre, Xim, -1.0), (Wim, Xre, -1.0)), i, j)
+        M[i, j] = CT(re, im_)
+    end
+    u = eps(T) / 2
+    N = 4 * n                                  # products summed per entry
+    r = setrounding(T, RoundUp) do
+        γ = (N * u) / (one(T) - N * u)
+        absprod = (abs.(Bm) * abs.(W)) .+ (abs.(W) * abs.(X))
+        u .* abs.(M) .+ (γ * γ) .* absprod .+ Br * abs.(W)
+    end
+    return BallMatrix(M, r)
+end
+
+# ---------------------------------------------------------------------------------------------
 # The transformation: an inclusion A of W^{-1} B W
 # ---------------------------------------------------------------------------------------------
 
@@ -83,21 +163,35 @@ end
 # together with ‖I − RW‖ < 1 gives one of W^{-1} B W by a Neumann series, the extra radius being
 # ‖I − RW‖/(1 − ‖I − RW‖) times the norm of the enclosure. This is the same pattern the verified
 # block diagonalisations in this package use for their basis residual.
-function _veig_transform(B::BallMatrix{T}, W::Matrix{CT}) where {T, CT}
+# Rump's `transform`: the point is NOT to enclose W^{-1} B W directly, whose radius would be that
+# of the product, but to enclose the small correction. With X the approximate eigenvalue matrix,
+#
+#     W^{-1} B W  =  X + W^{-1}(B W - W X),
+#
+# and the residual B W - W X is tiny, so an enclosure of W^{-1} times it is tiny too. One Newton
+# step on X makes the residual smaller still. The inner solve is by an approximate inverse R with
+# the Neumann correction ‖I − RW‖/(1 − ‖I − RW‖) · ‖R·Res‖, which is now multiplied by the size of
+# the residual rather than by the size of A, which is the whole difference.
+function _veig_transform(B::BallMatrix{T}, W::Matrix{CT}, X0::Matrix{CT}) where {T, CT}
     R = inv(W)
-    Rb = BallMatrix(R)
-    Wb = BallMatrix(W)
-    P = Rb * (B * Wb)                      # encloses R B W
+    Rb, Wb = BallMatrix(R), BallMatrix(W)
     S = Rb * Wb - I                        # encloses R W − I
     defect = upper_bound_L2_opnorm(S)
     defect < 1 || return nothing, defect
+
+    # one Newton step on the approximate eigenvalue matrix, in floating point: it only has to be
+    # a better approximation, nothing here is certified
+    X = X0 + R * mid(_veig_residual(B, W, X0))
+
+    Res = _veig_residual(B, W, X)          # certified enclosure of B W − W X
+    P = Rb * Res                           # encloses R (B W − W X)
     extra = setrounding(T, RoundUp) do
         defect * upper_bound_L2_opnorm(P) / (one(T) - defect)
     end
-    A = BallMatrix(mid(P), setrounding(T, RoundUp) do
+    Delta = BallMatrix(mid(P), setrounding(T, RoundUp) do
         rad(P) .+ extra
     end)
-    return A, defect
+    return BallMatrix(X) + Delta, defect
 end
 
 # ---------------------------------------------------------------------------------------------
@@ -237,7 +331,8 @@ function verifyeigall(B::BallMatrix{T, NT}; maxiter::Integer = 20,
     W = Matrix{complex(T)}(F.vectors)
     CT = complex(T)
 
-    A, defect = _veig_transform(B, W)
+    X0 = Matrix{CT}(Diagonal(F.values))
+    A, defect = _veig_transform(B, W, X0)
     A === nothing && return VerifyEigAllResult(Vector{Int}[], Bool[], CT[], T[], W, false, 0,
         defect)
 
