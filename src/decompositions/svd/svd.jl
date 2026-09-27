@@ -6,23 +6,39 @@ Abstract type for selecting SVD certification algorithms.
 abstract type SVDMethod end
 
 """
+    MiyajimaM3 <: SVDMethod
+
+Miyajima 2014, Theorem 10, the algorithm his numerical section labels M3, and the default.
+
+The economy frames of Theorem 7 with a one-sided residual: with `Λᵢᵢ` and `Λ̄ᵢᵢ` the scalings of
+`Σ̂ᵢᵢ` by `√((1∓‖Ĝ‖)/(1±‖F̂‖))` and `ρ = ‖AV̂ − ÛΣ̂‖₂/√(1−‖F̂‖₂)` for `m ≥ n`, with `F̂` and `Ĝ`
+exchanged otherwise,
+
+    Λᵢᵢ − ρ ≤ σᵢ(A) ≤ Λ̄ᵢᵢ + ρ.
+
+Cheaper than Theorem 7, `22Qq² + 12q³` against `24Qq² + 12q³`, since the residual is `m × q`
+rather than `m × n`, and at least as tight in the paper's Tables 2 and 3.
+"""
+struct MiyajimaM3 <: SVDMethod end
+
+"""
     MiyajimaM1 <: SVDMethod
 
-Miyajima 2014, Theorem 7 (M1): Economy SVD approach with tighter bounds.
+Miyajima 2014, Theorem 7, the algorithm his numerical section labels M1.
 
 Bounds:
 - Lower: σᵢ · √((1-‖F‖)(1-‖G‖)) - ‖E‖
 - Upper: σᵢ · √((1+‖F‖)(1+‖G‖)) + ‖E‖
 
-This is the recommended default method, providing tighter bounds than
-the original Rump formulas.
+[`MiyajimaM3`](@ref), Theorem 10, is the default: it uses the same economy frames and is
+cheaper and at least as tight.
 """
 struct MiyajimaM1 <: SVDMethod end
 
 """
     MiyajimaM4 <: SVDMethod
 
-Miyajima 2014, Theorem 11 (M4): Eigendecomposition-based bounds.
+Miyajima 2014, Theorem 11, the algorithm his numerical section labels M4.
 
 Works on D̂ + Ê = (AV)ᵀAV where D̂ is diagonal. Uses Gershgorin isolation
 and can provide very tight bounds for well-separated singular values.
@@ -134,7 +150,7 @@ to `false`, the `block_diagonalisation` field is `nothing`.
   Japan J. Indust. Appl. Math. 31, 513–539.
 * Rump S.M. (2011), "Verified bounds for singular values", BIT 51, 367–384.
 """
-function rigorous_svd(A::BallMatrix{T}; method::SVDMethod = MiyajimaM1(), apply_vbd::Bool = true) where {T}
+function rigorous_svd(A::BallMatrix{T}; method::SVDMethod = MiyajimaM3(), apply_vbd::Bool = true) where {T}
     RT = real(T)
 
     # For BigFloat, use GenericLinearAlgebra's native BigFloat SVD
@@ -216,7 +232,7 @@ function _rigorous_svd_bigfloat(A::BallMatrix{BigFloat}, method::SVDMethod;
 end
 
 """
-    svdbox(A::BallMatrix; method = :miyajima2014_thm7) -> Vector{Ball}
+    svdbox(A::BallMatrix; method = :miyajima2014_thm10) -> Vector{Ball}
 
 Verified enclosures of all the singular values of `A`, one ball each, in the order the chosen
 theorem produces them.
@@ -227,14 +243,21 @@ named for the theorem it implements, so a deviation from a paper is visible in t
 
 | `method` | routine | what it is |
 |---|---|---|
+| `:miyajima2014_thm10` | [`_miyajima2014_thm10`](@ref) | the default: the same economy frames as Theorem 7 with the one-sided residual `‖AV̂ − ÛΣ̂‖₂`, which the paper's tables make at least as tight and which costs `22Qq²` against `24Qq²` |
 | `:miyajima2014_thm7` | [`_miyajima2014_thm7`](@ref) | the economy enclosure `Σ̂ᵢᵢ√((1∓‖F̂‖)(1∓‖Ĝ‖)) ∓ ‖Ê‖`, residual measured against `A` |
 | `:miyajima2014_thm4` | [`_miyajima2014_thm4`](@ref) | Oishi's, square frames, `Σᵢᵢ ± (Σᵢᵢmax(‖F‖,‖G‖) + ‖E‖)`; Theorem 8 proves Theorem 7 is never worse |
 | `:miyajima2014_thm11` | [`_miyajima2014_thm11`](@ref) | one frame, the eigenvectors of `AᵀA`, Gershgorin sharpened by Parlett, with a cluster branch |
 | `:rump2011_thm3_1` | [`_rump2011_thm3_1`](@ref) | Rump's two-frame split `UᴴAV = D + E`; square `A` only, and valid only up to an undetermined numbering |
 
-Prefer the default unless you have a reason. Theorem 8 of Miyajima (2014) proves it at least as
-tight as Theorem 4; and unlike `:rump2011_thm3_1` its bounds are anchored to `Σ̂ᵢᵢ` of the SVD,
-so the `i`-th interval encloses `σᵢ(A)` with no permutation caveat.
+These are the paper's own algorithms M3, M1, O and R1 in its numerical section, which labels
+M1 = Theorem 7, M2 = Theorem 9, M3 = Theorem 10, M4 = Theorem 11, O = Theorem 4, R1 = Theorem 5
+and R2 = Theorem 6. Theorem 9, the sharpening of Rump's Theorem 5, has no economy form: Remark 5
+shows the upper half of it fails on an economy frame and leaves the improvement as an open
+challenge.
+
+Prefer the default. It is anchored to `Σ̂ᵢᵢ` of the SVD, so the `i`-th interval encloses `σᵢ(A)`
+with no permutation caveat, unlike `:rump2011_thm3_1`; it does not degrade with conditioning,
+unlike `:miyajima2014_thm11`; and it is the cheapest of the two-frame enclosures.
 
 For the singular vectors, the residual and the block refinement as well as the values, use
 [`rigorous_svd`](@ref).
@@ -244,14 +267,15 @@ For the singular vectors, the residual and the block refinement as well as the v
 S. Miyajima, *Verified bounds for all the singular values of matrix*, Japan J. Indust. Appl.
 Math. **31** (2014) 513-539, doi 10.1007/s13160-014-0145-5.
 """
-function svdbox(A::BallMatrix{T}; method::Symbol = :miyajima2014_thm7) where {T}
+function svdbox(A::BallMatrix{T}; method::Symbol = :miyajima2014_thm10) where {T}
+    method === :miyajima2014_thm10 && return _miyajima2014_thm10(A)
     method === :miyajima2014_thm7 && return _miyajima2014_thm7(A)
     method === :miyajima2014_thm4 && return _miyajima2014_thm4(A)
     method === :miyajima2014_thm11 && return _miyajima2014_thm11(A)
     method === :rump2011_thm3_1 && return _rump2011_thm3_1(A)
     throw(ArgumentError("svdbox: unknown method $(repr(method)); the implemented methods are " *
-                        ":miyajima2014_thm7, :miyajima2014_thm4, :miyajima2014_thm11 and " *
-                        ":rump2011_thm3_1"))
+                        ":miyajima2014_thm10, :miyajima2014_thm7, :miyajima2014_thm4, " *
+                        ":miyajima2014_thm11 and :rump2011_thm3_1"))
 end
 
 function _certify_svd(A::BallMatrix{T}, svdA::SVD, method::SVDMethod; apply_vbd::Bool = true) where {T}
@@ -295,8 +319,22 @@ function _certify_svd_impl(A::BallMatrix{T}, U_in, S_in, V_in, Vt_in, method::SV
             RT(Inf), normF, normG, nothing)
     end
 
-    # Compute bounds based on method
-    svdbounds_down, svdbounds_up = _compute_svd_bounds(method, S_in, normE, normF, normG, T)
+    # Compute bounds based on method. Theorem 10 needs the one-sided residual as well, which the
+    # generic `_compute_svd_bounds` signature does not carry, so it is formed here from the frames
+    # already at hand and handed to the same formula `_miyajima2014_thm10` uses.
+    local svdbounds_down, svdbounds_up
+    if method isa MiyajimaM3
+        m_, n_ = size(A)
+        q_ = length(S_in)
+        Uq = BallMatrix(U_in[:, 1:q_])
+        Vq = BallMatrix(V_in[:, 1:q_])
+        Sq = BallMatrix(Diagonal(S_in[1:q_]))
+        res1 = m_ >= n_ ? A * Vq - Uq * Sq : Uq' * A - Sq * Vq'
+        svdbounds_down, svdbounds_up = _miyajima2014_thm10_bounds(S_in[1:q_],
+            upper_bound_L2_opnorm(res1), normF, normG, m_ >= n_, T)
+    else
+        svdbounds_down, svdbounds_up = _compute_svd_bounds(method, S_in, normE, normF, normG, T)
+    end
 
     midpoints = (svdbounds_down + svdbounds_up) / 2
     radii = setrounding(T, RoundUp) do

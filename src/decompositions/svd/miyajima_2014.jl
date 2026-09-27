@@ -311,3 +311,84 @@ function _miyajima2014_thm11(A::BallMatrix{T}) where {T}
     end
     return out
 end
+
+"""
+    _miyajima2014_thm10(A::BallMatrix) -> Vector{Ball}
+
+Theorem 10 of Miyajima (2014), the algorithm his numerical section labels M3, and the default of
+[`svdbox`](@ref). It uses the same economy frames as [`_miyajima2014_thm7`](@ref) but a one-sided
+residual. With `Û`, `Σ̂`, `V̂` the economy SVD, `F̂ = V̂ᵀV̂ − I_q` and `Ĝ = ÛᵀÛ − I_q`, and
+`‖F̂‖₂ < 1`, `‖Ĝ‖₂ < 1`, define for `m ≥ n`
+
+    Λᵢᵢ = √((1 − ‖Ĝ‖₂)/(1 + ‖F̂‖₂)) Σ̂ᵢᵢ,   Λ̄ᵢᵢ = √((1 + ‖Ĝ‖₂)/(1 − ‖F̂‖₂)) Σ̂ᵢᵢ,
+    ρ   = ‖A V̂ − Û Σ̂‖₂ / √(1 − ‖F̂‖₂),
+
+and for `m < n` the same with the roles of `F̂` and `Ĝ` exchanged and
+`ρ = ‖Ûᵀ A − Σ̂ V̂ᵀ‖₂ / √(1 − ‖Ĝ‖₂)`. Then
+
+    Λᵢᵢ − ρ ≤ σᵢ(A) ≤ Λ̄ᵢᵢ + ρ.
+
+The orientation follows the proof: `σᵢ(ÛΣ̂V̂⁻¹) ≤ ‖Û‖₂σᵢ(Σ̂)‖V̂⁻¹‖₂`, with `‖Û‖₂ ≤ √(1+‖Ĝ‖₂)`
+from `ÛᵀÛ = I + Ĝ` and `‖V̂⁻¹‖₂ ≤ 1/√(1−‖F̂‖₂)`; `V̂` is square exactly when `m ≥ n`, which is why
+the two cases exchange the frames.
+
+Why this is the default rather than Theorem 7. The residual is `A V̂ − Û Σ̂`, which is `m × q`,
+where Theorem 7's `Ê = Û Σ̂ V̂ᵀ − A` is `m × n`: cheaper, `22Qq² + 12q³` against `24Qq² + 12q³`,
+and in the paper's own measurements at least as tight. Table 2 gives M3 against M1 as `3.0e-14`
+against `3.1e-14` at `cnd = 1`, `3.7e-14` against `3.6e-14` at `1e8` and `5.3e-14` against
+`5.7e-14` at `1e16`, with neither degrading as the conditioning worsens, unlike M4 (Theorem 11),
+which goes to `9.4e-9`; Table 3 gives M3 `9.5e-15, 4.5e-15, 4.5e-15` against M1's
+`1.1e-14, 6.0e-15, 6.0e-15`.
+
+Returns `Inf` radii where the orthogonality condition fails.
+"""
+function _miyajima2014_thm10(A::BallMatrix{T}) where {T}
+    m, n = size(A)
+    q = min(m, n)
+    F = _svd_candidate(A)
+    F === nothing && return [Ball(zero(T), T(Inf)) for _ in 1:q]
+    S = F.S
+    Uh = BallMatrix(F.U[:, 1:q])
+    Vh = BallMatrix(F.V[:, 1:q])
+    Sh = BallMatrix(Diagonal(S[1:q]))
+    normF = upper_bound_L2_opnorm(Vh' * Vh - I)
+    normG = upper_bound_L2_opnorm(Uh' * Uh - I)
+    (normF < 1 && normG < 1) || return [Ball(S[i], T(Inf)) for i in 1:q]
+
+    res = m >= n ? A * Vh - Uh * Sh : Uh' * A - Sh * Vh'
+    lo, hi = _miyajima2014_thm10_bounds(S[1:q], upper_bound_L2_opnorm(res), normF, normG,
+        m >= n, T)
+    return [_ball_from_bounds(lo[i], hi[i], T) for i in 1:q]
+end
+
+"""
+    _miyajima2014_thm10_bounds(S, normR, normF, normG, tall, ::Type{T}) -> (lo, hi)
+
+The bounds of Theorem 10 from the quantities it needs: the economy singular values `S`, the
+one-sided residual norm `normR` (`‖AV̂ − ÛΣ̂‖₂` when `m ≥ n`, else `‖ÛᵀA − Σ̂V̂ᵀ‖₂`), the two
+orthogonality defects, and `tall = m ≥ n`. Held separately so that
+[`_miyajima2014_thm10`](@ref), which builds its own frames, and `rigorous_svd`, which already has
+them, share one copy of the formula.
+"""
+function _miyajima2014_thm10_bounds(S, normR, normF, normG, tall::Bool, ::Type{T}) where {T}
+    # the frame that is square carries the inverse, so the two cases exchange F and G
+    num, den = tall ? (normG, normF) : (normF, normG)
+    rho = setrounding(T, RoundUp) do
+        normR / (setrounding(T, RoundDown) do
+            sqrt(one(T) - den)
+        end)
+    end
+    fac_lo = setrounding(T, RoundDown) do
+        sqrt((one(T) - num) / (one(T) + den))
+    end
+    fac_hi = setrounding(T, RoundUp) do
+        sqrt((one(T) + num) / (one(T) - den))
+    end
+    lo = setrounding(T, RoundDown) do
+        [s * fac_lo - rho for s in S]
+    end
+    hi = setrounding(T, RoundUp) do
+        [s * fac_hi + rho for s in S]
+    end
+    return lo, hi
+end

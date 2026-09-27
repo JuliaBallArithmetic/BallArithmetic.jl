@@ -118,7 +118,7 @@ export SchurGershgorinResult, RigorousSVDResult, schur_gershgorin_enclosure, rig
        rigorous_svd_gpu, rigorous_svd_m4, refine_svd_bounds_with_vbd,
        OgitaSVDRefinementResult, AdaptiveSVDResult, ogita_svd_refine, adaptive_ogita_svd,
        ogita_iterations_for_precision, ogita_svd_refine_multifloat,
-       SVDMethod, MiyajimaM1, MiyajimaM4, _certify_svd,
+       SVDMethod, MiyajimaM1, MiyajimaM3, MiyajimaM4, _certify_svd,
        clear_svd_cache!, svd_cache_stats, set_svd_cache!
 export PrecisionCascadeSVDResult, ogita_svd_cascade
 export svd_bigfloat, ogita_svd_cascade_gla

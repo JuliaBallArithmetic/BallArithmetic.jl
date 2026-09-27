@@ -5,8 +5,8 @@ using Random
 
 BA = BallArithmetic
 
-const SVD_METHODS = (:miyajima2014_thm7, :miyajima2014_thm4, :miyajima2014_thm11,
-    :rump2011_thm3_1)
+const SVD_METHODS = (:miyajima2014_thm10, :miyajima2014_thm7, :miyajima2014_thm4,
+    :miyajima2014_thm11, :rump2011_thm3_1)
 
 # every singular value of the 256-bit reference must lie in the corresponding ball
 function _svd_encloses(M, method)
@@ -26,8 +26,11 @@ end
 
     @testset "the caller" begin
         A = BallMatrix(randn(MersenneTwister(1), 6, 6))
-        # the default is Miyajima's Theorem 7, which is what `svdbox` is called in his paper
-        @test svdbox(A) == svdbox(A; method = :miyajima2014_thm7)
+        # the default is Theorem 10, the paper's M3: the economy frames of Theorem 7 with the
+        # one-sided residual ||A Vhat - Uhat Sigmahat||, cheaper and at least as tight in the
+        # paper's own tables
+        @test svdbox(A) == svdbox(A; method = :miyajima2014_thm10)
+        @test svdbox(A) != svdbox(A; method = :miyajima2014_thm7)
         @test_throws ArgumentError svdbox(A; method = :nonsense)
         @test length(svdbox(A)) == 6
         # Rump's Theorem 3.1 is stated for square frames only
@@ -91,6 +94,55 @@ end
                 slack = 4 * eps(mid(s4[i]))
                 @test mid(s4[i]) - rad(s4[i]) - slack <= mid(s7[i]) - rad(s7[i])
                 @test mid(s7[i]) + rad(s7[i]) <= mid(s4[i]) + rad(s4[i]) + slack
+            end
+        end
+    end
+
+    @testset "Theorem 10 uses the economy frames and the one-sided residual" begin
+        # No theorem in the paper orders Theorem 10 against Theorem 7, so nothing is asserted
+        # about which is tighter; what is asserted is that both enclose. Measured here, Theorem 10
+        # is tighter on every case tried: 2.2e-14 against 2.5e-14 on a random 8x8, 9.9e-14 against
+        # 1.2e-13 at 20x20, 2e-14 against 2.6e-14 on a 6x12, matching Tables 2 and 3.
+        rng = MersenneTwister(23)
+        for M in (randn(rng, 9, 9), randn(rng, 14, 5), randn(rng, 5, 14))
+            @test _svd_encloses(M, :miyajima2014_thm10)
+            @test _svd_encloses(M, :miyajima2014_thm7)
+        end
+        # the m < n branch exchanges the roles of Fhat and Ghat, since the square frame is the one
+        # carrying the inverse; both orientations must enclose
+        @test _svd_encloses(randn(rng, 4, 11), :miyajima2014_thm10)
+        @test _svd_encloses(randn(rng, 11, 4), :miyajima2014_thm10)
+    end
+
+    @testset "Theorem 10 against Theorem 7 depends on whether the input has a radius" begin
+        # Theorem 10's residual is A Vhat - Uhat Sigmahat, so an interval input's radius passes
+        # through a ball product; Theorem 7's is Uhat Sigmahat Vhat' - A, whose product is formed
+        # from floats alone, so the input radius enters once and unpropagated. Measured maxima:
+        #
+        #   rad(A)   n    Theorem 10   Theorem 7    ratio
+        #   0        6    1.954e-14    2.220e-14    0.88
+        #   1e-12    6    1.204e-11    6.022e-12    2.00
+        #   0        20   8.882e-14    1.066e-13    0.83
+        #   1e-12    20   7.330e-11    2.011e-11    3.65
+        #
+        # so Theorem 10 wins on point input, which is what Miyajima's tables measure, and loses on
+        # interval input by a factor that grows with n. Both enclose; only the widths differ.
+        rng = MersenneTwister(31)
+        n = 12
+        M = randn(rng, n, n)
+        point = BallMatrix(M)
+        wide = BallMatrix(M, fill(1e-12, n, n))
+        @test maximum(rad.(svdbox(point; method = :miyajima2014_thm10))) <=
+              maximum(rad.(svdbox(point; method = :miyajima2014_thm7)))
+        @test maximum(rad.(svdbox(wide; method = :miyajima2014_thm10))) >
+              maximum(rad.(svdbox(wide; method = :miyajima2014_thm7)))
+        # and both still enclose the midpoint matrix's singular values on the interval input
+        strue = svdvals(BigFloat.(M))
+        for method in (:miyajima2014_thm10, :miyajima2014_thm7)
+            sv = svdbox(wide; method)
+            for i in 1:n
+                @test BigFloat(mid(sv[i])) - BigFloat(rad(sv[i])) <= strue[i] <=
+                      BigFloat(mid(sv[i])) + BigFloat(rad(sv[i]))
             end
         end
     end
