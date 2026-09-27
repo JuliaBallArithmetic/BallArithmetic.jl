@@ -171,3 +171,20 @@ end
         @test isfinite(r.radii[i]) == r.certified[i]
     end
 end
+
+@testset "verifyeigall: the caller selects an algorithm and rejects the rest" begin
+    rng = MersenneTwister(11)
+    B = BallMatrix(randn(rng, 12, 12))
+    # the default is the only implemented method, so naming it changes nothing
+    a = verifyeigall(B)
+    b = verifyeigall(B; method = :rump2022aneumann)
+    @test a.radii == b.radii
+    @test a.spectrum_covered == b.spectrum_covered
+    # the paper's own transformation is not implemented, so it is not accepted
+    @test_throws ArgumentError verifyeigall(B; method = :rump2022a)
+    @test_throws ArgumentError verifyeigall(B; method = :nonsense)
+    # keywords reach the algorithm through the caller
+    @test verifyeigall(B; method = :rump2022aneumann, maxiter = 5) isa VerifyEigAllResult
+    # the squareness check lives in the caller
+    @test_throws ArgumentError verifyeigall(BallMatrix(randn(rng, 3, 4)))
+end

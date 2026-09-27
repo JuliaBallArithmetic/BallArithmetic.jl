@@ -136,7 +136,7 @@ end
 # step on X makes the residual smaller still. The inner solve is by an approximate inverse R with
 # the Neumann correction ‖I − RW‖/(1 − ‖I − RW‖) · ‖R·Res‖, which is now multiplied by the size of
 # the residual rather than by the size of A, which is the whole difference.
-function _veig_transform(B::BallMatrix{T}, W::Matrix{CT}, X0::Matrix{CT}) where {T, CT}
+function _rump2022aneumann_transform(B::BallMatrix{T}, W::Matrix{CT}, X0::Matrix{CT}) where {T, CT}
     R = inv(W)
     Rb, Wb = BallMatrix(R), BallMatrix(W)
     S = Rb * Wb - I                        # encloses R W − I
@@ -369,45 +369,51 @@ function _veig_block_and_subspace(Z::BallMatrix{T, CT}, D::Vector{CT}, c) where 
 end
 
 """
-    verifyeigall(B::BallMatrix; maxiter = 20, inflate = 0.1, maxlevels = 3)
+    _rump2022aneumann(B::BallMatrix; maxiter = 20, inflate = 0.1, maxlevels = 3)
         -> VerifyEigAllResult
 
-Verified inclusions of all eigenvalues and invariant subspaces of `B`, by Theorem 2.2 of
-Rump (2022). Returns a [`VerifyEigAllResult`](@ref); `spectrum_covered` says whether the union of
-the returned discs is proved to contain the whole spectrum, which needs both the self-mapping
-condition (2.10) on every cluster and `rho(Z) < 1` on the whole certified block.
+Theorem 2.2 of Rump (2022), with the transformation of §2.3 replaced by an explicit inverse
+and a uniform Neumann bound. Not exported; reached through [`verifyeigall`](@ref) with
+`method = :rump2022aneumann`.
 
-No numerical Jordan decomposition is formed. The accuracy attainable is governed by the Jordan
-structure: an eigenvalue whose largest Jordan block has size `k` cannot be enclosed more tightly
-than about `u^(1/k)` in floating-point arithmetic, so a triple eigenvalue is limited to about
-`1e-5` and the method declines rather than return a bound it cannot justify.
+Everything the theorem requires is here: the clustering of the diagonal by connected
+components, `Rtilde` of (2.8)-(2.9) as an enclosure, the iteration
+`Y = X_O X_D - E - E X_O` with `Z = Rtilde .* Y`, the self-mapping test (2.10) per cluster
+with its left side rounded up, and the condition `rho(Z) < 1` that Theorem 2.2 needs in
+addition to (2.10) before the union of the discs may be called the spectrum (Remark 2.4).
+`spectrum_covered` reports the conjunction of the two.
+
+**Where it departs from the paper.** Rump transforms by a verified linear solve,
+`verifylss(W, B*W)`, which encloses `W^{-1}BW` and proves `W` nonsingular at the same time;
+[`_rump2022aneumann_transform`](@ref) instead forms `R = inv(W)` in floating point, bounds
+`R*W - I` in the spectral norm, and charges that defect to every entry of the residual
+enclosure uniformly. The name records the substitution. Its cost is quantitative: tight
+clusters of size three and above are declined where Rump's Table 4 reports no failures, at
+27 of 30 clusters certified for `k = 3`, because for three eigenvalues separated by
+`u^(1/3)` the entries of `Rtilde` reach `1.6e5` against transformed off-diagonals of order
+`u*cond(W)`, and the quadratic term of the iteration then puts `Z` outside `X`. A faithful
+`_rump2022a` would need the verified solve and does not exist yet.
+
+No numerical Jordan decomposition is formed. The accuracy attainable is governed by the
+Jordan structure: an eigenvalue whose largest Jordan block has size `k` cannot be enclosed
+more tightly than about `u^(1/k)` in floating-point arithmetic, so a triple eigenvalue is
+limited to about `1e-5`, and the method declines rather than return a bound it cannot
+justify. Uncertified clusters carry `Inf` in radius, subspace and block.
 
 When a pass leaves clusters uncertified, the approximate eigenvalues of those clusters are
-recomputed from the corresponding submatrix and the pass is repeated, up to `maxlevels` times.
-Soundness does not rest on that refinement: Theorem 2.1's assertions hold "for any quality" of the
-approximation, and the certification is (2.10) alone.
-
-# Example
-```julia
-r = verifyeigall(BallMatrix(randn(50, 50)))
-if r.spectrum_covered
-    for i in eachindex(r.clusters)
-        println(r.centers[i], " ± ", r.radii[i])     # eigenvalue disc
-        Y = r.subspaces[i]                            # basis of the invariant subspace of B
-    end
-end
-```
+recomputed from the corresponding submatrix and the pass is repeated, up to `maxlevels`
+times. Soundness does not rest on that refinement: Theorem 2.1's assertions hold "for any
+quality" of the approximation, and the certification is (2.10) alone.
 """
-function verifyeigall(B::BallMatrix{T, NT}; maxiter::Integer = 20, inflate::Real = 0.1,
+function _rump2022aneumann(B::BallMatrix{T, NT}; maxiter::Integer = 20, inflate::Real = 0.1,
         maxlevels::Integer = 3) where {T, NT}
     n = size(B, 1)
-    n == size(B, 2) || throw(ArgumentError("verifyeigall expects a square matrix"))
     CT = complex(T)
 
     F = eigen(Matrix{CT}(mid(B)))
     W = Matrix{CT}(F.vectors)
     X0 = Matrix{CT}(Diagonal(F.values))
-    A, defect = _veig_transform(B, W, X0)
+    A, defect = _rump2022aneumann_transform(B, W, X0)
     A === nothing && return VerifyEigAllResult(Vector{Int}[], Bool[], CT[], T[],
         BallMatrix{T, CT}[], BallMatrix{T, CT}[], W, false, 0, defect)
 
@@ -463,4 +469,48 @@ function verifyeigall(B::BallMatrix{T, NT}; maxiter::Integer = 20, inflate::Real
     end
     return VerifyEigAllResult(clusters, collect(certified), centers, radii, subsB, blocksB, W,
         covered, total, defect)
+end
+
+"""
+    verifyeigall(B::BallMatrix; method = :rump2022aneumann, maxiter = 20, inflate = 0.1,
+                 maxlevels = 3) -> VerifyEigAllResult
+
+Verified inclusions of all eigenvalues and invariant subspaces of `B`. Returns a
+[`VerifyEigAllResult`](@ref), whose `spectrum_covered` says whether the union of the returned
+discs is proved to contain the whole spectrum; where a cluster is not certified, its radius,
+subspace and block are `Inf` rather than an unjustified bound.
+
+This function selects an algorithm and does nothing else. Each algorithm is a separate
+unexported function named for the paper it implements, so that a deviation from a paper is
+visible in the name rather than buried in a docstring:
+
+| `method` | routine | what it is |
+|---|---|---|
+| `:rump2022aneumann` | [`_rump2022aneumann`](@ref) | Theorem 2.2 of Rump (2022), with the transformation replaced by an explicit inverse and a uniform Neumann bound |
+
+`:rump2022a`, the paper's own transformation by a verified linear solve, is not implemented,
+and is therefore not accepted here.
+
+# Example
+```julia
+r = verifyeigall(BallMatrix(randn(50, 50)))
+if r.spectrum_covered
+    for i in eachindex(r.clusters)
+        println(r.centers[i], " ± ", r.radii[i])     # eigenvalue disc
+        Y = r.subspaces[i]                            # basis of the invariant subspace of B
+    end
+end
+```
+
+# Reference
+
+S. M. Rump, *Verified error bounds for all eigenvalues and eigenvectors of a matrix*,
+SIAM J. Matrix Anal. Appl. **43**(4):1736-1754, 2022, doi 10.1137/21M1451440.
+"""
+function verifyeigall(B::BallMatrix; method::Symbol = :rump2022aneumann, kwargs...)
+    size(B, 1) == size(B, 2) ||
+        throw(ArgumentError("verifyeigall expects a square matrix"))
+    method === :rump2022aneumann && return _rump2022aneumann(B; kwargs...)
+    throw(ArgumentError("verifyeigall: unknown method $(repr(method)); " *
+                        "the implemented methods are :rump2022aneumann"))
 end
