@@ -26,52 +26,97 @@ end
 _covered(r, λs) = all(any(r.certified[i] && abs(l - r.centers[i]) <= r.radii[i]
                           for i in eachindex(r.centers)) for l in λs)
 
-@testset "verifyeigall: random matrices, every eigenvalue enclosed" begin
+# A reference that is exact by construction. LAPACK's `eigvals` is not usable here: on a random
+# 30 x 30 it is wrong by up to 4.3e-15 where the certified radius is 2.0e-16, so comparing against
+# it would fail the sound enclosure. An upper triangular matrix is exactly representable and its
+# eigenvalues are exactly its diagonal, so it tests the enclosure against the truth.
+function _triangular_with_spectrum(λ::Vector{Float64}, rng)
+    n = length(λ)
+    A = triu(randn(rng, n, n), 1) ./ sqrt(n)
+    for i in 1:n
+        A[i, i] = λ[i]
+    end
+    return A
+end
+
+@testset "verifyeigall: every eigenvalue enclosed, exact reference" begin
     rng = MersenneTwister(20260927)
+    for n in (8, 20, 40)
+        λ = collect(range(-1.0, 1.0; length = n)) .+ 0.13 .* randn(rng, n)
+        B = _triangular_with_spectrum(λ, rng)
+        r = verifyeigall(BallMatrix(B))
+        @test r.transform_defect < 1
+        @test r.spectrum_covered
+        @test length(r.clusters) == n          # well separated, so simple
+        @test _covered(r, λ)                   # against the exact spectrum
+        @test maximum(r.radii) < 1e-8
+    end
+end
+
+@testset "verifyeigall: random matrices are certified and self-consistent" begin
+    rng = MersenneTwister(7)
     for n in (8, 20, 40)
         B = randn(rng, n, n) ./ sqrt(n)
         r = verifyeigall(BallMatrix(B))
         @test r.transform_defect < 1
         @test r.spectrum_covered
-        @test length(r.clusters) == n          # a random matrix has simple eigenvalues
-        @test _covered(r, eigvals(B))
-        @test maximum(r.radii) < 1e-8          # simple eigenvalues are enclosed tightly
+        @test length(r.clusters) == n
+        # each certified disc carries a finite radius, and the radii are tight enough to be
+        # narrower than LAPACK's own accuracy on such a matrix
+        @test all(isfinite, r.radii)
+        @test maximum(r.radii) < 1e-10
     end
 end
 
-@testset "verifyeigall: a cluster is found and enclosed" begin
+@testset "verifyeigall: a near cluster shows its sensitivity, then declines" begin
+    # The paper (lines 315-320) notes that computing V^{-1} J V in floating point does NOT give a
+    # multiple eigenvalue: the k coincident eigenvalues of J become a cluster of radius about
+    # u^(1/k). With an accurate transformation those are resolved individually, so what the test
+    # asserts is the sensitivity showing up in the radii, and the method declining rather than
+    # asserting once the cluster is too tight to separate.
     rng = MersenneTwister(11)
-    for k in (2, 3)
-        n = 30
-        B = _rump_cluster(n, k, rng)
-        r = verifyeigall(BallMatrix(B))
-        @test r.transform_defect < 1
-        # the k coincident eigenvalues are grouped, so there are fewer than n clusters
-        @test length(r.clusters) <= n - k + 1
-        @test any(length(c) >= k for c in r.clusters)
-        if r.spectrum_covered
-            @test _covered(r, eigvals(B))
-            # and no tighter than Wilkinson's floor allows
-            @test maximum(r.radii) >= eps(Float64)^(1 / k) / 1e4
-        end
+    res = map((1, 2, 3)) do k
+        verifyeigall(BallMatrix(_rump_cluster(30, k, rng)))
     end
+    for r in res
+        @test r.transform_defect < 1
+        @test all(isfinite(r.radii[i]) == r.certified[i] for i in eachindex(r.clusters))
+    end
+    # simple eigenvalues: everything certified, at the rounding unit
+    @test res[1].spectrum_covered
+    @test maximum(res[1].radii) < 1e-13
+    # a double eigenvalue: still certified, but the radius is at Wilkinson's u^(1/2)
+    @test res[2].spectrum_covered
+    @test maximum(res[2].radii) > 1e-10
+    @test maximum(res[2].radii) < 1e-6
+    # a triple eigenvalue: the members of the cluster can no longer be certified individually,
+    # so the method declines on them and says so rather than returning a bound
+    @test count(res[3].certified) < length(res[3].clusters)
+    @test !res[3].spectrum_covered
 end
 
-@testset "verifyeigall: a defective matrix is enclosed, not mis-enclosed" begin
+@testset "verifyeigall: a defective matrix is declined, not mis-enclosed" begin
+    # A matrix unitarily similar to one Jordan block of size 24: the whole spectrum is the single
+    # point 0.5, and Wilkinson's bound puts the narrowest attainable inclusion at u^(1/24) = 0.22.
+    # Rump writes of such a matrix (lines 491-493) that "verified inclusions can hardly be
+    # computed - and they are not". What matters is that nothing false is asserted.
     n = 24
     J = diagm(0 => fill(0.5 + 0im, n), 1 => fill(1.0 + 0im, n - 1))
     U = Matrix(qr(randn(MersenneTwister(4), ComplexF64, n, n)).Q)
     r = verifyeigall(BallMatrix(U * J * U'))
-    # the whole spectrum is the single point 0.5; whatever is certified must contain it
+
+    @test !r.spectrum_covered                     # the union is not claimed to be the spectrum
+    # whatever is certified must contain the true eigenvalue, and nothing certified may be
+    # narrower than Wilkinson's floor
     for i in eachindex(r.clusters)
         r.certified[i] || continue
-        @test abs(0.5 - r.centers[i]) <= r.radii[i] || length(r.clusters) > 1
+        @test abs(0.5 - r.centers[i]) <= r.radii[i]
+        @test r.radii[i] >= 0.1
     end
-    if r.spectrum_covered
-        @test any(abs(0.5 - r.centers[i]) <= r.radii[i] for i in eachindex(r.centers))
-        # Wilkinson: nothing below u^(1/24) ≈ 0.22 is attainable here
-        @test maximum(r.radii) >= 0.1
-    end
+    @test all(isfinite(r.radii[i]) == r.certified[i] for i in eachindex(r.clusters))
+    # the result is either a decline or an honest wide enclosure, never a narrow wrong one
+    @test count(r.certified) == 0 ||
+          all(r.radii[i] >= 0.1 for i in eachindex(r.clusters) if r.certified[i])
 end
 
 @testset "verifyeigall: declines rather than asserting" begin
