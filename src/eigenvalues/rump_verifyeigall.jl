@@ -79,49 +79,8 @@ end
 # The accurate residual: Rump's `prodK`
 # ---------------------------------------------------------------------------------------------
 #
-# The transformation needs an enclosure of the residual B W - W X, and a naive ball product will
-# not do: the two terms are nearly equal, so the enclosure's radius comes out the size of the
-# residual itself (measured: residual 1.6e-15, ball radius 1.5e-15) and carries no information.
-# Rump uses error-free transformations. TwoProduct with an FMA is exact,
-#
-#     x = fl(a b),   y = fma(a, b, -x)   so that   a b = x + y exactly,
-#
-# and TwoSum likewise for addition, so a compensated accumulation recovers the residual to about
-# twice the working precision. Measured against Double64 on a 40 x 40 instance, the compensated
-# value agrees to 3e-33 where the plain BLAS product is wrong by 1e-17, the size of the answer.
-#
-# For a certified bound the accurate value is not enough; the error bound of Ogita, Rump and Oishi
-# for a compensated dot product of length N is used,
-#
-#     |result - exact| <= u |exact| + gamma_N^2 sum |a_i| |b_i|,     gamma_N = N u / (1 - N u),
-#
-# with the absolute products evaluated by one further matrix multiplication, rounded upward.
-
-@inline function _eft_twoprod(a::T, b::T) where {T <: AbstractFloat}
-    x = a * b
-    return x, fma(a, b, -x)
-end
-
-@inline function _eft_twosum(a::T, b::T) where {T <: AbstractFloat}
-    x = a + b
-    z = x - a
-    return x, (a - (x - z)) + (b - z)
-end
-
-# One entry of the real part or the imaginary part of (P Q - R S), accumulated with compensation.
-# `terms` is a tuple of (row vector, column vector) pairs whose products are summed.
-@inline function _eft_accumulate(pairs, i, j)
-    s = 0.0
-    e = 0.0
-    for (A, Bmat, sgn) in pairs
-        @inbounds for k in axes(A, 2)
-            p, ep = _eft_twoprod(sgn * A[i, k], Bmat[k, j])
-            s, es = _eft_twosum(s, p)
-            e += ep + es
-        end
-    end
-    return s + e
-end
+# Built on the error-free transformations of `src/error_free_transformations.jl`, which carry the
+# reasoning for why a ball product will not serve here.
 
 """
 Enclosure of `B*W - W*X` with `B` a ball matrix and `W`, `X` floating point, by compensated
@@ -138,17 +97,16 @@ function _veig_residual(B::BallMatrix{T}, W::Matrix{CT}, X::Matrix{CT}) where {T
     M = Matrix{CT}(undef, n, n)
     for j in 1:n, i in 1:n
         # Re(BW - WX) = Bre Wre - Bim Wim - (Wre Xre - Wim Xim)
-        re = _eft_accumulate(((Bre, Wre, 1.0), (Bim, Wim, -1.0),
+        re = compensated_terms(((Bre, Wre, 1.0), (Bim, Wim, -1.0),
                 (Wre, Xre, -1.0), (Wim, Xim, 1.0)), i, j)
         # Im(BW - WX) = Bre Wim + Bim Wre - (Wre Xim + Wim Xre)
-        im_ = _eft_accumulate(((Bre, Wim, 1.0), (Bim, Wre, 1.0),
+        im_ = compensated_terms(((Bre, Wim, 1.0), (Bim, Wre, 1.0),
                 (Wre, Xim, -1.0), (Wim, Xre, -1.0)), i, j)
         M[i, j] = CT(re, im_)
     end
     u = eps(T) / 2
-    N = 4 * n                                  # products summed per entry
+    γ = gamma_bound(4 * n, T)                  # 4n products summed per entry
     r = setrounding(T, RoundUp) do
-        γ = (N * u) / (one(T) - N * u)
         absprod = (abs.(Bm) * abs.(W)) .+ (abs.(W) * abs.(X))
         u .* abs.(M) .+ (γ * γ) .* absprod .+ Br * abs.(W)
     end
