@@ -14,7 +14,7 @@
 #
 # Two routines implement the theorem, distinguished by the transformation and named for it:
 # `_rump2022a`, which encloses the correction by the paper's verified linear solve (Algorithm 10.7
-# of Rump (2010), `_rump2010_verifylss`), and `_rump2022aneumann`, which bounds it through an
+# of Rump (2010), `_rump2010_alg10_7`), and `_rump2022aneumann`, which bounds it through an
 # explicit inverse and a uniform Neumann term. `verifyeigall` selects between them.
 #
 # The block diagonalisation this method avoids is the second algorithm of
@@ -117,10 +117,27 @@ end
 
 """
 Enclosure of `B*W - W*X` with `B` a ball matrix and `W`, `X` floating point, by compensated
-accumulation with error-free transformations and the Ogita-Rump-Oishi bound. This is the role
-`prodK` plays in Rump's `transform`.
+accumulation with error-free transformations and the Ogita-Rump-Oishi bound.
+
+This is Rump's `prodK`, called in his Algorithm `transform` as `prodK(B, W, -W, X)` and
+described there as computing "an accurate approximation of the residual `BW - WX` using
+error-free transformations", with a second output giving the radius. The paper attributes
+`prodK` to no numbered reference; it is a routine of his in INTLAB. The parts have their own
+provenance: `two_sum` is Knuth's, `two_product` and the splitting are Dekker's and Veltkamp's,
+and the error bound is
+
+    @Article{OgitaRumpOishi2005,
+      author  = {Ogita, Takeshi and Rump, Siegfried M. and Oishi, Shin'ichi},
+      title   = {Accurate Sum and Dot Product},
+      journal = {SIAM Journal on Scientific Computing},
+      year    = {2005},
+      volume  = {26},
+      number  = {6},
+      pages   = {1955--1988},
+      doi     = {10.1137/030601818},
+    }
 """
-function _veig_residual(B::BallMatrix{T}, W::Matrix{CT}, X::Matrix{CT}) where {T, CT}
+function _rump2022a_prodK(B::BallMatrix{T}, W::Matrix{CT}, X::Matrix{CT}) where {T, CT}
     n = size(W, 1)
     Bm, Br = mid(B), rad(B)
     # split into real components so the error-free transformations apply
@@ -128,13 +145,16 @@ function _veig_residual(B::BallMatrix{T}, W::Matrix{CT}, X::Matrix{CT}) where {T
     Wre, Wim = real.(W), imag.(W)
     Xre, Xim = real.(X), imag.(X)
     M = Matrix{CT}(undef, n, n)
+    # the signs must carry the working type: Float64 literals here made the error-free
+    # transformations promote and fail on a BigFloat input
+    p1, m1 = one(T), -one(T)
     for j in 1:n, i in 1:n
         # Re(BW - WX) = Bre Wre - Bim Wim - (Wre Xre - Wim Xim)
-        re = compensated_terms(((Bre, Wre, 1.0), (Bim, Wim, -1.0),
-                (Wre, Xre, -1.0), (Wim, Xim, 1.0)), i, j)
+        re = compensated_terms(((Bre, Wre, p1), (Bim, Wim, m1),
+                (Wre, Xre, m1), (Wim, Xim, p1)), i, j)
         # Im(BW - WX) = Bre Wim + Bim Wre - (Wre Xim + Wim Xre)
-        im_ = compensated_terms(((Bre, Wim, 1.0), (Bim, Wre, 1.0),
-                (Wre, Xim, -1.0), (Wim, Xre, -1.0)), i, j)
+        im_ = compensated_terms(((Bre, Wim, p1), (Bim, Wre, p1),
+                (Wre, Xim, m1), (Wim, Xre, m1)), i, j)
         M[i, j] = CT(re, im_)
     end
     u = eps(T) / 2
@@ -172,9 +192,9 @@ function _rump2022aneumann_transform(B::BallMatrix{T}, W::Matrix{CT}, X0::Matrix
 
     # one Newton step on the approximate eigenvalue matrix, in floating point: it only has to be
     # a better approximation, nothing here is certified
-    X = X0 + R * mid(_veig_residual(B, W, X0))
+    X = X0 + R * mid(_rump2022a_prodK(B, W, X0))
 
-    Res = _veig_residual(B, W, X)          # certified enclosure of B W − W X
+    Res = _rump2022a_prodK(B, W, X)          # certified enclosure of B W − W X
     P = Rb * Res                           # encloses R (B W − W X)
     extra = setrounding(T, RoundUp) do
         defect * upper_bound_L2_opnorm(P) / (one(T) - defect)
@@ -197,9 +217,9 @@ end
 function _rump2022a_transform(B::BallMatrix{T}, W::Matrix{CT}, X0::Matrix{CT}) where {T, CT}
     # one Newton step on the approximate eigenvalue matrix, in floating point: it only has to be
     # a better approximation, nothing here is certified
-    X = X0 + (W \ mid(_veig_residual(B, W, X0)))
+    X = X0 + (W \ mid(_rump2022a_prodK(B, W, X0)))
 
-    Res = _veig_residual(B, W, X)          # certified enclosure of B W - W X
+    Res = _rump2022a_prodK(B, W, X)          # certified enclosure of B W - W X
     sol = verifylss(BallMatrix(W), Res)
     # Theorem 10.8: success proves W nonsingular and encloses the solution of W*Delta = Res.
     # Without it there is no enclosure of W^{-1}BW, so the transformation declines.
@@ -214,7 +234,7 @@ end
 # mig of the ball difference d_i − d_j: the least |z| over the two enclosures, which is zero when
 # they overlap. Rump's guess at the Jordan structure is the connected components of the graph on
 # which that is below 1e-14 ‖A‖_inf.
-function _veig_clusters(d_mid::Vector{CT}, d_rad::Vector{T}, normA::T) where {T, CT}
+function _rump2022a_clusters(d_mid::Vector{CT}, d_rad::Vector{T}, normA::T) where {T, CT}
     n = length(d_mid)
     tol = setrounding(T, RoundUp) do
         T(1e-14) * normA
@@ -249,7 +269,7 @@ end
 #
 # The rounding term is 4 eps(|ab|), which covers the four multiplications and two additions of a
 # complex product (relative error at most gamma_4 ~ 4u, against eps = 2u).
-function _veig_hadamard(Rm::Matrix{CT}, Rr::Matrix{T}, Y::BallMatrix{T}) where {T, CT}
+function _rump2022a_eq2_3(Rm::Matrix{CT}, Rr::Matrix{T}, Y::BallMatrix{T}) where {T, CT}
     m = Rm .* mid(Y)
     r = setrounding(T, RoundUp) do
         abs.(Rm) .* rad(Y) .+ Rr .* abs.(mid(Y)) .+ Rr .* rad(Y) .+ 4 .* eps.(abs.(m))
@@ -258,7 +278,7 @@ function _veig_hadamard(Rm::Matrix{CT}, Rr::Matrix{T}, Y::BallMatrix{T}) where {
 end
 
 # X_D, the block diagonal part along the clusters, and X_O the rest.
-function _veig_split(X::BallMatrix{T}, clusters) where {T}
+function _rump2022a_split(X::BallMatrix{T}, clusters) where {T}
     mD = zero(mid(X))
     rD = zero(rad(X))
     for c in clusters
@@ -273,7 +293,7 @@ function _veig_split(X::BallMatrix{T}, clusters) where {T}
 end
 
 # Epsilon-inflation, the first of the three standard techniques.
-function _veig_inflate(Y::BallMatrix{T}; factor = T(0.1), eta = T(1e-300)) where {T}
+function _rump2022a_inflate(Y::BallMatrix{T}; factor = T(0.1), eta = T(1e-300)) where {T}
     r = setrounding(T, RoundUp) do
         rad(Y) .* (one(T) + factor) .+ eta
     end
@@ -282,7 +302,7 @@ end
 
 # Z V_i ⊆ int(X V_i), column by column: (2.10). This is `in0` restricted to the columns of the
 # cluster, so it uses the package's interior-containment predicate rather than repeating it.
-_veig_contained(Z::BallMatrix{T}, X::BallMatrix{T}, cols) where {T} =
+_rump2022a_eq2_10(Z::BallMatrix{T}, X::BallMatrix{T}, cols) where {T} =
     in0(Z[:, cols], X[:, cols])
 
 """
@@ -308,7 +328,7 @@ r.spectrum_covered && println("all ", length(r.clusters), " clusters certified")
 # One pass of steps 3 to 6 on a fixed set of approximate eigenvalues `D`.
 # Returns (certified, radii, subspaces, blocks, covered, iters); `Z` is kept so the invariant
 # subspaces can be read off the same iteration that certified them.
-function _veig_pass(A::BallMatrix{T}, clusters, D::Vector{CT}, maxiter::Integer,
+function _rump2022a_thm2_2_pass(A::BallMatrix{T}, clusters, D::Vector{CT}, maxiter::Integer,
         inflate::Real) where {T, CT}
     n = size(A, 1)
     m = length(clusters)
@@ -341,7 +361,7 @@ function _veig_pass(A::BallMatrix{T}, clusters, D::Vector{CT}, maxiter::Integer,
     (all(isfinite, RRm) && all(isfinite, RRr)) ||
         return (falses(m), fill(T(Inf), m), Matrix{CT}[], BallMatrix[], false, 0)
 
-    Y = _veig_hadamard(-RRm, RRr, E)
+    Y = _rump2022a_eq2_3(-RRm, RRr, E)
 
     # Theorem 2.2 is a statement about ONE Y: the set Phi satisfying (2.10), the rows and columns
     # J it occupies, and max{rho(Z) : Z in Z} < 1 on that submatrix. Certification is therefore
@@ -354,10 +374,10 @@ function _veig_pass(A::BallMatrix{T}, clusters, D::Vector{CT}, maxiter::Integer,
     iters = 0
     for it in 1:maxiter
         iters = it
-        X = _veig_inflate(Y; factor = T(inflate))
-        XD, XO = _veig_split(X, clusters)
-        Z = _veig_hadamard(RRm, RRr, XO * XD - E - E * XO)
-        ok = [_veig_contained(Z, X, c) for c in clusters]
+        X = _rump2022a_inflate(Y; factor = T(inflate))
+        XD, XO = _rump2022a_split(X, clusters)
+        Z = _rump2022a_eq2_3(RRm, RRr, XO * XD - E - E * XO)
+        ok = [_rump2022a_eq2_10(Z, X, c) for c in clusters]
         if count(ok) >= count(certified)
             certified = BitVector(ok)
             fill!(radii, T(Inf))
@@ -366,7 +386,7 @@ function _veig_pass(A::BallMatrix{T}, clusters, D::Vector{CT}, maxiter::Integer,
                 # Remark 2.4's rho(mag(Z_ii)), by the package's Collatz-Wielandt bound;
                 # collatz_upper_bound applies upper_abs internally, which is |mid| + rad
                 radii[i] = collatz_upper_bound(BallMatrix(mid(Z)[c, c], rad(Z)[c, c]))
-                blocks[i], subspaces[i] = _veig_block_and_subspace(Z, D, c)
+                blocks[i], subspaces[i] = _rump2022a_thm2_2_block(Z, D, c)
             end
             # Remark 2.4: rho(mag(Z)) < 1 on the rows and columns of the certified clusters is
             # what upgrades "each M_i is a Jordan block" to "their union is the whole spectrum".
@@ -391,7 +411,7 @@ end
 # together with the off-block entries of the cluster's columns: a graph representation, normalised
 # so that Yhat_i[mu_i, :] is exactly the identity. That normalisation is why the subspace stays
 # well posed where an individual eigenvector of a multiple eigenvalue does not.
-function _veig_block_and_subspace(Z::BallMatrix{T, CT}, D::Vector{CT}, c) where {T, CT}
+function _rump2022a_thm2_2_block(Z::BallMatrix{T, CT}, D::Vector{CT}, c) where {T, CT}
     n = size(Z, 1)
     k = length(c)
     Zm, Zr = mid(Z), rad(Z)
@@ -448,7 +468,7 @@ times. Soundness does not rest on that refinement: Theorem 2.1's assertions hold
 quality" of the approximation, and the certification is (2.10) alone.
 """
 _rump2022aneumann(B::BallMatrix; kwargs...) =
-    _verifyeigall_core(B, _rump2022aneumann_transform; kwargs...)
+    _rump2022a_thm2_2_core(B, _rump2022aneumann_transform; kwargs...)
 
 """
     _rump2022a(B::BallMatrix; maxiter = 20, inflate = 0.1, maxlevels = 3)
@@ -459,17 +479,17 @@ Not exported; reached through [`verifyeigall`](@ref) with `method = :rump2022a`.
 
 Identical to [`_rump2022aneumann`](@ref) in every step of the theorem, and differing only in
 [`_rump2022a_transform`](@ref): the correction `Δ` to the approximate eigenvalue matrix is
-enclosed by solving `WΔ = BW − WX` with `_rump2010_verifylss`, which is the Krawczyk iteration
+enclosed by solving `WΔ = BW − WX` with `_rump2010_alg10_7`, which is the Krawczyk iteration
 Rump's `verifylss` performs, instead of being bounded through an explicit inverse. The solve
 proves `W` nonsingular as a by-product, so no separate nonsingularity argument is needed.
 """
-_rump2022a(B::BallMatrix; kwargs...) = _verifyeigall_core(B, _rump2022a_transform; kwargs...)
+_rump2022a(B::BallMatrix; kwargs...) = _rump2022a_thm2_2_core(B, _rump2022a_transform; kwargs...)
 
 # The algorithm of Theorem 2.2, shared by both transformations: `transform(B, W, X0)` returns an
 # enclosure of W^{-1} B W together with the diagnostic that certified it, or `nothing` when it
 # cannot certify one. Everything after the transformation is the theorem itself and is identical
 # for the two, so it lives here once.
-function _verifyeigall_core(B::BallMatrix{T, NT}, transform;
+function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform;
         maxiter::Integer = 20, inflate::Real = 0.1,
         maxlevels::Integer = 3) where {T, NT}
     n = size(B, 1)
@@ -485,11 +505,11 @@ function _verifyeigall_core(B::BallMatrix{T, NT}, transform;
     normA = upper_bound_L_inf_opnorm(A)
     dm = CT[mid(A)[i, i] for i in 1:n]
     dr = T[rad(A)[i, i] for i in 1:n]
-    clusters = _veig_clusters(dm, dr, normA)
+    clusters = _rump2022a_clusters(dm, dr, normA)
     D = copy(dm)
 
     certified, radii, subspaces, blocks, covered, iters =
-        _veig_pass(A, clusters, D, maxiter, inflate)
+        _rump2022a_thm2_2_pass(A, clusters, D, maxiter, inflate)
     total = iters
 
     # The recursion of step 6: where a pass leaves clusters open, recompute their approximate
@@ -508,7 +528,7 @@ function _verifyeigall_core(B::BallMatrix{T, NT}, transform;
         all(isfinite, sub) || break
         Dnew = copy(D)
         Dnew[J] .= sub
-        c2, r2, s2, b2, cov2, it2 = _veig_pass(A, clusters, Dnew, maxiter, inflate)
+        c2, r2, s2, b2, cov2, it2 = _rump2022a_thm2_2_pass(A, clusters, Dnew, maxiter, inflate)
         total += it2
         count(c2) > count(certified) || break
         certified, radii, subspaces, blocks, covered = c2, r2, s2, b2, cov2
@@ -553,10 +573,17 @@ visible in the name rather than buried in a docstring:
 |---|---|---|
 | `:rump2022a` | [`_rump2022a`](@ref) | Theorem 2.2 of Rump (2022) with the paper's transformation, a verified linear solve |
 | `:rump2022aneumann` | [`_rump2022aneumann`](@ref) | the same theorem with the transformation bounded through an explicit inverse and a uniform Neumann term |
+| `:miyajima2014a` | [`_miyajima2014a_alg1`](@ref) | Algorithms 1 and 2 of Miyajima (2014): Gershgorin discs on the pencil transformed by an approximate generalised eigendecomposition, each cluster certified by Brouwer's theorem on a Newton operator |
 
 The default is `:rump2022a`. The Neumann variant is kept because it does not need the solve to
 succeed, so it still returns a result where the solve declines; where both succeed, the
-faithful one is at least as tight.
+faithful one is at least as tight. `:miyajima2014a` is the only method that takes a pencil, so
+`verifyeigall(A, B)` accepts it alone; called with one matrix it solves `A x = λ x`.
+
+Note that `spectrum_covered` is not the same condition in the two families. Rump's needs the
+self-mapping test on every cluster together with `ρ(Z) < 1`; Miyajima's needs only `‖t‖_∞ < 1`,
+after which the discs cover the spectrum whether or not the per-cluster tests succeed. In both,
+`certified[i]` is the per-cluster claim about the invariant subspace.
 
 # Example
 ```julia
@@ -579,6 +606,29 @@ function verifyeigall(B::BallMatrix; method::Symbol = :rump2022a, kwargs...)
         throw(ArgumentError("verifyeigall expects a square matrix"))
     method === :rump2022a && return _rump2022a(B; kwargs...)
     method === :rump2022aneumann && return _rump2022aneumann(B; kwargs...)
-    throw(ArgumentError("verifyeigall: unknown method $(repr(method)); " *
-                        "the implemented methods are :rump2022a and :rump2022aneumann"))
+    method === :miyajima2014a &&
+        return _miyajima2014a_alg1(B, BallMatrix(Matrix{eltype(mid(B))}(I, size(B)...)))
+    throw(ArgumentError("verifyeigall: unknown method $(repr(method)); the implemented " *
+                        "methods are :rump2022a, :rump2022aneumann and :miyajima2014a"))
+end
+
+"""
+    verifyeigall(A::BallMatrix, B::BallMatrix; method = :miyajima2014a)
+        -> VerifyEigAllResult
+
+Verified inclusions of all eigenvalues and invariant subspaces of the pencil `A x = λ B x`.
+
+Only [`_miyajima2014a_alg1`](@ref) solves a pencil, so `:miyajima2014a` is the only method accepted
+here; Rump (2022) is stated for a single matrix and `:rump2022a` is refused rather than applied
+to `B⁻¹A`, which would be a different algorithm from the one the name refers to. `B` is not
+assumed nonsingular: its nonsingularity is proved, by `‖t‖_∞ < 1`.
+"""
+function verifyeigall(A::BallMatrix, B::BallMatrix; method::Symbol = :miyajima2014a)
+    size(A) == size(B) ||
+        throw(DimensionMismatch("verifyeigall: A is $(size(A)) and B is $(size(B))"))
+    size(A, 1) == size(A, 2) ||
+        throw(ArgumentError("verifyeigall expects square matrices"))
+    method === :miyajima2014a && return _miyajima2014a_alg1(A, B)
+    throw(ArgumentError("verifyeigall: method $(repr(method)) does not take a pencil; " *
+                        "the implemented pencil method is :miyajima2014a"))
 end

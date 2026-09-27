@@ -105,6 +105,7 @@ export RumpLange2023Result, rump_lange_2023_cluster_bounds, refine_cluster_bound
 include("decompositions/svd/singular_gerschgorin.jl")
 include("error_free_transformations.jl")
 include("eigenvalues/rump_verifyeigall.jl")
+include("eigenvalues/miyajima_2014a.jl")
 include("decompositions/svd/schur_gershgorin.jl")
 include("decompositions/svd/schur_newton_vbd.jl")
 include("decompositions/svd/svd.jl")

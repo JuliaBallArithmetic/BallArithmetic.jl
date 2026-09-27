@@ -75,8 +75,11 @@ is the Ogita-Rump-Oishi one,
 with `N` the number of products summed, and the absolute products evaluated separately.
 """
 @inline function compensated_terms(pairs, i::Integer, j::Integer)
-    s = 0.0
-    e = 0.0
+    # The accumulators take the working type from the data. With `s = 0.0` the first `two_sum`
+    # promoted and threw on a BigFloat input, so the routine was Float64 only in practice.
+    T = promote_type(eltype(first(pairs)[1]), eltype(first(pairs)[2]))
+    s = zero(T)
+    e = zero(T)
     for (A, B, sgn) in pairs
         @inbounds for k in axes(A, 2)
             p, ep = two_product(sgn * A[i, k], B[k, j])

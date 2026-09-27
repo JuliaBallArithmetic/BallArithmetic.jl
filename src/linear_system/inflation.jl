@@ -1,7 +1,7 @@
 ##
 # Verified solution of the linear system A x = b, A and b balls.
 #
-# The algorithm is `_rump2010_verifylss`, Algorithm 10.7 with Theorem 10.8 of
+# The algorithm is `_rump2010_alg10_7`, Algorithm 10.7 with Theorem 10.8 of
 #
 #   @Article{Rump2010,
 #     author    = {Rump, Siegfried M.},
@@ -63,7 +63,7 @@ end
 Base.length(::VerifyLssResult) = 2
 
 """
-    _rump2010_verifylss(A::BallMatrix{T}, b::BallVector{T};
+    _rump2010_alg10_7(A::BallMatrix{T}, b::BallVector{T};
                       r=0.1, ϵ=1e-20, iter_max=20) where {T<:AbstractFloat}
 
 Algorithm 10.7 of Rump (2010), the algorithm behind INTLAB's `verifylss`: an enclosure of the
@@ -157,7 +157,7 @@ else
 end
 ```
 """
-function _rump2010_verifylss(A::BallMatrix{T}, b::BallVector{T};
+function _rump2010_alg10_7(A::BallMatrix{T}, b::BallVector{T};
         r = 0.1, ϵ = 1e-20, iter_max = 20) where {T <: AbstractFloat}
     n = size(A, 1)
     r1 = Ball(T(1), T(r))
@@ -212,7 +212,7 @@ function _rump2010_verifylss(A::BallMatrix{T}, b::BallVector{T};
     return VerifyLssResult(BallVector(xs + x), false, iterations, spectral_radius, cond_A)
 end
 
-function _rump2010_verifylss(A::BallMatrix{T}, B::BallMatrix{T};
+function _rump2010_alg10_7(A::BallMatrix{T}, B::BallMatrix{T};
         r = 0.1, ϵ = 1e-20, iter_max = 20) where {T <: AbstractFloat}
     r1 = Ball(T(1), T(r))
     ϵ1 = fill(Ball(T(0), T(ϵ)), size(B))
@@ -274,7 +274,7 @@ unexported function named for the paper it implements:
 
 | `method` | routine | what it is |
 |---|---|---|
-| `:rump2010` | [`_rump2010_verifylss`](@ref) | Algorithm 10.7 of Rump (2010), the algorithm behind INTLAB's `verifylss` |
+| `:rump2010` | [`_rump2010_alg10_7`](@ref) | Algorithm 10.7 of Rump (2010), the algorithm behind INTLAB's `verifylss` |
 
 # Reference
 
@@ -287,7 +287,7 @@ function verifylss(A::BallMatrix, b; method::Symbol = :rump2010, kwargs...)
         throw(ArgumentError("verifylss expects a square matrix"))
     size(A, 2) == size(b, 1) ||
         throw(DimensionMismatch("verifylss: A has $(size(A, 2)) columns, b has $(size(b, 1)) rows"))
-    method === :rump2010 && return _rump2010_verifylss(A, b; kwargs...)
+    method === :rump2010 && return _rump2010_alg10_7(A, b; kwargs...)
     throw(ArgumentError("verifylss: unknown method $(repr(method)); " *
                         "the implemented methods are :rump2010"))
 end
