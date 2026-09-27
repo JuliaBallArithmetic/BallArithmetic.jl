@@ -419,6 +419,11 @@ rather than an optimal one: the crossover sits somewhere between `1e-16` and `1e
 small nonzero radius this rule gives up the 4 to 10 per cent that Theorem 10 would still have won.
 Locating the crossover would mean fitting a threshold, and in exchange the rule never pays the
 factor of 2 to 3.7 that grows with `n`. Pass `method` explicitly to override it.
+
+The test is `iszero(rad(A))`, which is `maximum(rad(A)) == 0` since radii are non-negative; it is
+spelled with `iszero` only because that stops at the first nonzero instead of scanning the whole
+matrix. So a single radius of `1e-30` sends the whole matrix to Theorem 7, which is the crudeness
+described above and is intended.
 """
 _svd_auto_theorem(A::BallMatrix) =
     iszero(rad(A)) ? :miyajima2014_thm10 : :miyajima2014_thm7
