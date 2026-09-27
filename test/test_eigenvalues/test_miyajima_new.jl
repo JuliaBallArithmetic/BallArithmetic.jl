@@ -280,7 +280,7 @@ end
     A = BallMatrix(A_mid, A_rad)
 
     # Step 1: VBD
-    vbd = miyajima_vbd(A; hermitian=true)
+    vbd = schur_gershgorin_enclosure(A; hermitian=true)
     @test length(vbd.clusters) >= 2
 
     # Step 2: Projectors
@@ -309,7 +309,7 @@ end
         A_big = BallMatrix(Diagonal(BigFloat[1.0, 1.1, 5.0]))
 
         # VBD
-        vbd = miyajima_vbd(A_big; hermitian=true)
+        vbd = schur_gershgorin_enclosure(A_big; hermitian=true)
         @test vbd.remainder_norm < BigFloat(1e-30)
 
         # Projectors
@@ -328,7 +328,7 @@ end
                             0.1+0.05im  5.0+0.0im])
 
     # VBD
-    vbd = miyajima_vbd(A_complex; hermitian=true)
+    vbd = schur_gershgorin_enclosure(A_complex; hermitian=true)
     @test length(vbd.clusters) == 2
 
     # Projectors
@@ -346,7 +346,7 @@ end
     A = BallMatrix([2.0 1.0; 0.5 3.0])
 
     # VBD (using Schur form)
-    vbd = miyajima_vbd(A; hermitian=false)
+    vbd = schur_gershgorin_enclosure(A; hermitian=false)
     @test vbd.remainder_norm >= 0
 
     # Projectors

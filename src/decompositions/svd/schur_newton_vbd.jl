@@ -28,7 +28,7 @@ using LinearAlgebra
     SchurNewtonVBDResult
 
 Container returned by [`schur_newton_vbd`](@ref).  Field names are duck-type
-compatible with [`MiyajimaVBDResult`](@ref) so the same downstream consumers
+compatible with [`SchurGershgorinResult`](@ref) so the same downstream consumers
 (block Schur, spectral projectors) work unchanged, with three extra
 certification scalars (`nrmR2`, `beta`, `kappa`).
 

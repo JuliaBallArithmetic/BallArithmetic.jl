@@ -105,13 +105,13 @@ export RigorousGeneralizedEigenvaluesResult, RigorousEigenvaluesResult,
 export Rump2022aResult, rump_2022a_eigenvalue_bounds
 export RumpLange2023Result, rump_lange_2023_cluster_bounds, refine_cluster_bounds
 include("decompositions/svd/singular_gerschgorin.jl")
-include("decompositions/svd/miyajima_vbd.jl")
+include("decompositions/svd/schur_gershgorin.jl")
 include("decompositions/svd/schur_newton_vbd.jl")
 include("decompositions/svd/svd.jl")
 include("decompositions/svd/adaptive_ogita_svd.jl")
 include("decompositions/svd/precision_cascade_svd.jl")
 export SchurNewtonVBDResult, schur_newton_vbd, block_enclosure
-export MiyajimaVBDResult, RigorousSVDResult, miyajima_vbd, rigorous_svd, svdbox,
+export SchurGershgorinResult, RigorousSVDResult, schur_gershgorin_enclosure, rigorous_svd, svdbox,
        rigorous_svd_gpu, rigorous_svd_m4, refine_svd_bounds_with_vbd,
        OgitaSVDRefinementResult, AdaptiveSVDResult, ogita_svd_refine, adaptive_ogita_svd,
        ogita_iterations_for_precision, ogita_svd_refine_multifloat,

@@ -1,15 +1,19 @@
 """
-    MiyajimaVBDResult
+    SchurGershgorinResult
 
-Container returned by [`miyajima_vbd`](@ref) encapsulating the data
-produced by the verified block diagonalisation (VBD) step. The fields
-contain the basis that block diagonalises the midpoint matrix, the
-transformed enclosure, its block-diagonal truncation, the rigorous
-remainder, and the Gershgorin clusters that certify how the spectrum
-groups together.
+Container returned by [`schur_gershgorin_enclosure`](@ref). The fields hold the
+unitary basis (Schur, or eigenvectors when the input is Hermitian), the enclosure
+of `A` transported to it, the block-diagonal part of that enclosure, the rigorous
+remainder, and the clusters read off the inflated Gershgorin discs.
+
+The basis is **not** a block-diagonalising one: it is the unitary basis of the
+midpoint matrix, permuted so the clusters are contiguous, so `remainder` is the
+off-block part of `Z*AZ` and is not small. Field names are duck-type compatible
+with [`SchurNewtonVBDResult`](@ref), whose basis does decouple the blocks, so the
+same downstream consumers accept either.
 """
-struct MiyajimaVBDResult{MT, BT, IT, RT, ET}
-    """Basis that block diagonalises `mid(A)`."""
+struct SchurGershgorinResult{MT, BT, IT, RT, ET}
+    """Unitary basis of `mid(A)`, column-permuted so the clusters are contiguous."""
     basis::MT
     """Interval matrix expressed in the chosen basis."""
     transformed::BT
@@ -40,10 +44,10 @@ end
 
 Trait distinguishing VBD results whose `basis` is genuinely unitary (so that
 `adjoint(basis)` is its inverse) from those whose basis is only block-orthonormal
-(so that consumers must use `inv(basis)`).  `MiyajimaVBDResult` (NSD / Schur /
+(so that consumers must use `inv(basis)`).  `SchurGershgorinResult` (NSD / Schur /
 Hermitian eigenvectors) is unitary; `SchurNewtonVBDResult` is not.
 """
-_vbd_unitary_basis(::MiyajimaVBDResult) = true
+_vbd_unitary_basis(::SchurGershgorinResult) = true
 
 # PER-ROW certification slack charging the approximate-inverse error `Y ≈ W⁻¹` to each
 # Gershgorin disc.  With `Ã = Y·A·W` (a rigorous ball enclosure) and `R₂ = Y·W − I`, the
@@ -172,28 +176,45 @@ function _vbd_block_data(A::BallMatrix, WB::BallMatrix, YB::BallMatrix,
 end
 
 """
-    miyajima_vbd(A::BallMatrix; hermitian = false)
+    schur_gershgorin_enclosure(A::BallMatrix; hermitian = false)
 
-Perform Miyajima's verified block diagonalisation (VBD) on the square
-ball matrix `A`.  The midpoint matrix is reduced either by an eigenvalue
-decomposition (when `hermitian = true`) or by a unitary Schur form (for
-the general case).  The enclosure is transported to that basis, the
-Gershgorin discs are clustered, and a block-diagonal truncation together
-with a rigorous remainder is produced.
+Enclose `σ(M)` for every `M` in the square ball matrix `A` by inflated Gershgorin
+discs in a unitary basis of `mid(A)`, grouped into blocks.
 
-Overlapping discs are grouped via their connectivity graph so that each
-cluster becomes contiguous after a basis permutation.  The remainder bound
-is a rigorous upper bound on `‖transformed - block_diagonal‖₂` (the best of
-the Collatz and `‖·‖₁‖·‖∞` interpolation estimates).
+The midpoint matrix is reduced by a unitary Schur form, or by an eigenvalue
+decomposition when `hermitian = true`; the enclosure is transported to that basis
+as `Ã = Z*AZ`, a ball product against the input ball so input radii propagate. `Z`
+is unitary only up to rounding, so the residual `R₂ = Z*Z − I` is formed and
+`‖R₂‖_∞ < 1` required, and the per-row slack `βᵢ = ‖row_i(R₂)‖₁‖Ã‖_∞/(1−‖R₂‖_∞)`
+is added to disc `i` before anything is read off it. The inflated discs are then
+clustered by their connectivity graph and the basis permuted so each cluster is
+contiguous; the block-diagonal part of `Ã` and its rigorous remainder follow, with
+`remainder_norm` a rigorous bound on `‖Ã − block‖₂` (the best of the Collatz and
+`‖·‖₁‖·‖∞` estimates).
 
-When `hermitian = true` the routine expects `A` to be Hermitian and the
-resulting eigenvalues and intervals are real.  Otherwise the Schur form
-is used and the clusters are discs in the complex plane.
+Each cluster `Cᵢ` also carries a disc `D(cᵢ, nᵢ + rᵢ)` holding `|Cᵢ|` eigenvalues
+counted with multiplicity, with barycentre `cᵢ = mean(diag Pᵢ)`, within-block
+non-normality `nᵢ = ‖Pᵢ − cᵢI‖₂`, and coupling `rᵢ = min(Σ_{j≠i}‖Ñ[Cᵢ,Cⱼ]‖₂,
+√(q−1)‖Ñ[Cᵢ,:]‖₂) + β₂`; that is the block Gershgorin bound of Feingold and Varga
+(1962), Theorem 2, in the form used by `prop:blockgersg` of the companion draft.
+The bare strip norm `‖Ñ[Cᵢ,:]‖₂` alone is **not** a valid radius and was corrected
+in PR #68.
+
+When `hermitian = true` the input is expected Hermitian and the eigenvalues and
+intervals are real; otherwise the clusters are discs in the complex plane.
+
+This is **not** either algorithm of Miyajima (2014), whose name the routine
+formerly carried. That paper certifies clusters by a Brouwer fixed-point test on a
+Newton operator, over an approximate eigendecomposition (§3, radii `u + ⟨u⟩_t t`
+from infinity-norm row sums) or a genuine block diagonalisation of `B⁻¹A` (§4);
+neither the fixed-point test nor a diagonalising transformation appears here, and
+the basis is only permuted. For the block-diagonalising route see
+[`schur_newton_vbd`](@ref).
 """
 
-function miyajima_vbd(A::BallMatrix{T, NT}; hermitian::Bool = false) where {T, NT}
+function schur_gershgorin_enclosure(A::BallMatrix{T, NT}; hermitian::Bool = false) where {T, NT}
     m, n = size(A)
-    m == n || throw(ArgumentError("miyajima_vbd expects a square matrix"))
+    m == n || throw(ArgumentError("schur_gershgorin_enclosure expects a square matrix"))
 
     basis, _ = hermitian ? _hermitian_diagonalisation(mid(A)) :
                _schur_diagonalisation(mid(A))
@@ -254,7 +275,7 @@ function miyajima_vbd(A::BallMatrix{T, NT}; hermitian::Bool = false) where {T, N
         transformed, block, remainder, clusters, T)
     hermitian && (block_centers = real.(block_centers))
 
-    return MiyajimaVBDResult(basis, transformed, block, remainder, clusters,
+    return SchurGershgorinResult(basis, transformed, block, remainder, clusters,
         intervals, remainder_norm, eigenvalues, block_coupling, block_centers,
         block_nonnormality, block_residual_norm)
 end
@@ -262,7 +283,7 @@ end
 """
     block_enclosure(vbd) -> Vector{NamedTuple}
 
-Block-disc enclosure of `σ(A)` from a VBD result (`MiyajimaVBDResult` or
+Block-disc enclosure of `σ(A)` from a VBD result (`SchurGershgorinResult` or
 `SchurNewtonVBDResult`): one disc per cluster, `(center = cᵢ, radius = nᵢ + rᵢ, mult = |Cᵢ|)`
 with the barycentre `cᵢ` (`block_centers`), within-block non-normality `nᵢ`
 (`block_nonnormality`) and localized coupling `rᵢ` (`block_coupling`).

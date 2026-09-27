@@ -119,7 +119,7 @@ function rigorous_block_schur(A::BallMatrix{RT, NT};
     vbd = if vbd_method == :schur_newton
         schur_newton_vbd(A)
     else
-        miyajima_vbd(A; hermitian = hermitian)
+        schur_gershgorin_enclosure(A; hermitian = hermitian)
     end
 
     # Step 2: Construct the basis Q and its inverse.  For a unitary (NSD) basis the

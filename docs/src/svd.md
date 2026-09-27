@@ -19,10 +19,13 @@ Related functions:
 - [`OgitaSVDRefinementResult`](@ref) - Result type for refinement
 - [`AdaptiveSVDResult`](@ref) - Result type for adaptive SVD
 
-## Miyajima VBD (Verified Block Diagonalization)
+## Block Gershgorin enclosure in the Schur basis
 
-The [`miyajima_vbd`](@ref) function performs block diagonalization for eigenvalue
-clustering and spectral separation analysis. Returns a [`MiyajimaVBDResult`](@ref).
+The [`schur_gershgorin_enclosure`](@ref) function encloses the spectrum by inflated
+Gershgorin discs in a unitary basis of the midpoint matrix, grouped into clusters, and
+returns a [`SchurGershgorinResult`](@ref). The basis is permuted, not transformed, so the
+remainder is the off-block part of `Z*AZ`; for a basis that decouples the blocks see
+[`schur_newton_vbd`](@ref).
 
 ## Singular Value Bounds
 

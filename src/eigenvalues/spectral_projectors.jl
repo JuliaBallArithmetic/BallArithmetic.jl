@@ -115,7 +115,7 @@ function miyajima_spectral_projectors(A::BallMatrix{T, NT};
     vbd = if vbd_method == :schur_newton
         schur_newton_vbd(A)
     else
-        miyajima_vbd(A; hermitian = hermitian)
+        schur_gershgorin_enclosure(A; hermitian = hermitian)
     end
 
     # Step 2: Extract basis and its inverse/adjoint

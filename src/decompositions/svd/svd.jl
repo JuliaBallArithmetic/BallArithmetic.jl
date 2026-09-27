@@ -45,7 +45,7 @@ struct RumpOriginal <: SVDMethod end
 
 Container returned by [`rigorous_svd`](@ref) bundling the midpoint
 factorisation, the certified singular-value enclosures, and the
-block-diagonal refinement obtained from [`miyajima_vbd`](@ref).  Besides
+block-diagonal refinement obtained from [`schur_gershgorin_enclosure`](@ref).  Besides
 the singular values themselves the struct exposes the residual and
 orthogonality defect bounds that underpin the certification.
 """
@@ -132,7 +132,7 @@ end
 Compute a rigorous singular value decomposition of the ball matrix `A`.
 The midpoint SVD is certified following Theorem 3.1 of
 Ref. [Rump2011](@cite); optionally, the resulting singular-value
-enclosure can be refined by applying [`miyajima_vbd`](@ref) to `Σ'Σ`,
+enclosure can be refined by applying [`schur_gershgorin_enclosure`](@ref) to `Σ'Σ`,
 yielding a block-diagonal structure with a rigorously bounded remainder.
 
 The returned [`RigorousSVDResult`](@ref) exposes both the enclosures and
@@ -302,7 +302,7 @@ function _certify_svd_impl(A::BallMatrix{T}, U_in, S_in, V_in, Vt_in, method::SV
         # Skip VBD for BigFloat matrices
         if T !== BigFloat
             H = adjoint(Σ) * Σ
-            vbd = miyajima_vbd(H; hermitian = true)
+            vbd = schur_gershgorin_enclosure(H; hermitian = true)
         end
     end
 
@@ -580,7 +580,7 @@ function rigorous_svd_m4(A::BallMatrix{T}; apply_vbd::Bool = true) where {T}
     vbd = nothing
     if apply_vbd
         H_ball = adjoint(Σ) * Σ
-        vbd = miyajima_vbd(H_ball; hermitian = true)
+        vbd = schur_gershgorin_enclosure(H_ball; hermitian = true)
     end
 
     return RigorousSVDResult(U, singular_values, Σ, V, BallMatrix(zeros(T, m, n)),

@@ -159,7 +159,7 @@ to the final radii. The error bound accounts for the ~54 bits lost in the Double
 | ~~`src/svd/adaptive_ogita_svd.jl:206-281`~~ | ~~Iterative refinement accumulates error without tracking~~ ✅ NOT A BUG (oracle certified a posteriori) |
 | ~~`src/eigenvalues/iterative_schur_refinement.jl:71-94`~~ | ~~Newton-Schulz convergence not verified~~ ✅ NOT A BUG (oracle certified a posteriori) |
 | ~~`src/eigenvalues/iterative_schur_refinement.jl:693-698`~~ | ~~Oversimplified constant radii for all Schur entries~~ ✅ NOT A BUG (oracle certified a posteriori) |
-| ~~`src/svd/miyajima_vbd.jl:106-109`~~ | ~~Eigenvalues from `eigen()` have no error bounds~~ ✅ NOT A BUG (Miyajima VBD method computes rigorous bounds for eigenvalues) |
+| ~~`src/svd/schur_gershgorin_enclosure.jl:106-109`~~ | ~~Eigenvalues from `eigen()` have no error bounds~~ ✅ NOT A BUG (Miyajima VBD method computes rigorous bounds for eigenvalues) |
 | ~~`src/eigenvalues/rump_lange_2023.jl:195-202`~~ | ~~Cluster identification relies on approximate distances~~ ✅ NOT A BUG (clustering is heuristic, verified a posteriori) |
 | ~~`src/linear_system/inflation.jl:55, 79`~~ | ~~`inv(mid(A))` computed without error bounds~~ ✅ NOT A BUG (spectral radius check validates approximation quality) |
 | ~~`src/linear_system/krawczyk_complete.jl:100`~~ | ~~`inv(mid(A))` no error bounds~~ ✅ NOT A BUG (contraction check validates approximation) |
@@ -385,7 +385,7 @@ These operators compare only midpoints. If `a = 1 ± 0.5` and `b = 2 ± 0.5`, th
 - HIGH: krawczyk_complete.jl opnorm - Now uses `upper_bound_L_inf_opnorm` for rigorous bound
 - HIGH: svd.jl:282 - Now uses `upper_bound_L2_opnorm(residual)` for rigorous bound
 - HIGH: svd.jl:554 (rigorous_svd_m4) - Returns `Inf` to indicate M4 only verifies singular values (Miyajima 2014, Theorem 11)
-- HIGH: miyajima_vbd.jl - NOT A BUG (Miyajima VBD method computes rigorous bounds for eigenvalues)
+- HIGH: schur_gershgorin_enclosure.jl - NOT A BUG (Miyajima VBD method computes rigorous bounds for eigenvalues)
 - HIGH: oishi_2023_schur.jl:248 - NOT A BUG (oracle verified a posteriori)
 - HIGH: ball.jl:371 - NOT A BUG (division by 2 is exact in IEEE 754)
 - HIGH: shaving.jl:159 - NOT A BUG (a posteriori bound per Horacek thesis)

@@ -44,11 +44,11 @@ rigorous_svd
 svdbox
 ```
 
-## Miyajima VBD
+## Block Gershgorin enclosure
 
 ```@docs
-MiyajimaVBDResult
-miyajima_vbd
+SchurGershgorinResult
+schur_gershgorin_enclosure
 refine_svd_bounds_with_vbd
 ```
 
