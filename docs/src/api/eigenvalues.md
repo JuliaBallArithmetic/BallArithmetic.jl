@@ -13,8 +13,6 @@ evbox
 ## Rump 2022a Method
 
 ```@docs
-Rump2022aResult
-rump_2022a_eigenvalue_bounds
 ```
 
 ## Rump-Lange 2023 Method

@@ -13,14 +13,12 @@ Ref. [Miyajima2012](@cite). The interested reader may refer to the treatment in
 ### Main Functions
 
 - [`rigorous_eigenvalues`](@ref) - General eigenvalue verification
-- [`rump_2022a_eigenvalue_bounds`](@ref) - Individual eigenvector error bounds (Rump 2022a method)
 - [`rump_lange_2023_cluster_bounds`](@ref) - Schur-based cluster bounds
 - [`refine_cluster_bounds`](@ref) - Iterative refinement of cluster bounds
 
 ### Result Types
 
 - [`RigorousEigenvaluesResult`](@ref) - Result from rigorous eigenvalue computation
-- [`Rump2022aResult`](@ref) - Result with individual eigenvector bounds
 - [`RumpLange2023Result`](@ref) - Schur-based result
 
 ## Generalized Eigenvalue Problems

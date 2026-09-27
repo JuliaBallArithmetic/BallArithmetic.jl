@@ -98,11 +98,9 @@ include("eigenvalues/gev.jl")
 include("eigenvalues/upper_bound_spectral.jl")
 include("eigenvalues/miyajima/proceduresMiyajima2010.jl")
 include("eigenvalues/miyajima/gev_miyajima_procedures.jl")
-include("eigenvalues/rump_2022a.jl")
 include("eigenvalues/rump_lange_2023.jl")
 export RigorousGeneralizedEigenvaluesResult, RigorousEigenvaluesResult,
        rigorous_generalized_eigenvalues, rigorous_eigenvalues, gevbox, evbox
-export Rump2022aResult, rump_2022a_eigenvalue_bounds
 export RumpLange2023Result, rump_lange_2023_cluster_bounds, refine_cluster_bounds
 include("decompositions/svd/singular_gerschgorin.jl")
 include("decompositions/svd/schur_gershgorin.jl")
