@@ -17,7 +17,7 @@ module CUDAExt
 using BallArithmetic
 using BallArithmetic: BallMatrix, Ball, mid, rad,
     SVDMethod, MiyajimaM1, RigorousSVDResult,
-    upper_bound_L2_opnorm, miyajima_vbd
+    upper_bound_L2_opnorm, schur_gershgorin_enclosure
 using CUDA
 using LinearAlgebra
 
@@ -298,7 +298,7 @@ function BallArithmetic.rigorous_svd_gpu(A::BallMatrix{Float64, Float64};
     residual = E + corr
     residual_norm = upper_bound_L2_opnorm(residual)
 
-    vbd = apply_vbd ? miyajima_vbd(adjoint(Σ) * Σ; hermitian = true) : nothing
+    vbd = apply_vbd ? schur_gershgorin_enclosure(adjoint(Σ) * Σ; hermitian = true) : nothing
 
     return RigorousSVDResult(U, singular_values, Σ, V, residual,
         residual_norm, normF, normG, vbd)
