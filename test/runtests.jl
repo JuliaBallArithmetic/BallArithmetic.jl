@@ -42,6 +42,7 @@ using Test
     # SVD
     include("test_decompositions/test_svd/test_svd.jl")
     include("test_decompositions/test_svd/test_miyajima_svd_bounds.jl")
+    include("test_decompositions/test_svd/test_svd_theorems.jl")
     include("test_decompositions/test_svd/test_adaptive_ogita_svd.jl")
     include("test_decompositions/test_svd/test_subepsilon_certification.jl")
     include("test_decompositions/test_svd/test_precision_cascade_svd.jl")

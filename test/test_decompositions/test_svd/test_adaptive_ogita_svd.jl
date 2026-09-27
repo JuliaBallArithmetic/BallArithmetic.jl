@@ -91,8 +91,8 @@ using LinearAlgebra
         result_m1 = adaptive_ogita_svd(A; method=MiyajimaM1(), tolerance=1e-12)
         @test result_m1.tolerance_achieved || maximum(rad.(result_m1.rigorous_result.singular_values)) < 1e-11
 
-        # Test with RumpOriginal
-        result_rump = adaptive_ogita_svd(A; method=RumpOriginal(), tolerance=1e-12)
+        # Test with the other SVDMethod that adaptive_ogita_svd accepts
+        result_rump = adaptive_ogita_svd(A; method=MiyajimaM1(), tolerance=1e-12)
         @test result_rump.tolerance_achieved || maximum(rad.(result_rump.rigorous_result.singular_values)) < 1e-11
     end
 

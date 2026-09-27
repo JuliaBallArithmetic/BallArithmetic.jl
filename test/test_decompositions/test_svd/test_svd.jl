@@ -149,8 +149,11 @@ end
     @test result_no_vbd.Σ == result.Σ
     @test result_no_vbd.residual == result.residual
 
-    Σ_no_vbd = BallArithmetic.svdbox(A; apply_vbd = false)
-    @test Σ_no_vbd == result.singular_values
+    # svdbox returns the values alone and never forms a block diagonalisation, so it has no
+    # apply_vbd to pass; its default, Theorem 7 of Miyajima (2014), is what rigorous_svd's
+    # MiyajimaM1 certifies with, so the two agree
+    Σ_box = BallArithmetic.svdbox(A)
+    @test Σ_box == result.singular_values
 end
 
 @testset "Miyajima VBD block diagonalisation" begin

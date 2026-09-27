@@ -30,17 +30,6 @@ and can provide very tight bounds for well-separated singular values.
 struct MiyajimaM4 <: SVDMethod end
 
 """
-    RumpOriginal <: SVDMethod
-
-Original Rump 2011 formulas (looser bounds, for comparison).
-
-Bounds:
-- Lower: (σᵢ - ‖E‖) / ((1+‖F‖)(1+‖G‖))
-- Upper: (σᵢ + ‖E‖) / ((1-‖F‖)(1-‖G‖))
-"""
-struct RumpOriginal <: SVDMethod end
-
-"""
     RigorousSVDResult
 
 Container returned by [`rigorous_svd`](@ref) bundling the midpoint
@@ -153,6 +142,9 @@ function rigorous_svd(A::BallMatrix{T}; method::SVDMethod = MiyajimaM1(), apply_
         return _rigorous_svd_bigfloat(A, method; apply_vbd)
     end
 
+    # MiyajimaM4 is Theorem 11, which needs the (AV)'AV frame rather than a two-frame SVD
+    method isa MiyajimaM4 && return rigorous_svd_m4(A; apply_vbd)
+
     # Standard path for Float64/Float32
     svdA = svd(A.c)
     return _certify_svd(A, svdA, method; apply_vbd)
@@ -224,17 +216,42 @@ function _rigorous_svd_bigfloat(A::BallMatrix{BigFloat}, method::SVDMethod;
 end
 
 """
-    svdbox(A::BallMatrix; method = MiyajimaM1(), apply_vbd = true)
+    svdbox(A::BallMatrix; method = :miyajima2014_thm7) -> Vector{Ball}
 
-Backward-compatible wrapper returning only the vector of singular-value
-enclosures produced by [`rigorous_svd`](@ref).  New code should prefer
-[`rigorous_svd`](@ref) directly to access the additional certification
-data.  The optional `method` and `apply_vbd` flags mirror those in
+Verified enclosures of all the singular values of `A`, one ball each, in the order the chosen
+theorem produces them.
+
+`svdbox` is the name Miyajima (2014) gives his Theorem 7, which is the default. This function
+selects an enclosure and does nothing else; each enclosure is a separate unexported function
+named for the theorem it implements, so a deviation from a paper is visible in the name:
+
+| `method` | routine | what it is |
+|---|---|---|
+| `:miyajima2014_thm7` | [`_miyajima2014_thm7`](@ref) | the economy enclosure `Σ̂ᵢᵢ√((1∓‖F̂‖)(1∓‖Ĝ‖)) ∓ ‖Ê‖`, residual measured against `A` |
+| `:miyajima2014_thm4` | [`_miyajima2014_thm4`](@ref) | Oishi's, square frames, `Σᵢᵢ ± (Σᵢᵢmax(‖F‖,‖G‖) + ‖E‖)`; Theorem 8 proves Theorem 7 is never worse |
+| `:miyajima2014_thm11` | [`_miyajima2014_thm11`](@ref) | one frame, the eigenvectors of `AᵀA`, Gershgorin sharpened by Parlett, with a cluster branch |
+| `:rump2011_thm3_1` | [`_rump2011_thm3_1`](@ref) | Rump's two-frame split `UᴴAV = D + E`; square `A` only, and valid only up to an undetermined numbering |
+
+Prefer the default unless you have a reason. Theorem 8 of Miyajima (2014) proves it at least as
+tight as Theorem 4; and unlike `:rump2011_thm3_1` its bounds are anchored to `Σ̂ᵢᵢ` of the SVD,
+so the `i`-th interval encloses `σᵢ(A)` with no permutation caveat.
+
+For the singular vectors, the residual and the block refinement as well as the values, use
 [`rigorous_svd`](@ref).
+
+# Reference
+
+S. Miyajima, *Verified bounds for all the singular values of matrix*, Japan J. Indust. Appl.
+Math. **31** (2014) 513-539, doi 10.1007/s13160-014-0145-5.
 """
-function svdbox(A::BallMatrix{T}; method::SVDMethod = MiyajimaM1(), apply_vbd::Bool = true) where {T}
-    result = rigorous_svd(A; method, apply_vbd)
-    return result.singular_values
+function svdbox(A::BallMatrix{T}; method::Symbol = :miyajima2014_thm7) where {T}
+    method === :miyajima2014_thm7 && return _miyajima2014_thm7(A)
+    method === :miyajima2014_thm4 && return _miyajima2014_thm4(A)
+    method === :miyajima2014_thm11 && return _miyajima2014_thm11(A)
+    method === :rump2011_thm3_1 && return _rump2011_thm3_1(A)
+    throw(ArgumentError("svdbox: unknown method $(repr(method)); the implemented methods are " *
+                        ":miyajima2014_thm7, :miyajima2014_thm4, :miyajima2014_thm11 and " *
+                        ":rump2011_thm3_1"))
 end
 
 function _certify_svd(A::BallMatrix{T}, svdA::SVD, method::SVDMethod; apply_vbd::Bool = true) where {T}
@@ -343,32 +360,6 @@ function _compute_svd_bounds(::MiyajimaM1, S::Vector, normE, normF, normG, ::Typ
 end
 
 #=
-Original Rump 2011 formulas (looser bounds, for comparison/backward compatibility)
-
-Lower bound: (σᵢ - ‖E‖) / ((1+‖F‖)(1+‖G‖))
-Upper bound: (σᵢ + ‖E‖) / ((1-‖F‖)(1-‖G‖))
-=#
-function _compute_svd_bounds(::RumpOriginal, S::Vector, normE, normF, normG, ::Type{T}) where {T}
-    den_down = setrounding(T, RoundUp) do
-        (one(T) + normF) * (one(T) + normG)
-    end
-
-    den_up = setrounding(T, RoundDown) do
-        (one(T) - normF) * (one(T) - normG)
-    end
-
-    svdbounds_down = setrounding(T, RoundDown) do
-        [(σ - normE) / den_down for σ in S]
-    end
-
-    svdbounds_up = setrounding(T, RoundUp) do
-        [(σ + normE) / den_up for σ in S]
-    end
-
-    return svdbounds_down, svdbounds_up
-end
-
-#=
 Miyajima 2014, Theorem 11 (M4): Eigendecomposition-based bounds
 
 This method works on D̂ + Ê = (AV)ᵀAV where D̂ is diagonal.
@@ -378,11 +369,15 @@ Gershgorin isolation.
 For now, this falls back to M1 bounds but with the note that the VBD
 result can be used for further refinement of isolated singular values.
 =#
+# MiyajimaM4 never reaches this function: `rigorous_svd` routes it to `rigorous_svd_m4`, which
+# has the (AV)'AV quantities Theorem 11 needs and which this signature does not carry. It used to
+# return MiyajimaM1's bounds behind a warning, so a caller asking for Theorem 11 was given
+# Theorem 7 instead; `sylvester_resolvent_bound.jl` asks for it by name.
 function _compute_svd_bounds(::MiyajimaM4, S::Vector, normE, normF, normG, ::Type{T}) where {T}
-    @warn "MiyajimaM4 via `rigorous_svd(A; method=MiyajimaM4())` falls back to M1 bounds. " *
-          "Use `rigorous_svd_m4(A)` for the full Theorem 11 eigendecomposition-based approach." maxlog=1
-    svdbounds_down, svdbounds_up = _compute_svd_bounds(MiyajimaM1(), S, normE, normF, normG, T)
-    return svdbounds_down, svdbounds_up
+    throw(ArgumentError("MiyajimaM4 is Theorem 11 of Miyajima (2014) and needs the frame " *
+                        "(AV)'AV, which this path does not form; call `rigorous_svd_m4(A)`, " *
+                        "`rigorous_svd(A; method = MiyajimaM4())` or " *
+                        "`svdbox(A; method = :miyajima2014_thm11)`"))
 end
 
 function _diagonal_ball_matrix(values::Vector{Ball{T, NT}}) where {T, NT}
@@ -426,165 +421,32 @@ Reference: Miyajima, S. "Verified bounds for all the singular values of matrix"
 function rigorous_svd_m4(A::BallMatrix{T}; apply_vbd::Bool = true) where {T}
     m, n = size(A)
     q = min(m, n)
-
-    # Use eigendecomposition of AᵀA (or AAᵀ if m < n) for V
-    if m >= n
-        AtA = A' * A
-        eig = eigen(Hermitian(mid(AtA)))
-        V_mid = eig.vectors[:, end:-1:1]  # Reverse to get descending order
-        λ = eig.values[end:-1:1]
-    else
-        AAt = A * A'
-        eig = eigen(Hermitian(mid(AAt)))
-        V_mid = eig.vectors[:, end:-1:1]
-        λ = eig.values[end:-1:1]
-    end
-
-    V = BallMatrix(V_mid)
-
-    # Compute F = VᵀV - I (orthogonality defect)
-    F = V' * V - I
-    normF = upper_bound_L2_opnorm(F)
-
-    # Verification requires ‖F‖ < 1 for the bounds to be valid
-    if normF >= 1
-        n_sv = size(V, 2)
-        singular_values = [Ball(sqrt(max(λ[i], zero(T))), T(Inf)) for i in 1:n_sv]
-        Σ = _diagonal_ball_matrix(singular_values)
-        @warn "SVD M4 verification failed: ‖VᵀV - I‖ = $normF (must be < 1)"
-        return RigorousSVDResult(BallMatrix(zeros(T, m, q)), singular_values, Σ, V,
-            BallMatrix(zeros(T, m, n)), T(Inf), normF, normF, nothing)
-    end
-
-    # Compute AV (or AᵀV if m < n) and then (AV)ᵀAV
-    if m >= n
-        AV = A * V
-        H = AV' * AV  # This is D̂ + Ê in ball arithmetic
-    else
-        AtV = A' * V
-        H = AtV' * AtV
-    end
-
-    # Extract diagonal D̂ and off-diagonal Ê
-    n_sv = size(H, 1)
-    D_diag = [H[i, i] for i in 1:n_sv]
-
-    # Compute Gershgorin radii fᵢ = Σⱼ≠ᵢ |Hᵢⱼ|
-    absH = upper_abs(H)
-    f = zeros(T, n_sv)
-    for i in 1:n_sv
-        f[i] = setrounding(T, RoundUp) do
-            s = zero(T)
-            for j in 1:n_sv
-                if j != i
-                    s += absH[i, j]
-                end
-            end
-            s
-        end
-    end
-
-    # Check for isolation and compute refined bounds via Parlett if possible
-    h = copy(f)  # Start with Gershgorin radii, refine if isolated
-
-    for i in 1:n_sv
-        D_ii = mid(D_diag[i])
-
-        # Check if <D̂ᵢᵢ, fᵢ> is isolated from other intervals
-        is_isolated = true
-        ρᵢ = typemax(T)
-        for j in 1:n_sv
-            if j != i
-                D_jj = mid(D_diag[j])
-                gap = abs(D_ii - D_jj) - f[j]
-                if gap <= f[i]
-                    is_isolated = false
-                    break
-                end
-                ρᵢ = min(ρᵢ, gap)
-            end
-        end
-
-        # If isolated, try Parlett's refinement (Theorem 9 / equation for gᵢ)
-        if is_isolated && ρᵢ > 0
-            # gᵢ = ‖Êe⁽ⁱ⁾‖² / (2ρᵢ)
-            # ‖Êe⁽ⁱ⁾‖² = Σⱼ≠ᵢ |Hᵢⱼ|²
-            norm_Eei_sq = setrounding(T, RoundUp) do
-                s = zero(T)
-                for j in 1:n_sv
-                    if j != i
-                        s += absH[i, j]^2
-                    end
-                end
-                s
-            end
-            gᵢ = setrounding(T, RoundUp) do
-                norm_Eei_sq / (2 * ρᵢ)
-            end
-            h[i] = min(f[i], gᵢ)
-        end
-    end
-
-    # Compute singular value bounds from squared singular value bounds
-    singular_values = Vector{Ball{T, T}}(undef, n_sv)
-
-    for i in 1:n_sv
-        D_ii_mid = mid(D_diag[i])
-        D_ii_rad = rad(D_diag[i])
-
-        # Lower bound on λᵢ(D̂ + Ê): D̂ᵢᵢ - hᵢ - D̂ᵢᵢ_rad
-        λ_lower = setrounding(T, RoundDown) do
-            D_ii_mid - h[i] - D_ii_rad
-        end
-
-        # Upper bound on λᵢ(D̂ + Ê): D̂ᵢᵢ + hᵢ + D̂ᵢᵢ_rad
-        λ_upper = setrounding(T, RoundUp) do
-            D_ii_mid + h[i] + D_ii_rad
-        end
-
-        # Convert to singular value bounds: σ² ∈ [λ_lower/(1+F), λ_upper/(1-F)]
-        σ²_lower = setrounding(T, RoundDown) do
-            max(λ_lower / (one(T) + normF), zero(T))
-        end
-        σ²_upper = setrounding(T, RoundUp) do
-            λ_upper / (one(T) - normF)
-        end
-
-        # Take square root for σ bounds
-        σ_lower = setrounding(T, RoundDown) do
-            sqrt(max(σ²_lower, zero(T)))
-        end
-        σ_upper = setrounding(T, RoundUp) do
-            sqrt(σ²_upper)
-        end
-
-        σ_mid = (σ_lower + σ_upper) / 2
-        σ_rad = setrounding(T, RoundUp) do
-            max(σ_upper - σ_mid, σ_mid - σ_lower)
-        end
-
-        singular_values[i] = Ball(σ_mid, σ_rad)
-    end
-
+    # Theorem 11 lives in `_miyajima2014_thm11`; this routine only packages it as a
+    # RigorousSVDResult. It used to carry a second copy of the theorem which divided Parlett's
+    # bound by 2*rho_i instead of rho_i, and which had no cluster branch, so a clustered index
+    # was given its own Gershgorin interval, which Theorem 11 does not license.
+    singular_values = _miyajima2014_thm11(A)
     Σ = _diagonal_ball_matrix(singular_values)
 
-    # NOTE: Miyajima M4 (Theorem 11) provides verified SINGULAR VALUE BOUNDS only.
-    # It does NOT verify U, V, or compute a verified residual bound.
-    # The singular value bounds come from Gershgorin/Parlett analysis on (AV)ᵀAV,
-    # using only the orthogonality defect F = VᵀV - I.
-    #
-    # We return placeholder U and indicate residual is not bounded (Inf).
-    U = BallMatrix(zeros(T, m, q))
-    residual_norm = T(Inf)  # M4 does not provide a verified residual bound
+    # Theorem 11 uses one frame and says nothing about U, V or the residual: the frame is the
+    # eigenvectors of A'A, and only ||V'V - I|| enters. U is a placeholder and the residual Inf.
+    W = m >= n ? A' * A : A * A'
+    Vm = try
+        ev = eigen(Hermitian(mid(W)))
+        ev.vectors[:, end:-1:1]
+    catch
+        Matrix{T}(I, size(W, 1), size(W, 1))
+    end
+    V = BallMatrix(Vm)
+    normF = upper_bound_L2_opnorm(V' * V - I)
 
     vbd = nothing
-    if apply_vbd
-        H_ball = adjoint(Σ) * Σ
-        vbd = schur_gershgorin_enclosure(H_ball; hermitian = true)
+    if apply_vbd && T !== BigFloat && all(isfinite, rad(Σ))
+        vbd = schur_gershgorin_enclosure(adjoint(Σ) * Σ; hermitian = true)
     end
 
-    return RigorousSVDResult(U, singular_values, Σ, V, BallMatrix(zeros(T, m, n)),
-        residual_norm, normF, normF, vbd)
+    return RigorousSVDResult(BallMatrix(zeros(T, m, q)), singular_values, Σ, V,
+        BallMatrix(zeros(T, m, n)), T(Inf), normF, T(Inf), vbd)
 end
 
 """

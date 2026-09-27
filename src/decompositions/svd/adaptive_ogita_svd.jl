@@ -353,7 +353,7 @@ Compute rigorous SVD bounds with adaptive precision using Ogita's refinement.
 # Arguments
 - `A`: Input ball matrix
 - `tolerance`: Target tolerance for max(rad(σᵢ))
-- `method`: SVD certification method (MiyajimaM1, MiyajimaM4, RumpOriginal)
+- `method`: SVD certification method (MiyajimaM1 for Theorem 7, MiyajimaM4 for Theorem 11)
 - `apply_vbd`: Whether to apply verified block diagonalization
 - `max_precision_bits`: Maximum precision to use (bits)
 - `max_refinement_iterations`: Maximum number of refinement steps
