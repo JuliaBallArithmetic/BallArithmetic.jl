@@ -243,29 +243,6 @@ function _veig_contained(Z::BallMatrix{T}, X::BallMatrix{T}, cols) where {T}
     end
 end
 
-# rho(|M|) bounded from above by a few power iterations with Collatz's inclusion, as the paper
-# does; the returned value is an upper bound on the spectral radius of the magnitude matrix.
-function _veig_rho_mag(M::AbstractMatrix{T}; iters = 12) where {T}
-    A = abs.(M)
-    n = size(A, 1)
-    n == 0 && return zero(T)
-    x = ones(T, n)
-    ρ = zero(T)
-    for _ in 1:iters
-        y = setrounding(T, RoundUp) do
-            A * x
-        end
-        all(>(0), y) || return setrounding(T, RoundUp) do
-            maximum(sum(A; dims = 2))       # fall back to the infinity norm
-        end
-        ρ = setrounding(T, RoundUp) do
-            maximum(y ./ x)                  # Collatz: rho <= max_i (Ax)_i / x_i
-        end
-        x = y ./ maximum(y)
-    end
-    return ρ
-end
-
 """
     verifyeigall(B::BallMatrix; maxiter = 20, inflate = 0.1) -> VerifyEigAllResult
 
@@ -344,18 +321,16 @@ function _veig_pass(A::BallMatrix{T}, clusters, D::Vector{CT}, maxiter::Integer,
             fill!(radii, T(Inf))
             for (i, c) in enumerate(clusters)
                 ok[i] || continue
-                radii[i] = _veig_rho_mag(setrounding(T, RoundUp) do
-                    abs.(mid(Z)[c, c]) .+ rad(Z)[c, c]
-                end)
+                # Remark 2.4's rho(mag(Z_ii)), by the package's Collatz-Wielandt bound;
+                # collatz_upper_bound applies upper_abs internally, which is |mid| + rad
+                radii[i] = collatz_upper_bound(BallMatrix(mid(Z)[c, c], rad(Z)[c, c]))
                 blocks[i], subspaces[i] = _veig_block_and_subspace(Z, D, c)
             end
             # Remark 2.4: rho(mag(Z)) < 1 on the rows and columns of the certified clusters is
             # what upgrades "each M_i is a Jordan block" to "their union is the whole spectrum".
             if all(ok)
                 J = reduce(vcat, clusters)
-                covered = _veig_rho_mag(setrounding(T, RoundUp) do
-                    abs.(mid(Z)[J, J]) .+ rad(Z)[J, J]
-                end) < 1
+                covered = collatz_upper_bound(BallMatrix(mid(Z)[J, J], rad(Z)[J, J])) < 1
             end
         end
         Y = Z
