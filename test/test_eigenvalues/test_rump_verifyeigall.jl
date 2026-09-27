@@ -2,6 +2,7 @@ using BallArithmetic
 using Test
 using LinearAlgebra
 using Random
+using BallArithmetic: mid, rad
 
 # Rump (2022), Theorem 2.2 and the algorithm `verifyeigall`.
 #
@@ -117,6 +118,46 @@ end
     # the result is either a decline or an honest wide enclosure, never a narrow wrong one
     @test count(r.certified) == 0 ||
           all(r.radii[i] >= 0.1 for i in eachindex(r.clusters) if r.certified[i])
+end
+
+@testset "verifyeigall: the invariant subspaces satisfy B Y = Y M" begin
+    rng = MersenneTwister(20260927)
+    for n in (12, 30)
+        B = randn(rng, n, n) ./ sqrt(n)
+        Bc = Matrix{ComplexF64}(B)
+        r = verifyeigall(BallMatrix(B))
+        @test r.spectrum_covered
+        for i in eachindex(r.clusters)
+            r.certified[i] || continue
+            Y = mid(r.subspaces[i])
+            M = mid(r.blocks[i])
+            @test size(Y) == (n, length(r.clusters[i]))
+            @test size(M) == (length(r.clusters[i]), length(r.clusters[i]))
+            # Theorem 2.2: A Yhat = Yhat Mhat, carried back to B by W
+            @test norm(Bc * Y - Y * M) / max(1.0, norm(Y)) < 1e-12
+            @test all(isfinite, rad(r.subspaces[i]))
+        end
+    end
+end
+
+@testset "verifyeigall: uncertified clusters carry no subspace" begin
+    # a triple eigenvalue: the members of the cluster cannot be certified individually, and the
+    # result must say so in every field rather than return an unjustified basis
+    rng = MersenneTwister(11)
+    _rump_cluster(30, 1, rng); _rump_cluster(30, 2, rng)
+    B = _rump_cluster(30, 3, rng)
+    r = verifyeigall(BallMatrix(B))
+    @test count(r.certified) < length(r.clusters)
+    for i in eachindex(r.clusters)
+        if r.certified[i]
+            @test isfinite(r.radii[i])
+            @test all(isfinite, rad(r.subspaces[i]))
+        else
+            @test !isfinite(r.radii[i])
+            @test all(isinf, rad(r.subspaces[i]))
+            @test all(isinf, rad(r.blocks[i]))
+        end
+    end
 end
 
 @testset "verifyeigall: declines rather than asserting" begin
