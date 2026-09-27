@@ -1,8 +1,35 @@
-# Verified inclusions of ALL eigenvalues and invariant subspaces, following
+# Verified inclusions of ALL eigenvalues and invariant subspaces: Theorem 2.2 and the algorithm
+# `verifyeigall` of section 2 of
 #
-#   S. M. Rump, "Verified error bounds for all eigenvalues and eigenvectors of a matrix",
-#   SIAM J. Matrix Anal. Appl. 43(4):1736-1754, 2022.  Theorem 2.2 and the algorithm
-#   `verifyeigall` of its section 2.
+#   @Article{Rump2022a,
+#     author  = {Rump, Siegfried M.},
+#     title   = {Verified Error Bounds for All Eigenvalues and Eigenvectors of a Matrix},
+#     journal = {SIAM Journal on Matrix Analysis and Applications},
+#     year    = {2022},
+#     volume  = {43},
+#     number  = {4},
+#     pages   = {1736--1754},
+#     doi     = {10.1137/21M1451440},
+#   }
+#
+# Two routines implement the theorem, distinguished by the transformation and named for it:
+# `_rump2022a`, which encloses the correction by the paper's verified linear solve (Algorithm 10.7
+# of Rump (2010), `_rump2010_verifylss`), and `_rump2022aneumann`, which bounds it through an
+# explicit inverse and a uniform Neumann term. `verifyeigall` selects between them.
+#
+# The block diagonalisation this method avoids is the second algorithm of
+#
+#   @Article{Miyajima2014a,
+#     author  = {Miyajima, Shinya},
+#     title   = {Fast Enclosure for All Eigenvalues and Invariant Subspaces in Generalized
+#                Eigenvalue Problems},
+#     journal = {SIAM Journal on Matrix Analysis and Applications},
+#     year    = {2014},
+#     volume  = {35},
+#     number  = {3},
+#     pages   = {1205--1225},
+#     doi     = {10.1137/140953150},
+#   }
 #
 # The method is in the Krawczyk-Moore-Rump line: an inclusion of the ERROR with respect to an
 # approximation, certified by a self-mapping into the interior rather than by a proof of
@@ -158,6 +185,28 @@ function _rump2022aneumann_transform(B::BallMatrix{T}, W::Matrix{CT}, X0::Matrix
     return BallMatrix(X) + Delta, defect
 end
 
+# Rump's `transform`, as the paper writes it: the correction is enclosed by a verified linear
+# solve rather than bounded through an explicit inverse.
+#
+#     W^{-1} B W  =  X + W^{-1}(B W - W X),   so   W * Delta = B W - W X,
+#
+# and `verifylss(W, BW - WX)` encloses Delta while proving W nonsingular, which is Theorem 10.8
+# of Rump (2010) applied to the point matrix W. The residual on the right is the prodK
+# enclosure, so the two terms that nearly cancel are handled by the error-free transformations
+# and not by ball arithmetic.
+function _rump2022a_transform(B::BallMatrix{T}, W::Matrix{CT}, X0::Matrix{CT}) where {T, CT}
+    # one Newton step on the approximate eigenvalue matrix, in floating point: it only has to be
+    # a better approximation, nothing here is certified
+    X = X0 + (W \ mid(_veig_residual(B, W, X0)))
+
+    Res = _veig_residual(B, W, X)          # certified enclosure of B W - W X
+    sol = verifylss(BallMatrix(W), Res)
+    # Theorem 10.8: success proves W nonsingular and encloses the solution of W*Delta = Res.
+    # Without it there is no enclosure of W^{-1}BW, so the transformation declines.
+    sol.certified || return nothing, sol.spectral_radius_bound
+    return BallMatrix(X) + sol.solution, sol.spectral_radius_bound
+end
+
 # ---------------------------------------------------------------------------------------------
 # Clustering: step 2 of the algorithm, connected components of "these two are indistinguishable"
 # ---------------------------------------------------------------------------------------------
@@ -231,17 +280,10 @@ function _veig_inflate(Y::BallMatrix{T}; factor = T(0.1), eta = T(1e-300)) where
     return BallMatrix(mid(Y), r)
 end
 
-# Z V_i ⊆ int(X V_i), column by column: (2.10). The left-hand side is rounded UP and compared
-# against the stored radius, which is exact, so a true answer is a proof of the containment.
-function _veig_contained(Z::BallMatrix{T}, X::BallMatrix{T}, cols) where {T}
-    mZ, rZ, mX, rX = mid(Z), rad(Z), mid(X), rad(X)
-    return setrounding(T, RoundUp) do
-        for j in cols, i in axes(mZ, 1)
-            abs(mZ[i, j] - mX[i, j]) + rZ[i, j] < rX[i, j] || return false
-        end
-        return true
-    end
-end
+# Z V_i ⊆ int(X V_i), column by column: (2.10). This is `in0` restricted to the columns of the
+# cluster, so it uses the package's interior-containment predicate rather than repeating it.
+_veig_contained(Z::BallMatrix{T}, X::BallMatrix{T}, cols) where {T} =
+    in0(Z[:, cols], X[:, cols])
 
 """
     verifyeigall(B::BallMatrix; maxiter = 20, inflate = 0.1) -> VerifyEigAllResult
@@ -405,7 +447,30 @@ recomputed from the corresponding submatrix and the pass is repeated, up to `max
 times. Soundness does not rest on that refinement: Theorem 2.1's assertions hold "for any
 quality" of the approximation, and the certification is (2.10) alone.
 """
-function _rump2022aneumann(B::BallMatrix{T, NT}; maxiter::Integer = 20, inflate::Real = 0.1,
+_rump2022aneumann(B::BallMatrix; kwargs...) =
+    _verifyeigall_core(B, _rump2022aneumann_transform; kwargs...)
+
+"""
+    _rump2022a(B::BallMatrix; maxiter = 20, inflate = 0.1, maxlevels = 3)
+        -> VerifyEigAllResult
+
+Theorem 2.2 of Rump (2022) with the paper's own transformation, a verified linear solve.
+Not exported; reached through [`verifyeigall`](@ref) with `method = :rump2022a`.
+
+Identical to [`_rump2022aneumann`](@ref) in every step of the theorem, and differing only in
+[`_rump2022a_transform`](@ref): the correction `Δ` to the approximate eigenvalue matrix is
+enclosed by solving `WΔ = BW − WX` with `_rump2010_verifylss`, which is the Krawczyk iteration
+Rump's `verifylss` performs, instead of being bounded through an explicit inverse. The solve
+proves `W` nonsingular as a by-product, so no separate nonsingularity argument is needed.
+"""
+_rump2022a(B::BallMatrix; kwargs...) = _verifyeigall_core(B, _rump2022a_transform; kwargs...)
+
+# The algorithm of Theorem 2.2, shared by both transformations: `transform(B, W, X0)` returns an
+# enclosure of W^{-1} B W together with the diagnostic that certified it, or `nothing` when it
+# cannot certify one. Everything after the transformation is the theorem itself and is identical
+# for the two, so it lives here once.
+function _verifyeigall_core(B::BallMatrix{T, NT}, transform;
+        maxiter::Integer = 20, inflate::Real = 0.1,
         maxlevels::Integer = 3) where {T, NT}
     n = size(B, 1)
     CT = complex(T)
@@ -413,7 +478,7 @@ function _rump2022aneumann(B::BallMatrix{T, NT}; maxiter::Integer = 20, inflate:
     F = eigen(Matrix{CT}(mid(B)))
     W = Matrix{CT}(F.vectors)
     X0 = Matrix{CT}(Diagonal(F.values))
-    A, defect = _rump2022aneumann_transform(B, W, X0)
+    A, defect = transform(B, W, X0)
     A === nothing && return VerifyEigAllResult(Vector{Int}[], Bool[], CT[], T[],
         BallMatrix{T, CT}[], BallMatrix{T, CT}[], W, false, 0, defect)
 
@@ -486,10 +551,12 @@ visible in the name rather than buried in a docstring:
 
 | `method` | routine | what it is |
 |---|---|---|
-| `:rump2022aneumann` | [`_rump2022aneumann`](@ref) | Theorem 2.2 of Rump (2022), with the transformation replaced by an explicit inverse and a uniform Neumann bound |
+| `:rump2022a` | [`_rump2022a`](@ref) | Theorem 2.2 of Rump (2022) with the paper's transformation, a verified linear solve |
+| `:rump2022aneumann` | [`_rump2022aneumann`](@ref) | the same theorem with the transformation bounded through an explicit inverse and a uniform Neumann term |
 
-`:rump2022a`, the paper's own transformation by a verified linear solve, is not implemented,
-and is therefore not accepted here.
+The default is `:rump2022a`. The Neumann variant is kept because it does not need the solve to
+succeed, so it still returns a result where the solve declines; where both succeed, the
+faithful one is at least as tight.
 
 # Example
 ```julia
@@ -507,10 +574,11 @@ end
 S. M. Rump, *Verified error bounds for all eigenvalues and eigenvectors of a matrix*,
 SIAM J. Matrix Anal. Appl. **43**(4):1736-1754, 2022, doi 10.1137/21M1451440.
 """
-function verifyeigall(B::BallMatrix; method::Symbol = :rump2022aneumann, kwargs...)
+function verifyeigall(B::BallMatrix; method::Symbol = :rump2022a, kwargs...)
     size(B, 1) == size(B, 2) ||
         throw(ArgumentError("verifyeigall expects a square matrix"))
+    method === :rump2022a && return _rump2022a(B; kwargs...)
     method === :rump2022aneumann && return _rump2022aneumann(B; kwargs...)
     throw(ArgumentError("verifyeigall: unknown method $(repr(method)); " *
-                        "the implemented methods are :rump2022aneumann"))
+                        "the implemented methods are :rump2022a and :rump2022aneumann"))
 end

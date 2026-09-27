@@ -267,3 +267,42 @@ Create a `BallArray` where every element equals the ball `x`.
 function Base.fill(x::Ball, I::Vararg{Int, N}) where {N}
     BallArray(fill(mid(x), I...), fill(rad(x), I...))
 end
+
+"""
+    in0(A₁::BallArray, A₂::BallArray)
+
+Componentwise interior containment: `true` when every entry of `A₁` lies in the interior of
+the corresponding entry of `A₂`, which is the predicate Rump writes `in0` (see the scalar
+[`in0`](@ref) for the reference). Returns `false` at the first entry that fails.
+
+This is the test every self-mapping argument in the Krawczyk-Moore-Rump line needs; `in`,
+which is not strict, will not serve, since a fixed point on the boundary satisfies `X ⊆ Y`
+without giving the contraction.
+"""
+function in0(A1::BallArray{T}, A2::BallArray{T}) where {T <: AbstractFloat}
+    size(A1) == size(A2) ||
+        throw(DimensionMismatch("in0 expects arrays of the same size"))
+    m1, r1, m2, r2 = mid(A1), rad(A1), mid(A2), rad(A2)
+    return setrounding(T, RoundUp) do
+        for i in eachindex(m1)
+            abs(m1[i] - m2[i]) + r1[i] < r2[i] || return false
+        end
+        return true
+    end
+end
+
+"""
+    in0(A₁::AbstractArray{<:Ball}, A₂::AbstractArray{<:Ball})
+
+Componentwise interior containment for plain arrays whose entries are balls, which is what ball
+arithmetic on a broadcast expression returns. Same test as the `BallArray` method, entry by
+entry.
+"""
+function in0(A1::AbstractArray{<:Ball}, A2::AbstractArray{<:Ball})
+    size(A1) == size(A2) ||
+        throw(DimensionMismatch("in0 expects arrays of the same size"))
+    for (b1, b2) in zip(A1, A2)
+        in0(b1, b2) || return false
+    end
+    return true
+end

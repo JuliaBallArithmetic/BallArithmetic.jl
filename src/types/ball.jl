@@ -464,6 +464,30 @@ function Base.in(
     end
 end
 
+"""
+    in0(B₁::Ball, B₂::Ball)
+
+Return `true` when `B₁` is contained in the **interior** of `B₂`, which for balls is
+`|mid(B₁) − mid(B₂)| + rad(B₁) < rad(B₂)`. The left-hand side is evaluated with the rounding
+mode set upward and compared against the stored radius, which is exact, so a `true` answer is
+a proof of the containment.
+
+This is the predicate Rump writes `in0` and defines in footnote 19 of
+
+> S. M. Rump, *Verification methods: rigorous results using floating-point arithmetic*,
+> Acta Numerica **19** (2010) 287-449, doi 10.1017/S096249291000005X,
+
+as "checks `X ⊂ int(Y)` componentwise". Every self-mapping test in the Krawczyk-Moore-Rump
+line needs the interior, not the closure: a fixed point on the boundary satisfies `X ⊆ Y`
+without giving the contraction the argument rests on, so [`in`](@ref), which is not strict, is
+not a substitute.
+"""
+function in0(B1::Ball{T, NT1}, B2::Ball{T, NT2}) where {T <: AbstractFloat, NT1, NT2}
+    return setrounding(T, RoundUp) do
+        abs(B1.c - B2.c) + B1.r < B2.r
+    end
+end
+
 #==============================================================================#
 # Comparison operators for Ball
 #==============================================================================#

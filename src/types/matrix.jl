@@ -462,9 +462,15 @@ function Base.:-(J::UniformScaling, A::BallMatrix{T}) where {T}
         Base._return_type(-,
             Tuple{eltype(A.c), typeof(J)}))
     R = copy(A.r)
+    # EVERY entry is negated, not only the diagonal: `J - A` had left the off-diagonal entries
+    # equal to `+A[i,j]`, so `I - A` returned the wrong matrix for any A with off-diagonal
+    # entries, and `z*I - A` with it.
+    @inbounds for j in axes(A, 2), i in axes(A, 1)
+        B[i, j] = -B[i, j]
+    end
     @inbounds for i in axes(A, 1)
-        # Form the diagonal entries for `J - A` without aliasing the input.
-        B[i, i] = J - B[i, i]
+        # then the scaling lands on the diagonal
+        B[i, i] += J.λ
     end
 
     ϵ = machine_epsilon(T)
@@ -491,10 +497,13 @@ function Base.:-(J::UniformScaling{Ball{T, NT}},
     LinearAlgebra.checksquare(A)
     B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c), NT}))
     R = copy(A.r)
+    # every entry is negated, not only the diagonal: see the real-scaling method above
+    @inbounds for j in axes(A, 2), i in axes(A, 1)
+        B[i, j] = -B[i, j]
+    end
     @inbounds for i in axes(A, 1)
-        # Start from the midpoint of the scaling and subtract the midpoint of
-        # the matrix to obtain the new diagonal entry.
-        B[i, i] = J.λ.c - B[i, i]
+        # then the midpoint of the scaling lands on the diagonal
+        B[i, i] += J.λ.c
     end
 
     ϵ = machine_epsilon(T)

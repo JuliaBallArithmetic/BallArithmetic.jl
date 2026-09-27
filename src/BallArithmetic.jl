@@ -64,7 +64,7 @@ export ±, mid, rad, midtype, radtype
 
 include("rounding/rounding.jl")
 include("types/ball.jl")
-export Ball, BallF64, BallComplexF64, inf, sup, ball_hull, intersect_ball
+export Ball, BallF64, BallComplexF64, inf, sup, ball_hull, intersect_ball, in0
 
 include("types/array.jl")
 export BallArray
@@ -221,7 +221,7 @@ export det_hadamard, det_gershgorin, det_cramer
 export interval_det, contains_zero
 
 include("linear_system/inflation.jl")
-export EpsilonInflationResult, epsilon_inflation
+export VerifyLssResult, verifylss
 include("linear_system/backward_substitution.jl")
 include("linear_system/gaussian_elimination.jl")
 export GaussianEliminationResult

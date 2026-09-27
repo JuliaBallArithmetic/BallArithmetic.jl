@@ -45,7 +45,7 @@ following Ref. [MiyajimaSylvester2013](@cite).
 ## Spectral Projectors
 
 Computation of spectral projectors for eigenvalue clustering,
-following Ref. [MiyajimaInvariantSubspaces2014](@cite).
+following Ref. [Miyajima2014a](@cite).
 
 - [`miyajima_spectral_projectors`](@ref) - Main spectral projector computation
 - [`compute_spectral_projector_schur`](@ref) - Schur-based projector

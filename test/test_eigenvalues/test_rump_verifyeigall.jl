@@ -175,13 +175,17 @@ end
 @testset "verifyeigall: the caller selects an algorithm and rejects the rest" begin
     rng = MersenneTwister(11)
     B = BallMatrix(randn(rng, 12, 12))
-    # the default is the only implemented method, so naming it changes nothing
+    # the default is the faithful transformation
     a = verifyeigall(B)
-    b = verifyeigall(B; method = :rump2022aneumann)
+    b = verifyeigall(B; method = :rump2022a)
     @test a.radii == b.radii
     @test a.spectrum_covered == b.spectrum_covered
-    # the paper's own transformation is not implemented, so it is not accepted
-    @test_throws ArgumentError verifyeigall(B; method = :rump2022a)
+    # both transformations are implemented, and both certify this matrix
+    c = verifyeigall(B; method = :rump2022aneumann)
+    @test c.spectrum_covered
+    @test a.spectrum_covered
+    # where both certify, the verified solve is at least as tight as the Neumann bound
+    @test all(a.radii .<= c.radii)
     @test_throws ArgumentError verifyeigall(B; method = :nonsense)
     # keywords reach the algorithm through the caller
     @test verifyeigall(B; method = :rump2022aneumann, maxiter = 5) isa VerifyEigAllResult

@@ -53,7 +53,7 @@ end
 Compute rigorous enclosures for spectral projectors corresponding to each
 eigenvalue cluster identified by Miyajima's verified block diagonalization (VBD).
 
-The method follows the approach from Ref. [MiyajimaInvariantSubspaces2014](@cite):
+The method follows the approach from Ref. [Miyajima2014a](@cite):
 1. Apply VBD to obtain basis `V` that block-diagonalizes `A`
 2. For each cluster `k`, extract columns `V[:, cluster_k]`
 3. Construct projector `P_k = V[:, cluster_k] * V[:, cluster_k]'` as ball matrix
@@ -94,7 +94,7 @@ P2 = result[2]  # Projector for second cluster (eigenvalues ≈ 5.0, 5.1)
 
 # References
 
-* [MiyajimaInvariantSubspaces2014](@cite) Miyajima, SIAM J. Matrix Anal. Appl. 35, 1205–1225 (2014)
+* [Miyajima2014a](@cite) Miyajima, SIAM J. Matrix Anal. Appl. 35, 1205–1225 (2014)
 """
 function miyajima_spectral_projectors(A::BallMatrix{T, NT};
         hermitian::Bool = false,

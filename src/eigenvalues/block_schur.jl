@@ -90,7 +90,7 @@ T = result.T
 
 # References
 
-* [MiyajimaInvariantSubspaces2014](@cite) Miyajima, SIAM J. Matrix Anal. Appl. 35, 1205–1225 (2014)
+* [Miyajima2014a](@cite) Miyajima, SIAM J. Matrix Anal. Appl. 35, 1205–1225 (2014)
 * [Miyajima2014](@cite) Miyajima, Japan J. Indust. Appl. Math. 31, 513–539 (2014)
 """
 function rigorous_block_schur(A::BallMatrix{RT, NT};
