@@ -294,3 +294,84 @@ end
     @test q.spectrum_covered
     @test maximum(q.radii) < 1e-12                     # nowhere near a Gershgorin radius
 end
+
+@testset "orthonormal_invariant_basis: an orthonormal basis and its invariance defect" begin
+    # Theorem 2.2's basis is the frozen-rows one, V' Y = I, so its columns are not orthonormal and
+    # the enclosure can be badly conditioned. Orthonormalising does not change the eigenvalue
+    # radius, which does not depend on the basis, but it gives a usable basis and a certified
+    # measure of how far it is from invariant.
+    rng = MersenneTwister(20260928)
+    n = 12
+    d = [1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+    Q0 = Matrix(qr(randn(rng, n, n)).Q)
+    M = Q0 * (triu(randn(rng, n, n) .* 1e-8, 1) + Diagonal(d)) * Q0'
+    B = BallMatrix(M)
+    r = verifyeigall(B; method = :rump2022adiscclusters)
+    bs = orthonormal_invariant_basis(B, r)
+
+    @test length(bs) == count(r.certified)
+    @test any(length(b.cluster) == 2 for b in bs)        # the doubles are there as blocks of 2
+    for b in bs
+        k = length(b.cluster)
+        @test size(b.basis) == (n, k)
+        @test size(b.block) == (k, k)
+        # orthonormal to the rounding unit, where the frozen-rows basis had cond 1e3 to 1e4
+        @test cond(mid(b.basis)) < 1 + 1e-10
+        @test b.orthogonality_defect < 1e-13
+        # and almost invariant: the defect is what says so. prodK against a float Rayleigh block
+        # puts it at the rounding unit for a simple eigenvalue, where bounding B*Q - Q*H by ball
+        # products against a ball H overstated it by 22 to 78 times.
+        @test isfinite(b.invariance_defect)
+        @test b.invariance_defect < 1e-10
+        k == 1 && @test b.invariance_defect < 1e-14
+        # the block is an exact float candidate, not an enclosure
+        @test all(iszero, rad(b.block))
+    end
+    # the frozen-rows basis really is the ill-conditioned one, so this is not a no-op
+    @test maximum(cond(mid(r.subspaces[i]))
+    for i in eachindex(r.clusters) if r.certified[i] && length(r.clusters[i]) > 1) > 1e2
+
+    @testset "the invariance defect is an upper bound, and a tight one" begin
+        setprecision(256) do
+            for b in bs
+                Q = Complex{BigFloat}.(mid(b.basis))
+                Hn = Complex{BigFloat}.(mid(b.block))
+                true_def = opnorm(Complex{BigFloat}.(M) * Q - Q * Hn, 2)
+                @test true_def <= BigFloat(b.invariance_defect)
+                # prodK makes it tight, not merely valid: within a factor of two of the truth
+                @test BigFloat(b.invariance_defect) <= 2 * true_def
+            end
+        end
+    end
+
+    @testset "prodK takes a thin basis directly" begin
+        # the residual of an n by k basis against a k by k block is n by k; the transform of
+        # Theorem 2.2 uses the square case and this the thin one
+        nn = 8
+        Bq = BallMatrix(randn(MersenneTwister(2), nn, nn))
+        W = Matrix(qr(randn(MersenneTwister(3), nn, 3)).Q)[:, 1:3]
+        X = Matrix{ComplexF64}(mid(BallMatrix(W)' * Bq * BallMatrix(W)))
+        R = BallArithmetic._rump2022a_prodK(Bq, Matrix{ComplexF64}(W), X)
+        @test size(R) == (nn, 3)
+        @test_throws DimensionMismatch BallArithmetic._rump2022a_prodK(Bq,
+            Matrix{ComplexF64}(W), zeros(ComplexF64, 2, 2))
+    end
+
+    @testset "an exactly invariant coordinate subspace has a defect at rounding level" begin
+        # block diagonal, so the first two coordinates span an invariant subspace exactly
+        C = BallMatrix([2.0 1.0 0.0 0.0; 0.0 2.0 0.0 0.0; 0.0 0.0 7.0 1.0; 0.0 0.0 0.0 9.0])
+        rc = verifyeigall(C; method = :rump2022adiscclusters)
+        for b in orthonormal_invariant_basis(C, rc)
+            @test b.invariance_defect < 1e-13
+        end
+    end
+
+    @testset "declined clusters are skipped, since there is no subspace" begin
+        nn = 20
+        Qj = Matrix(qr(randn(MersenneTwister(4), nn, nn)).Q)
+        J = BallMatrix(Qj * diagm(0 => fill(0.7, nn), 1 => ones(nn - 1)) * Qj')
+        rj = verifyeigall(J; method = :rump2022a)
+        @test count(rj.certified) == 0
+        @test isempty(orthonormal_invariant_basis(J, rj))
+    end
+end

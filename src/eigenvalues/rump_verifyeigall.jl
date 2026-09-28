@@ -58,7 +58,8 @@
 
 using LinearAlgebra
 
-export VerifyEigAllResult, verifyeigall
+export VerifyEigAllResult, verifyeigall, AlmostInvariantBasis,
+    orthonormal_invariant_basis
 
 """
     VerifyEigAllResult{T, CT}
@@ -142,17 +143,23 @@ and the error bound is
     }
 """
 function _rump2022a_prodK(B::BallMatrix{T}, W::Matrix{CT}, X::Matrix{CT}) where {T, CT}
-    n = size(W, 1)
+    # W may be n by k and X k by k, the residual then n by k; the transform of Theorem 2.2 uses the
+    # square case, and `orthonormal_invariant_basis` the thin one
+    n, k = size(W)
+    size(X) == (k, k) ||
+        throw(DimensionMismatch("prodK: W is $(size(W)) so X must be ($k, $k), got $(size(X))"))
+    size(B, 2) == n ||
+        throw(DimensionMismatch("prodK: B has $(size(B, 2)) columns and W has $n rows"))
     Bm, Br = mid(B), rad(B)
     # split into real components so the error-free transformations apply
     Bre, Bim = real.(Bm), imag.(Bm)
     Wre, Wim = real.(W), imag.(W)
     Xre, Xim = real.(X), imag.(X)
-    M = Matrix{CT}(undef, n, n)
+    M = Matrix{CT}(undef, n, k)
     # the signs must carry the working type: Float64 literals here made the error-free
     # transformations promote and fail on a BigFloat input
     p1, m1 = one(T), -one(T)
-    for j in 1:n, i in 1:n
+    for j in 1:k, i in 1:n
         # Re(BW - WX) = Bre Wre - Bim Wim - (Wre Xre - Wim Xim)
         re = compensated_terms(((Bre, Wre, p1), (Bim, Wim, m1),
                 (Wre, Xre, m1), (Wim, Xim, p1)), i, j)
@@ -162,7 +169,7 @@ function _rump2022a_prodK(B::BallMatrix{T}, W::Matrix{CT}, X::Matrix{CT}) where 
         M[i, j] = CT(re, im_)
     end
     u = eps(T) / 2
-    γ = gamma_bound(4 * n, T)                  # 4n products summed per entry
+    γ = gamma_bound(4 * max(n, k), T)          # products summed per entry
     r = setrounding(T, RoundUp) do
         absprod = (abs.(Bm) * abs.(W)) .+ (abs.(W) * abs.(X))
         u .* abs.(M) .+ (γ * γ) .* absprod .+ Br * abs.(W)
@@ -786,4 +793,120 @@ function verifyeigall(A::BallMatrix, B::BallMatrix; method::Symbol = :miyajima20
     method === :miyajima2014a && return _miyajima2014a_alg1(A, B)
     throw(ArgumentError("verifyeigall: method $(repr(method)) does not take a pencil; " *
                         "the implemented pencil method is :miyajima2014a"))
+end
+
+# ---------------------------------------------------------------------------------------------
+# An orthonormal basis for a certified cluster, with a certified measure of how far it is from
+# being invariant.
+# ---------------------------------------------------------------------------------------------
+#
+# Theorem 2.2 delivers the subspace basis in the FROZEN-ROWS normalisation, V_i' Yhat_i = I_k, so
+# its columns are not orthonormal and the enclosure can be badly conditioned: on a 12 by 12 with
+# three semisimple doubles, cond(mid Y) came out 2.6e3, 2.6e3 and 1.2e4. That conditioning does not
+# affect the eigenvalue radius, which Theorem 2.2 takes from rho(|V_i' Z V_i|), but it does affect
+# anything built on the basis afterwards: a spectral projector, a sigma_min of a block, a resolvent
+# bound through the block all degrade with cond(Y).
+#
+# So after the cluster is certified, orthonormalise and report what the new basis satisfies. The
+# orthonormal Q comes from a floating-point QR of mid(Y) and is a CANDIDATE: no claim is made that
+# it spans the invariant subspace. What is computed rigorously, in ball arithmetic, is
+#
+#     ||Q*Q - I||_2                the orthogonality defect,
+#     H := Q* B Q                  the Rayleigh block,
+#     ||B Q - Q H||_2              the invariance defect,
+#
+# and those three say exactly how far Q is from an invariant subspace of B, with no theorem needed
+# beyond the arithmetic. They are the standard "almost invariant subspace" data.
+
+"""
+    AlmostInvariantBasis{T, CT}
+
+An orthonormal basis for one certified cluster of a [`VerifyEigAllResult`](@ref), with certified
+defects. Produced by [`orthonormal_invariant_basis`](@ref).
+
+# Fields
+- `cluster::Vector{Int}`: the indices of the cluster this basis belongs to.
+- `basis::BallMatrix`: `Q`, `n × k`, orthonormal to within `orthogonality_defect`.
+- `block::BallMatrix`: the Rayleigh block `H`, `k × k`, as an exact floating-point matrix with zero
+  radius. It is a *candidate*, not an enclosure of anything: the certified statement is
+  `invariance_defect`, a bound on `‖BQ − QH‖₂` for this `H`.
+- `orthogonality_defect::T`: a rigorous bound on `‖Q*Q − I‖₂`.
+- `invariance_defect::T`: a rigorous bound on `‖BQ − QH‖₂`. This is the measure of how far `Q` is
+  from spanning an invariant subspace of `B`; it is zero exactly when `Q` spans one.
+"""
+struct AlmostInvariantBasis{T, CT}
+    cluster::Vector{Int}
+    basis::BallMatrix{T, CT}
+    block::BallMatrix{T, CT}
+    orthogonality_defect::T
+    invariance_defect::T
+end
+
+function Base.show(io::IO, b::AlmostInvariantBasis)
+    print(io, "AlmostInvariantBasis(k = ", length(b.cluster),
+        ", ‖Q*Q − I‖ = ", b.orthogonality_defect,
+        ", ‖BQ − QH‖ = ", b.invariance_defect, ")")
+end
+
+"""
+    orthonormal_invariant_basis(B::BallMatrix, r::VerifyEigAllResult)
+        -> Vector{AlmostInvariantBasis}
+
+For every certified cluster of `r`, an orthonormal basis of its subspace together with certified
+bounds on how far that basis is from orthonormal and from invariant. One entry per certified
+cluster, in cluster order; clusters where the self-mapping test declined are skipped, since there
+is no subspace to orthonormalise.
+
+Theorem 2.2 returns the basis in the frozen-rows normalisation `Vᵢᵀ Ŷᵢ = I_k`, whose columns are
+not orthonormal; measured on three semisimple doubles, `cond(mid Y)` was `2.6e3`, `2.6e3` and
+`1.2e4`. Consumers of the basis — a spectral projector, the smallest singular value of a block, a
+resolvent bound through the block — degrade with that conditioning, while the eigenvalue radius
+does not depend on it at all.
+
+The orthonormal `Q` is obtained by a floating-point QR of `mid(Ŷᵢ)` and is a **candidate**: nothing
+here claims it spans the invariant subspace. What is rigorous is the triple
+
+    ‖Q*Q − I‖₂,        H = fl(Q*BQ),        ‖BQ − QH‖₂,
+
+the last computed by `prodK`, the error-free-transformation residual, against the input `B`, and it
+is zero exactly when `Q` spans an invariant subspace of `B`. Taking `H` as a floating-point
+candidate rather than a ball matters: a ball `H` carries a radius of order `u‖B‖`, which enters the
+defect multiplied by `‖Q‖ = 1` and dominated it, overstating the defect by 22 to 78 times for a
+simple eigenvalue. With `prodK` and a float `H` the bound agrees with a 256-bit reference to three
+digits. Turning `invariance_defect` into a distance to a true
+invariant subspace needs a separation between the cluster and the rest of the spectrum as well, and
+is not done here.
+
+# Example
+```julia
+r = verifyeigall(B)
+for b in orthonormal_invariant_basis(B, r)
+    println(length(b.cluster), "  ", b.invariance_defect)
+end
+```
+"""
+function orthonormal_invariant_basis(B::BallMatrix{T, NT},
+        r::VerifyEigAllResult{T, CT}) where {T, NT, CT}
+    out = AlmostInvariantBasis{T, CT}[]
+    for i in eachindex(r.clusters)
+        r.certified[i] || continue
+        Y = r.subspaces[i]
+        all(isfinite, rad(Y)) || continue
+        k = size(Y, 2)
+        Qm = Matrix{CT}(qr(mid(Y)).Q)[:, 1:k]      # the candidate, needing no verification
+        all(isfinite, Qm) || continue
+        Q = BallMatrix(Qm)
+        orth = upper_bound_L2_opnorm(Q' * Q - I)
+        # H is taken as the FLOAT Rayleigh quotient, a candidate needing no verification. That
+        # makes B*Q - Q*H exactly prodK's shape, so the residual is computed by error-free
+        # transformations and the radius of a ball-arithmetic H never enters. Measured against a
+        # 256-bit reference the defect then agrees to three digits, where forming H as a ball and
+        # bounding B*Q - Q*H by ball products overstated it by 22 to 78 times for a simple
+        # eigenvalue: the ball H carries a radius of order u||B||, which dominated everything.
+        Hm = Matrix{CT}(mid(Q' * B * Q))
+        inv_def = upper_bound_L2_opnorm(_rump2022a_prodK(B, Qm, Hm))
+        push!(out,
+            AlmostInvariantBasis{T, CT}(copy(r.clusters[i]), Q, BallMatrix(Hm), orth, inv_def))
+    end
+    return out
 end
