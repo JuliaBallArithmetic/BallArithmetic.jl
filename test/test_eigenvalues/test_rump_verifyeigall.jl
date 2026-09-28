@@ -192,3 +192,62 @@ end
     # the squareness check lives in the caller
     @test_throws ArgumentError verifyeigall(BallMatrix(randn(rng, 3, 4)))
 end
+
+@testset "Theorem 2.2 needs D constant on each cluster" begin
+    # Theorem 2.2: "let mutually distinct lambda_i be given, and let D be a diagonal matrix with
+    # D_jj = lambda_i for all j in mu_i". A cluster whose diagonal entries stay distinct violates
+    # that hypothesis, and the disc lambda_i +- rho then need not contain the cluster's own
+    # eigenvalues. Rump's step 2 groups only entries agreeing to 1e-14||A||, so the hypothesis held
+    # to working precision and the defect was invisible; :rump2022adiscclusters groups wider and
+    # made it visible, with discs of 2.8e-10 to 7.7e-10 holding one eigenvalue of each triple.
+    D = ComplexF64[1.0, 1.0 + 3e-10, 1.0 - 2e-10, 5.0]
+    clusters = [[1, 2, 3], [4]]
+    Dc = BallArithmetic._rump2022a_collapse_clusters(D, clusters)
+    @test Dc[1] == Dc[2] == Dc[3]
+    @test Dc[1] ≈ sum(D[1:3]) / 3
+    @test Dc[4] == D[4]                       # singletons are untouched
+    # and the collapse moves D by no more than the spread it removes
+    @test maximum(abs.(Dc[1:3] .- D[1:3])) <= 3e-10
+
+    # ten triples spread by about 3e-10: the wider clustering must enclose all thirty
+    rng = MersenneTwister(20260927)
+    n = 30
+    dd = Float64[]
+    while length(dd) < n
+        l = randn(rng)
+        for _ in 1:3
+            push!(dd, l)
+        end
+    end
+    Q = Matrix(qr(randn(rng, n, n)).Q)
+    M = Q * (triu(randn(rng, n, n) .* 1e-6, 1) + Diagonal(dd[1:n])) * Q'
+    A = BallMatrix(M)
+    setprecision(256) do
+        lams = eigvals(Complex{BigFloat}.(M))
+        r = verifyeigall(A; method = :rump2022adiscclusters)
+        @test all(length(c) == 3 for c in r.clusters)      # the triples are grouped
+        @test all(r.certified)                             # and every one passes (2.10)
+        for l in lams
+            @test any(i -> isfinite(r.radii[i]) &&
+                          abs(l - Complex{BigFloat}(r.centers[i])) <= BigFloat(r.radii[i]),
+                eachindex(r.clusters))
+        end
+    end
+end
+
+@testset ":rump2022adiscclusters leaves separated spectra alone" begin
+    # widening the clustering must not disturb a spectrum the fixed rule already handles
+    rng = MersenneTwister(77)
+    for M in (randn(rng, 12, 12), (x -> (x + x') / 2)(randn(rng, 12, 12)))
+        A = BallMatrix(M)
+        a = verifyeigall(A; method = :rump2022a)
+        b = verifyeigall(A; method = :rump2022adiscclusters)
+        @test length(a.clusters) == length(b.clusters)
+        @test a.radii == b.radii
+        @test count(a.certified) == count(b.certified)
+    end
+    # and the caller knows the method
+    A = BallMatrix(randn(MersenneTwister(3), 6, 6))
+    @test verifyeigall(A; method = :rump2022adiscclusters) isa VerifyEigAllResult
+    @test_throws ArgumentError verifyeigall(A; method = :rump2022adisc)
+end

@@ -328,6 +328,26 @@ r.spectrum_covered && println("all ", length(r.clusters), " clusters certified")
 # One pass of steps 3 to 6 on a fixed set of approximate eigenvalues `D`.
 # Returns (certified, radii, subspaces, blocks, covered, iters); `Z` is kept so the invariant
 # subspaces can be read off the same iteration that certified them.
+# Theorem 2.2 requires "mutually distinct lambda_i" and "D_jj = lambda_i for all j in mu_i": the
+# diagonal must be CONSTANT on each cluster. The printed algorithm sets D = d.mid, keeping the
+# distinct computed eigenvalues, which satisfies the hypothesis only because step 2 groups j and p
+# when mig(d_j - d_p) <= 1e-14 ||A||_inf, so the entries of a cluster agree to working precision.
+# Collapsing them to their mean makes the hypothesis exactly true and moves D by at most that same
+# threshold. Without it, a cluster of size > 1 gets a disc that does not contain its own
+# eigenvalues: on a 30 by 30 with ten triples spread by 3e-10, the discs came out at 2.8e-10 to
+# 7.7e-10 about the FIRST eigenvalue of each cluster and held one of the three.
+function _rump2022a_collapse_clusters(D::Vector{CT}, clusters) where {CT}
+    D = copy(D)
+    for c in clusters
+        length(c) == 1 && continue
+        lam = sum(D[j] for j in c) / length(c)
+        for j in c
+            D[j] = lam
+        end
+    end
+    return D
+end
+
 function _rump2022a_thm2_2_pass(A::BallMatrix{T}, clusters, D::Vector{CT}, maxiter::Integer,
         inflate::Real) where {T, CT}
     n = size(A, 1)
@@ -342,10 +362,18 @@ function _rump2022a_thm2_2_pass(A::BallMatrix{T}, clusters, D::Vector{CT}, maxit
     # Rtilde of (2.8)-(2.9). The entries -1 are exact; the reciprocals are not, so they are
     # carried as enclosures: D[l] and D[j] are floats whose exact difference lies within one
     # rounding of the computed one.
+    # (2.9) reads Rtilde[:, j] = diag(R_i) for j in mu_i, and (2.8) makes R_i equal to -1 on mu_i
+    # and 1/(D_pp - lambda_i) off it. So the whole block mu_i x mu_i is -1, the diagonal included,
+    # and the reciprocal must not be formed there: D is constant on a cluster, so the difference is
+    # exactly zero and `inv` of that ball throws.
+    cid = zeros(Int, n)
+    for (k, c) in enumerate(clusters), j in c
+        cid[j] = k
+    end
     RRm = Matrix{CT}(undef, n, n)
     RRr = zeros(T, n, n)
     for j in 1:n, l in 1:n
-        if l == j
+        if cid[l] == cid[j]
             RRm[l, j] = -one(CT)
         else
             dif = D[l] - D[j]
@@ -353,10 +381,6 @@ function _rump2022a_thm2_2_pass(A::BallMatrix{T}, clusters, D::Vector{CT}, maxit
             RRm[l, j] = mid(b)
             RRr[l, j] = rad(b)
         end
-    end
-    for c in clusters, j in c, l in c
-        RRm[l, j] = -one(CT)
-        RRr[l, j] = zero(T)
     end
     (all(isfinite, RRm) && all(isfinite, RRr)) ||
         return (falses(m), fill(T(Inf), m), Matrix{CT}[], BallMatrix[], false, 0)
@@ -485,11 +509,74 @@ proves `W` nonsingular as a by-product, so no separate nonsingularity argument i
 """
 _rump2022a(B::BallMatrix; kwargs...) = _rump2022a_thm2_2_core(B, _rump2022a_transform; kwargs...)
 
+# The clustering of Rump's step 2 groups i and j when mig(d_i - d_j) <= 1e-14 ||A||_inf, a FIXED
+# absolute threshold. A k-fold eigenvalue computed in floating point spreads by about u^(1/k), and
+# the paper says so itself: "this attempt to construct a matrix with 3-fold eigenvalue generates a
+# matrix with a cluster of radius 1e-5". That is eight orders above the threshold, so a triple is
+# left as three singletons, and a singleton cannot satisfy (2.10) for a defective eigenvalue.
+#
+# This rule groups i and j when their Gershgorin discs overlap instead, which is how Miyajima
+# (2014a) forms clusters, so the grouping scales with the residual rather than with a constant. It
+# is a DEVIATION from Rump's algorithm and carries its own name for that reason. Theorem 2.2
+# permits it: the partition mu is arbitrary there, and (2.10) is what proves the inclusion, so the
+# change can only alter how often the test succeeds and never whether a success is valid.
+function _rump2022a_discclusters_rule(d_mid::Vector{CT}, d_rad::Vector{T}, normA::T) where {T, CT}
+    n = length(d_mid)
+    # the Gershgorin radius of row i is not available here, so the disc is the diagonal enclosure
+    # widened by the floating-point sensitivity of a multiple eigenvalue, sqrt(eps)*||A||, which is
+    # the k = 2 floor and the smallest widening that groups anything the fixed rule does not
+    tol = setrounding(T, RoundUp) do
+        sqrt(eps(T)) * normA
+    end
+    parent = collect(1:n)
+    find(x) = (parent[x] == x ? x : (parent[x] = find(parent[x])))
+    for i in 1:n, j in (i + 1):n
+        sep = setrounding(T, RoundDown) do
+            abs(d_mid[i] - d_mid[j]) - (d_rad[i] + d_rad[j])
+        end
+        if sep <= tol
+            pi_, pj = find(i), find(j)
+            pi_ == pj || (parent[pi_] = pj)
+        end
+    end
+    groups = Dict{Int, Vector{Int}}()
+    for i in 1:n
+        push!(get!(groups, find(i), Int[]), i)
+    end
+    return sort(collect(values(groups)); by = first)
+end
+
+"""
+    _rump2022a_discclusters(B::BallMatrix; maxiter = 20, inflate = 0.1, maxlevels = 3)
+        -> VerifyEigAllResult
+
+Theorem 2.2 of Rump (2022) with the paper's transformation, but clustering the diagonal at
+`√eps·‖A‖_∞` instead of the `1e-14·‖A‖_∞` of its step 2. **A deviation from Rump's algorithm**,
+named for it; reached through [`verifyeigall`](@ref) with `method = :rump2022adiscclusters`.
+
+The reason is that the fixed threshold cannot group a multiple eigenvalue. A `k`-fold eigenvalue
+computed in floating point spreads by about `u^(1/k)`, and the paper states the case: "this attempt
+to construct a matrix with 3-fold eigenvalue generates a matrix with a cluster of radius 1e-5".
+Against a threshold of `1e-14‖A‖` those three eigenvalues stay three singletons, and a singleton
+cannot satisfy (2.10) for a defective eigenvalue, so the algorithm declines on exactly the case
+Theorem 2.2 was written to handle. Miyajima (2014a) avoids this by grouping on overlap of the
+Gershgorin discs, whose radii follow the residual; `√eps·‖A‖` is the same idea with the `k = 2`
+sensitivity as the width.
+
+Soundness does not depend on the choice. The partition in Theorem 2.2 is arbitrary and (2.10) is
+what proves the inclusion, so a different clustering changes how often the test succeeds and never
+whether a success is valid. The cost is that well-separated eigenvalues closer than `√eps‖A‖` are
+merged into one block, which widens their discs to the block's.
+"""
+_rump2022a_discclusters(B::BallMatrix; kwargs...) =
+    _rump2022a_thm2_2_core(B, _rump2022a_transform, _rump2022a_discclusters_rule; kwargs...)
+
 # The algorithm of Theorem 2.2, shared by both transformations: `transform(B, W, X0)` returns an
 # enclosure of W^{-1} B W together with the diagnostic that certified it, or `nothing` when it
 # cannot certify one. Everything after the transformation is the theorem itself and is identical
 # for the two, so it lives here once.
-function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform;
+function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
+        cluster_rule = _rump2022a_clusters;
         maxiter::Integer = 20, inflate::Real = 0.1,
         maxlevels::Integer = 3) where {T, NT}
     n = size(B, 1)
@@ -505,8 +592,9 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform;
     normA = upper_bound_L_inf_opnorm(A)
     dm = CT[mid(A)[i, i] for i in 1:n]
     dr = T[rad(A)[i, i] for i in 1:n]
-    clusters = _rump2022a_clusters(dm, dr, normA)
-    D = copy(dm)
+    clusters = cluster_rule(dm, dr, normA)
+    # Theorem 2.2 needs D constant on each cluster; see _rump2022a_collapse_clusters
+    D = _rump2022a_collapse_clusters(dm, clusters)
 
     certified, radii, subspaces, blocks, covered, iters =
         _rump2022a_thm2_2_pass(A, clusters, D, maxiter, inflate)
@@ -528,6 +616,7 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform;
         all(isfinite, sub) || break
         Dnew = copy(D)
         Dnew[J] .= sub
+        Dnew = _rump2022a_collapse_clusters(Dnew, clusters)
         c2, r2, s2, b2, cov2, it2 = _rump2022a_thm2_2_pass(A, clusters, Dnew, maxiter, inflate)
         total += it2
         count(c2) > count(certified) || break
@@ -536,6 +625,7 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform;
         level += 1
     end
 
+    # D is constant on each cluster, so D[c[1]] IS the cluster's lambda_i of Theorem 2.2
     centers = CT[D[c[1]] for c in clusters]
     # the invariant subspaces of B, not of the transformed A: they transform by W
     Wb = BallMatrix(W)
@@ -573,6 +663,7 @@ visible in the name rather than buried in a docstring:
 |---|---|---|
 | `:rump2022a` | [`_rump2022a`](@ref) | Theorem 2.2 of Rump (2022) with the paper's transformation, a verified linear solve |
 | `:rump2022aneumann` | [`_rump2022aneumann`](@ref) | the same theorem with the transformation bounded through an explicit inverse and a uniform Neumann term |
+| `:rump2022adiscclusters` | [`_rump2022a_discclusters`](@ref) | Theorem 2.2 with the diagonal clustered at `√eps·‖A‖` rather than the `1e-14·‖A‖` of the paper's step 2, so that a multiple eigenvalue is grouped; a deviation, named for it |
 | `:miyajima2014a` | [`_miyajima2014a_alg1`](@ref) | Algorithms 1 and 2 of Miyajima (2014): Gershgorin discs on the pencil transformed by an approximate generalised eigendecomposition, each cluster certified by Brouwer's theorem on a Newton operator |
 
 The default is `:rump2022a`. The Neumann variant is kept because it does not need the solve to
@@ -606,10 +697,12 @@ function verifyeigall(B::BallMatrix; method::Symbol = :rump2022a, kwargs...)
         throw(ArgumentError("verifyeigall expects a square matrix"))
     method === :rump2022a && return _rump2022a(B; kwargs...)
     method === :rump2022aneumann && return _rump2022aneumann(B; kwargs...)
+    method === :rump2022adiscclusters && return _rump2022a_discclusters(B; kwargs...)
     method === :miyajima2014a &&
         return _miyajima2014a_alg1(B, BallMatrix(Matrix{eltype(mid(B))}(I, size(B)...)))
     throw(ArgumentError("verifyeigall: unknown method $(repr(method)); the implemented " *
-                        "methods are :rump2022a, :rump2022aneumann and :miyajima2014a"))
+                        "methods are :rump2022a, :rump2022aneumann, :rump2022adiscclusters " *
+                        "and :miyajima2014a"))
 end
 
 """
