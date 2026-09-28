@@ -13,7 +13,7 @@ import BallArithmetic: _certify_ball, _vbd_unitary_basis
 # is the true eigenvalue λ inside some certified disc?
 enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
 
-@testset "schur_newton_vbd" begin
+@testset "miyajima2014a_schurnewton" begin
     @testset "rigor: discs enclose true eigenvalues" begin
         rng = MersenneTwister(20260627)
 
@@ -23,7 +23,7 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
                 Q = Matrix(qr(randn(rng, 5, 5)).Q)
                 M = Matrix(Symmetric(Q * D * Q'))
                 A = BallMatrix(M, fill(1e-7, 5, 5))
-                r = schur_newton_vbd(A)
+                r = miyajima2014a_schurnewton(A)
                 @test r.nrmR2 < 1
                 @test length(r.clusters) == 5            # all singletons
                 te = eigvals(Complex{BigFloat}.(M))
@@ -36,7 +36,7 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
             J = [3.0 1 0; 0 3 1; 0 0 3]
             P = [1.0 0.5 0.2; 0 1 0.5; 0 0 1]
             A = P * J * inv(P)
-            r = schur_newton_vbd(BallMatrix(A))
+            r = miyajima2014a_schurnewton(BallMatrix(A))
             @test r.nrmR2 < 1
             @test length(r.clusters) == 1               # coincident ⇒ one cluster
             te = eigvals(Complex{BigFloat}.(A))
@@ -48,7 +48,7 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
             # eigenvector basis.  Schur+Newton coalesces the tail and stays rigorous.
             for ε in (2.0^-10, 2.0^-20, 2.0^-40, 2.0^-52)
                 A = [1.0 1.0; 0.0 1.0 + ε]
-                r = schur_newton_vbd(BallMatrix(A))
+                r = miyajima2014a_schurnewton(BallMatrix(A))
                 @test r.nrmR2 < 1
                 te = eigvals(Complex{BigFloat}.(A))
                 @test all(λ -> enclosed(λ, r.cluster_intervals), te)
@@ -61,7 +61,7 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
         J = [3.0 1 0 0 0; 0 3 1 0 0; 0 0 3 0 0; 0 0 0 9.0 0; 0 0 0 0 -6.0]
         P = [1.0 0.4 0.1 0.0 0.0; 0 1 0.3 0 0; 0 0 1 0 0; 0.1 0 0 1 0; 0 0.1 0 0 1]
         A = P * J * inv(P)
-        r = schur_newton_vbd(BallMatrix(A))
+        r = miyajima2014a_schurnewton(BallMatrix(A))
 
         @test length(r.block_coupling) == length(r.clusters)
         @test all(isfinite, r.block_coupling)
@@ -84,7 +84,7 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
         J = [3.0 1 0 0 0; 0 3 1 0 0; 0 0 3 0 0; 0 0 0 9.0 0; 0 0 0 0 -6.0]
         P = [1.0 0.4 0.1 0.0 0.0; 0 1 0.3 0 0; 0 0 1 0 0; 0.1 0 0 1 0; 0 0.1 0 0 1]
         A = P * J * inv(P)
-        r = schur_newton_vbd(BallMatrix(A))
+        r = miyajima2014a_schurnewton(BallMatrix(A))
 
         @test length(r.block_centers) == length(r.clusters)
         @test length(r.block_nonnormality) == length(r.clusters)
@@ -129,7 +129,7 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
     @testset "shape / cost sanity" begin
         # diagonal ⇒ n singleton clusters, vanishing certification slack
         A = BallMatrix(Diagonal([4.0, -2.0, 7.0, 1.5]) |> Matrix)
-        r = schur_newton_vbd(A)
+        r = miyajima2014a_schurnewton(A)
         @test length(r.clusters) == 4
         @test r.nrmR2 < 1e-12
         @test r.beta < 1e-10
@@ -140,8 +140,8 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
         n = 80
         Q = Matrix(qr(randn(rng, n, n)).Q)
         M = Matrix(Symmetric(Q * Diagonal(collect(range(-10, 10, length = n))) * Q'))
-        rbig = schur_newton_vbd(BallMatrix(M))
-        @test rbig isa SchurNewtonVBDResult
+        rbig = miyajima2014a_schurnewton(BallMatrix(M))
+        @test rbig isa Miyajima2014aSchurNewtonResult
         @test length(rbig.clusters) == n
     end
 
@@ -167,7 +167,7 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
         setprecision(BigFloat, 128) do
             # exactly defective
             A = BallMatrix(BigFloat[1 1; 0 1])
-            r = schur_newton_vbd(A)
+            r = miyajima2014a_schurnewton(A)
             @test r.nrmR2 < 1
             @test isfinite(r.remainder_norm)
             te = eigvals(Complex{BigFloat}.(BigFloat[1 1; 0 1]))
@@ -175,14 +175,14 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
 
             # diagonal
             Ad = BallMatrix(Diagonal(BigFloat[5, 2, -1]) |> Matrix)
-            rd = schur_newton_vbd(Ad)
+            rd = miyajima2014a_schurnewton(Ad)
             @test length(rd.clusters) == 3
             @test isfinite(rd.remainder_norm)
         end
     end
 end
 
-@testset "schur_newton_vbd — generalized pencil Ax = λBx" begin
+@testset "miyajima2014a_schurnewton — generalized pencil Ax = λBx" begin
     setprecision(BigFloat, 512)
     Random.seed!(20260731)
 
@@ -198,7 +198,7 @@ end
             Bc = Matrix(Bc'Bc + n * I)                 # SPD
             trial % 3 == 0 && (Ac = Matrix((Ac + Ac') / 2))
 
-            res = schur_newton_vbd(BallMatrix(Ac), BallMatrix(Bc))
+            res = miyajima2014a_schurnewton(BallMatrix(Ac), BallMatrix(Bc))
             @test res.nrmR2 < 1
             @test isfinite(res.beta)
             tr = eigvals(Complex{BigFloat}.(BigFloat.(Bc) \ BigFloat.(Ac)))
@@ -210,8 +210,8 @@ end
         n = 6
         Ac = randn(n, n)
         A = BallMatrix(Ac)
-        r_std = schur_newton_vbd(A)
-        r_pen = schur_newton_vbd(A, BallMatrix(Matrix(1.0I, n, n)))
+        r_std = miyajima2014a_schurnewton(A)
+        r_pen = miyajima2014a_schurnewton(A, BallMatrix(Matrix(1.0I, n, n)))
 
         key = x -> (real(x), imag(x))
         @test sort(r_std.eigenvalues, by = key) ≈ sort(r_pen.eigenvalues, by = key)
@@ -227,7 +227,7 @@ end
         Bc = [2.0 0.5 0.0; -0.3 2.0 0.4; 0.0 0.1 3.0]
         @test !(Bc ≈ Bc')
 
-        res = schur_newton_vbd(BallMatrix(Ac), BallMatrix(Bc))
+        res = miyajima2014a_schurnewton(BallMatrix(Ac), BallMatrix(Bc))
         @test res.nrmR2 < 1
         tr = eigvals(Complex{BigFloat}.(BigFloat.(Bc) \ BigFloat.(Ac)))
         @test _outside(res, tr) == 0
@@ -238,7 +238,7 @@ end
         for rad in (0.0, 1e-10, 1e-6)
             A = BallMatrix([4.0 1.0; 1.0 3.0], fill(rad, 2, 2))
             B = BallMatrix([2.0 0.5; 0.5 2.0], fill(rad, 2, 2))
-            res = schur_newton_vbd(A, B)
+            res = miyajima2014a_schurnewton(A, B)
             @test res.nrmR2 < 1
             push!(betas, res.beta)
         end
@@ -246,7 +246,7 @@ end
     end
 
     @testset "argument checking" begin
-        @test_throws DimensionMismatch schur_newton_vbd(
+        @test_throws DimensionMismatch miyajima2014a_schurnewton(
             BallMatrix(randn(3, 3)), BallMatrix(randn(4, 4)))
     end
 end

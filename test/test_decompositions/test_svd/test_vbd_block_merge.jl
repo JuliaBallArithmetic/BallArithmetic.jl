@@ -30,7 +30,7 @@ using Random
     @test cond(W) < 1e3
 
     # the whole routine now certifies instead of throwing
-    res = schur_newton_vbd(BallMatrix(M); refine = :block)
+    res = miyajima2014a_schurnewton(BallMatrix(M); refine = :block)
     @test res.nrmR2 < 1
     d = block_enclosure(res)
     @test !isempty(d)
@@ -46,7 +46,7 @@ end
     D = Diagonal(vcat(fill(1.0 + 0im, n ÷ 2), fill(-2.0 + 0im, n - n ÷ 2)))
     S = I + 0.3 * triu(randn(rng, ComplexF64, n, n), 1)
     M = Matrix(S * D * inv(S))
-    res = schur_newton_vbd(BallMatrix(M); refine = :block)
+    res = miyajima2014a_schurnewton(BallMatrix(M); refine = :block)
     @test res.nrmR2 < 1
     d = block_enclosure(res)
     for λ in eigvals(M)
@@ -63,7 +63,7 @@ end
     # 14 matrices, 6 came back inconsistent, a defective triangular at n = 12 returning
     # [6,1,1,1,1,1,1] whose own discs merge into [9,1,1,1].
     function consistent(M)
-        res = BallArithmetic.schur_newton_vbd(BallMatrix(M))
+        res = BallArithmetic.miyajima2014a_schurnewton(BallMatrix(M))
         implied, ord = BallArithmetic._interval_clusters(res.cluster_intervals)
         return implied == res.clusters && ord == collect(1:size(M, 1))
     end

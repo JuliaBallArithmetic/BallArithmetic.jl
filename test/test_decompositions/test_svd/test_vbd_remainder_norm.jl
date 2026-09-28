@@ -53,7 +53,7 @@ sample_in_ball(rng, A) = mid(A) .+ (2 .* rand(rng, size(mid(A))...) .- 1) .* rad
         end
     end
 
-    @testset "Schur+Newton path (schur_newton_vbd)" begin
+    @testset "Schur+Newton path (miyajima2014a_schurnewton)" begin
         rng = MersenneTwister(7)
         # well-separated spectrum -> Schur+Newton produces a (block-orthonormal,
         # non-unitary) basis whose off-block remainder is nonzero, exercising the bound.
@@ -64,7 +64,7 @@ sample_in_ball(rng, A) = mid(A) .+ (2 .* rand(rng, size(mid(A))...) .- 1) .* rad
             R = fill(ro, 5, 5); R[diagind(R)] .= ro / 2
             A = BallMatrix(M, R)
 
-            r = schur_newton_vbd(A)
+            r = miyajima2014a_schurnewton(A)
             W = r.basis
             Winv = inv(W)
             mask = offblock_mask(5, r.clusters)

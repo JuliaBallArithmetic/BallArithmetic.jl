@@ -117,7 +117,7 @@ function rigorous_block_schur(A::BallMatrix{RT, NT};
 
     # Step 1: Compute VBD to identify clusters and get basis
     vbd = if vbd_method == :schur_newton
-        schur_newton_vbd(A)
+        miyajima2014a_schurnewton(A)
     else
         schur_gershgorin_enclosure(A; hermitian = hermitian)
     end

@@ -1,11 +1,11 @@
 # The three verified block decompositions against each other and against a full eigen
 # certification.
 #
-#   none       schur_newton_vbd(refine = :none)       W = the unitary Schur Q, no transformation
+#   none       miyajima2014a_schurnewton(refine = :none)       W = the unitary Schur Q, no transformation
 #              (this is what schur_gershgorin_enclosure does: the block-diagonal part of Z*AZ, the whole
 #              strictly-off-block part left as remainder)
-#   entrywise  schur_newton_vbd(refine = :entrywise)  Newton on X, W <- W(I+X), gated per pair
-#   block      schur_newton_vbd(refine = :block)      Sylvester / Bavely-Stewart elimination
+#   entrywise  miyajima2014a_schurnewton(refine = :entrywise)  Newton on X, W <- W(I+X), gated per pair
+#   block      miyajima2014a_schurnewton(refine = :block)      Sylvester / Bavely-Stewart elimination
 #   rump2022a  rump_2022a_eigenvalue_bounds           one ball per eigenvalue, not per cluster
 #
 # rump2022a carries a `verified` flag and declines when its coupling defect reaches one, which it
@@ -64,7 +64,7 @@ function main(; n = 24, seed = 20260927)
         for r in ROUTES
             local res, t
             try
-                t = @elapsed res = schur_newton_vbd(A; refine = r)
+                t = @elapsed res = miyajima2014a_schurnewton(A; refine = r)
             catch err
                 @printf("%-14s %-11s %7s %10s %12s %12s %10s   (%s)\n", name, String(r),
                     "-", "-", "-", "-", "-", sprint(showerror, err)[1:min(end, 40)])

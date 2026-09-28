@@ -9,7 +9,7 @@ remainder, and the clusters read off the inflated Gershgorin discs.
 The basis is **not** a block-diagonalising one: it is the unitary basis of the
 midpoint matrix, permuted so the clusters are contiguous, so `remainder` is the
 off-block part of `Z*AZ` and is not small. Field names are duck-type compatible
-with [`SchurNewtonVBDResult`](@ref), whose basis does decouple the blocks, so the
+with [`Miyajima2014aSchurNewtonResult`](@ref), whose basis does decouple the blocks, so the
 same downstream consumers accept either.
 """
 struct SchurGershgorinResult{MT, BT, IT, RT, ET}
@@ -45,7 +45,7 @@ end
 Trait distinguishing VBD results whose `basis` is genuinely unitary (so that
 `adjoint(basis)` is its inverse) from those whose basis is only block-orthonormal
 (so that consumers must use `inv(basis)`).  `SchurGershgorinResult` (NSD / Schur /
-Hermitian eigenvectors) is unitary; `SchurNewtonVBDResult` is not.
+Hermitian eigenvectors) is unitary; `Miyajima2014aSchurNewtonResult` is not.
 """
 _vbd_unitary_basis(::SchurGershgorinResult) = true
 
@@ -209,7 +209,7 @@ Newton operator, over an approximate eigendecomposition (§3, radii `u + ⟨u⟩
 from infinity-norm row sums) or a genuine block diagonalisation of `B⁻¹A` (§4);
 neither the fixed-point test nor a diagonalising transformation appears here, and
 the basis is only permuted. For the block-diagonalising route see
-[`schur_newton_vbd`](@ref).
+[`miyajima2014a_schurnewton`](@ref).
 """
 
 function schur_gershgorin_enclosure(A::BallMatrix{T, NT}; hermitian::Bool = false) where {T, NT}
@@ -284,7 +284,7 @@ end
     block_enclosure(vbd) -> Vector{NamedTuple}
 
 Block-disc enclosure of `σ(A)` from a VBD result (`SchurGershgorinResult` or
-`SchurNewtonVBDResult`): one disc per cluster, `(center = cᵢ, radius = nᵢ + rᵢ, mult = |Cᵢ|)`
+`Miyajima2014aSchurNewtonResult`): one disc per cluster, `(center = cᵢ, radius = nᵢ + rᵢ, mult = |Cᵢ|)`
 with the barycentre `cᵢ` (`block_centers`), within-block non-normality `nᵢ`
 (`block_nonnormality`) and localized coupling `rᵢ` (`block_coupling`).
 

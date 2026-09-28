@@ -109,11 +109,11 @@ include("error_free_transformations.jl")
 include("eigenvalues/rump_verifyeigall.jl")
 include("eigenvalues/miyajima_2014a.jl")
 include("decompositions/svd/schur_gershgorin.jl")
-include("decompositions/svd/schur_newton_vbd.jl")
+include("decompositions/svd/miyajima_2014a_schurnewton.jl")
 include("decompositions/svd/svd.jl")
 include("decompositions/svd/adaptive_ogita_svd.jl")
 include("decompositions/svd/precision_cascade_svd.jl")
-export SchurNewtonVBDResult, schur_newton_vbd, block_enclosure
+export Miyajima2014aSchurNewtonResult, miyajima2014a_schurnewton, block_enclosure
 export SchurGershgorinResult, RigorousSVDResult, schur_gershgorin_enclosure, rigorous_svd, svdbox,
        rigorous_svd_gpu, rigorous_svd_m4, refine_svd_bounds_with_vbd,
        OgitaSVDRefinementResult, AdaptiveSVDResult, ogita_svd_refine, adaptive_ogita_svd,

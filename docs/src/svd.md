@@ -25,7 +25,7 @@ The [`schur_gershgorin_enclosure`](@ref) function encloses the spectrum by infla
 Gershgorin discs in a unitary basis of the midpoint matrix, grouped into clusters, and
 returns a [`SchurGershgorinResult`](@ref). The basis is permuted, not transformed, so the
 remainder is the off-block part of `Z*AZ`; for a basis that decouples the blocks see
-[`schur_newton_vbd`](@ref).
+[`miyajima2014a_schurnewton`](@ref).
 
 ## Singular Value Bounds
 

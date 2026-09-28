@@ -48,7 +48,7 @@ using Test
     include("test_decompositions/test_svd/test_precision_cascade_svd.jl")
     include("test_decompositions/test_svd/test_precision_cascade_core.jl")
     include("test_decompositions/test_svd/test_gla_svd.jl")
-    include("test_decompositions/test_svd/test_schur_newton_vbd.jl")
+    include("test_decompositions/test_svd/test_miyajima_2014a_schurnewton.jl")
     include("test_decompositions/test_svd/test_vbd_remainder_norm.jl")
     include("test_decompositions/test_svd/test_vbd_block_coupling.jl")
     include("test_decompositions/test_svd/test_vbd_block_merge.jl")

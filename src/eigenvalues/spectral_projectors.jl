@@ -113,7 +113,7 @@ function miyajima_spectral_projectors(A::BallMatrix{T, NT};
 
     # Step 1: Compute VBD
     vbd = if vbd_method == :schur_newton
-        schur_newton_vbd(A)
+        miyajima2014a_schurnewton(A)
     else
         schur_gershgorin_enclosure(A; hermitian = hermitian)
     end
@@ -287,7 +287,7 @@ end
 Rigorous spectral projectors — equivalently, enclosures of the **deflating
 (invariant) subspaces** — for the pencil `Ax = λBx`.
 
-Built on [`schur_newton_vbd`](@ref)`(A, B)`. Because `Y·B·W = I + R₂`, we have
+Built on [`miyajima2014a_schurnewton`](@ref)`(A, B)`. Because `Y·B·W = I + R₂`, we have
 `(BW)⁻¹ = (I+R₂)⁻¹Y` and hence
 
     W⁻¹(B⁻¹A)W = (I+R₂)⁻¹·Y·A·W = (I+R₂)⁻¹Ã = M ,
@@ -325,7 +325,7 @@ function miyajima_spectral_projectors(A::BallMatrix{T, NT}, B::BallMatrix;
     vbd_method ∈ (:schur_newton, :njd, :auto) ||
         throw(ArgumentError("only :schur_newton is available for the generalized problem"))
 
-    vbd = schur_newton_vbd(A, B)
+    vbd = miyajima2014a_schurnewton(A, B)
     n = size(A, 1)
 
     W = BallMatrix(vbd.basis)
@@ -410,7 +410,7 @@ Enclose **all** eigenvalues and deflating (invariant) subspaces of the pencil
 `Ax = λBx`, one entry per certified cluster.
 
 The subspaces are produced by the certified basis `W` of
-[`schur_newton_vbd`](@ref)`(A, B)`: cluster `C` spans `W[:, C]`. Since
+[`miyajima2014a_schurnewton`](@ref)`(A, B)`: cluster `C` spans `W[:, C]`. Since
 `Y·B·W = I + R₂` gives `W⁻¹(B⁻¹A)W = (I+R₂)⁻¹Ã = M`, the basis block-diagonalises
 `B⁻¹A`, so each `W[:, C]` spans a deflating subspace of the pencil and carries
 exactly `length(C)` eigenvalues (with multiplicity) — the ones enclosed by the
@@ -443,7 +443,7 @@ function gev_invariant_subspaces(A::BallMatrix{T, NT}, B::BallMatrix;
     size(A) == size(B) ||
         throw(DimensionMismatch("A and B must have the same size"))
 
-    vbd = schur_newton_vbd(A, B)
+    vbd = miyajima2014a_schurnewton(A, B)
     n = size(A, 1)
     W = BallMatrix(vbd.basis)
     CTm = eltype(mid(vbd.transformed))
