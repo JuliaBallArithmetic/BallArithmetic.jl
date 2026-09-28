@@ -81,7 +81,11 @@ end
     end
     for r in res
         @test r.transform_defect < 1
-        @test all(isfinite(r.radii[i]) == r.certified[i] for i in eachindex(r.clusters))
+        # every cluster carries a bound now: the theorem's where (2.10) held, Gershgorin on the
+        # transformed matrix where it declined. What marks the difference is `certified`.
+        @test all(isfinite, r.radii)
+        @test all(all(isfinite, rad(r.subspaces[i])) == r.certified[i]
+        for i in eachindex(r.clusters))
     end
     # simple eigenvalues: everything certified, at the rounding unit
     @test res[1].spectrum_covered
@@ -114,7 +118,8 @@ end
         @test abs(0.5 - r.centers[i]) <= r.radii[i]
         @test r.radii[i] >= 0.1
     end
-    @test all(isfinite(r.radii[i]) == r.certified[i] for i in eachindex(r.clusters))
+    @test all(isfinite, r.radii)
+    @test all(all(isfinite, rad(r.subspaces[i])) == r.certified[i] for i in eachindex(r.clusters))
     # the result is either a decline or an honest wide enclosure, never a narrow wrong one
     @test count(r.certified) == 0 ||
           all(r.radii[i] >= 0.1 for i in eachindex(r.clusters) if r.certified[i])
@@ -153,7 +158,8 @@ end
             @test isfinite(r.radii[i])
             @test all(isfinite, rad(r.subspaces[i]))
         else
-            @test !isfinite(r.radii[i])
+            # a Gershgorin bound on the location, but no subspace and no Jordan block
+            @test isfinite(r.radii[i])
             @test all(isinf, rad(r.subspaces[i]))
             @test all(isinf, rad(r.blocks[i]))
         end
@@ -250,4 +256,41 @@ end
     A = BallMatrix(randn(MersenneTwister(3), 6, 6))
     @test verifyeigall(A; method = :rump2022adiscclusters) isa VerifyEigAllResult
     @test_throws ArgumentError verifyeigall(A; method = :rump2022adisc)
+end
+
+@testset "a declined cluster still carries a bound, from Gershgorin" begin
+    # Theorem 2.2 proves nothing where (2.10) declines, but the transformed A encloses W^{-1}BW and
+    # so has the eigenvalues of B, and its Gershgorin discs locate them in O(n^2). Rump's Table 1 is
+    # "Eigenvalue bounds by Gershgorin circles and the new method verifyeigall", so that is the
+    # baseline his paper measures against. `certified` still marks the theorem's claim, and the
+    # subspace and block stay Inf, since Gershgorin proves no Jordan structure.
+    n = 24
+    rng = MersenneTwister(20260928)
+    Q = Matrix(qr(randn(rng, n, n)).Q)
+    # a single Jordan block: nothing can be certified, so every radius is a fallback
+    M = Q * diagm(0 => fill(0.7, n), 1 => ones(n - 1)) * Q'
+    A = BallMatrix(M)
+    r = verifyeigall(A; method = :rump2022a)
+    @test !r.spectrum_covered
+    @test count(r.certified) == 0
+    @test all(isfinite, r.radii)                       # a bound for every cluster
+    setprecision(256) do
+        for l in eigvals(Complex{BigFloat}.(M))
+            @test any(i -> abs(l - Complex{BigFloat}(r.centers[i])) <= BigFloat(r.radii[i]),
+                eachindex(r.clusters))
+        end
+    end
+    # no subspace or block is claimed where the test declined
+    for i in eachindex(r.clusters)
+        r.certified[i] && continue
+        @test all(!isfinite, rad(r.subspaces[i]))
+        @test all(!isfinite, rad(r.blocks[i]))
+    end
+
+    # where the test does succeed, the radius is the theorem's and not the fallback
+    B = BallMatrix(randn(rng, 12, 12))
+    q = verifyeigall(B; method = :rump2022a)
+    @test all(q.certified)
+    @test q.spectrum_covered
+    @test maximum(q.radii) < 1e-12                     # nowhere near a Gershgorin radius
 end

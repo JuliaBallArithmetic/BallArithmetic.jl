@@ -1,127 +1,127 @@
 host	n	family	method	enclosed	of	max_radius	seconds
-nighthawk	10	randn	verifyeigall :rump2022a	10	10	6.304468390547832e-16	0.00034272
-nighthawk	10	randn	verifyeigall :rump2022aneumann	10	10	6.304468390547832e-16	0.000216631
-nighthawk	10	randn	verifyeigall :rump2022adiscclusters	10	10	6.304468390547832e-16	0.0003318
-nighthawk	10	randn	verifyeigall :miyajima2014a	10	10	3.5675195485492177e-13	0.000111891
-nighthawk	10	randn	schur_gershgorin_enclosure	10	10	6.562496812794657	4.431e-5
-nighthawk	10	randn	schur_newton_vbd	10	10	1.9769846451942578e-13	0.000918152
-nighthawk	10	randn	evbox	10	10	2.362600703874731e-13	0.00010161
-nighthawk	10	randn	certify_eigenpairs	10	10	6.9562233929173e-14	0.000432681
-nighthawk	10	randn	rump_lange_2023	10	10	8.226168025035143	6.092e-5
-nighthawk	10	triangular	verifyeigall :rump2022a	10	10	3.441957654606909e-16	0.000291751
-nighthawk	10	triangular	verifyeigall :rump2022aneumann	10	10	3.441957654606909e-16	0.00019527
-nighthawk	10	triangular	verifyeigall :rump2022adiscclusters	10	10	3.441957654606909e-16	0.000272961
-nighthawk	10	triangular	verifyeigall :miyajima2014a	10	10	6.84132258558582e-13	0.00010601
-nighthawk	10	triangular	schur_gershgorin_enclosure	10	10	5.696891349572113	5.015e-5
-nighthawk	10	triangular	schur_newton_vbd	10	10	1.245008409166418e-13	0.000967381
-nighthawk	10	triangular	evbox	10	10	4.257440438381188e-14	3.158e-5
-nighthawk	10	triangular	certify_eigenpairs	10	10	4.084692741732282e-14	0.0001383
-nighthawk	10	triangular	rump_lange_2023	10	10	7.142811907818164	2.607e-5
-nighthawk	10	symmetric	verifyeigall :rump2022a	10	10	8.107010697161359e-16	0.000275471
-nighthawk	10	symmetric	verifyeigall :rump2022aneumann	10	10	8.107010697161361e-16	0.00018218
-nighthawk	10	symmetric	verifyeigall :rump2022adiscclusters	10	10	8.107010697161359e-16	0.000263451
-nighthawk	10	symmetric	verifyeigall :miyajima2014a	10	10	6.493012784254043e-14	8.219e-5
-nighthawk	10	symmetric	schur_gershgorin_enclosure	10	10	3.732795084089205e-14	0.00012004
-nighthawk	10	symmetric	schur_newton_vbd	10	10	7.278406843068532e-14	0.000917921
-nighthawk	10	symmetric	evbox	10	10	2.496877380805226e-14	2.484e-5
-nighthawk	10	symmetric	certify_eigenpairs	10	10	2.3684403713405494e-14	0.000137
-nighthawk	10	symmetric	rump_lange_2023	10	10	5.816536205989873	3.044e-5
-nighthawk	10	cluster k=3	verifyeigall :rump2022a	4	10	1.4915950058868422e-12	0.002557294
-nighthawk	10	cluster k=3	verifyeigall :rump2022aneumann	4	10	1.4915950058869422e-12	0.001574613
-nighthawk	10	cluster k=3	verifyeigall :rump2022adiscclusters	10	10	5.858899877633177e-10	0.00032089
-nighthawk	10	cluster k=3	verifyeigall :miyajima2014a	10	10	3.5276366810119613e-9	0.00018874
-nighthawk	10	cluster k=3	schur_gershgorin_enclosure	10	10	6.864288302800006e-6	6.361e-5
-nighthawk	10	cluster k=3	schur_newton_vbd	10	10	1.7805093196160574e-6	0.000886002
-nighthawk	10	cluster k=3	evbox	10	10	6.703342351164297e-8	9.434e-5
-nighthawk	10	cluster k=3	certify_eigenpairs	1	10	2.0211987049564073e-14	0.000406021
-nighthawk	10	cluster k=3	rump_lange_2023	10	10	1.297299901713392	5.116e-5
-nighthawk	10	jordan n	verifyeigall :rump2022a	0	10		0.001587773
-nighthawk	10	jordan n	verifyeigall :rump2022aneumann	0	10		0.001373782
-nighthawk	10	jordan n	verifyeigall :rump2022adiscclusters	0	10		0.001498952
-nighthawk	10	jordan n	verifyeigall :miyajima2014a	declined	10		0.000112561
-nighthawk	10	jordan n	schur_gershgorin_enclosure	10	10	1.0309809511322299	5.144e-5
-nighthawk	10	jordan n	schur_newton_vbd	10	10	1.0498040933958106	0.000863012
-nighthawk	10	jordan n	evbox	10	10	2.938898894465444	9.742e-5
-nighthawk	10	jordan n	certify_eigenpairs	declined	10		0.000404811
-nighthawk	10	jordan n	rump_lange_2023	10	10	2.66704612208779	5.662e-5
-nighthawk	10	grcar	verifyeigall :rump2022a	10	10	4.748297494759264e-16	0.00031313
-nighthawk	10	grcar	verifyeigall :rump2022aneumann	10	10	4.748297494759266e-16	0.00020433
-nighthawk	10	grcar	verifyeigall :rump2022adiscclusters	10	10	4.748297494759264e-16	0.000305341
-nighthawk	10	grcar	verifyeigall :miyajima2014a	10	10	2.2665025920741328e-13	0.00010724
-nighthawk	10	grcar	schur_gershgorin_enclosure	10	10	3.902778493309896	4.435e-5
-nighthawk	10	grcar	schur_newton_vbd	10	10	9.205148619329003e-14	0.000809061
-nighthawk	10	grcar	evbox	10	10	1.4408711354265086e-13	8.6261e-5
-nighthawk	10	grcar	certify_eigenpairs	10	10	5.1356141889980664e-14	0.000398551
-nighthawk	10	grcar	rump_lange_2023	10	10	4.0	4.859e-5
-nighthawk	10	graded	verifyeigall :rump2022a	10	10	1.5007669826635223e-16	0.00034426
-nighthawk	10	graded	verifyeigall :rump2022aneumann	10	10	1.5007669826635238e-16	0.000234081
-nighthawk	10	graded	verifyeigall :rump2022adiscclusters	10	10	1.5007669826635223e-16	0.000338781
-nighthawk	10	graded	verifyeigall :miyajima2014a	10	10	5.874478852035005e-15	9.64e-5
-nighthawk	10	graded	schur_gershgorin_enclosure	10	10	0.9571561612467349	4.091e-5
-nighthawk	10	graded	schur_newton_vbd	10	10	1.5573002780295765e-14	0.000839262
-nighthawk	10	graded	evbox	10	10	4.6929420601598955e-15	8.685e-5
-nighthawk	10	graded	certify_eigenpairs	10	10	8.588419775599783e-14	0.000387161
-nighthawk	10	graded	rump_lange_2023	10	10	1.9218455312380902	4.736e-5
-nighthawk	30	randn	verifyeigall :rump2022a	30	30	1.11504881885381e-15	0.004212047
-nighthawk	30	randn	verifyeigall :rump2022aneumann	30	30	1.115048818853823e-15	0.001693842
-nighthawk	30	randn	verifyeigall :rump2022adiscclusters	30	30	1.11504881885381e-15	0.004038677
-nighthawk	30	randn	verifyeigall :miyajima2014a	30	30	9.598421714105343e-12	0.000954692
-nighthawk	30	randn	schur_gershgorin_enclosure	30	30	18.54849937151952	0.00025942
-nighthawk	30	randn	schur_newton_vbd	30	30	5.950882718877339e-12	0.006074471
-nighthawk	30	randn	evbox	30	30	7.873803965203248e-12	0.000537341
-nighthawk	30	randn	certify_eigenpairs	30	30	8.289335024681028e-13	0.005748509
-nighthawk	30	randn	rump_lange_2023	30	30	27.7935026427101	0.000341471
-nighthawk	30	triangular	verifyeigall :rump2022a	30	30	4.401202046080389e-16	0.003356586
-nighthawk	30	triangular	verifyeigall :rump2022aneumann	30	30	4.4012020461284497e-16	0.001301443
-nighthawk	30	triangular	verifyeigall :rump2022adiscclusters	30	30	4.401202046080389e-16	0.003092475
-nighthawk	30	triangular	verifyeigall :miyajima2014a	30	30	1.8681085565444538e-10	0.000450881
-nighthawk	30	triangular	schur_gershgorin_enclosure	30	30	15.180644734983982	0.00013422
-nighthawk	30	triangular	schur_newton_vbd	30	30	15.180644734984014	0.004947729
-nighthawk	30	triangular	evbox	30	30	2.3321552513426438e-11	7.302e-5
-nighthawk	30	triangular	certify_eigenpairs	27	30	5.341625327043911e-13	0.001131952
-nighthawk	30	triangular	rump_lange_2023	30	30	26.76190362856462	0.00010305
-nighthawk	30	symmetric	verifyeigall :rump2022a	30	30	1.6365440899362975e-15	0.003476506
-nighthawk	30	symmetric	verifyeigall :rump2022aneumann	30	30	1.636544089936301e-15	0.001312772
-nighthawk	30	symmetric	verifyeigall :rump2022adiscclusters	30	30	1.6365440899362975e-15	0.003316475
-nighthawk	30	symmetric	verifyeigall :miyajima2014a	30	30	4.673302637397756e-13	0.000499561
-nighthawk	30	symmetric	schur_gershgorin_enclosure	30	30	3.875584808364893e-13	0.000931892
-nighthawk	30	symmetric	schur_newton_vbd	30	30	7.076550849219439e-13	0.007435912
-nighthawk	30	symmetric	evbox	30	30	2.0708149680494594e-13	0.0001205
-nighthawk	30	symmetric	certify_eigenpairs	30	30	1.932690185758475e-13	0.001273722
-nighthawk	30	symmetric	rump_lange_2023	30	30	20.129711749019442	0.000152211
-nighthawk	30	cluster k=3	verifyeigall :rump2022a	3	30	2.998211722486657e-11	0.010236727
-nighthawk	30	cluster k=3	verifyeigall :rump2022aneumann	3	30	2.998211722487191e-11	0.007747333
-nighthawk	30	cluster k=3	verifyeigall :rump2022adiscclusters	30	30	1.32207278794941e-9	0.003749666
-nighthawk	30	cluster k=3	verifyeigall :miyajima2014a	30	30	1.1649100977143438e-8	0.001467583
-nighthawk	30	cluster k=3	schur_gershgorin_enclosure	30	30	2.6815680199463205e-5	0.00029401
-nighthawk	30	cluster k=3	schur_newton_vbd	30	30	2.0590624887652415e-6	0.00580745
-nighthawk	30	cluster k=3	evbox	30	30	8.079041630562214e-7	0.000487301
-nighthawk	30	cluster k=3	certify_eigenpairs	declined	30		0.005052908
-nighthawk	30	cluster k=3	rump_lange_2023	30	30	6.299494408668925	0.00026593
-nighthawk	30	jordan n	verifyeigall :rump2022a	0	30		0.014738395
-nighthawk	30	jordan n	verifyeigall :rump2022aneumann	0	30		0.007691833
-nighthawk	30	jordan n	verifyeigall :rump2022adiscclusters	0	30		0.014182824
-nighthawk	30	jordan n	verifyeigall :miyajima2014a	declined	30		0.000800941
-nighthawk	30	jordan n	schur_gershgorin_enclosure	30	30	1.5278367433523299	0.000240171
-nighthawk	30	jordan n	schur_newton_vbd	30	30	1.6098292776703518	0.006570411
-nighthawk	30	jordan n	evbox	30	30	19.660018409001374	0.000540311
-nighthawk	30	jordan n	certify_eigenpairs	declined	30		0.005773739
-nighthawk	30	jordan n	rump_lange_2023	30	30	4.621215949013109	0.00032586
-nighthawk	30	grcar	verifyeigall :rump2022a	30	30	4.990373244368388e-16	0.004246507
-nighthawk	30	grcar	verifyeigall :rump2022aneumann	30	30	4.99037324437747e-16	0.001802763
-nighthawk	30	grcar	verifyeigall :rump2022adiscclusters	30	30	4.990373244368388e-16	0.004158927
-nighthawk	30	grcar	verifyeigall :miyajima2014a	30	30	7.752969658519748e-11	0.000912572
-nighthawk	30	grcar	schur_gershgorin_enclosure	30	30	4.955623171973796	0.00023521
-nighthawk	30	grcar	schur_newton_vbd	30	30	1.2104282883562236e-10	0.006783791
-nighthawk	30	grcar	evbox	30	30	4.764325499297616e-11	0.000581401
-nighthawk	30	grcar	certify_eigenpairs	30	30	3.656643039509511e-13	0.00620566
-nighthawk	30	grcar	rump_lange_2023	30	30	4.0	0.00032863
-nighthawk	30	graded	verifyeigall :rump2022a	30	30	5.810944426536657e-17	0.004257797
-nighthawk	30	graded	verifyeigall :rump2022aneumann	30	30	5.810944426536703e-17	0.002140654
-nighthawk	30	graded	verifyeigall :rump2022adiscclusters	30	30	5.810944426536657e-17	0.003848517
-nighthawk	30	graded	verifyeigall :miyajima2014a	30	30	3.01810929915424e-14	0.001049332
-nighthawk	30	graded	schur_gershgorin_enclosure	30	30	1.0648160740377695	0.0003107
-nighthawk	30	graded	schur_newton_vbd	30	30	1.31418358100944e-13	0.007970113
-nighthawk	30	graded	evbox	30	30	4.759643172984802e-14	0.001010512
-nighthawk	30	graded	certify_eigenpairs	30	30	2.142663393364997e-13	0.005165819
-nighthawk	30	graded	rump_lange_2023	30	30	3.88885233807779	0.00029705
+nighthawk	10	randn	verifyeigall :rump2022a	10	10	6.304468390547832e-16	0.000350041
+nighthawk	10	randn	verifyeigall :rump2022aneumann	10	10	6.304468390547832e-16	0.00020868
+nighthawk	10	randn	verifyeigall :rump2022adiscclusters	10	10	6.304468390547832e-16	0.000331991
+nighthawk	10	randn	verifyeigall :miyajima2014a	10	10	3.5675195485492177e-13	0.00015054
+nighthawk	10	randn	schur_gershgorin_enclosure	10	10	6.562496812794657	4.781e-5
+nighthawk	10	randn	schur_newton_vbd	10	10	1.9769846451942578e-13	0.000910482
+nighthawk	10	randn	evbox	10	10	2.362600703874731e-13	9.582e-5
+nighthawk	10	randn	certify_eigenpairs	10	10	6.9562233929173e-14	0.000431121
+nighthawk	10	randn	rump_lange_2023	10	10	8.226168025035143	5.133e-5
+nighthawk	10	triangular	verifyeigall :rump2022a	10	10	3.441957654606909e-16	0.00027341
+nighthawk	10	triangular	verifyeigall :rump2022aneumann	10	10	3.441957654606909e-16	0.00017381
+nighthawk	10	triangular	verifyeigall :rump2022adiscclusters	10	10	3.441957654606909e-16	0.00027203
+nighthawk	10	triangular	verifyeigall :miyajima2014a	10	10	6.84132258558582e-13	0.000108411
+nighthawk	10	triangular	schur_gershgorin_enclosure	10	10	5.696891349572113	3.723e-5
+nighthawk	10	triangular	schur_newton_vbd	10	10	1.245008409166418e-13	0.000712091
+nighthawk	10	triangular	evbox	10	10	4.257440438381188e-14	2.131e-5
+nighthawk	10	triangular	certify_eigenpairs	10	10	4.084692741732282e-14	0.00013725
+nighthawk	10	triangular	rump_lange_2023	10	10	7.142811907818164	2.606e-5
+nighthawk	10	symmetric	verifyeigall :rump2022a	10	10	8.107010697161359e-16	0.000281171
+nighthawk	10	symmetric	verifyeigall :rump2022aneumann	10	10	8.107010697161361e-16	0.000190181
+nighthawk	10	symmetric	verifyeigall :rump2022adiscclusters	10	10	8.107010697161359e-16	0.000268871
+nighthawk	10	symmetric	verifyeigall :miyajima2014a	10	10	6.493012784254043e-14	0.000110291
+nighthawk	10	symmetric	schur_gershgorin_enclosure	10	10	3.732795084089205e-14	0.000126441
+nighthawk	10	symmetric	schur_newton_vbd	10	10	7.278406843068532e-14	0.000890192
+nighthawk	10	symmetric	evbox	10	10	2.496877380805226e-14	2.505e-5
+nighthawk	10	symmetric	certify_eigenpairs	10	10	2.3684403713405494e-14	0.00013504
+nighthawk	10	symmetric	rump_lange_2023	10	10	5.816536205989873	2.912e-5
+nighthawk	10	cluster k=3	verifyeigall :rump2022a	10	10	2.4195678281562427e-9	0.001721173
+nighthawk	10	cluster k=3	verifyeigall :rump2022aneumann	10	10	2.419567828156243e-9	0.001594972
+nighthawk	10	cluster k=3	verifyeigall :rump2022adiscclusters	10	10	5.858899877633177e-10	0.000318001
+nighthawk	10	cluster k=3	verifyeigall :miyajima2014a	10	10	3.5276366810119613e-9	0.00020889
+nighthawk	10	cluster k=3	schur_gershgorin_enclosure	10	10	6.864288302800006e-6	6.512e-5
+nighthawk	10	cluster k=3	schur_newton_vbd	10	10	1.7805093196160574e-6	0.000906791
+nighthawk	10	cluster k=3	evbox	10	10	6.703342351164297e-8	9.901e-5
+nighthawk	10	cluster k=3	certify_eigenpairs	1	10	2.0211987049564073e-14	0.000396151
+nighthawk	10	cluster k=3	rump_lange_2023	10	10	1.297299901713392	5.102e-5
+nighthawk	10	jordan n	verifyeigall :rump2022a	10	10	0.06358216597467875	0.001497392
+nighthawk	10	jordan n	verifyeigall :rump2022aneumann	10	10	0.0635865603680739	0.001346663
+nighthawk	10	jordan n	verifyeigall :rump2022adiscclusters	10	10	0.06358216597467875	0.001517573
+nighthawk	10	jordan n	verifyeigall :miyajima2014a	declined	10		0.00011295
+nighthawk	10	jordan n	schur_gershgorin_enclosure	10	10	1.0309809511322299	5.271e-5
+nighthawk	10	jordan n	schur_newton_vbd	10	10	1.0498040933958106	0.000827392
+nighthawk	10	jordan n	evbox	10	10	2.938898894465444	9.7e-5
+nighthawk	10	jordan n	certify_eigenpairs	declined	10		0.000407371
+nighthawk	10	jordan n	rump_lange_2023	10	10	2.66704612208779	5.563e-5
+nighthawk	10	grcar	verifyeigall :rump2022a	10	10	4.748297494759264e-16	0.00030741
+nighthawk	10	grcar	verifyeigall :rump2022aneumann	10	10	4.748297494759266e-16	0.00019786
+nighthawk	10	grcar	verifyeigall :rump2022adiscclusters	10	10	4.748297494759264e-16	0.000301251
+nighthawk	10	grcar	verifyeigall :miyajima2014a	10	10	2.2665025920741328e-13	0.00012791
+nighthawk	10	grcar	schur_gershgorin_enclosure	10	10	3.902778493309896	4.506e-5
+nighthawk	10	grcar	schur_newton_vbd	10	10	9.205148619329003e-14	0.000765951
+nighthawk	10	grcar	evbox	10	10	1.4408711354265086e-13	9.052e-5
+nighthawk	10	grcar	certify_eigenpairs	10	10	5.1356141889980664e-14	0.000388941
+nighthawk	10	grcar	rump_lange_2023	10	10	4.0	4.889e-5
+nighthawk	10	graded	verifyeigall :rump2022a	10	10	1.5007669826635223e-16	0.000340821
+nighthawk	10	graded	verifyeigall :rump2022aneumann	10	10	1.5007669826635238e-16	0.00023417
+nighthawk	10	graded	verifyeigall :rump2022adiscclusters	10	10	1.5007669826635223e-16	0.000332031
+nighthawk	10	graded	verifyeigall :miyajima2014a	10	10	5.874478852035005e-15	0.00011476
+nighthawk	10	graded	schur_gershgorin_enclosure	10	10	0.9571561612467349	4.247e-5
+nighthawk	10	graded	schur_newton_vbd	10	10	1.5573002780295765e-14	0.000811272
+nighthawk	10	graded	evbox	10	10	4.6929420601598955e-15	8.721e-5
+nighthawk	10	graded	certify_eigenpairs	10	10	8.588419775599783e-14	0.000368371
+nighthawk	10	graded	rump_lange_2023	10	10	1.9218455312380902	4.592e-5
+nighthawk	30	randn	verifyeigall :rump2022a	30	30	1.11504881885381e-15	0.004169136
+nighthawk	30	randn	verifyeigall :rump2022aneumann	30	30	1.115048818853823e-15	0.001663132
+nighthawk	30	randn	verifyeigall :rump2022adiscclusters	30	30	1.11504881885381e-15	0.003879756
+nighthawk	30	randn	verifyeigall :miyajima2014a	30	30	9.598421714105343e-12	0.001076762
+nighthawk	30	randn	schur_gershgorin_enclosure	30	30	18.54849937151952	0.000252361
+nighthawk	30	randn	schur_newton_vbd	30	30	5.950882718877339e-12	0.005924769
+nighthawk	30	randn	evbox	30	30	7.873803965203248e-12	0.00052349
+nighthawk	30	randn	certify_eigenpairs	30	30	8.289335024681028e-13	0.005777429
+nighthawk	30	randn	rump_lange_2023	30	30	27.7935026427101	0.000339101
+nighthawk	30	triangular	verifyeigall :rump2022a	30	30	4.401202046080389e-16	0.003187795
+nighthawk	30	triangular	verifyeigall :rump2022aneumann	30	30	4.4012020461284497e-16	0.001326393
+nighthawk	30	triangular	verifyeigall :rump2022adiscclusters	30	30	4.401202046080389e-16	0.003064335
+nighthawk	30	triangular	verifyeigall :miyajima2014a	30	30	1.8681085565444538e-10	0.000666371
+nighthawk	30	triangular	schur_gershgorin_enclosure	30	30	15.180644734983982	0.000138891
+nighthawk	30	triangular	schur_newton_vbd	30	30	15.180644734984014	0.004992898
+nighthawk	30	triangular	evbox	30	30	2.3321552513426438e-11	8.621e-5
+nighthawk	30	triangular	certify_eigenpairs	27	30	5.341625327043911e-13	0.001174362
+nighthawk	30	triangular	rump_lange_2023	30	30	26.76190362856462	0.00011341
+nighthawk	30	symmetric	verifyeigall :rump2022a	30	30	1.6365440899362975e-15	0.003464925
+nighthawk	30	symmetric	verifyeigall :rump2022aneumann	30	30	1.636544089936301e-15	0.001399213
+nighthawk	30	symmetric	verifyeigall :rump2022adiscclusters	30	30	1.6365440899362975e-15	0.003314365
+nighthawk	30	symmetric	verifyeigall :miyajima2014a	30	30	4.673302637397756e-13	0.000733251
+nighthawk	30	symmetric	schur_gershgorin_enclosure	30	30	3.875584808364893e-13	0.000966892
+nighthawk	30	symmetric	schur_newton_vbd	30	30	7.076550849219439e-13	0.007439972
+nighthawk	30	symmetric	evbox	30	30	2.0708149680494594e-13	0.00012293
+nighthawk	30	symmetric	certify_eigenpairs	30	30	1.932690185758475e-13	0.001363832
+nighthawk	30	symmetric	rump_lange_2023	30	30	20.129711749019442	0.000147811
+nighthawk	30	cluster k=3	verifyeigall :rump2022a	30	30	7.361282244326995e-9	0.010497777
+nighthawk	30	cluster k=3	verifyeigall :rump2022aneumann	30	30	7.361282244327017e-9	0.007437072
+nighthawk	30	cluster k=3	verifyeigall :rump2022adiscclusters	30	30	1.32207278794941e-9	0.003657396
+nighthawk	30	cluster k=3	verifyeigall :miyajima2014a	30	30	1.1649100977143438e-8	0.001582303
+nighthawk	30	cluster k=3	schur_gershgorin_enclosure	30	30	2.6815680199463205e-5	0.00029598
+nighthawk	30	cluster k=3	schur_newton_vbd	30	30	2.0590624887652415e-6	0.005872099
+nighthawk	30	cluster k=3	evbox	30	30	8.079041630562214e-7	0.000455111
+nighthawk	30	cluster k=3	certify_eigenpairs	declined	30		0.004631157
+nighthawk	30	cluster k=3	rump_lange_2023	30	30	6.299494408668925	0.000237051
+nighthawk	30	jordan n	verifyeigall :rump2022a	30	30	1.0401451370428976	0.015532175
+nighthawk	30	jordan n	verifyeigall :rump2022aneumann	30	30	1.05932081404995	0.007503212
+nighthawk	30	jordan n	verifyeigall :rump2022adiscclusters	30	30	1.0401451370428976	0.013569092
+nighthawk	30	jordan n	verifyeigall :miyajima2014a	declined	30		0.001204972
+nighthawk	30	jordan n	schur_gershgorin_enclosure	30	30	1.5278367433523299	0.00037618
+nighthawk	30	jordan n	schur_newton_vbd	30	30	1.6098292776703518	0.00604673
+nighthawk	30	jordan n	evbox	30	30	19.660018409001374	0.000600771
+nighthawk	30	jordan n	certify_eigenpairs	declined	30		0.005524599
+nighthawk	30	jordan n	rump_lange_2023	30	30	4.621215949013109	0.000355331
+nighthawk	30	grcar	verifyeigall :rump2022a	30	30	4.990373244368388e-16	0.004138366
+nighthawk	30	grcar	verifyeigall :rump2022aneumann	30	30	4.99037324437747e-16	0.001769392
+nighthawk	30	grcar	verifyeigall :rump2022adiscclusters	30	30	4.990373244368388e-16	0.004047646
+nighthawk	30	grcar	verifyeigall :miyajima2014a	30	30	7.752969658519748e-11	0.001401722
+nighthawk	30	grcar	schur_gershgorin_enclosure	30	30	4.955623171973796	0.00026802
+nighthawk	30	grcar	schur_newton_vbd	30	30	1.2104282883562236e-10	0.005308869
+nighthawk	30	grcar	evbox	30	30	4.764325499297616e-11	0.000636541
+nighthawk	30	grcar	certify_eigenpairs	30	30	3.656643039509511e-13	0.00573932
+nighthawk	30	grcar	rump_lange_2023	30	30	4.0	0.000320941
+nighthawk	30	graded	verifyeigall :rump2022a	30	30	5.810944426536657e-17	0.004358637
+nighthawk	30	graded	verifyeigall :rump2022aneumann	30	30	5.810944426536703e-17	0.001514243
+nighthawk	30	graded	verifyeigall :rump2022adiscclusters	30	30	5.810944426536657e-17	0.003716966
+nighthawk	30	graded	verifyeigall :miyajima2014a	30	30	3.01810929915424e-14	0.000944291
+nighthawk	30	graded	schur_gershgorin_enclosure	30	30	1.0648160740377695	0.00021432
+nighthawk	30	graded	schur_newton_vbd	30	30	1.31418358100944e-13	0.005357768
+nighthawk	30	graded	evbox	30	30	4.759643172984802e-14	0.000463081
+nighthawk	30	graded	certify_eigenpairs	30	30	2.142663393364997e-13	0.005463149
+nighthawk	30	graded	rump_lange_2023	30	30	3.88885233807779	0.000275851

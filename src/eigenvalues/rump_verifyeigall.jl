@@ -71,9 +71,13 @@ Outcome of [`verifyeigall`](@ref).
   multiple eigenvalue whose individual eigenvectors are ill-posed.
 - `certified::Vector{Bool}`: which clusters satisfied the self-mapping test (2.10).
 - `centers::Vector{CT}`: the approximate eigenvalue `lambda_i` of each cluster.
-- `radii::Vector{T}`: `rho(|V_i' Z V_i|)` for each certified cluster, so that every eigenvalue of
-  `A` belonging to cluster `i` lies in the disc `centers[i] ± radii[i]`; `Inf` where not certified.
-- `subspaces::Vector{BallMatrix}`: for each certified cluster, an enclosure of a basis of the
+- `radii::Vector{T}`: for a certified cluster `rho(|V_i' Z V_i|)` of Theorem 2.2; for one where the
+  self-mapping test (2.10) declined, the smallest disc about `centers[i]` containing the Gershgorin
+  connected component of the transformed matrix that the cluster's rows fall in, which is a valid
+  enclosure but proves no Jordan structure. Either way every eigenvalue of cluster `i` lies in
+  `centers[i] ± radii[i]`, and `certified[i]` says which of the two claims is being made.
+- `subspaces::Vector{BallMatrix}`: `Inf` unless the cluster is certified, since no subspace follows
+  from the Gershgorin fallback. For each certified cluster, an enclosure of a basis of the
   corresponding invariant subspace of the INPUT matrix, `n` by `|mu_i|`, satisfying
   `B * subspaces[i] = subspaces[i] * blocks[i]`; radius `Inf` where not certified.
 - `blocks::Vector{BallMatrix}`: the enclosed Jordan block `Mhat_i` of each certified cluster.
@@ -346,6 +350,55 @@ function _rump2022a_collapse_clusters(D::Vector{CT}, clusters) where {CT}
         end
     end
     return D
+end
+
+# Where (2.10) declines, Theorem 2.2 asserts nothing, but a coarser bound is still available and
+# costs O(n^2): the Gershgorin discs of the transformed matrix A, which encloses W^{-1}BW and so has
+# the eigenvalues of B. Rump's own Table 1 is "Eigenvalue bounds by Gershgorin circles and the new
+# method verifyeigall", so this is the baseline his paper measures against.
+#
+# Gershgorin gives: every eigenvalue lies in the union of the n discs, and a set of discs forming a
+# connected component isolated from the rest contains exactly as many eigenvalues as it has discs.
+# So for a declined cluster the honest report is the smallest disc about its lambda_i containing the
+# whole connected component its rows fall in, together with that component's size as the count.
+# `certified[i]` stays false: the subspace and the Jordan block are not proved, only the location.
+function _rump2022a_gershgorin_discs(A::BallMatrix{T}, D::Vector{CT}, clusters) where {T, CT}
+    n = size(A, 1)
+    Am, Ar = mid(A), rad(A)
+    ctr = CT[Am[i, i] for i in 1:n]
+    rad_ = setrounding(T, RoundUp) do
+        T[Ar[i, i] + sum(abs(Am[i, j]) + Ar[i, j] for j in 1:n if j != i; init = zero(T))
+          for i in 1:n]
+    end
+    # connected components of the overlap graph, distances bounded below and radii above
+    parent = collect(1:n)
+    find(x) = (parent[x] == x ? x : (parent[x] = find(parent[x])))
+    for i in 1:n, j in (i + 1):n
+        touch = setrounding(T, RoundDown) do
+            abs(ctr[i] - ctr[j])
+        end <= setrounding(T, RoundUp) do
+            rad_[i] + rad_[j]
+        end
+        if touch
+            a, b = find(i), find(j)
+            a != b && (parent[a] = b)
+        end
+    end
+    comp = Dict{Int, Vector{Int}}()
+    for i in 1:n
+        push!(get!(comp, find(i), Int[]), i)
+    end
+    out_r = Vector{T}(undef, length(clusters))
+    out_m = Vector{Int}(undef, length(clusters))
+    for (k, c) in enumerate(clusters)
+        rows = sort(unique(reduce(vcat, [comp[find(j)] for j in c])))
+        lam = D[c[1]]
+        out_r[k] = setrounding(T, RoundUp) do
+            maximum(abs(lam - ctr[p]) + rad_[p] for p in rows)
+        end
+        out_m[k] = length(rows)
+    end
+    return out_r, out_m
 end
 
 function _rump2022a_thm2_2_pass(A::BallMatrix{T}, clusters, D::Vector{CT}, maxiter::Integer,
@@ -626,6 +679,15 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
     end
 
     # D is constant on each cluster, so D[c[1]] IS the cluster's lambda_i of Theorem 2.2
+    # Theorem 2.2 says nothing where (2.10) declined; report the Gershgorin location instead of
+    # Inf, so every cluster carries SOME valid bound and `certified` marks which are the theorem's.
+    if !all(certified)
+        gr, _ = _rump2022a_gershgorin_discs(A, D, clusters)
+        for i in eachindex(clusters)
+            certified[i] || (radii[i] = min(radii[i], gr[i]))
+        end
+    end
+
     centers = CT[D[c[1]] for c in clusters]
     # the invariant subspaces of B, not of the transformed A: they transform by W
     Wb = BallMatrix(W)
