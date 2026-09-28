@@ -53,3 +53,45 @@ end
         @test any(abs(λ - x.center) <= x.radius * (1 + 1e-12) for x in d)
     end
 end
+
+@testset "clusters are the connected components of the discs returned with them" begin
+    # Gershgorin's counting theorem licenses "this cluster holds exactly |C| eigenvalues" only
+    # when the clusters ARE the connected components of the discs being returned, and
+    # `block_enclosure` reports that count as `mult`. Reorthogonalising a merged block changes the
+    # frame and hence the discs, so it can change the components; doing it after the clustering
+    # loop and certifying once more left `clusters` describing the previous discs. Measured over
+    # 14 matrices, 6 came back inconsistent, a defective triangular at n = 12 returning
+    # [6,1,1,1,1,1,1] whose own discs merge into [9,1,1,1].
+    function consistent(M)
+        res = BallArithmetic.schur_newton_vbd(BallMatrix(M))
+        implied, ord = BallArithmetic._interval_clusters(res.cluster_intervals)
+        return implied == res.clusters && ord == collect(1:size(M, 1))
+    end
+
+    n = 12
+    d = [1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+    rng = MersenneTwister(7)
+    # the case that used to fail: repeated diagonal with an O(1) strict upper part, so each
+    # repeated pair is a genuine 2x2 Jordan block
+    @test consistent(triu(randn(rng, n, n), 1) + Diagonal(d))
+    # and a nearly normal version, which used to pass
+    Q = Matrix(qr(randn(rng, n, n)).Q)
+    @test consistent(Q * (triu(randn(rng, n, n) .* 1e-8, 1) + Diagonal(d)) * Q')
+    @test consistent(randn(rng, 12, 12))
+    @test consistent([(j == i - 1) ? -1.0 : (0 <= j - i <= 3 ? 1.0 : 0.0) for i in 1:20, j in 1:20])
+    Qj = Matrix(qr(randn(rng, 20, 20)).Q)
+    @test consistent(Qj * diagm(0 => fill(0.7, 20), 1 => ones(19)) * Qj')
+    # the six seeds that produced the inconsistencies
+    for s in 1:6
+        rr = MersenneTwister(100 + s)
+        nn = 14
+        dd = Float64[]
+        while length(dd) < nn
+            l = randn(rr)
+            for _ in 1:2
+                push!(dd, l)
+            end
+        end
+        @test consistent(triu(randn(rr, nn, nn) .* 0.3, 1) + Diagonal(dd[1:nn]))
+    end
+end

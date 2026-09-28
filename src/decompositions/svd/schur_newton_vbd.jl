@@ -443,28 +443,41 @@ function _vbd_finish(Acx::BallMatrix{T}, Bcx, W, cl, n::Integer,
 
     identity_order = collect(1:n)
     local transformed, discs, nrmR2, beta, kappa, clusters, FB
+    # The returned `clusters` must be the connected components of the returned `discs`: that is
+    # what Gershgorin's counting theorem needs before a cluster can be said to hold exactly its
+    # own number of eigenvalues, and it is what `block_enclosure` reports as `mult`.
+    #
+    # Reorthogonalising a merged block changes the frame, so it changes the discs, so it can change
+    # the components. Doing it after the loop and certifying once more left `clusters` describing
+    # the PREVIOUS discs: measured over 14 matrices, 6 came back inconsistent, a defective
+    # triangular at n = 12 returning clusters [6,1,1,1,1,1,1] whose own discs merge into
+    # [9,1,1,1], so three claimed singletons each asserted one eigenvalue where the counting
+    # theorem licenses only nine for the component. The reorthogonalisation therefore happens
+    # INSIDE the loop, and the loop exits only when the clustering is contiguous, consistent with
+    # the discs in hand, and already orthonormalised.
+    orthonormalised_for = Vector{Int}[]
     attempts = 0
     while true
         transformed, discs, nrmR2, beta, kappa, FB = _certify_ball(Acx, W; B = Bcx,
             kappa_mode)
         clusters, ord = _interval_clusters(discs)
-        ord == identity_order && break
-        W = W[:, ord]
-        attempts += 1
-        attempts > n &&
-            throw(ArgumentError("failed to permute β-Gershgorin clusters into contiguous blocks"))
-    end
-
-    # Reorthogonalize each FINAL cluster: the disc-overlap re-clustering can MERGE
-    # blocks, and a merged block is the concatenation of separately-orthonormalized
-    # sub-blocks, so it is not block-orthonormal as a unit. Re-QR'ing preserves the
-    # invariant subspace, so the clustering is unchanged; rigor never depended on it.
-    if any(cl -> length(cl) > 1, clusters)
-        for cl in clusters
-            length(cl) > 1 && (W[:, cl] = Matrix(qr(W[:, cl]).Q))
+        if ord != identity_order
+            W = W[:, ord]
+            empty!(orthonormalised_for)          # a permuted frame invalidates the QRs
+        elseif clusters != orthonormalised_for && any(cl -> length(cl) > 1, clusters)
+            # a merged block is the concatenation of separately orthonormalised sub-blocks, so it
+            # is not block-orthonormal as a unit; re-QR preserves each invariant subspace
+            for cl in clusters
+                length(cl) > 1 && (W[:, cl] = Matrix(qr(W[:, cl]).Q))
+            end
+            orthonormalised_for = copy(clusters)
+        else
+            break
         end
-        transformed, discs, nrmR2, beta, kappa, FB = _certify_ball(Acx, W; B = Bcx,
-            kappa_mode)
+        attempts += 1
+        attempts > 2 * n &&
+            throw(ArgumentError("failed to reach a β-Gershgorin clustering that is contiguous, " *
+                                "consistent with its own discs and block-orthonormalised"))
     end
 
     block = _block_diagonal_part(transformed, clusters)
