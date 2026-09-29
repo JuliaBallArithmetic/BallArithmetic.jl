@@ -11,16 +11,23 @@ abstract type SVDMethod end
 The default of [`rigorous_svd`](@ref): [`MiyajimaM3`](@ref), Theorem 10, for an exact input, and
 [`MiyajimaM1`](@ref), Theorem 7, for one carrying a radius.
 
-This is a selection rule of this package and not a result of Miyajima (2014); the reason and the
-measurements are in [`_svd_auto_theorem`](@ref), which is the same rule [`svdbox`](@ref) uses, so
-the two entry points agree. Pass `method` explicitly to override it.
+This is a selection rule of this package and not a result of Miyajima (2014); the measurements
+behind it are in [`_svd_auto_theorem`](@ref). Pass `method` explicitly to override it.
+
+On an input carrying a radius this is **not** what [`svdbox`](@ref) does. `svdbox` returns values
+only, so it can certify `mid(A)` by Theorem 10 and widen each interval by `‖rad(A)‖₂`
+([`_miyajima2014_thm10_weyl`](@ref)), which is tighter; `rigorous_svd` also returns
+singular-vector bounds and the residuals `E`, `F`, `G` measured against the whole ball, which a
+midpoint-only certification does not produce, so it stays on Theorem 7. For the values alone,
+prefer `svdbox`.
 """
 struct MiyajimaAuto <: SVDMethod end
 
 """
     MiyajimaM3 <: SVDMethod
 
-Miyajima 2014, Theorem 10, the algorithm his numerical section labels M3, and the default.
+Miyajima 2014, Theorem 10, the algorithm his numerical section labels M3, and what
+[`rigorous_svd`](@ref) uses on an exact input.
 
 The economy frames of Theorem 7 with a one-sided residual: with `Λᵢᵢ` and `Λ̄ᵢᵢ` the scalings of
 `Σ̂ᵢᵢ` by `√((1∓‖Ĝ‖)/(1±‖F̂‖))` and `ρ = ‖AV̂ − ÛΣ̂‖₂/√(1−‖F̂‖₂)` for `m ≥ n`, with `F̂` and `Ĝ`
@@ -42,8 +49,9 @@ Bounds:
 - Lower: σᵢ · √((1-‖F‖)(1-‖G‖)) - ‖E‖
 - Upper: σᵢ · √((1+‖F‖)(1+‖G‖)) + ‖E‖
 
-[`MiyajimaM3`](@ref), Theorem 10, is the default: it uses the same economy frames and is
-cheaper and at least as tight.
+[`MiyajimaM3`](@ref), Theorem 10, uses the same economy frames and is cheaper and at least as
+tight, so [`rigorous_svd`](@ref) prefers it on an exact input and keeps this one on a ball, where
+Theorem 10's residual would propagate the input radius through a product.
 """
 struct MiyajimaM1 <: SVDMethod end
 
@@ -250,14 +258,15 @@ end
 Verified enclosures of all the singular values of `A`, one ball each, in the order the chosen
 theorem produces them.
 
-`svdbox` is the name Miyajima (2014) gives his Theorem 7, which is the default. This function
+`svdbox` is the name Miyajima (2014) gives his Theorem 7. This function
 selects an enclosure and does nothing else; each enclosure is a separate unexported function
 named for the theorem it implements, so a deviation from a paper is visible in the name:
 
 | `method` | routine | what it is |
 |---|---|---|
-| `:auto` | [`_svd_auto_theorem`](@ref) | **the default**: Theorem 10 for an exact input, Theorem 7 for one with a radius. Not a theorem but a selection rule, with the measurements behind it in its docstring |
-| `:miyajima2014_thm10` | [`_miyajima2014_thm10`](@ref) | the default: the same economy frames as Theorem 7 with the one-sided residual `‖AV̂ − ÛΣ̂‖₂`, which the paper's tables make at least as tight and which costs `22Qq²` against `24Qq²` |
+| `:auto` | [`_svd_auto_theorem`](@ref) | **the default**: Theorem 10 for an exact input, Theorem 10 plus the Weyl widening for one with a radius. Not a theorem but a selection rule, with the measurements behind it in its docstring |
+| `:miyajima2014_thm10` | [`_miyajima2014_thm10`](@ref) | what `:auto` uses on an exact input: the same economy frames as Theorem 7 with the one-sided residual `‖AV̂ − ÛΣ̂‖₂`, which the paper's tables make at least as tight and which costs `22Qq²` against `24Qq²` |
+| `:miyajima2014_thm10_weyl` | [`_miyajima2014_thm10_weyl`](@ref) | Theorem 10 on `mid(A)` alone, each interval widened by `‖rad(A)‖₂`. A variation, not the paper: it keeps Theorem 10 on an exact matrix and pays the input radius once instead of through a ball product |
 | `:miyajima2014_thm7` | [`_miyajima2014_thm7`](@ref) | the economy enclosure `Σ̂ᵢᵢ√((1∓‖F̂‖)(1∓‖Ĝ‖)) ∓ ‖Ê‖`, residual measured against `A` |
 | `:miyajima2014_thm4` | [`_miyajima2014_thm4`](@ref) | Oishi's, square frames, `Σᵢᵢ ± (Σᵢᵢmax(‖F‖,‖G‖) + ‖E‖)`; Theorem 8 proves Theorem 7 is never worse |
 | `:miyajima2014_thm11` | [`_miyajima2014_thm11`](@ref) | one frame, the eigenvectors of `AᵀA`, Gershgorin sharpened by Parlett, with a cluster branch |
@@ -284,20 +293,30 @@ Math. **31** (2014) 513-539, doi 10.1007/s13160-014-0145-5.
 function svdbox(A::BallMatrix{T}; method::Symbol = :auto) where {T}
     method === :auto && (method = _svd_auto_theorem(A))
     method === :miyajima2014_thm10 && return _miyajima2014_thm10(A)
+    method === :miyajima2014_thm10_weyl && return _miyajima2014_thm10_weyl(A)
     method === :miyajima2014_thm7 && return _miyajima2014_thm7(A)
     method === :miyajima2014_thm4 && return _miyajima2014_thm4(A)
     method === :miyajima2014_thm11 && return _miyajima2014_thm11(A)
     method === :rump2011_thm3_1 && return _rump2011_thm3_1(A)
     throw(ArgumentError("svdbox: unknown method $(repr(method)); the implemented methods are " *
-                        ":auto, :miyajima2014_thm10, :miyajima2014_thm7, " *
-                        ":miyajima2014_thm4, :miyajima2014_thm11 and :rump2011_thm3_1"))
+                        ":auto, :miyajima2014_thm10, :miyajima2014_thm10_weyl, " *
+                        ":miyajima2014_thm7, :miyajima2014_thm4, :miyajima2014_thm11 and " *
+                        ":rump2011_thm3_1"))
 end
 
 # MiyajimaAuto is resolved before anything downstream sees it, so no routine ever receives a
 # method that is a rule rather than a theorem.
+#
+# The rule is spelled here rather than read off `_svd_auto_theorem`, which the two entry points used
+# to share. They no longer agree on an input carrying a radius: `svdbox` routes it to
+# `_miyajima2014_thm10_weyl`, which certifies `mid(A)` and widens by `‖rad(A)‖₂`, and
+# `rigorous_svd` also returns singular-vector bounds and the residuals `E`, `F`, `G` measured
+# against the whole ball, which a midpoint-only certification does not produce. So `rigorous_svd`
+# keeps Theorem 7 there, and its values are the wider of the two by the factors in
+# `_svd_auto_theorem`'s table.
 _resolve_svd_method(method::SVDMethod, ::BallMatrix) = method
 function _resolve_svd_method(::MiyajimaAuto, A::BallMatrix)
-    return _svd_auto_theorem(A) === :miyajima2014_thm10 ? MiyajimaM3() : MiyajimaM1()
+    return iszero(rad(A)) ? MiyajimaM3() : MiyajimaM1()
 end
 
 function _certify_svd(A::BallMatrix{T}, svdA::SVD, method::SVDMethod; apply_vbd::Bool = true) where {T}

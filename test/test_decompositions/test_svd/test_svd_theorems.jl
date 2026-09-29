@@ -5,8 +5,8 @@ using Random
 
 BA = BallArithmetic
 
-const SVD_METHODS = (:miyajima2014_thm10, :miyajima2014_thm7, :miyajima2014_thm4,
-    :miyajima2014_thm11, :rump2011_thm3_1)
+const SVD_METHODS = (:miyajima2014_thm10, :miyajima2014_thm10_weyl, :miyajima2014_thm7,
+    :miyajima2014_thm4, :miyajima2014_thm11, :rump2011_thm3_1)
 
 # every singular value of the 256-bit reference must lie in the corresponding ball
 function _svd_encloses(M, method)
@@ -146,6 +146,65 @@ end
         end
     end
 
+    @testset "Theorem 10 with the Weyl widening keeps the radius out of the residual" begin
+        # `_miyajima2014_thm10_weyl` certifies mid(A) by Theorem 10 and widens each interval by
+        # ‖rad(A)‖₂. That removes the factor Theorem 10 pays on a ball, without paying Theorem 7's
+        # wider exact part. Measured maxima at MersenneTwister(2026+n):
+        #
+        #   rad(A)   n    Thm 10 on A   Thm 7 on A   Thm 10 + Weyl
+        #   0        6    1.377e-14     1.554e-14    1.377e-14
+        #   1e-12    6    1.238e-11     6.015e-12    6.014e-12
+        #   0        20   1.048e-13     1.261e-13    1.048e-13
+        #   1e-12    20   7.087e-11     2.012e-11    2.010e-11
+        rng = MersenneTwister(2026 + 12)
+        n = 12
+        M = randn(rng, n, n)
+        point = BallMatrix(M)
+        wide = BallMatrix(M, fill(1e-12, n, n))
+
+        # on an exact input it IS Theorem 10, not an approximation of it
+        @test svdbox(point; method = :miyajima2014_thm10_weyl) ==
+              svdbox(point; method = :miyajima2014_thm10)
+
+        # on a ball it beats both: Theorem 10 by the propagated factor, Theorem 7 on the exact part
+        weyl = maximum(rad.(svdbox(wide; method = :miyajima2014_thm10_weyl)))
+        @test weyl < maximum(rad.(svdbox(wide; method = :miyajima2014_thm10)))
+        @test weyl <= maximum(rad.(svdbox(wide; method = :miyajima2014_thm7)))
+
+        # the widening is one norm of the radius matrix, so it is uniform across the intervals
+        delta = BA.upper_bound_L2_opnorm(BallMatrix(fill(1e-12, n, n)))
+        inner = svdbox(point; method = :miyajima2014_thm10)
+        outer = svdbox(wide; method = :miyajima2014_thm10_weyl)
+        for i in 1:n
+            @test rad(outer[i]) <= rad(inner[i]) + 2 * delta
+        end
+
+        # soundness on the ball itself, not only on its midpoint: every member's singular values,
+        # index by index, must lie in the returned intervals
+        rr = MersenneTwister(99)
+        for _ in 1:20
+            X = M .+ 1e-12 .* (2 .* rand(rr, n, n) .- 1)
+            sv = svdvals(BigFloat.(X))
+            for i in 1:n
+                @test BigFloat(mid(outer[i])) - BigFloat(rad(outer[i])) <= sv[i] <=
+                      BigFloat(mid(outer[i])) + BigFloat(rad(outer[i]))
+            end
+        end
+
+        # a wide and a thin input, since the two residual orientations differ
+        for M2 in (randn(MersenneTwister(5), 6, 14), randn(MersenneTwister(5), 14, 6))
+            W = BallMatrix(M2, fill(1e-12, size(M2)...))
+            q = min(size(M2)...)
+            sv = svdbox(W; method = :miyajima2014_thm10_weyl)
+            st = svdvals(BigFloat.(M2))
+            @test length(sv) == q
+            for i in 1:q
+                @test BigFloat(mid(sv[i])) - BigFloat(rad(sv[i])) <= st[i] <=
+                      BigFloat(mid(sv[i])) + BigFloat(rad(sv[i]))
+            end
+        end
+    end
+
     @testset ":auto picks by exactness, and both entry points agree" begin
         rng = MersenneTwister(41)
         n = 12
@@ -158,15 +217,20 @@ end
         @test maximum(rad.(svdbox(point))) <
               maximum(rad.(svdbox(point; method = :miyajima2014_thm7)))
 
-        # input with a radius: Theorem 7, avoiding the factor Theorem 10 pays there
-        @test svdbox(wide) == svdbox(wide; method = :miyajima2014_thm7)
+        # input with a radius: Theorem 10 on the midpoint plus the Weyl widening, which avoids
+        # the factor Theorem 10 pays on a ball without taking Theorem 7's wider exact part
+        @test svdbox(wide) == svdbox(wide; method = :miyajima2014_thm10_weyl)
         @test maximum(rad.(svdbox(wide))) <
               maximum(rad.(svdbox(wide; method = :miyajima2014_thm10)))
+        @test maximum(rad.(svdbox(wide))) <=
+              maximum(rad.(svdbox(wide; method = :miyajima2014_thm7)))
 
-        # svdbox and rigorous_svd resolve the rule the same way, so their values agree
-        for A in (point, wide)
-            @test svdbox(A) == rigorous_svd(A; apply_vbd = false).singular_values
-        end
+        # the two entry points agree on an exact input and are documented to differ on a ball:
+        # rigorous_svd also returns vector bounds measured against the whole ball, so it has no
+        # midpoint-only route and keeps Theorem 7 there
+        @test svdbox(point) == rigorous_svd(point; apply_vbd = false).singular_values
+        @test rigorous_svd(wide; apply_vbd = false).singular_values ==
+              svdbox(wide; method = :miyajima2014_thm7)
 
         # MiyajimaAuto resolves to a theorem, so nothing downstream sees the rule itself
         @test BA._resolve_svd_method(MiyajimaAuto(), point) isa MiyajimaM3

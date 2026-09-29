@@ -118,7 +118,15 @@ end
 
     result = BallArithmetic.rigorous_svd(A)
 
-    @test result.singular_values == BallArithmetic.svdbox(A)
+    # `A` carries a radius, where the two entry points are documented to differ: `rigorous_svd`
+    # certifies the whole ball by Theorem 7, since it also returns vector bounds and the residuals
+    # E, F, G measured against that ball, while `svdbox` returns values alone and so certifies
+    # mid(A) by Theorem 10 and widens by ‖rad(A)‖₂ (`_miyajima2014_thm10_weyl`), the narrower route.
+    @test result.singular_values ==
+          BallArithmetic.svdbox(A; method = :miyajima2014_thm7)
+    # `rad` is shadowed by the local radius matrix above, hence the qualified calls
+    @test maximum(BallArithmetic.rad.(BallArithmetic.svdbox(A))) <=
+          maximum(BallArithmetic.rad.(result.singular_values))
     @test result.Σ isa BallMatrix
     @test result.residual isa BallMatrix
     @test result.block_diagonalisation isa BallArithmetic.SchurGershgorinResult
@@ -150,9 +158,9 @@ end
     @test result_no_vbd.residual == result.residual
 
     # svdbox returns the values alone and never forms a block diagonalisation, so it has no
-    # apply_vbd to pass; its default, Theorem 7 of Miyajima (2014), is what rigorous_svd's
-    # MiyajimaM1 certifies with, so the two agree
-    Σ_box = BallArithmetic.svdbox(A)
+    # apply_vbd to pass; asked for Theorem 7 by name it computes exactly what rigorous_svd's
+    # MiyajimaM1 certifies with on this ball input, so the two agree there
+    Σ_box = BallArithmetic.svdbox(A; method = :miyajima2014_thm7)
     @test Σ_box == result.singular_values
 end
 

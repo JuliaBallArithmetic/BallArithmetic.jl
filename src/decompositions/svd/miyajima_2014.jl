@@ -141,8 +141,10 @@ against `A` rather than through Rump's split `UᵀAV = D + E`, which Remark 3 sh
 upper bound on an economy frame: for `m = 2n`, `A = [Iₙ; 0]`, `U` the block swap and `V = Iₙ`
 every truncated residual vanishes while every singular value is 1.
 
-This is the default of [`svdbox`](@ref). Returns `Inf` radii where the orthogonality condition
-fails.
+No longer reached by [`svdbox`](@ref)'s default, which routes an exact input to
+[`_miyajima2014_thm10`](@ref) and a ball to [`_miyajima2014_thm10_weyl`](@ref); ask for it by name.
+It remains the default of [`rigorous_svd`](@ref) on a ball, which also returns vector bounds
+measured against that ball. Returns `Inf` radii where the orthogonality condition fails.
 """
 function _miyajima2014_thm7(A::BallMatrix{T}) where {T}
     m, n = size(A)
@@ -315,8 +317,8 @@ end
 """
     _miyajima2014_thm10(A::BallMatrix) -> Vector{Ball}
 
-Theorem 10 of Miyajima (2014), the algorithm his numerical section labels M3, and the default of
-[`svdbox`](@ref). It uses the same economy frames as [`_miyajima2014_thm7`](@ref) but a one-sided
+Theorem 10 of Miyajima (2014), the algorithm his numerical section labels M3, and what
+[`svdbox`](@ref) uses on an exact input. It uses the same economy frames as [`_miyajima2014_thm7`](@ref) but a one-sided
 residual. With `Û`, `Σ̂`, `V̂` the economy SVD, `F̂ = V̂ᵀV̂ − I_q` and `Ĝ = ÛᵀÛ − I_q`, and
 `‖F̂‖₂ < 1`, `‖Ĝ‖₂ < 1`, define for `m ≥ n`
 
@@ -332,7 +334,7 @@ The orientation follows the proof: `σᵢ(ÛΣ̂V̂⁻¹) ≤ ‖Û‖₂σᵢ(�
 from `ÛᵀÛ = I + Ĝ` and `‖V̂⁻¹‖₂ ≤ 1/√(1−‖F̂‖₂)`; `V̂` is square exactly when `m ≥ n`, which is why
 the two cases exchange the frames.
 
-Why this is the default rather than Theorem 7. The residual is `A V̂ − Û Σ̂`, which is `m × q`,
+Why this is preferred to Theorem 7. The residual is `A V̂ − Û Σ̂`, which is `m × q`,
 where Theorem 7's `Ê = Û Σ̂ V̂ᵀ − A` is `m × n`: cheaper, `22Qq² + 12q³` against `24Qq² + 12q³`,
 and in the paper's own measurements at least as tight. Table 2 gives M3 against M1 as `3.0e-14`
 against `3.1e-14` at `cnd = 1`, `3.7e-14` against `3.6e-14` at `1e8` and `5.3e-14` against
@@ -394,36 +396,86 @@ function _miyajima2014_thm10_bounds(S, normR, normF, normG, tall::Bool, ::Type{T
 end
 
 """
+    _miyajima2014_thm10_weyl(A::BallMatrix) -> Vector{Ball}
+
+Theorem 10 of Miyajima (2014) applied to the midpoint of `A` alone, each interval then widened by
+one perturbation term that covers the whole ball. A variation on the paper, hence the name:
+Theorem 10 is used exactly as stated, on an exact matrix, and the radius is handled outside it.
+
+Write `A = Ã ± R` with `Ã = mid(A)` and `R = rad(A) ≥ 0` entrywise. For every `X ∈ A` and every `i`,
+
+    |σᵢ(X) − σᵢ(Ã)| ≤ ‖X − Ã‖₂ ≤ ‖R‖₂.
+
+The first inequality is Weyl's monotonicity theorem applied to the Hermitian dilation
+`H(M) = [0 M; Mᴴ 0]`, whose eigenvalues are `±σᵢ(M)`: `H` is linear, so `H(X) − H(Ã) = H(X−Ã)`, and
+`‖H(E)‖₂ = ‖E‖₂`, so each eigenvalue of `H(Ã)` moves by at most `‖X−Ã‖₂` and the singular values
+with them. The second holds because `|X − Ã| ≤ R` entrywise gives `|X−Ã|ᵀ|X−Ã| ≤ RᵀR` entrywise,
+whose spectral radii are then ordered by Perron-Frobenius monotonicity on non-negative matrices.
+Both inequalities index the singular values in decreasing order, which is the order Theorem 10
+anchors its intervals to, so the two compose index by index. `‖R‖₂` is bounded by
+[`upper_bound_L2_opnorm`](@ref).
+
+Mirsky (1960), doi 10.1093/qmath/11.1.50, proves the same inequality for every unitarily invariant
+norm. Only the spectral-norm case is used here, and that case needs nothing beyond Weyl, so the
+name says Weyl.
+
+Why this is not the same as handing `A` to [`_miyajima2014_thm10`](@ref). There the residual is
+`AV̂ − ÛΣ̂`, so `R` reaches the bound as the ball product `R·V̂`, whose radius is bounded entrywise
+by `R|V̂|`; taking `‖R|V̂|‖₂` discards the cancellation that makes `‖RV̂‖₂ ≤ ‖R‖₂`, and costs a
+factor growing like `√n`. Here `R` never multiplies anything.
+
+The lower bounds are not clamped at zero, so a rank-deficient `A` returns intervals whose lower end
+is negative, as [`_miyajima2014_thm7`](@ref) and [`_miyajima2014_thm10`](@ref) do. Clamping would be
+sound, since singular values are non-negative, but it would put `σ = 0` on the boundary of its
+interval instead of inside it, which is the signal that the matrix is rank deficient. Returns `Inf`
+radii wherever Theorem 10 does on the midpoint.
+"""
+function _miyajima2014_thm10_weyl(A::BallMatrix{T}) where {T}
+    R = rad(A)
+    iszero(R) && return _miyajima2014_thm10(A)
+    inner = _miyajima2014_thm10(BallMatrix(Matrix(mid(A))))
+    delta = upper_bound_L2_opnorm(BallMatrix(Matrix(R)))
+    return [_ball_from_bounds(setrounding(T, RoundDown) do
+                mid(s) - rad(s) - delta
+            end,
+            setrounding(T, RoundUp) do
+                mid(s) + rad(s) + delta
+            end, T) for s in inner]
+end
+
+"""
     _svd_auto_theorem(A::BallMatrix) -> Symbol
 
-Which of the two economy enclosures to use for `A`: Theorem 10 when the input is exact, Theorem 7
-when it carries a radius.
+Theorem 10 either way: on `A` itself when the input is exact, and through
+[`_miyajima2014_thm10_weyl`](@ref) when it carries a radius.
 
-This is **not** a result of either paper; it is a selection rule, and the reason for it is that
-the two theorems put the input in different places. Theorem 10's residual is `AV̂ − ÛΣ̂`, which
-multiplies the interval `A` by `V̂`, so an input radius propagates through a ball product;
-Theorem 7's is `ÛΣ̂V̂ᵀ − A`, whose product is formed from floating-point factors alone, so the
-input radius enters once. Maximum radii measured on `randn` matrices:
+This is **not** a result of the paper; it is a selection rule. Theorem 10 is the tighter of the two
+economy enclosures on an exact matrix and the cheaper of the two always, but its residual `AV̂ − ÛΣ̂`
+multiplies `A` by `V̂`, so an input radius `R` reaches the bound as a ball product, bounded entrywise
+by `R|V̂|`; `‖R|V̂|‖₂` discards the cancellation that makes `‖RV̂‖₂ ≤ ‖R‖₂` and costs a factor growing
+like `√n`. That is a reason to keep `R` out of the theorem, not a reason to use Theorem 7: the
+Weyl route runs Theorem 10 on `mid(A)` and widens by `‖R‖₂` once. Maximum radii, `randn` matrices
+at `MersenneTwister(2026+n)`:
 
-| `rad(A)` | n | Theorem 10 | Theorem 7 | ratio |
-|---|---|---|---|---|
-| 0 | 6 | 1.954e-14 | 2.220e-14 | 0.88 |
-| 1e-16 | 6 | 2.132e-14 | 2.220e-14 | 0.96 |
-| 1e-12 | 6 | 1.204e-11 | 6.022e-12 | 2.00 |
-| 0 | 20 | 8.882e-14 | 1.066e-13 | 0.83 |
-| 1e-16 | 20 | 9.770e-14 | 1.084e-13 | 0.90 |
-| 1e-12 | 20 | 7.330e-11 | 2.011e-11 | 3.65 |
+| `rad(A)` | n | Thm 10 on `A` | Thm 7 on `A` | Thm 10 + Weyl | Weyl/Thm 7 |
+|---|---|---|---|---|---|
+| 0 | 6 | 1.377e-14 | 1.554e-14 | 1.377e-14 | 0.886 |
+| 1e-16 | 6 | 1.510e-14 | 1.599e-14 | 1.465e-14 | 0.917 |
+| 1e-12 | 6 | 1.238e-11 | 6.015e-12 | 6.014e-12 | 1.000 |
+| 0 | 20 | 1.048e-13 | 1.261e-13 | 1.048e-13 | 0.831 |
+| 1e-16 | 20 | 1.119e-13 | 1.279e-13 | 1.084e-13 | 0.847 |
+| 1e-12 | 20 | 7.087e-11 | 2.012e-11 | 2.010e-11 | 0.999 |
 
-The switch is on exactness rather than on a threshold in `rad(A)`, and that is a deliberate choice
-rather than an optimal one: the crossover sits somewhere between `1e-16` and `1e-14`, so at a very
-small nonzero radius this rule gives up the 4 to 10 per cent that Theorem 10 would still have won.
-Locating the crossover would mean fitting a threshold, and in exchange the rule never pays the
-factor of 2 to 3.7 that grows with `n`. Pass `method` explicitly to override it.
+A graded matrix with `σ₁/σ_q = 10⁸` and radius `1e-14` is the one case measured where the Weyl
+route is the wider of the two, `2.076e-13` against Theorem 7's `2.068e-13`, four parts in a
+thousand; the absolute widening `‖R‖₂` is felt at the small singular values, where Theorem 7's
+`‖Ê‖` is felt equally. No threshold in `rad(A)` is fitted, since there is no longer a factor to
+avoid on either side of one.
 
 The test is `iszero(rad(A))`, which is `maximum(rad(A)) == 0` since radii are non-negative; it is
 spelled with `iszero` only because that stops at the first nonzero instead of scanning the whole
-matrix. So a single radius of `1e-30` sends the whole matrix to Theorem 7, which is the crudeness
-described above and is intended.
+matrix. A single radius of `1e-30` therefore sends the matrix through the Weyl route, which adds
+`‖R‖₂ = 1e-30` and changes nothing. Pass `method` explicitly to override the rule.
 """
 _svd_auto_theorem(A::BallMatrix) =
-    iszero(rad(A)) ? :miyajima2014_thm10 : :miyajima2014_thm7
+    iszero(rad(A)) ? :miyajima2014_thm10 : :miyajima2014_thm10_weyl
