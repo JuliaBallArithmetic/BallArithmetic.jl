@@ -370,7 +370,7 @@ The keyword arguments
     - max_initial_newton: maximum number of newton steps to reach the level lines
     - max_steps: maximum number of steps following the contour
     - rel_steps: relative integration step for the Euler method
-    - svd_method: SVD certification method (MiyajimaM1(), MiyajimaM4(), or RumpOriginal())
+    - svd_method: SVD certification method, MiyajimaM1() (Theorem 7) or MiyajimaM4() (Theorem 11)
     - apply_vbd: whether to apply verified block diagonalization for tighter bounds
 
 The method outputs an array of tuples:

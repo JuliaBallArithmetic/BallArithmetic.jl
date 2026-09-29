@@ -90,7 +90,7 @@ T = result.T
 
 # References
 
-* [MiyajimaInvariantSubspaces2014](@cite) Miyajima, SIAM J. Matrix Anal. Appl. 35, 1205–1225 (2014)
+* [Miyajima2014a](@cite) Miyajima, SIAM J. Matrix Anal. Appl. 35, 1205–1225 (2014)
 * [Miyajima2014](@cite) Miyajima, Japan J. Indust. Appl. Math. 31, 513–539 (2014)
 """
 function rigorous_block_schur(A::BallMatrix{RT, NT};
@@ -117,9 +117,9 @@ function rigorous_block_schur(A::BallMatrix{RT, NT};
 
     # Step 1: Compute VBD to identify clusters and get basis
     vbd = if vbd_method == :schur_newton
-        schur_newton_vbd(A)
+        miyajima2014a_schurnewton(A)
     else
-        miyajima_vbd(A; hermitian = hermitian)
+        schur_gershgorin_enclosure(A; hermitian = hermitian)
     end
 
     # Step 2: Construct the basis Q and its inverse.  For a unitary (NSD) basis the

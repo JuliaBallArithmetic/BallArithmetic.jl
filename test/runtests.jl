@@ -26,13 +26,15 @@ using Test
 
     # Eigenvalues
     include("test_eigenvalues/test_eigen.jl")
+    include("test_error_free_transformations.jl")
+    include("test_eigenvalues/test_rump_verifyeigall.jl")
+    include("test_eigenvalues/test_miyajima_2014a.jl")
     include("test_eigenvalues/test_miyajima_new.jl")
     include("test_eigenvalues/test_verified_gev.jl")
     include("test_eigenvalues/test_miyajima_gev_enclosure.jl")
     include("test_eigenvalues/test_gev_coherence.jl")
     include("test_eigenvalues/test_riesz_projections.jl")
     include("test_eigenvalues/test_iterative_schur_refinement.jl")
-    include("test_eigenvalues/test_rump_2022a.jl")
     include("test_eigenvalues/test_rump_lange_2023.jl")
     include("test_eigenvalues/test_newton_kantorovich_eigenpair.jl")
     include("test_eigenvalues/test_ordschur_ball.jl")
@@ -40,13 +42,16 @@ using Test
     # SVD
     include("test_decompositions/test_svd/test_svd.jl")
     include("test_decompositions/test_svd/test_miyajima_svd_bounds.jl")
+    include("test_decompositions/test_svd/test_svd_theorems.jl")
     include("test_decompositions/test_svd/test_adaptive_ogita_svd.jl")
     include("test_decompositions/test_svd/test_subepsilon_certification.jl")
     include("test_decompositions/test_svd/test_precision_cascade_svd.jl")
     include("test_decompositions/test_svd/test_precision_cascade_core.jl")
     include("test_decompositions/test_svd/test_gla_svd.jl")
-    include("test_decompositions/test_svd/test_schur_newton_vbd.jl")
+    include("test_decompositions/test_svd/test_miyajima_2014a_schurnewton.jl")
     include("test_decompositions/test_svd/test_vbd_remainder_norm.jl")
+    include("test_decompositions/test_svd/test_vbd_block_coupling.jl")
+    include("test_decompositions/test_svd/test_vbd_block_merge.jl")
     include("test_decompositions/test_svd/test_rigorous_svd_gpu.jl")
 
     # Norm bounds

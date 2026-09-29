@@ -57,7 +57,7 @@ Features include:
 
 - **`rigorous_svd`** - Verified singular value decomposition
 - **`adaptive_ogita_svd`** - Adaptive precision SVD following Ogita et al.
-- **`miyajima_vbd`** - Verified block diagonalization
+- **`schur_gershgorin_enclosure`** - Block Gershgorin spectral enclosure in the Schur basis
 - **Operator norm bounds**: L1, L2, L∞ norms with rigorous error control
 - **Collatz iteration** with underflow protection
 

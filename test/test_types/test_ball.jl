@@ -129,3 +129,37 @@
     disjoint_right = Ball(-4.0, 0.3)
     @test intersect_ball(disjoint_left, disjoint_right) === nothing
 end
+
+@testset "in0: strict interior containment (Rump's footnote 19)" begin
+    # in0 is STRICT where in is not; a ball is contained in itself but not in its own interior
+    b = Ball(1.0, 0.5)
+    @test b in b
+    @test !in0(b, b)
+    @test in0(Ball(1.0, 0.4), b)
+    @test in0(Ball(1.1, 0.3), b)
+    @test !in0(Ball(1.0, 0.5), b)          # equal radius: boundary, not interior
+    @test !in0(Ball(1.4, 0.2), b)          # touches the boundary from inside
+    @test !in0(Ball(2.0, 0.1), b)          # disjoint
+
+    @testset "complex balls" begin
+        c = Ball(0.0 + 0.0im, 1.0)
+        @test in0(Ball(0.5 + 0.5im, 0.2), c)
+        @test !in0(c, c)
+        @test !in0(Ball(0.9 + 0.0im, 0.1), c)   # 0.9 + 0.1 == 1.0, the boundary
+    end
+
+    @testset "arrays" begin
+        X = BallMatrix([1.0 2.0; 3.0 4.0], fill(0.1, 2, 2))
+        Y = BallMatrix([1.0 2.0; 3.0 4.0], fill(0.2, 2, 2))
+        @test in0(X, Y)
+        @test !in0(Y, X)
+        @test !in0(Y, Y)
+        # one bad entry is enough to fail
+        Z = BallMatrix([1.0 2.0; 3.0 4.0], [0.1 0.1; 0.1 0.3])
+        @test !in0(Z, Y)
+        @test_throws DimensionMismatch in0(X, BallMatrix(zeros(2, 3), zeros(2, 3)))
+        # plain arrays of balls, which ball arithmetic on a broadcast returns
+        @test in0([Ball(0.0, 0.1)], [Ball(0.0, 0.2)])
+        @test !in0([Ball(0.0, 0.2)], [Ball(0.0, 0.2)])
+    end
+end

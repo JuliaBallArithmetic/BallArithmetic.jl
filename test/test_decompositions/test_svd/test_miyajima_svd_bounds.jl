@@ -4,14 +4,14 @@ using BallArithmetic
 
 @testset "Miyajima 2014 SVD Bounds" begin
 
-    @testset "MiyajimaM1 vs RumpOriginal - M1 gives tighter bounds" begin
+    @testset "Miyajima Theorem 7 against Rump Theorem 3.1" begin
         # Create a simple test matrix
         A_mid = [3.0 1.0 0.5; 0.0 2.0 0.3; 0.0 0.0 1.0]
         A_rad = fill(1e-10, size(A_mid))
         A = BallMatrix(A_mid, A_rad)
 
         result_m1 = rigorous_svd(A; method=MiyajimaM1(), apply_vbd=false)
-        result_rump = rigorous_svd(A; method=RumpOriginal(), apply_vbd=false)
+        result_rump = (singular_values = svdbox(A; method = :rump2011_thm3_1),)
 
         # Both should give valid bounds containing the true singular values
         true_svd = svd(A_mid)
@@ -68,7 +68,7 @@ using BallArithmetic
         A = BallMatrix(A_mid, fill(1e-12, size(A_mid)))
 
         result_m1 = rigorous_svd(A; method=MiyajimaM1(), apply_vbd=false)
-        result_rump = rigorous_svd(A; method=RumpOriginal(), apply_vbd=false)
+        result_rump = (singular_values = svdbox(A; method = :rump2011_thm3_1),)
 
         true_svd = svd(A_mid)
 
@@ -127,7 +127,7 @@ using BallArithmetic
         # All methods should work
         @test rigorous_svd(A; method=MiyajimaM1()) isa RigorousSVDResult
         @test rigorous_svd(A; method=MiyajimaM4()) isa RigorousSVDResult
-        @test rigorous_svd(A; method=RumpOriginal()) isa RigorousSVDResult
+        @test svdbox(A; method = :rump2011_thm3_1) isa Vector
 
         # Default should be MiyajimaM1
         result_default = rigorous_svd(A)
@@ -139,8 +139,8 @@ using BallArithmetic
         A = BallMatrix(Diagonal([5.0, 3.0, 1.0]))
 
         sv_default = svdbox(A)
-        sv_m1 = svdbox(A; method=MiyajimaM1())
-        sv_rump = svdbox(A; method=RumpOriginal())
+        sv_m1 = svdbox(A; method = :miyajima2014_thm7)
+        sv_rump = svdbox(A; method = :rump2011_thm3_1)
 
         # Default should match M1
         @test sv_default == sv_m1
@@ -155,7 +155,7 @@ using BallArithmetic
         A = BallMatrix(A_mid)
 
         result_m1 = rigorous_svd(A; method=MiyajimaM1(), apply_vbd=false)
-        result_rump = rigorous_svd(A; method=RumpOriginal(), apply_vbd=false)
+        result_rump = (singular_values = svdbox(A; method = :rump2011_thm3_1),)
 
         true_svd = svd(A_mid)
 
@@ -201,21 +201,25 @@ using BallArithmetic
         A = BallMatrix(A_mid, fill(1e-14, size(A_mid)))
 
         result_m1 = rigorous_svd(A; method=MiyajimaM1(), apply_vbd=false)
-        result_rump = rigorous_svd(A; method=RumpOriginal(), apply_vbd=false)
+        result_rump = (singular_values = svdbox(A; method = :rump2011_thm3_1),)
 
-        println("\n=== Miyajima M1 vs Rump Original Comparison ===")
         for i in 1:3
             m1_rad = rad(result_m1.singular_values[i])
             rump_rad = rad(result_rump.singular_values[i])
-            improvement = (rump_rad - m1_rad) / rump_rad * 100
-
-            println("σ$i: M1 radius = $(m1_rad), Rump radius = $(rump_rad)")
-            println("    Improvement: $(round(improvement, digits=1))%")
+            println("σ$i: Theorem 7 radius = $(m1_rad), Theorem 3.1 radius = $(rump_rad)")
         end
 
-        # M1 should be strictly better (or equal)
+        # No ordering is asserted here, and none is available. Theorem 8 of Miyajima (2014)
+        # proves Theorem 7 at least as tight as Theorem 4, and the paper says explicitly that it
+        # is NOT a comparison with Theorem 5, which is Rump's Theorem 3.1; Theorem 9 of the same
+        # paper improves Theorem 5, not Theorem 7. This test used to assert
+        # rad(Theorem 7) <= rad(Rump), which held only against the weakened formula that stood in
+        # for Rump's theorem, having no square roots and using the SVD's sigma_i in place of
+        # |D_ii|. Against Theorem 3.1 itself the inequality is false: measured here, 3.397e-14
+        # against 3.331e-14. What both must do is enclose the truth, which is asserted above.
         for i in 1:3
-            @test rad(result_m1.singular_values[i]) <= rad(result_rump.singular_values[i]) + eps()
+            @test isfinite(rad(result_m1.singular_values[i]))
+            @test isfinite(rad(result_rump.singular_values[i]))
         end
     end
 

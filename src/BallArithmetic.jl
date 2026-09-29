@@ -64,7 +64,7 @@ export ±, mid, rad, midtype, radtype
 
 include("rounding/rounding.jl")
 include("types/ball.jl")
-export Ball, BallF64, BallComplexF64, inf, sup, ball_hull, intersect_ball
+export Ball, BallF64, BallComplexF64, inf, sup, ball_hull, intersect_ball, in0
 
 include("types/array.jl")
 export BallArray
@@ -98,24 +98,27 @@ include("eigenvalues/gev.jl")
 include("eigenvalues/upper_bound_spectral.jl")
 include("eigenvalues/miyajima/proceduresMiyajima2010.jl")
 include("eigenvalues/miyajima/gev_miyajima_procedures.jl")
-include("eigenvalues/rump_2022a.jl")
 include("eigenvalues/rump_lange_2023.jl")
 export RigorousGeneralizedEigenvaluesResult, RigorousEigenvaluesResult,
        rigorous_generalized_eigenvalues, rigorous_eigenvalues, gevbox, evbox
-export Rump2022aResult, rump_2022a_eigenvalue_bounds
 export RumpLange2023Result, rump_lange_2023_cluster_bounds, refine_cluster_bounds
 include("decompositions/svd/singular_gerschgorin.jl")
-include("decompositions/svd/miyajima_vbd.jl")
-include("decompositions/svd/schur_newton_vbd.jl")
+include("decompositions/svd/rump_2011.jl")
+include("decompositions/svd/miyajima_2014.jl")
+include("error_free_transformations.jl")
+include("eigenvalues/rump_verifyeigall.jl")
+include("eigenvalues/miyajima_2014a.jl")
+include("decompositions/svd/schur_gershgorin.jl")
+include("decompositions/svd/miyajima_2014a_schurnewton.jl")
 include("decompositions/svd/svd.jl")
 include("decompositions/svd/adaptive_ogita_svd.jl")
 include("decompositions/svd/precision_cascade_svd.jl")
-export SchurNewtonVBDResult, schur_newton_vbd, block_enclosure
-export MiyajimaVBDResult, RigorousSVDResult, miyajima_vbd, rigorous_svd, svdbox,
+export Miyajima2014aSchurNewtonResult, miyajima2014a_schurnewton, block_enclosure
+export SchurGershgorinResult, RigorousSVDResult, schur_gershgorin_enclosure, rigorous_svd, svdbox,
        rigorous_svd_gpu, rigorous_svd_m4, refine_svd_bounds_with_vbd,
        OgitaSVDRefinementResult, AdaptiveSVDResult, ogita_svd_refine, adaptive_ogita_svd,
        ogita_iterations_for_precision, ogita_svd_refine_multifloat,
-       SVDMethod, MiyajimaM1, MiyajimaM4, RumpOriginal, _certify_svd,
+       SVDMethod, MiyajimaAuto, MiyajimaM1, MiyajimaM3, MiyajimaM4, _certify_svd,
        clear_svd_cache!, svd_cache_stats, set_svd_cache!
 export PrecisionCascadeSVDResult, ogita_svd_cascade
 export svd_bigfloat, ogita_svd_cascade_gla
@@ -221,7 +224,7 @@ export det_hadamard, det_gershgorin, det_cramer
 export interval_det, contains_zero
 
 include("linear_system/inflation.jl")
-export EpsilonInflationResult, epsilon_inflation
+export VerifyLssResult, verifylss
 include("linear_system/backward_substitution.jl")
 include("linear_system/gaussian_elimination.jl")
 export GaussianEliminationResult

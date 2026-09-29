@@ -13,8 +13,6 @@ evbox
 ## Rump 2022a Method
 
 ```@docs
-Rump2022aResult
-rump_2022a_eigenvalue_bounds
 ```
 
 ## Rump-Lange 2023 Method
@@ -44,11 +42,11 @@ rigorous_svd
 svdbox
 ```
 
-## Miyajima VBD
+## Block Gershgorin enclosure
 
 ```@docs
-MiyajimaVBDResult
-miyajima_vbd
+SchurGershgorinResult
+schur_gershgorin_enclosure
 refine_svd_bounds_with_vbd
 ```
 

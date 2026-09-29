@@ -1,34 +1,55 @@
-# Schur + Newton verified block diagonalisation (VBD)
+# A variant of Miyajima's verified block diagonalisation: HIS certification over a
+# Schur-Newton candidate frame instead of his Schur-plus-Sylvester one.
 #
-# Replaces the O(n⁴) NJD (RDEFL staircase) route with the O(n³) guarded-`trevc`
-# architecture of the reference `RigPseudospectra.jl` (`src/vbd.jl::vbd_solve` +
-# `src/miyajima_rump.jl::_certify`):
+#   @Article{Miyajima2014a,
+#     author  = {Miyajima, Shinya},
+#     title   = {Fast Enclosure for All Eigenvalues and Invariant Subspaces in Generalized
+#                Eigenvalue Problems},
+#     journal = {SIAM Journal on Matrix Analysis and Applications},
+#     year    = {2014},
+#     volume  = {35},
+#     number  = {3},
+#     pages   = {1205--1225},
+#     doi     = {10.1137/140953150},
+#   }
+#
+# WHAT IS MIYAJIMA'S. The certification is the two-residual structure of his Theorem 3.1: with Y an
+# approximate inverse of the frame, R2 := I - Y B W and R1 := Y(A W - B W Lambda), the bound carries
+# the Neumann slack ||R2||/(1 - ||R2||) and refuses unless ||R2||_inf < 1, which proves B, W and Y
+# nonsingular at once rather than assuming it. Theorem 3.1 states it as
+# rhat = |R| 1 + (||R||_inf/(1 - ||S||_inf)) |S| 1; here the same slack is charged per row to
+# Gershgorin discs of the collapsed matrix, which is the refinement that lets each disc pay for its
+# own row of R2 instead of the worst one.
+#
+# WHAT IS NOT. His section 4 builds the frame by a Schur form plus Sylvester equations and certifies
+# each block by Brouwer's theorem on a Newton operator (Theorems 4.5 and 4.10, the diagonal replaced
+# by its mean). Here the frame comes from a Schur form with between-cluster Newton decoupling and a
+# per-block QR, and there is no fixed-point test at all: the discs are Gershgorin's, inflated by the
+# slack, with the counting theorem for the multiplicities. So the eigenvalue enclosure is his and the
+# route to it is not, which is why the name carries both.
+#
+# The candidate frame needs no verification of its own. Every claim rests on `_certify_ball`, so the
+# clustering, the merge rule and the Newton steps can be changed freely without touching rigour.
+#
+# Replaces the O(n^4) NJD (RDEFL staircase) route with the O(n^3) guarded-`trevc` architecture of
+# the reference `RigPseudospectra.jl` (`src/vbd.jl::vbd_solve` + `src/miyajima_rump.jl::_certify`):
 #
 #   1. Schur `B = QTQ'` (unitary frame; GenericSchur for BigFloat);
 #   2. cluster the eigenvalues at a fixed separation level (distance only);
 #   3. column-norm merge: a column whose decoupling transform is O(1) is merged
 #      into its dominant coupling partner (the near-defective tail coalesces);
-#   4. between-cluster Newton steps `Xᵢⱼ = −Aᵢⱼ/(dᵢ−dⱼ)`, `A ← (I+X)⁻¹A(I+X)`,
-#      `W ← W(I+X)` (within-cluster coupling kept);
-#   5. per-block QR ⇒ a block-orthonormal basis `W` (orthonormal within each
-#      invariant subspace; κ(W) governed by inter-block angles, benign).
+#   4. between-cluster Newton steps `Xij = -Aij/(di-dj)`, `A <- (I+X)^-1 A(I+X)`,
+#      `W <- W(I+X)` (within-cluster coupling kept);
+#   5. per-block QR => a block-orthonormal basis `W` (orthonormal within each
+#      invariant subspace; kappa(W) governed by inter-block angles, benign).
 #
-# CERTIFICATION (the rigorous part — Miyajima two-residual, in ball arithmetic):
-# with `Y = inv(W)` an APPROXIMATE inverse, form the residual `R₂ = YW − I` and
-# require `‖R₂‖_∞ < 1` (else REFUSE — `W` not certifiably nonsingular). The
-# collapsed `Ã = Y·A·W` (a ball product against the INPUT ball `A`, so input
-# radii propagate) is enclosed rigorously; the systematic `Y ≠ W⁻¹` error is
-# charged through the slack `β = ‖R₂‖_∞‖Ã‖_∞/(1−‖R₂‖_∞)` added to every
-# Gershgorin disc radius. The β-inflated discs of `Ã` then rigorously enclose
-# `σ(M)` for every `M ∈ A`. This β is exactly what the old NJD path omitted.
-
 using LinearAlgebra
 
 """
-    SchurNewtonVBDResult
+    Miyajima2014aSchurNewtonResult
 
-Container returned by [`schur_newton_vbd`](@ref).  Field names are duck-type
-compatible with [`MiyajimaVBDResult`](@ref) so the same downstream consumers
+Container returned by [`miyajima2014a_schurnewton`](@ref).  Field names are duck-type
+compatible with [`SchurGershgorinResult`](@ref) so the same downstream consumers
 (block Schur, spectral projectors) work unchanged, with three extra
 certification scalars (`nrmR2`, `beta`, `kappa`).
 
@@ -36,7 +57,7 @@ The basis `W` is **block-orthonormal**, not globally unitary, so projector /
 similarity consumers must use `inv(W)` (not `adjoint(W)`); see
 [`_vbd_unitary_basis`](@ref).
 """
-struct SchurNewtonVBDResult{MT, BT, IT, RT, ET}
+struct Miyajima2014aSchurNewtonResult{MT, BT, IT, RT, ET}
     """Block-orthonormal basis `W` that block-diagonalises `mid(A)` (NOT unitary)."""
     basis::MT
     """Collapsed enclosure `Ã = inv(W)·A·W` (ball matrix)."""
@@ -70,7 +91,7 @@ struct SchurNewtonVBDResult{MT, BT, IT, RT, ET}
 end
 
 # block-orthonormal, NOT globally unitary ⇒ consumers must use inv(basis).
-_vbd_unitary_basis(::SchurNewtonVBDResult) = false
+_vbd_unitary_basis(::Miyajima2014aSchurNewtonResult) = false
 
 # ── Phase 1: Schur + Newton block-orthonormal basis (point matrix, O(n³)) ──
 
@@ -199,22 +220,40 @@ function _vbd_solve(Bc::Matrix{CT}; sep::Real = -1, maxsteps::Integer = 6,
         A = A[order, order]
         W = W[:, order]
         sizes = [length(c) for c in sort(clusters; by = first)]
+        # The transform is W <- W[I V; 0 I], whose conditioning is
+        # kappa = ((||V||_2 + sqrt(||V||_2^2+4))/2)^2 ~ ||V||_2^2, and whose rounding enters the
+        # certification slack beta_Lambda at about u*||V||_2*||A||. Applying an unbounded V
+        # therefore buys a block-diagonal candidate at the price of a basis the Neumann test
+        # ||R2|| < 1 then rejects, losing the candidate entirely: on a defective matrix this
+        # built kappa(W) = 1.8e15 and failed with ||R2||_inf = 1.46. Two near-coincident
+        # clusters are better merged than separated, so a V above the threshold merges the
+        # current block with the next and solves again. The norm is the spectral one: ||V||_F
+        # overestimates it by up to sqrt(min(size(V)...)), which merges earlier than needed.
+        xmax = sqrt(one(real(CT)) / eps(real(CT)))
+        k = 1
         pos = 1
-        for s_k in sizes
-            lo, hi = pos, pos + s_k - 1
+        while k <= length(sizes)
+            lo, hi = pos, pos + sizes[k] - 1
             if hi < n
                 V = try
                     sylvester(A[lo:hi, lo:hi], -A[(hi + 1):n, (hi + 1):n],
                         A[lo:hi, (hi + 1):n])
                 catch
-                    nothing            # ill-posed pair: leave the strip coupled
+                    nothing            # ill-posed pair: merge below, or leave the strip coupled
                 end
-                if V !== nothing && all(isfinite, V)
-                    W[:, (hi + 1):n] = W[:, lo:hi] * V + W[:, (hi + 1):n]
-                    A[lo:hi, (hi + 1):n] .= zero(CT)
+                if V === nothing || !all(isfinite, V) || opnorm(V) > xmax
+                    if k < length(sizes)
+                        sizes[k] += sizes[k + 1]
+                        deleteat!(sizes, k + 1)
+                        continue       # same position, one bigger block, solve again
+                    end
+                    break              # nothing left to merge: leave the strip coupled
                 end
+                W[:, (hi + 1):n] = W[:, lo:hi] * V + W[:, (hi + 1):n]
+                A[lo:hi, (hi + 1):n] .= zero(CT)
             end
             pos = hi + 1
+            k += 1
         end
         # relabel the clusters to the new contiguous positions
         clusters = Vector{Int}[]
@@ -299,7 +338,7 @@ end
 # ── Driver ──
 
 """
-    schur_newton_vbd(A::BallMatrix; sep = -1, maxsteps = 6, kappa_mode = :cheap)
+    miyajima2014a_schurnewton(A::BallMatrix; sep = -1, maxsteps = 6, kappa_mode = :cheap)
 
 Verified block diagonalisation of the square ball matrix `A` via the O(n³)
 Schur + Newton route, with a rigorous Miyajima two-residual certification.
@@ -318,14 +357,14 @@ through `β`) and **refuses** (throws) when the basis fails the Neumann conditio
 precision.  `kappa_mode` selects the `κ₂` diagnostic: `:cheap` (Collatz, keeps
 O(n³)) or `:svdbox` (one verified SVD of `W`).
 """
-function schur_newton_vbd(A::BallMatrix{T, NT}; sep::Real = -1,
+function miyajima2014a_schurnewton(A::BallMatrix{T, NT}; sep::Real = -1,
         maxsteps::Integer = 6, kappa_mode::Symbol = :cheap,
         refine::Symbol = :auto) where {T, NT}
-    return _schur_newton_vbd(A, nothing; sep, maxsteps, kappa_mode, refine)
+    return _miyajima2014a_schurnewton(A, nothing; sep, maxsteps, kappa_mode, refine)
 end
 
 """
-    schur_newton_vbd(A::BallMatrix, B::BallMatrix; sep = -1, maxsteps = 6,
+    miyajima2014a_schurnewton(A::BallMatrix, B::BallMatrix; sep = -1, maxsteps = 6,
                      kappa_mode = :cheap)
 
 Verified block diagonalisation of the **pencil** `Ax = λBx`, by the same Schur +
@@ -351,21 +390,21 @@ The candidate basis is produced in floating point from `mid(B) \\ mid(A)`; being
 a candidate it needs no verification of its own, all correctness resting on the
 final certification.
 """
-function schur_newton_vbd(A::BallMatrix{T, NT}, B::BallMatrix; sep::Real = -1,
+function miyajima2014a_schurnewton(A::BallMatrix{T, NT}, B::BallMatrix; sep::Real = -1,
         maxsteps::Integer = 6, kappa_mode::Symbol = :cheap,
         refine::Symbol = :auto) where {T, NT}
     size(A) == size(B) ||
         throw(DimensionMismatch("A and B must have the same size"))
-    return _schur_newton_vbd(A, B; sep, maxsteps, kappa_mode, refine)
+    return _miyajima2014a_schurnewton(A, B; sep, maxsteps, kappa_mode, refine)
 end
 
-function _schur_newton_vbd(A::BallMatrix{T, NT}, B::Union{Nothing, BallMatrix};
+function _miyajima2014a_schurnewton(A::BallMatrix{T, NT}, B::Union{Nothing, BallMatrix};
         sep::Real = -1, maxsteps::Integer = 6, kappa_mode::Symbol = :cheap,
         refine::Symbol = :auto) where {T, NT}
     refine in (:auto, :none, :entrywise, :block) ||
         throw(ArgumentError("refine must be :auto, :none, :entrywise or :block"))
     m, n = size(A)
-    m == n || throw(ArgumentError("schur_newton_vbd expects a square matrix"))
+    m == n || throw(ArgumentError("miyajima2014a_schurnewton expects a square matrix"))
 
     CT = Complex{T}
     # complexify the input ball once so the certification products are unambiguously
@@ -425,28 +464,41 @@ function _vbd_finish(Acx::BallMatrix{T}, Bcx, W, cl, n::Integer,
 
     identity_order = collect(1:n)
     local transformed, discs, nrmR2, beta, kappa, clusters, FB
+    # The returned `clusters` must be the connected components of the returned `discs`: that is
+    # what Gershgorin's counting theorem needs before a cluster can be said to hold exactly its
+    # own number of eigenvalues, and it is what `block_enclosure` reports as `mult`.
+    #
+    # Reorthogonalising a merged block changes the frame, so it changes the discs, so it can change
+    # the components. Doing it after the loop and certifying once more left `clusters` describing
+    # the PREVIOUS discs: measured over 14 matrices, 6 came back inconsistent, a defective
+    # triangular at n = 12 returning clusters [6,1,1,1,1,1,1] whose own discs merge into
+    # [9,1,1,1], so three claimed singletons each asserted one eigenvalue where the counting
+    # theorem licenses only nine for the component. The reorthogonalisation therefore happens
+    # INSIDE the loop, and the loop exits only when the clustering is contiguous, consistent with
+    # the discs in hand, and already orthonormalised.
+    orthonormalised_for = Vector{Int}[]
     attempts = 0
     while true
         transformed, discs, nrmR2, beta, kappa, FB = _certify_ball(Acx, W; B = Bcx,
             kappa_mode)
         clusters, ord = _interval_clusters(discs)
-        ord == identity_order && break
-        W = W[:, ord]
-        attempts += 1
-        attempts > n &&
-            throw(ArgumentError("failed to permute β-Gershgorin clusters into contiguous blocks"))
-    end
-
-    # Reorthogonalize each FINAL cluster: the disc-overlap re-clustering can MERGE
-    # blocks, and a merged block is the concatenation of separately-orthonormalized
-    # sub-blocks, so it is not block-orthonormal as a unit. Re-QR'ing preserves the
-    # invariant subspace, so the clustering is unchanged; rigor never depended on it.
-    if any(cl -> length(cl) > 1, clusters)
-        for cl in clusters
-            length(cl) > 1 && (W[:, cl] = Matrix(qr(W[:, cl]).Q))
+        if ord != identity_order
+            W = W[:, ord]
+            empty!(orthonormalised_for)          # a permuted frame invalidates the QRs
+        elseif clusters != orthonormalised_for && any(cl -> length(cl) > 1, clusters)
+            # a merged block is the concatenation of separately orthonormalised sub-blocks, so it
+            # is not block-orthonormal as a unit; re-QR preserves each invariant subspace
+            for cl in clusters
+                length(cl) > 1 && (W[:, cl] = Matrix(qr(W[:, cl]).Q))
+            end
+            orthonormalised_for = copy(clusters)
+        else
+            break
         end
-        transformed, discs, nrmR2, beta, kappa, FB = _certify_ball(Acx, W; B = Bcx,
-            kappa_mode)
+        attempts += 1
+        attempts > 2 * n &&
+            throw(ArgumentError("failed to reach a β-Gershgorin clustering that is contiguous, " *
+                                "consistent with its own discs and block-orthonormalised"))
     end
 
     block = _block_diagonal_part(transformed, clusters)
@@ -460,7 +512,7 @@ function _vbd_finish(Acx::BallMatrix{T}, Bcx, W, cl, n::Integer,
         Acx, BallMatrix(W), BallMatrix(inv(mid(FB))), transformed, block, remainder,
         clusters, T; FB = FB)
 
-    return SchurNewtonVBDResult(W, transformed, block, remainder, clusters,
+    return Miyajima2014aSchurNewtonResult(W, transformed, block, remainder, clusters,
         discs, remainder_norm, eigenvalues, nrmR2, beta, kappa, block_coupling,
         block_centers, block_nonnormality, block_residual_norm)
 end

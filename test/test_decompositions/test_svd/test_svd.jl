@@ -118,10 +118,18 @@ end
 
     result = BallArithmetic.rigorous_svd(A)
 
-    @test result.singular_values == BallArithmetic.svdbox(A)
+    # `A` carries a radius, where the two entry points are documented to differ: `rigorous_svd`
+    # certifies the whole ball by Theorem 7, since it also returns vector bounds and the residuals
+    # E, F, G measured against that ball, while `svdbox` returns values alone and so certifies
+    # mid(A) by Theorem 10 and widens by ‖rad(A)‖₂ (`_miyajima2014_thm10_weyl`), the narrower route.
+    @test result.singular_values ==
+          BallArithmetic.svdbox(A; method = :miyajima2014_thm7)
+    # `rad` is shadowed by the local radius matrix above, hence the qualified calls
+    @test maximum(BallArithmetic.rad.(BallArithmetic.svdbox(A))) <=
+          maximum(BallArithmetic.rad.(result.singular_values))
     @test result.Σ isa BallMatrix
     @test result.residual isa BallMatrix
-    @test result.block_diagonalisation isa BallArithmetic.MiyajimaVBDResult
+    @test result.block_diagonalisation isa BallArithmetic.SchurGershgorinResult
 
     for i in 1:length(result.singular_values)
         @test result.Σ[i, i] == result.singular_values[i]
@@ -138,7 +146,7 @@ end
     @test result.left_orthogonality_defect < 1
 
     H = adjoint(result.Σ) * result.Σ
-    recomputed = BallArithmetic.miyajima_vbd(H; hermitian = true)
+    recomputed = BallArithmetic.schur_gershgorin_enclosure(H; hermitian = true)
     @test result.block_diagonalisation.clusters == recomputed.clusters
     @test result.block_diagonalisation.remainder_norm == recomputed.remainder_norm
 
@@ -149,8 +157,11 @@ end
     @test result_no_vbd.Σ == result.Σ
     @test result_no_vbd.residual == result.residual
 
-    Σ_no_vbd = BallArithmetic.svdbox(A; apply_vbd = false)
-    @test Σ_no_vbd == result.singular_values
+    # svdbox returns the values alone and never forms a block diagonalisation, so it has no
+    # apply_vbd to pass; asked for Theorem 7 by name it computes exactly what rigorous_svd's
+    # MiyajimaM1 certifies with on this ball input, so the two agree there
+    Σ_box = BallArithmetic.svdbox(A; method = :miyajima2014_thm7)
+    @test Σ_box == result.singular_values
 end
 
 @testset "Miyajima VBD block diagonalisation" begin
@@ -159,7 +170,7 @@ end
     Σrad[1, 3] = Σrad[2, 3] = Σrad[3, 1] = Σrad[3, 2] = 1.0e-6
     Σ = BallMatrix(Σmid, Σrad)
 
-    result = BallArithmetic.miyajima_vbd(Σ; hermitian = true)
+    result = BallArithmetic.schur_gershgorin_enclosure(Σ; hermitian = true)
 
     @test length(result.clusters) == 2
     @test result.clusters[1] == 1:1
@@ -194,7 +205,7 @@ end
     Σrad[1, 3] = Σrad[3, 1] = 0.3
     Σ = BallMatrix(Σmid, Σrad)
 
-    result = BallArithmetic.miyajima_vbd(Σ; hermitian = true)
+    result = BallArithmetic.schur_gershgorin_enclosure(Σ; hermitian = true)
 
     @test length(result.clusters) == 2
     @test result.clusters[1] == 1:2
@@ -209,7 +220,7 @@ end
     Σmid = Diagonal([4.0, 2.0, 1.0])
     Σ = BallMatrix(Matrix(Σmid))
 
-    result = BallArithmetic.miyajima_vbd(Σ; hermitian = true)
+    result = BallArithmetic.schur_gershgorin_enclosure(Σ; hermitian = true)
 
     @test length(result.clusters) == 3
     @test all(result.clusters[i] == i:i for i in 1:3)
@@ -222,7 +233,7 @@ end
     Σmid = [1 + 2im  0.3 - 0.2im; -0.4 + 0.1im  1 - im]
     Σ = BallMatrix(Σmid)
 
-    result = BallArithmetic.miyajima_vbd(Σ; hermitian = true)
+    result = BallArithmetic.schur_gershgorin_enclosure(Σ; hermitian = true)
 
     @test length(result.cluster_intervals) == size(Σmid, 1)
     @test all(isreal, mid.(result.cluster_intervals))
@@ -235,7 +246,7 @@ end
     Arad = fill(1.0e-8, size(Amid))
     A = BallMatrix(Amid, Arad)
 
-    result = BallArithmetic.miyajima_vbd(A)
+    result = BallArithmetic.schur_gershgorin_enclosure(A)
 
     @test size(result.transformed) == size(A)
     @test length(result.clusters) >= 1

@@ -26,7 +26,7 @@ sample_in_ball(rng, A) = mid(A) .+ (2 .* rand(rng, size(mid(A))...) .- 1) .* rad
 
 @testset "VBD remainder_norm is a rigorous ‖remainder‖₂ bound" begin
 
-    @testset "Hermitian path (miyajima_vbd)" begin
+    @testset "Hermitian path (schur_gershgorin_enclosure)" begin
         rng = MersenneTwister(20260525)
         # clustered spectrum {10, 10.05} {1, 1.02} {-5}; sizeable off-diagonal radii
         for ro in (0.005, 0.01, 0.02)
@@ -36,7 +36,7 @@ sample_in_ball(rng, A) = mid(A) .+ (2 .* rand(rng, size(mid(A))...) .- 1) .* rad
             R = fill(ro, 5, 5); R[diagind(R)] .= ro / 2
             A = BallMatrix(M, R)
 
-            vbd = miyajima_vbd(A; hermitian = true)
+            vbd = schur_gershgorin_enclosure(A; hermitian = true)
             U = vbd.basis
             mask = offblock_mask(5, vbd.clusters)
 
@@ -53,7 +53,7 @@ sample_in_ball(rng, A) = mid(A) .+ (2 .* rand(rng, size(mid(A))...) .- 1) .* rad
         end
     end
 
-    @testset "Schur+Newton path (schur_newton_vbd)" begin
+    @testset "Schur+Newton path (miyajima2014a_schurnewton)" begin
         rng = MersenneTwister(7)
         # well-separated spectrum -> Schur+Newton produces a (block-orthonormal,
         # non-unitary) basis whose off-block remainder is nonzero, exercising the bound.
@@ -64,7 +64,7 @@ sample_in_ball(rng, A) = mid(A) .+ (2 .* rand(rng, size(mid(A))...) .- 1) .* rad
             R = fill(ro, 5, 5); R[diagind(R)] .= ro / 2
             A = BallMatrix(M, R)
 
-            r = schur_newton_vbd(A)
+            r = miyajima2014a_schurnewton(A)
             W = r.basis
             Winv = inv(W)
             mask = offblock_mask(5, r.clusters)
