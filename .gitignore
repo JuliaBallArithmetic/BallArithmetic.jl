@@ -2,3 +2,6 @@
 *.jl.mem
 Manifest.toml
 /docs/build/
+
+# experiment outputs: data does not live in a code repo
+bench/*.tsv
