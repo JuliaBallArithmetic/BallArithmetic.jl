@@ -13,6 +13,9 @@ using LinearAlgebra, Random
             @test sum_up(xs) >= exact
         end
         @test sum_up(Float64[]) == 0.0
+        xs = randn(rng, 30)
+        @test sum_up(x for x in xs) == sum_up(xs)
+        @test sum_up(x for x in Float64[]) == 0.0
     end
 
     @testset "abs_up and abs_down bracket the complex modulus" begin

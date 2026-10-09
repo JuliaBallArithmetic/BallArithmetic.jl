@@ -348,7 +348,14 @@ end
 
 Upper bound of `x₁ + x₂ + …`, accumulated with [`add_up`](@ref) from zero.
 """
-sum_up(xs) = foldl(add_up, xs; init = zero(float(eltype(xs))))
+function sum_up(xs)
+    T = eltype(xs)
+    # an array knows its element type; a generator reports `Any`, and then the sum starts from
+    # its first element
+    (T <: Number && isconcretetype(T)) && return foldl(add_up, xs; init = zero(float(T)))
+    isempty(xs) && return 0.0
+    return foldl(add_up, xs)
+end
 
 """
     abs_up(x) / abs_down(x)
