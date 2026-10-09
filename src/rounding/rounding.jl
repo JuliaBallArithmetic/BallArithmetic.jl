@@ -320,7 +320,7 @@ end
 # are safe inside `Threads.@threads`.
 
 export add_up, add_down, sub_up, sub_down, mul_up, mul_down, div_up, div_down, sqrt_up, sqrt_down
-export unit_roundoff, sum_up, abs_up, abs_down, pow_up, pow_down, root_up, dist_up, dist_down
+export machine_epsilon, subnormal_min, unit_roundoff, sum_up, abs_up, abs_down, pow_up, pow_down, root_up, dist_up, dist_down
 
 """
     unit_roundoff(T) -> T
