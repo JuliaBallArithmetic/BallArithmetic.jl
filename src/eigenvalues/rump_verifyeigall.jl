@@ -828,13 +828,6 @@ function eigencount_outside(r::VerifyEigAllResult, R::Real)
     return (cnt, true)
 end
 
-# lower bound of |w| over the box re(w) ∈ [re(lo), re(hi)], im(w) ∈ [im(lo), im(hi)]
-function _min_modulus_down(lo::Complex{T}, hi::Complex{T}) where {T}
-    x = real(lo) > 0 ? real(lo) : (real(hi) < 0 ? -real(hi) : zero(T))
-    y = imag(lo) > 0 ? imag(lo) : (imag(hi) < 0 ? -imag(hi) : zero(T))
-    return abs_down(complex(x, y))
-end
-
 """
     eigencount_in_disc(r::VerifyEigAllResult, c, ρ) -> (count, ok)
 
@@ -847,14 +840,7 @@ function eigencount_in_disc(r::VerifyEigAllResult, c::Number, ρ::Real)
     c = convert(complex(eltype(r.centers)), c)
     cnt = 0
     for i in eachindex(r.clusters)
-        # the subtraction is rounded, so the distance is bracketed by the moduli of the
-        # differences rounded down and up componentwise
-        cc = complex(r.centers[i])
-        lo = complex(sub_down(real(cc), real(c)), sub_down(imag(cc), imag(c)))
-        hi = complex(sub_up(real(cc), real(c)), sub_up(imag(cc), imag(c)))
-        dhi = max(abs_up(lo), abs_up(hi), abs_up(complex(real(lo), imag(hi))),
-            abs_up(complex(real(hi), imag(lo))))
-        dlo = _min_modulus_down(lo, hi)
+        dhi, dlo = dist_up(r.centers[i], c), dist_down(r.centers[i], c)
         if add_up(dhi, r.radii[i]) < ρ
             cnt += length(r.clusters[i])
         elseif sub_down(dlo, r.radii[i]) > ρ

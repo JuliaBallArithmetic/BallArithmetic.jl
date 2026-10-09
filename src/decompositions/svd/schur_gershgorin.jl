@@ -409,12 +409,7 @@ function _balls_overlap(a::Ball{T, Complex{T}}, b::Ball{T, Complex{T}}) where {T
     # every genuine overlap.
     # `hypot` is not correctly rounded, so it is not a lower bound even under RoundDown; the
     # difference of the centres is bracketed componentwise and its modulus bounded with abs_down
-    ca, cb = mid(a), mid(b)
-    x = max(sub_down(real(ca), real(cb)), sub_down(real(cb), real(ca)), zero(T))
-    y = max(sub_down(imag(ca), imag(cb)), sub_down(imag(cb), imag(ca)), zero(T))
-    distance = abs_down(complex(x, y))
-    threshold = add_up(rad(a), rad(b))
-    return distance <= threshold
+    return dist_down(mid(a), mid(b)) <= add_up(rad(a), rad(b))
 end
 
 function _block_diagonal_part(H::BallMatrix, clusters::Vector{UnitRange{Int}})

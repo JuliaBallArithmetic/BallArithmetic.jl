@@ -320,7 +320,7 @@ end
 # are safe inside `Threads.@threads`.
 
 export add_up, add_down, sub_up, sub_down, mul_up, mul_down, div_up, div_down, sqrt_up, sqrt_down
-export unit_roundoff, sum_up, abs_up, abs_down, pow_up, pow_down, root_up
+export unit_roundoff, sum_up, abs_up, abs_down, pow_up, pow_down, root_up, dist_up, dist_down
 
 """
     unit_roundoff(T) -> T
@@ -402,4 +402,25 @@ function root_up(x::T, e::Integer) where {T <: AbstractFloat}
         r = nextfloat(r)
     end
     return r
+end
+
+"""
+    dist_up(a, b) / dist_down(a, b)
+
+Upper and lower bounds of `|a − b|` for real or complex `a`, `b`. The difference is bracketed
+componentwise by directed subtractions, so the rounding of `a − b` is accounted for, and the
+modulus of the bracket is bounded with [`abs_up`](@ref) and [`abs_down`](@ref).
+"""
+function dist_up(a::Number, b::Number)
+    a, b = promote(complex(float(a)), complex(float(b)))
+    x = max(abs(sub_up(real(a), real(b))), abs(sub_down(real(a), real(b))))
+    y = max(abs(sub_up(imag(a), imag(b))), abs(sub_down(imag(a), imag(b))))
+    return abs_up(complex(x, y))
+end
+function dist_down(a::Number, b::Number)
+    a, b = promote(complex(float(a)), complex(float(b)))
+    T = real(typeof(a))
+    x = max(sub_down(real(a), real(b)), sub_down(real(b), real(a)), zero(T))
+    y = max(sub_down(imag(a), imag(b)), sub_down(imag(b), imag(a)), zero(T))
+    return abs_down(complex(x, y))
 end

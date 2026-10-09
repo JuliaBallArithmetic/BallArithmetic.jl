@@ -57,3 +57,16 @@ end
     @test div_down(1, 3.0) <= big(1) / 3
     @test_throws MethodError add_up(Float16(1), Float16(2))
 end
+
+@testset "dist_up and dist_down bracket the distance" begin
+    rng = MersenneTwister(13)
+    for _ in 1:200
+        a = complex(randn(rng), randn(rng)) * 10.0^rand(rng, -5:5)
+        b = a + complex(randn(rng), randn(rng)) * 10.0^rand(rng, -15:0)
+        exact = setprecision(256) do
+            hypot(BigFloat(real(a)) - BigFloat(real(b)), BigFloat(imag(a)) - BigFloat(imag(b)))
+        end
+        @test dist_down(a, b) <= exact <= dist_up(a, b)
+    end
+    @test dist_up(1.0, 3) == 2.0 && dist_down(1.0, 3) == 2.0
+end
