@@ -12,6 +12,7 @@ using Test
     include("test_types/test_mmul5.jl")
     include("test_types/test_vector.jl")
     include("test_types/test_matrix.jl")
+    include("test_types/test_mixed_products.jl")
     include("test_types/test_array.jl")
     include("test_types/test_structured_radius.jl")
     include("test_types/test_indexing_and_validation.jl")
@@ -20,6 +21,7 @@ using Test
     # Rounding and BigFloat
     include("test_rounding/test_bigfloat_rounding.jl")
     include("test_rounding/test_ball_bigfloat.jl")
+    include("test_rounding/test_scalar_bounds.jl")
 
     # Matrix classifiers
     include("test_matrix_classifiers/test_matrix_classifier.jl")
@@ -28,6 +30,7 @@ using Test
     include("test_eigenvalues/test_eigen.jl")
     include("test_error_free_transformations.jl")
     include("test_eigenvalues/test_rump_verifyeigall.jl")
+    include("test_eigenvalues/test_verifyeigall_count.jl")
     include("test_eigenvalues/test_miyajima_2014a.jl")
     include("test_eigenvalues/test_miyajima_new.jl")
     include("test_eigenvalues/test_verified_gev.jl")
@@ -56,6 +59,7 @@ using Test
 
     # Norm bounds
     include("test_norm_bounds/test_norm_bounds.jl")
+    include("test_norm_bounds/test_abs_norm_bounds.jl")
     include("test_norm_bounds/test_oishi.jl")
     include("test_norm_bounds/test_oishi_triangular.jl")
     include("test_norm_bounds/test_oishi_2023_schur.jl")
@@ -65,6 +69,9 @@ using Test
     include("test_pseudospectra/test_pseudospectra.jl")
     include("test_pseudospectra/test_sylvester_resolvent.jl")
     include("test_pseudospectra/test_gram_transform.jl")
+
+    # Polynomials
+    include("test_polynomials/test_poly_range.jl")
 
     # Linear system
     include("test_linear_system/test_inflation.jl")

@@ -589,6 +589,26 @@ function Base.:*(
 end
 
 """
+    *(A::AbstractMatrix{T}, B::BallMatrix{T, Complex{T}})
+
+Multiply a real floating-point matrix, dense or sparse, by a complex `BallMatrix`, through the
+real kernel on the real and imaginary parts of `B`, so a sparse `A` stays sparse.
+"""
+function Base.:*(A::AbstractMatrix{T}, B::BallMatrix{T, Complex{T}}) where {T <: AbstractFloat}
+    return A * real(B) + im * (A * imag(B))
+end
+
+"""
+    *(A::AbstractMatrix{Complex{T}}, B::BallMatrix{T, T})
+
+Multiply a complex floating-point matrix, dense or sparse, by a real `BallMatrix`, through the
+real kernel on the real and imaginary parts of `A`.
+"""
+function Base.:*(A::AbstractMatrix{Complex{T}}, B::BallMatrix{T, T}) where {T <: AbstractFloat}
+    return real(A) * B + im * (imag(A) * B)
+end
+
+"""
     *(A::BallMatrix{T, Complex{T}}, B::BallMatrix{T, Complex{T}})
 
 Multiply two complex `BallMatrix` values. The product is formed by

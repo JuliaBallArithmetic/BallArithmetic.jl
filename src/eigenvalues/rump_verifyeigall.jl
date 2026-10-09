@@ -58,7 +58,7 @@
 
 using LinearAlgebra
 
-export VerifyEigAllResult, verifyeigall, AlmostInvariantBasis,
+export eigencount_outside, eigencount_in_disc, VerifyEigAllResult, verifyeigall, AlmostInvariantBasis,
     orthonormal_invariant_basis
 
 """
@@ -793,6 +793,77 @@ function verifyeigall(A::BallMatrix, B::BallMatrix; method::Symbol = :miyajima20
     method === :miyajima2014a && return _miyajima2014a_alg1(A, B)
     throw(ArgumentError("verifyeigall: method $(repr(method)) does not take a pencil; " *
                         "the implemented pencil method is :miyajima2014a"))
+end
+
+# ---------------------------------------------------------------------------------------------
+# Counting eigenvalues in a region from the inclusions
+#
+# When every cluster is certified, Theorem 2.2 gives for each cluster i a Jordan block of size
+# |mu_i| whose eigenvalues lie in the disc centers[i] ± radii[i], and these blocks together carry
+# the whole spectrum with algebraic multiplicity. So the number of eigenvalues in a region is the
+# sum of |mu_i| over the discs inside it, provided no disc meets its boundary. A disc that meets
+# the boundary, or a cluster that is not certified, makes the count unavailable; the Gershgorin
+# fallback of an uncertified cluster encloses eigenvalues but does not attribute a multiplicity.
+
+"""
+    eigencount_outside(r::VerifyEigAllResult, R) -> (count, ok)
+
+Number of eigenvalues of modulus greater than `R`, with algebraic multiplicity, from the
+inclusions of [`verifyeigall`](@ref). `ok` is false, and `count` zero, when `r.spectrum_covered`
+is false or some disc meets the circle `|z| = R`.
+"""
+function eigencount_outside(r::VerifyEigAllResult, R::Real)
+    r.spectrum_covered || return (0, false)
+    cnt = 0
+    for i in eachindex(r.clusters)
+        c, ρ = r.centers[i], r.radii[i]
+        if sub_down(abs_down(c), ρ) > R
+            cnt += length(r.clusters[i])
+        elseif add_up(abs_up(c), ρ) < R
+            continue
+        else
+            return (0, false)
+        end
+    end
+    return (cnt, true)
+end
+
+# lower bound of |w| over the box re(w) ∈ [re(lo), re(hi)], im(w) ∈ [im(lo), im(hi)]
+function _min_modulus_down(lo::Complex{T}, hi::Complex{T}) where {T}
+    x = real(lo) > 0 ? real(lo) : (real(hi) < 0 ? -real(hi) : zero(T))
+    y = imag(lo) > 0 ? imag(lo) : (imag(hi) < 0 ? -imag(hi) : zero(T))
+    return abs_down(complex(x, y))
+end
+
+"""
+    eigencount_in_disc(r::VerifyEigAllResult, c, ρ) -> (count, ok)
+
+Number of eigenvalues in the open disc `|z − c| < ρ`, with algebraic multiplicity, from the
+inclusions of [`verifyeigall`](@ref); `ok` is false when the spectrum is not covered or some
+inclusion disc meets the circle `|z − c| = ρ`.
+"""
+function eigencount_in_disc(r::VerifyEigAllResult, c::Number, ρ::Real)
+    r.spectrum_covered || return (0, false)
+    c = convert(complex(eltype(r.centers)), c)
+    cnt = 0
+    for i in eachindex(r.clusters)
+        # the subtraction is rounded, so the distance is bracketed by the moduli of the
+        # differences rounded down and up componentwise
+        cc = complex(r.centers[i])
+        lo = complex(sub_down(real(cc), real(c)), sub_down(imag(cc), imag(c)))
+        hi = complex(sub_up(real(cc), real(c)), sub_up(imag(cc), imag(c)))
+        dhi = max(abs_up(lo), abs_up(hi), abs_up(complex(real(lo), imag(hi))),
+            abs_up(complex(real(hi), imag(lo))))
+        dlo = _min_modulus_down(lo, hi)
+        if add_up(dhi, r.radii[i]) < ρ
+            cnt += length(r.clusters[i])
+        elseif sub_down(dlo, r.radii[i]) > ρ
+            continue
+        else
+            return (0, false)
+        end
+    end
+    return (cnt, true)
 end
 
 # ---------------------------------------------------------------------------------------------

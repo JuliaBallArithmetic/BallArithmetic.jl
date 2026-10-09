@@ -93,11 +93,18 @@ end
 """
     gamma_bound(N, ::Type{T}) -> T
 
-Higham's `gamma_N = N u / (1 - N u)`, rounded upward, for `N` accumulated operations.
+Higham's `gamma_N = N u / (1 - N u)`, rounded upward, for `N` accumulated operations: the
+constant of `|fl(xᵀy) − xᵀy| ≤ γ_N |x|ᵀ|y|` for a real inner product of length `N` in any order,
+with or without fused multiply-add. Refuses when `N u ≥ 1/2`, where the model does not apply.
+
+For complex data, `gamma_bound(N, Complex{T})` returns `γ_{N+2}`: a complex product has relative
+error at most `√2 γ₂ ≤ γ₃` (Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed.,
+Lemma 3.5), and `(1 + γ₃)(1 + γ_{N−1}) ≤ 1 + γ_{N+2}`.
 """
 function gamma_bound(N::Integer, ::Type{T}) where {T <: AbstractFloat}
     u = eps(T) / 2
-    return setrounding(T, RoundUp) do
-        (N * u) / (one(T) - N * u)
-    end
+    Nu = mul_up(T(N), u)
+    Nu < T(1) / 2 || throw(ArgumentError("gamma_bound: N u = $Nu ≥ 1/2, the model does not apply"))
+    return div_up(Nu, sub_down(one(T), Nu))
 end
+gamma_bound(N::Integer, ::Type{Complex{T}}) where {T <: AbstractFloat} = gamma_bound(N + 2, T)

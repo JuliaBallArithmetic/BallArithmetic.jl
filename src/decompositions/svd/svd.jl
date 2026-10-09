@@ -304,6 +304,43 @@ function svdbox(A::BallMatrix{T}; method::Symbol = :auto) where {T}
                         ":rump2011_thm3_1"))
 end
 
+"""
+    svd_bounds(A::BallMatrix; method = :auto) -> (lo, hi)
+
+Certified bounds `lo[i] ≤ σᵢ(X) ≤ hi[i]` for every `X` in the ball `A` and every
+`i = 1:min(size(A)...)`, singular values in decreasing order, read off [`svdbox`](@ref) with the
+given `method` and rounded outward. Where the enclosure fails, or the input carries a non-finite
+entry, the bounds are the trivial `lo = 0`, `hi = Inf`, so the result is always a valid bound.
+
+A caller whose numbers must not change with a change of default names the theorem, for instance
+`method = :miyajima2014_thm10_weyl`, rather than relying on `:auto`.
+"""
+function svd_bounds(A::BallMatrix{T}; method::Symbol = :auto) where {T}
+    q = minimum(size(A))
+    RT = real(T)
+    q == 0 && return (RT[], RT[])
+    all(isfinite, mid(A)) && all(isfinite, rad(A)) || return (zeros(RT, q), fill(RT(Inf), q))
+    s = svdbox(A; method)
+    lo = RT[max(zero(RT), sub_down(RT(mid(x)), RT(rad(x)))) for x in s]
+    hi = RT[add_up(RT(mid(x)), RT(rad(x))) for x in s]
+    for i in 1:q
+        (isfinite(lo[i]) && isfinite(hi[i])) || (lo[i] = zero(RT); hi[i] = RT(Inf))
+    end
+    return lo, hi
+end
+svd_bounds(A::AbstractMatrix; kwargs...) = svd_bounds(BallMatrix(Matrix(A)); kwargs...)
+
+"""
+    svd_lower_bound_sigma_min(A::BallMatrix; method = :auto) -> T
+
+Certified lower bound on the smallest singular value `σ_q`, `q = min(size(A)...)`, of every matrix
+in the ball, from [`svd_bounds`](@ref); zero when the enclosure fails.
+"""
+function svd_lower_bound_sigma_min(A; method::Symbol = :auto)
+    lo, _ = svd_bounds(A; method)
+    return isempty(lo) ? zero(eltype(lo)) : lo[end]
+end
+
 # MiyajimaAuto is resolved before anything downstream sees it, so no routine ever receives a
 # method that is a rule rather than a theorem.
 #

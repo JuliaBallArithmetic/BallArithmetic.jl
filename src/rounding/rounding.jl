@@ -309,3 +309,76 @@ For BigFloat, use the explicit `add_down`, `mul_down`, etc. functions.
 macro down(ex)
     esc(MacroTools.postwalk(x -> get(op_down, x, x), ex))
 end
+
+###########################################
+# SCALAR BOUNDS BUILT ON THE OPERATIONS   #
+###########################################
+#
+# Moved here from RigorousPseudospectra, which computed them with its own one-ulp-outward helpers.
+# They are built on the correctly rounded `add_up`, ..., `sqrt_down` above (RoundingEmulator for
+# Float32 and Float64, MPFR for BigFloat), which never change the hardware rounding mode, so they
+# are safe inside `Threads.@threads`.
+
+export add_up, add_down, sub_up, sub_down, mul_up, mul_down, div_up, div_down, sqrt_up, sqrt_down
+export sum_up, abs_up, abs_down, pow_up, pow_down, root_up
+
+"""
+    sum_up(xs) -> T
+
+Upper bound of `x₁ + x₂ + …`, accumulated with [`add_up`](@ref) from zero.
+"""
+sum_up(xs) = foldl(add_up, xs; init = zero(float(eltype(xs))))
+
+"""
+    abs_up(x) / abs_down(x)
+
+Upper and lower bounds of `|x|`. For a real `x` the modulus is exact. For a complex `z` it is
+`√(re² + im²)` with every operation rounded in the stated direction, and not `hypot`, whose
+result is not correctly rounded.
+"""
+abs_up(x::Union{Float32, Float64}) = abs(x)
+abs_down(x::Union{Float32, Float64}) = abs(x)
+function abs_up(z::Complex{T}) where {T <: Union{Float32, Float64}}
+    a, b = real(z), imag(z)
+    return sqrt_up(add_up(mul_up(a, a), mul_up(b, b)))
+end
+function abs_down(z::Complex{T}) where {T <: Union{Float32, Float64}}
+    a, b = real(z), imag(z)
+    return sqrt_down(add_down(mul_down(a, a), mul_down(b, b)))
+end
+
+"""
+    pow_up(x, e) / pow_down(x, e)
+
+Upper and lower bounds of `xᵉ` for `x ≥ 0` and an integer `e ≥ 0`, by `e` directed products.
+"""
+function pow_up(x::T, e::Integer) where {T <: AbstractFloat}
+    r = one(T)
+    for _ in 1:e
+        r = mul_up(r, x)
+    end
+    return r
+end
+function pow_down(x::T, e::Integer) where {T <: AbstractFloat}
+    r = one(T)
+    for _ in 1:e
+        r = mul_down(r, x)
+    end
+    return r
+end
+
+"""
+    root_up(x, e) -> T
+
+Upper bound of `x^(1/e)` for `x ≥ 0` and an integer `e ≥ 1`: start from the floating-point root
+and step up until `pow_down(r, e) ≥ x`, which certifies `rᵉ ≥ x`.
+"""
+function root_up(x::T, e::Integer) where {T <: AbstractFloat}
+    x <= 0 && return zero(T)
+    isfinite(x) || return T(Inf)
+    r = x^(one(T) / e)
+    while pow_down(r, e) < x
+        r = nextfloat(r)
+    end
+    return r
+end

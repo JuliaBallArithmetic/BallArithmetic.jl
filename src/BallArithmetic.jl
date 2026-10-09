@@ -114,7 +114,7 @@ include("decompositions/svd/svd.jl")
 include("decompositions/svd/adaptive_ogita_svd.jl")
 include("decompositions/svd/precision_cascade_svd.jl")
 export Miyajima2014aSchurNewtonResult, miyajima2014a_schurnewton, block_enclosure
-export SchurGershgorinResult, RigorousSVDResult, schur_gershgorin_enclosure, rigorous_svd, svdbox,
+export SchurGershgorinResult, RigorousSVDResult, schur_gershgorin_enclosure, rigorous_svd, svdbox, svd_bounds, svd_lower_bound_sigma_min,
        rigorous_svd_gpu, rigorous_svd_m4, refine_svd_bounds_with_vbd,
        OgitaSVDRefinementResult, AdaptiveSVDResult, ogita_svd_refine, adaptive_ogita_svd,
        ogita_iterations_for_precision, ogita_svd_refine_multifloat,
@@ -262,6 +262,7 @@ export VerifiedLinearSystemResult, verified_linear_solve_hmatrix
 
 include("pseudospectra/sylvester_resolvent_bound.jl")
 include("pseudospectra/CertifScripts.jl")
+include("polynomials/poly_range.jl")
 include("linear_system/triangular_eigenvectors.jl")
 include("linear_system/sylvester.jl")
 
