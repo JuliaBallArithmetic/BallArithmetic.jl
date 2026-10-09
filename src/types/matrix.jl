@@ -609,6 +609,17 @@ function Base.:*(A::AbstractMatrix{Complex{T}}, B::BallMatrix{T, T}) where {T <:
 end
 
 """
+    *(A::AbstractMatrix{Complex{T}}, B::BallMatrix{T, Complex{T}})
+
+Multiply a complex floating-point matrix, dense or sparse, by a complex `BallMatrix`, through the
+real-times-complex products of the real and imaginary parts of `A`; the generic plain-times-ball
+method reaches `MMul4`, which has real methods only.
+"""
+function Base.:*(A::AbstractMatrix{Complex{T}}, B::BallMatrix{T, Complex{T}}) where {T <: AbstractFloat}
+    return real(A) * B + im * (imag(A) * B)
+end
+
+"""
     *(A::BallMatrix{T, Complex{T}}, B::BallMatrix{T, Complex{T}})
 
 Multiply two complex `BallMatrix` values. The product is formed by
