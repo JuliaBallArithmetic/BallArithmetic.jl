@@ -58,7 +58,7 @@
 
 using LinearAlgebra
 
-export eigencount_outside, eigencount_in_disc, VerifyEigAllResult, verifyeigall, AlmostInvariantBasis,
+export inclusion_discs, eigencount_outside, eigencount_in_disc, VerifyEigAllResult, verifyeigall, AlmostInvariantBasis,
     orthonormal_invariant_basis
 
 """
@@ -87,6 +87,10 @@ Outcome of [`verifyeigall`](@ref).
   discs contains the whole spectrum of the input.
 - `iterations::Int`, `transform_defect::T`: the number of interval iterations, and the certified
   `‖I − RW‖` of the transformation, which must be below one.
+- `gershgorin_centers::Vector{CT}`, `gershgorin_radii::Vector{T}`: the Gershgorin row discs of the
+  transformed ball matrix, which encloses `W⁻¹BW` and so carries the eigenvalues of `B`; empty when
+  the transformation failed or the result comes from another method. Every eigenvalue lies in their
+  union, and a union of discs disjoint from the others holds as many eigenvalues as it has discs.
 """
 struct VerifyEigAllResult{T, CT}
     clusters::Vector{Vector{Int}}
@@ -99,7 +103,15 @@ struct VerifyEigAllResult{T, CT}
     spectrum_covered::Bool
     iterations::Int
     transform_defect::T
+    gershgorin_centers::Vector{CT}
+    gershgorin_radii::Vector{T}
 end
+
+# the methods that have no Gershgorin discs to report
+VerifyEigAllResult(clusters, certified, centers::Vector{CT}, radii::Vector{T}, subspaces, blocks,
+    basis, covered, iterations, defect) where {T, CT} =
+    VerifyEigAllResult(clusters, certified, centers, radii, subspaces, blocks, basis, covered,
+        iterations, defect, CT[], T[])
 
 function Base.show(io::IO, r::VerifyEigAllResult)
     nc = count(r.certified)
@@ -369,40 +381,28 @@ end
 # So for a declined cluster the honest report is the smallest disc about its lambda_i containing the
 # whole connected component its rows fall in, together with that component's size as the count.
 # `certified[i]` stays false: the subspace and the Jordan block are not proved, only the location.
-function _rump2022a_gershgorin_discs(A::BallMatrix{T}, D::Vector{CT}, clusters) where {T, CT}
+# The Gershgorin row discs of a ball matrix, valid for every member: centre the midpoint of the
+# diagonal entry, radius its own radius plus the moduli of the off-diagonal entries of the row,
+# each rounded upward.
+function _gershgorin_rows(A::BallMatrix{T}) where {T}
     n = size(A, 1)
     Am, Ar = mid(A), rad(A)
-    ctr = CT[Am[i, i] for i in 1:n]
-    rad_ = setrounding(T, RoundUp) do
-        T[Ar[i, i] + sum(abs(Am[i, j]) + Ar[i, j] for j in 1:n if j != i; init = zero(T))
-          for i in 1:n]
-    end
-    # connected components of the overlap graph, distances bounded below and radii above
-    parent = collect(1:n)
-    find(x) = (parent[x] == x ? x : (parent[x] = find(parent[x])))
-    for i in 1:n, j in (i + 1):n
-        touch = setrounding(T, RoundDown) do
-            abs(ctr[i] - ctr[j])
-        end <= setrounding(T, RoundUp) do
-            rad_[i] + rad_[j]
-        end
-        if touch
-            a, b = find(i), find(j)
-            a != b && (parent[a] = b)
-        end
-    end
-    comp = Dict{Int, Vector{Int}}()
-    for i in 1:n
-        push!(get!(comp, find(i), Int[]), i)
-    end
+    ctr = [complex(Am[i, i]) for i in 1:n]
+    rad_ = T[sum_up(add_up(abs_up(Am[i, j]), Ar[i, j]) for j in 1:n if j != i) for i in 1:n]
+    rad_ = T[add_up(rad_[i], Ar[i, i]) for i in 1:n]
+    return ctr, rad_
+end
+
+function _rump2022a_gershgorin_discs(A::BallMatrix{T}, D::Vector{CT}, clusters) where {T, CT}
+    ctr, rad_ = _gershgorin_rows(A)
+    comps = overlap_components([Ball(CT(ctr[i]), rad_[i]) for i in eachindex(ctr)])
+    comp_of = Dict(i => c for c in comps for i in c)
     out_r = Vector{T}(undef, length(clusters))
     out_m = Vector{Int}(undef, length(clusters))
     for (k, c) in enumerate(clusters)
-        rows = sort(unique(reduce(vcat, [comp[find(j)] for j in c])))
+        rows = sort(unique(reduce(vcat, [comp_of[j] for j in c])))
         lam = D[c[1]]
-        out_r[k] = setrounding(T, RoundUp) do
-            maximum(abs(lam - ctr[p]) + rad_[p] for p in rows)
-        end
+        out_r[k] = maximum(add_up(dist_up(lam, ctr[p]), rad_[p]) for p in rows)
         out_m[k] = length(rows)
     end
     return out_r, out_m
@@ -711,8 +711,9 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
                 fill(T(Inf), length(clusters[i]), length(clusters[i]))))
         end
     end
+    gc, gr = _gershgorin_rows(A)
     return VerifyEigAllResult(clusters, collect(certified), centers, radii, subsB, blocksB, W,
-        covered, total, defect)
+        covered, total, defect, CT.(gc), gr)
 end
 
 """
@@ -798,28 +799,49 @@ end
 # ---------------------------------------------------------------------------------------------
 # Counting eigenvalues in a region from the inclusions
 #
-# When every cluster is certified, Theorem 2.2 gives for each cluster i a Jordan block of size
-# |mu_i| whose eigenvalues lie in the disc centers[i] ± radii[i], and these blocks together carry
-# the whole spectrum with algebraic multiplicity. So the number of eigenvalues in a region is the
-# sum of |mu_i| over the discs inside it, provided no disc meets its boundary. A disc that meets
-# the boundary, or a cluster that is not certified, makes the count unavailable; the Gershgorin
-# fallback of an uncertified cluster encloses eigenvalues but does not attribute a multiplicity.
+# When every cluster is certified and max rho(Z) < 1, Theorem 2.2 gives for each cluster i a
+# Jordan block of size |mu_i| whose eigenvalues lie in the disc centers[i] ± radii[i], and these
+# blocks together carry the whole spectrum with algebraic multiplicity. When some cluster is not
+# certified, the Gershgorin row discs of the transformed matrix still carry it: every eigenvalue is
+# in their union, and a union of discs disjoint from the others holds as many eigenvalues as it has
+# discs (Varga, Gersgorin and His Circles, Theorem 1.6, for every member of the ball). In both
+# cases the number of eigenvalues in a region is the sum of the counts of the discs inside it,
+# provided no disc meets its boundary.
+
+"""
+    inclusion_discs(r::VerifyEigAllResult) -> (centers, radii, counts, ok)
+
+Discs holding all the eigenvalues, each with the number it holds when it is disjoint from the
+others: when every cluster is certified (`r.spectrum_covered`), the discs of Theorem 2.2 with the
+cluster sizes; otherwise the Gershgorin row discs of the transformed matrix, each counting one, so
+that a union of discs disjoint from the rest holds as many eigenvalues as it has discs. `ok` is
+false when neither is available.
+"""
+function inclusion_discs(r::VerifyEigAllResult)
+    if r.spectrum_covered
+        return r.centers, r.radii, [length(c) for c in r.clusters], true
+    end
+    isempty(r.gershgorin_centers) && return (r.centers[1:0], r.radii[1:0], Int[], false)
+    return r.gershgorin_centers, r.gershgorin_radii, ones(Int, length(r.gershgorin_centers)), true
+end
 
 """
     eigencount_outside(r::VerifyEigAllResult, R) -> (count, ok)
 
 Number of eigenvalues of modulus greater than `R`, with algebraic multiplicity, from the
-inclusions of [`verifyeigall`](@ref). `ok` is false, and `count` zero, when `r.spectrum_covered`
-is false or some disc meets the circle `|z| = R`.
+[`inclusion_discs`](@ref) of [`verifyeigall`](@ref): the sum of the counts of the discs outside the
+circle, when no disc meets it. Each disc is then inside or outside, so the discs outside are a union
+of components disjoint from the rest and hold exactly that many eigenvalues. `ok` is false, and
+`count` zero, when no discs are available or some disc meets the circle `|z| = R`.
 """
 function eigencount_outside(r::VerifyEigAllResult, R::Real)
-    r.spectrum_covered || return (0, false)
+    ctr, rad_, cnt_, ok = inclusion_discs(r)
+    ok || return (0, false)
     cnt = 0
-    for i in eachindex(r.clusters)
-        c, ρ = r.centers[i], r.radii[i]
-        if sub_down(abs_down(c), ρ) > R
-            cnt += length(r.clusters[i])
-        elseif add_up(abs_up(c), ρ) < R
+    for i in eachindex(ctr)
+        if sub_down(abs_down(ctr[i]), rad_[i]) > R
+            cnt += cnt_[i]
+        elseif add_up(abs_up(ctr[i]), rad_[i]) < R
             continue
         else
             return (0, false)
@@ -832,18 +854,19 @@ end
     eigencount_in_disc(r::VerifyEigAllResult, c, ρ) -> (count, ok)
 
 Number of eigenvalues in the open disc `|z − c| < ρ`, with algebraic multiplicity, from the
-inclusions of [`verifyeigall`](@ref); `ok` is false when the spectrum is not covered or some
-inclusion disc meets the circle `|z − c| = ρ`.
+[`inclusion_discs`](@ref) of [`verifyeigall`](@ref), as in [`eigencount_outside`](@ref); `ok` is
+false when no discs are available or some disc meets the circle `|z − c| = ρ`.
 """
 function eigencount_in_disc(r::VerifyEigAllResult, c::Number, ρ::Real)
-    r.spectrum_covered || return (0, false)
+    ctr, rad_, cnt_, ok = inclusion_discs(r)
+    ok || return (0, false)
     c = convert(complex(eltype(r.centers)), c)
     cnt = 0
-    for i in eachindex(r.clusters)
-        dhi, dlo = dist_up(r.centers[i], c), dist_down(r.centers[i], c)
-        if add_up(dhi, r.radii[i]) < ρ
-            cnt += length(r.clusters[i])
-        elseif sub_down(dlo, r.radii[i]) > ρ
+    for i in eachindex(ctr)
+        dhi, dlo = dist_up(ctr[i], c), dist_down(ctr[i], c)
+        if add_up(dhi, rad_[i]) < ρ
+            cnt += cnt_[i]
+        elseif sub_down(dlo, rad_[i]) > ρ
             continue
         else
             return (0, false)
