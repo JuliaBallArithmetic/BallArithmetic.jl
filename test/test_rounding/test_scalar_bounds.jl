@@ -47,3 +47,13 @@ using LinearAlgebra, Random
         @test_throws ArgumentError gamma_bound(2^52, Float64)
     end
 end
+
+@testset "unit_roundoff and mixed-type directed operations" begin
+    @test unit_roundoff(Float64) == eps(Float64) / 2
+    @test unit_roundoff(ComplexF64) == eps(Float64) / 2
+    @test add_up(1.0, 2) == 3.0
+    @test mul_down(3, 0.5) == 1.5
+    @test div_up(1, 3.0) >= big(1) / 3
+    @test div_down(1, 3.0) <= big(1) / 3
+    @test_throws MethodError add_up(Float16(1), Float16(2))
+end

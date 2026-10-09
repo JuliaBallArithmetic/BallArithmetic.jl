@@ -320,7 +320,28 @@ end
 # are safe inside `Threads.@threads`.
 
 export add_up, add_down, sub_up, sub_down, mul_up, mul_down, div_up, div_down, sqrt_up, sqrt_down
-export sum_up, abs_up, abs_down, pow_up, pow_down, root_up
+export unit_roundoff, sum_up, abs_up, abs_down, pow_up, pow_down, root_up
+
+"""
+    unit_roundoff(T) -> T
+
+The unit roundoff `u = eps(T)/2` of round-to-nearest, the bound on the relative error of one
+correctly rounded operation; for a complex type, that of its real type.
+"""
+unit_roundoff(::Type{T}) where {T <: AbstractFloat} = eps(T) / 2
+unit_roundoff(::Type{Complex{T}}) where {T} = unit_roundoff(T)
+
+# Mixed-type arguments: an integer or a float of another format is converted by promotion, which
+# is exact for integers below 2^53 and for widening float conversions, and the operation is done
+# in the common type. A pair that promotes to itself and still has no method is an error rather
+# than a loop.
+for f in (:add_up, :add_down, :sub_up, :sub_down, :mul_up, :mul_down, :div_up, :div_down)
+    @eval function $f(a::Union{Integer, AbstractFloat}, b::Union{Integer, AbstractFloat})
+        x, y = promote(float(a), float(b))
+        (typeof(x) === typeof(a) && typeof(y) === typeof(b)) && throw(MethodError($f, (a, b)))
+        return $f(x, y)
+    end
+end
 
 """
     sum_up(xs) -> T
