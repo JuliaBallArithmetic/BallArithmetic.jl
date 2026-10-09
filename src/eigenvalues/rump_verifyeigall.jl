@@ -359,6 +359,10 @@ r.spectrum_covered && println("all ", length(r.clusters), " clusters certified")
 # threshold. Without it, a cluster of size > 1 gets a disc that does not contain its own
 # eigenvalues: on a 30 by 30 with ten triples spread by 3e-10, the discs came out at 2.8e-10 to
 # 7.7e-10 about the FIRST eigenvalue of each cluster and held one of the three.
+# Theorem 2.2 needs the values of distinct clusters to differ; the collapse to means does not
+# guarantee it when a cluster is wide, so it is checked rather than assumed.
+_rump2022a_distinct(D, clusters) = allunique(D[c[1]] for c in clusters)
+
 function _rump2022a_collapse_clusters(D::Vector{CT}, clusters) where {CT}
     D = copy(D)
     for c in clusters
@@ -575,11 +579,14 @@ _rump2022a(B::BallMatrix; kwargs...) = _rump2022a_thm2_2_core(B, _rump2022a_tran
 # matrix with a cluster of radius 1e-5". That is eight orders above the threshold, so a triple is
 # left as three singletons, and a singleton cannot satisfy (2.10) for a defective eigenvalue.
 #
-# This rule groups i and j when their Gershgorin discs overlap instead, which is how Miyajima
-# (2014a) forms clusters, so the grouping scales with the residual rather than with a constant. It
-# is a DEVIATION from Rump's algorithm and carries its own name for that reason. Theorem 2.2
-# permits it: the partition mu is arbitrary there, and (2.10) is what proves the inclusion, so the
-# change can only alter how often the test succeeds and never whether a success is valid.
+# This rule groups i and j when the discs of their diagonal entries (midpoint and radius) come
+# within sqrt(eps)*||A||_inf of each other, the floating-point spread of a double eigenvalue. It is
+# not Miyajima's (2014a) rule, which groups on overlap of the Gershgorin discs of the rows: the row
+# radii are not available here. It is a DEVIATION from Rump's algorithm and carries its own name for
+# that reason. Theorem 2.2 permits it: the partition mu is arbitrary there, and (2.10) is what proves
+# the inclusion, so the change can only alter how often the test succeeds and never whether a
+# success is valid. The one further hypothesis, that the values of distinct clusters differ, is
+# checked by `_rump2022a_distinct` after the collapse.
 function _rump2022a_discclusters_rule(d_mid::Vector{CT}, d_rad::Vector{T}, normA::T) where {T, CT}
     n = length(d_mid)
     # the Gershgorin radius of row i is not available here, so the disc is the diagonal enclosure
@@ -619,9 +626,9 @@ computed in floating point spreads by about `u^(1/k)`, and the paper states the 
 to construct a matrix with 3-fold eigenvalue generates a matrix with a cluster of radius 1e-5".
 Against a threshold of `1e-14‖A‖` those three eigenvalues stay three singletons, and a singleton
 cannot satisfy (2.10) for a defective eigenvalue, so the algorithm declines on exactly the case
-Theorem 2.2 was written to handle. Miyajima (2014a) avoids this by grouping on overlap of the
-Gershgorin discs, whose radii follow the residual; `√eps·‖A‖` is the same idea with the `k = 2`
-sensitivity as the width.
+Theorem 2.2 was written to handle. Miyajima (2014a) groups on overlap of the Gershgorin discs of
+the rows, whose radii follow the residual; this variant does not have the row radii and widens the
+diagonal discs by the `k = 2` sensitivity `√eps·‖A‖` instead.
 
 Soundness does not depend on the choice. The partition in Theorem 2.2 is arbitrary and (2.10) is
 what proves the inclusion, so a different clustering changes how often the test succeeds and never
@@ -655,6 +662,15 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
     clusters = cluster_rule(dm, dr, normA)
     # Theorem 2.2 needs D constant on each cluster; see _rump2022a_collapse_clusters
     D = _rump2022a_collapse_clusters(dm, clusters)
+    if !_rump2022a_distinct(D, clusters)
+        @warn "verifyeigall: two clusters collapsed to the same value, which Theorem 2.2 excludes; nothing is certified"
+        m = length(clusters)
+        gc, gr = _gershgorin_rows(A)
+        return VerifyEigAllResult(clusters, falses(m) |> collect, CT[D[c[1]] for c in clusters],
+            fill(T(Inf), m), [BallMatrix(zeros(CT, n, length(c)), fill(T(Inf), n, length(c))) for c in clusters],
+            [BallMatrix(zeros(CT, length(c), length(c)), fill(T(Inf), length(c), length(c))) for c in clusters],
+            W, false, 0, defect, CT.(gc), gr)
+    end
 
     certified, radii, subspaces, blocks, covered, iters =
         _rump2022a_thm2_2_pass(A, clusters, D, maxiter, inflate)
@@ -677,6 +693,7 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
         Dnew = copy(D)
         Dnew[J] .= sub
         Dnew = _rump2022a_collapse_clusters(Dnew, clusters)
+        _rump2022a_distinct(Dnew, clusters) || break
         c2, r2, s2, b2, cov2, it2 = _rump2022a_thm2_2_pass(A, clusters, Dnew, maxiter, inflate)
         total += it2
         count(c2) > count(certified) || break
