@@ -28,3 +28,12 @@ using LinearAlgebra, Random
     @test eigencount_in_disc(r, 0.0, 2.0) == (0, false)
     @test eigencount_in_disc(r, 0, 1.5) == (2, true)
 end
+
+@testset "overlap_components on complex discs" begin
+    b = [Ball(0.0 + 0.0im, 1.0), Ball(1.5 + 0.0im, 1.0), Ball(10.0 + 0.0im, 1.0),
+         Ball(0.0 + 2.0im, 0.5)]
+    comps = sort(sort.(overlap_components(b)))
+    @test comps == [[1, 2], [3], [4]]
+    # tangent discs count as overlapping (no false negatives)
+    @test length(overlap_components([Ball(0.0 + 0.0im, 1.0), Ball(2.0 + 0.0im, 1.0)])) == 1
+end
