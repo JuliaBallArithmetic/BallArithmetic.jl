@@ -15,9 +15,12 @@ The problem is that multiplication by a Ball destroys the triangular structure..
 
 """
 
+# α = √((1 + 1/√(1 + 4/μ²))/2), evaluated as √((1 + μ/√(μ² + 4))/2): the two are equal for μ > 0,
+# and the second has no division by μ, so it is defined at μ = 0 (α = √(1/2), ψ = 1) and does not
+# underflow for a tiny μ, where 4/μ² is not representable.
 function α_bound(μ)
     bμ = Ball(μ)
-    return sqrt(0.5 * (1 + 1 / sqrt(1 + 4 / (bμ * bμ))))
+    return sqrt(0.5 * (1 + bμ / sqrt(bμ * bμ + 4)))
 end
 
 function psi_bound(N)

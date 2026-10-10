@@ -55,9 +55,10 @@ end
     # The L1*Linf bound correctly captures the small norm
     @test l1_linf_tiny ≈ tiny_scale rtol=0.01
 
-    # Collatz may return 0 (underflow) or 1 (stagnation) for tiny matrices
-    # This is expected behavior - the fallback sqrt(L1*Linf) handles it
-    @test collatz_tiny == 0.0 || collatz_tiny >= 0.5  # Either underflow or stagnation
+    # The Collatz bound is an upper bound of the norm here too, 1e-150: it must not underflow to
+    # zero (which is below the norm) and should not stagnate at 1
+    @test collatz_tiny >= tiny_scale
+    @test collatz_tiny <= 2 * tiny_scale
 
     # Verify upper_bound_L2_opnorm (combined bound) always works
     combined = BallArithmetic.upper_bound_L2_opnorm(A_tiny)
