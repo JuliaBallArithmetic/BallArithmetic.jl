@@ -2,8 +2,8 @@
 #
 # This test provides a detailed comparison of the four parametric configurations:
 #
-# | Config | D⁻¹ Estimator | Coupling | Combiner |
-# |--------|---------------|----------|----------|
+# | Config | D⁻¹ Estimator | Coupling |
+# |--------|---------------|----------|
 # | V1 | TriBacksub | None (product) |
 # | V2 | TriBacksub | AR Solve |
 # | V2.5 | TriBacksub | Off-diag Direct |

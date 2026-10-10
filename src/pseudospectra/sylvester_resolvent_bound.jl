@@ -89,8 +89,16 @@ function _split_blocks(T::AbstractMatrix, k::Int)
 end
 
 # a ball matrix containing zI − M, for M with exact entries: the rounding of z − m_ii is in it
-_shifted_ball(z::Complex{RT}, M::AbstractMatrix{Complex{RT}}) where {RT} =
-    -(BallMatrix(M) - Ball(z, zero(RT)) * I)
+function _shifted_ball(z::Complex{RT}, M::AbstractMatrix{Complex{RT}}) where {RT}
+    c = -Matrix(M)                       # exact
+    r = zeros(RT, size(M))
+    for i in axes(M, 1)
+        d = Ball(z, zero(RT)) - Ball(M[i, i], zero(RT))
+        c[i, i] = mid(d)
+        r[i, i] = rad(d)
+    end
+    return BallMatrix(c, r)
+end
 
 """
     sylvester_resolvent_precompute(T, k; X_oracle = nothing)
