@@ -72,6 +72,9 @@ function Base.:+(A::BallVector{T}, B::BallVector{T}) where {T <: AbstractFloat}
     BallVector(C, R)
 end
 
+# the opposite of a ball vector: exact
+Base.:-(A::BallVector) = BallVector(-A.c, copy(A.r))
+
 """
     Base.:-(A::BallVector, B::BallVector)
 

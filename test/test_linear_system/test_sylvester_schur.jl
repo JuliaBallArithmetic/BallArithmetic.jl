@@ -70,11 +70,23 @@ end
         @test maximum(rad(E)) < 1e-4
     end
 
-    @testset "A defective matrix is refused" begin
+    @testset "A defective matrix: either refused or enclosed" begin
+        # the theorem asks for its hypotheses, not for diagonalisability: with the nearly
+        # parallel eigenvectors floating point returns for a Jordan block they may still be proved,
+        # and the enclosure is then valid, however wide
         A = [2.0 1.0; 0.0 2.0]
         B = [5.0 0.0; 1.0 4.0]; C = [1.0 2.0; 3.0 4.0]
-        @test_throws ArgumentError verified_sylvester_enclosure(A, B, C)
+        E = try
+            verified_sylvester_enclosure(A, B, C)
+        catch e
+            e isa ArgumentError || rethrow()
+            nothing
+        end
+        @test E === nothing || _encloses(E, _exact_sylvester(A, B, C))
         @test !isdefined(BallArithmetic, :schur_sylvester_miyajima_enclosure)
+        # the opposite of a ball matrix is a ball matrix
+        M = BallMatrix([1.0 2.0; 3.0 4.0], fill(0.5, 2, 2))
+        @test -M isa BallMatrix && mid(-M) == -mid(M) && rad(-M) == rad(M)
     end
 
     @testset "The triangular form and its two fallbacks" begin

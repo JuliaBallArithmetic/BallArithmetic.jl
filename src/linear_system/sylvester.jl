@@ -283,23 +283,27 @@ function _sylvester_triangular_direct_ball(A::Union{AbstractMatrix, BallMatrix},
 
     for j in k:-1:1
         # Build RHS: c_j - Σ_{l>j} x_l * B[l,j]
-        rhs = BallVector(C_ball.c[:, j], C_ball.r[:, j])
+        rhs = [C_ball[i, j] for i in 1:m]
         for l in (j+1):k
-            x_l = BallVector(X_mid[:, l], X_rad[:, l])
-            rhs = rhs - x_l * B_ball[l, j]
+            b_lj = B_ball[l, j]
+            for i in 1:m
+                rhs[i] = rhs[i] - Ball(X_mid[i, l], X_rad[i, l]) * b_lj
+            end
         end
 
-        # Coefficient matrix (A + B[j,j]*I) is lower triangular
+        # Coefficient matrix (A + B[j,j]*I) is lower triangular; the diagonal is a sum of balls,
+        # so its rounding is in the radius
         shift_c = copy(A_ball.c)
         shift_r = copy(A_ball.r)
         b_jj = B_ball[j, j]
         for i in 1:m
-            shift_c[i, i] += mid(b_jj)
-            shift_r[i, i] += rad(b_jj)
+            d = A_ball[i, i] + b_jj
+            shift_c[i, i] = mid(d)
+            shift_r[i, i] = rad(d)
         end
         L_ball = BallMatrix(shift_c, shift_r)
 
-        sol = forward_substitution(L_ball, rhs)
+        sol = forward_substitution(L_ball, BallVector(mid.(rhs), rad.(rhs)))
         for i in 1:m
             X_mid[i, j] = mid(sol[i])
             X_rad[i, j] = rad(sol[i])

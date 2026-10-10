@@ -138,6 +138,10 @@ function Base.:+(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
     BallMatrix(C, R)
 end
 
+# The opposite of a ball matrix: exact. Without this method `-A` falls to the generic array
+# method and returns a `Matrix` of balls.
+Base.:-(A::BallMatrix) = BallMatrix(-A.c, copy(A.r))
+
 """
     Base.:-(A::BallMatrix, B::BallMatrix)
 
