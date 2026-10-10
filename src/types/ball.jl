@@ -48,9 +48,15 @@ end
 
 # A bound on the rounding error of a nearest-rounded product whose computed value is `c`. A real
 # product errs by at most u|c|, or half the subnormal spacing under underflow; `machine_epsilon`
-# is 2u. A complex product satisfies fl(xy) = xy(1 + δ) with |δ| ≤ √2 γ₂ (Higham, Accuracy and
-# Stability of Numerical Algorithms, 2nd ed., Lemma 3.5), about 2.83u of the exact product and
-# below 4u of the computed one, with up to four underflowing real products.
+# is 2u. For a complex product,
+#
+#   N. J. Higham, Accuracy and Stability of Numerical Algorithms, 2nd ed., SIAM, Philadelphia,
+#   2002, doi 10.1137/1.9780898718027, Lemma 3.5:
+#       fl(xy) = xy(1 + δ),   |δ| ≤ √2 γ₂,     γ_n = n u / (1 − n u),
+#
+# about 2.83u of the exact product. In terms of the computed one, |fl(xy) − xy| ≤ √2γ₂|xy| and
+# |xy| ≤ |c| + |fl(xy) − xy| give √2γ₂/(1 − √2γ₂)·|c| < 4u|c| (this step is ours), and the four
+# real products may each underflow, which the lemma excludes.
 _product_roundoff(c::T) where {T <: AbstractFloat} =
     add_up(subnormal_min(T), mul_up(machine_epsilon(T), abs(c)))
 _product_roundoff(c::Complex{T}) where {T <: AbstractFloat} =

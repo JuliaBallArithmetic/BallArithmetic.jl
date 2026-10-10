@@ -66,15 +66,24 @@ export mmul_ogita_rump_oishi_2005
 _modulus_up(M::AbstractMatrix{<:Real}) = abs_preserving_structure(M)
 _modulus_up(M::AbstractMatrix{<:Complex}) = abs_up.(M)
 
-# The accuracy term for one block of products. Proposition 5.5 of Ogita, Rump and Oishi (2005), for
-# the compensated dot product of N terms, in the presence of underflow (5.6):
+# The accuracy term for one block of products.
 #
-#     |res − xᵀy| ≤ u |xᵀy| + γ_N² |x|ᵀ|y| + 5 N eta,
+#   T. Ogita, S. M. Rump and S. Oishi, Accurate sum and dot product, SIAM J. Sci. Comput. 26(6)
+#   (2005) 1955-1988, doi 10.1137/030601818, Proposition 5.5: for x_i, y_i floating point,
+#   1 ≤ i ≤ n, n eps < 1, and res the result of Algorithm 5.3 (Dot2), if no underflow occurs
 #
-# u the unit roundoff and eta the underflow unit. The paper proves it for TwoProduct by Dekker's
-# splitting; `two_product` here uses one FMA, whose error under underflow is one rounding of the
-# exact residual, at most eta/2 per product, so the 5 N eta of the paper covers it. Two steps are
-# ours:
+#       |res − xᵀy| ≤ eps |xᵀy| + γ_n² |xᵀ||y|,
+#
+#   and, in the presence of underflow (5.6),
+#
+#       |res − xᵀy| ≤ eps |xᵀy| + γ_n² |xᵀ||y| + 5 n eta.
+#
+# There eps is the relative rounding error unit (2^-53 in double precision, `unit_roundoff` here,
+# written u below), eta the underflow unit (2^-1074, `subnormal_min`), γ_n = n eps/(1 − n eps).
+# Theorem 3.4 of the paper gives the 5 eta per product for TwoProduct by Dekker's splitting
+# (Algorithm 3.3); `two_product` here is the paper's Algorithm 3.5 (TwoProductFMA), whose error
+# under underflow is one rounding of the exact residual, at most eta/2 per product, so the 5 n eta
+# covers it (the paper does not state the FMA case). Two further steps are ours:
 #   * the bound is in terms of the exact |xᵀy|; with only the computed c at hand, |xᵀy| ≤ |c| + err
 #     gives err ≤ (u|c| + t)/(1 − u), t the remaining terms;
 #   * the paper is for real vectors. For a complex entry the real and imaginary parts are each such

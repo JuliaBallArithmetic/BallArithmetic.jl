@@ -79,8 +79,11 @@ function _ccr(Hrl::AbstractMatrix{<:Real}, Hru::AbstractMatrix{<:Real},
     Hru = T.(Hru)
     Hil = T.(Hil)
     Hiu = T.(Hiu)
-    # Algorithm 3 of Miyajima (2010): each part by Algorithm 5 (`_cr`), then the radius as the
-    # modulus of the two half-widths, rounded upward
+    # S. Miyajima, Fast enclosure for all eigenvalues in generalized eigenvalue problems,
+    # J. Comput. Appl. Math. 233(11) (2010) 2994-3004, doi 10.1016/j.cam.2009.11.048, Algorithm 3
+    # (ccr): the real and the imaginary bounds are each converted by Algorithm 5 (`_cr` below), and
+    #     Hr = fl△(|Rr + i Ir|),
+    # the modulus of the two half-widths rounded upward.
     Rc, Rr = _cr(Hrl, Hru, T)
     Ic, Ir = _cr(Hil, Hiu, T)
     Hr = abs_up.(complex.(Rr, Ir))
@@ -205,9 +208,12 @@ function _cr(Fl::AbstractMatrix{<:Real}, Fu::AbstractMatrix{<:Real},
     Fu = T.(Fu)
     half = T(0.5)
 
-    # Algorithm 5 of Miyajima (2010): Fc = fl△(Fl + 0.5(Fu − Fl)), Fr = fl△(Fc − Fl). The centre
-    # rounded to nearest with radius (Fu − Fl)/2 does not contain Fu when the centre rounds down:
-    # for Fl = 1, Fu = nextfloat(1) it gave 1 ± 2^-53.
+    # S. Miyajima, Fast enclosure for all eigenvalues in generalized eigenvalue problems,
+    # J. Comput. Appl. Math. 233(11) (2010) 2994-3004, doi 10.1016/j.cam.2009.11.048, Algorithm 5
+    # (cr), which the paper attributes to Oishi:
+    #     Fc = fl△(F_lower + 0.5 (F_upper − F_lower));   Fr = fl△(Fc − F_lower).
+    # The centre rounded to nearest with radius (Fu − Fl)/2, which this replaces, does not contain
+    # Fu when the centre rounds down: for Fl = 1, Fu = nextfloat(1) it gave 1 ± 2^-53.
     Fc = add_up.(Fl, mul_up.(half, sub_up.(Fu, Fl)))
     Fr = sub_up.(Fc, Fl)
 
