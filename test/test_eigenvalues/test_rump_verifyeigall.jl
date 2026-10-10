@@ -69,60 +69,63 @@ end
     end
 end
 
-@testset "verifyeigall: a near cluster shows its sensitivity, then declines" begin
-    # The paper (lines 315-320) notes that computing V^{-1} J V in floating point does NOT give a
-    # multiple eigenvalue: the k coincident eigenvalues of J become a cluster of radius about
-    # u^(1/k). With an accurate transformation those are resolved individually, so what the test
-    # asserts is the sensitivity showing up in the radii, and the method declining rather than
-    # asserting once the cluster is too tight to separate.
-    rng = MersenneTwister(11)
-    res = map((1, 2, 3)) do k
-        verifyeigall(BallMatrix(_rump_cluster(30, k, rng)))
+# The eigenvalues of the floating-point input itself. A matrix built as V⁻¹JV or UJU' in floating
+# point does not have the multiple eigenvalue of J: its eigenvalues are simple and spread by about
+# u^(1/k) (paper, lines 315-320), and those, not the eigenvalue of J, are what an enclosure of the
+# input must contain. They move by about eps^(1/k) under a perturbation eps, so the reference is
+# computed at 2048 bits, where a 24-fold block is still resolved to about 1e-25.
+_reference_eigvals(M; bits = 2048) = setprecision(bits) do
+    eigvals(Complex{BigFloat}.(M))
+end
+
+# Soundness against the reference: every eigenvalue lies in some disc, and each certified disc that
+# is disjoint from all the others holds exactly as many eigenvalues as its cluster has members.
+function _sound(r, λ)
+    c = Complex{BigFloat}.(r.centers)
+    ρ = BigFloat.(r.radii)
+    all(l -> any(i -> abs(l - c[i]) <= ρ[i], eachindex(c)), λ) || return false
+    for i in eachindex(c)
+        r.certified[i] || continue
+        all(j -> j == i || abs(c[i] - c[j]) > ρ[i] + ρ[j], eachindex(c)) || continue
+        count(l -> abs(l - c[i]) <= ρ[i], λ) == length(r.clusters[i]) || return false
     end
-    for r in res
+    return true
+end
+
+@testset "verifyeigall: Jordan clusters of size k, against the input's own eigenvalues" begin
+    # Rump's Tables 2 and 4 report no failure for a cluster of size 1 or 2 at n = 100 and of size 3
+    # up to n = 500, so the whole spectrum is expected to be covered here; the step 6 recursion
+    # (a second transformation on the uncertified columns) is what certifies the near pair.
+    rng = MersenneTwister(11)
+    for k in (1, 2, 3)
+        B = _rump_cluster(30, k, rng)
+        r = verifyeigall(BallMatrix(B))
         @test r.transform_defect < 1
-        # every cluster carries a bound now: the theorem's where (2.10) held, Gershgorin on the
-        # transformed matrix where it declined. What marks the difference is `certified`.
         @test all(isfinite, r.radii)
         @test all(all(isfinite, rad(r.subspaces[i])) == r.certified[i]
         for i in eachindex(r.clusters))
+        @test _sound(r, _reference_eigvals(B))
+        @test r.spectrum_covered
+        k == 1 && @test maximum(r.radii) < 1e-13
     end
-    # simple eigenvalues: everything certified, at the rounding unit
-    @test res[1].spectrum_covered
-    @test maximum(res[1].radii) < 1e-13
-    # a double eigenvalue: still certified, but the radius is at Wilkinson's u^(1/2)
-    @test res[2].spectrum_covered
-    @test maximum(res[2].radii) > 1e-10
-    @test maximum(res[2].radii) < 1e-6
-    # a triple eigenvalue: the members of the cluster can no longer be certified individually,
-    # so the method declines on them and says so rather than returning a bound
-    @test count(res[3].certified) < length(res[3].clusters)
-    @test !res[3].spectrum_covered
 end
 
-@testset "verifyeigall: a defective matrix is declined, not mis-enclosed" begin
-    # A matrix unitarily similar to one Jordan block of size 24: the whole spectrum is the single
-    # point 0.5, and Wilkinson's bound puts the narrowest attainable inclusion at u^(1/24) = 0.22.
-    # Rump writes of such a matrix (lines 491-493) that "verified inclusions can hardly be
-    # computed - and they are not". What matters is that nothing false is asserted.
+@testset "verifyeigall: a 24-fold Jordan block, against the input's own eigenvalues" begin
+    # U J U' with J one Jordan block at 0.5. In floating point the input has 24 simple eigenvalues
+    # between 0.211 and 0.214 away from 0.5 (2048 and 4096 bits agree), and an enclosure is judged
+    # against those; comparing with 0.5 would test a matrix the routine was never given.
     n = 24
     J = diagm(0 => fill(0.5 + 0im, n), 1 => fill(1.0 + 0im, n - 1))
     U = Matrix(qr(randn(MersenneTwister(4), ComplexF64, n, n)).Q)
-    r = verifyeigall(BallMatrix(U * J * U'))
-
-    @test !r.spectrum_covered                     # the union is not claimed to be the spectrum
-    # whatever is certified must contain the true eigenvalue, and nothing certified may be
-    # narrower than Wilkinson's floor
-    for i in eachindex(r.clusters)
-        r.certified[i] || continue
-        @test abs(0.5 - r.centers[i]) <= r.radii[i]
-        @test r.radii[i] >= 0.1
+    M = U * J * U'
+    λ = _reference_eigvals(M)
+    for method in (:rump2022a, :rump2022aneumann, :rump2022adiscclusters)
+        r = verifyeigall(BallMatrix(M); method)
+        @test all(isfinite, r.radii)
+        @test all(all(isfinite, rad(r.subspaces[i])) == r.certified[i]
+        for i in eachindex(r.clusters))
+        @test _sound(r, λ)
     end
-    @test all(isfinite, r.radii)
-    @test all(all(isfinite, rad(r.subspaces[i])) == r.certified[i] for i in eachindex(r.clusters))
-    # the result is either a decline or an honest wide enclosure, never a narrow wrong one
-    @test count(r.certified) == 0 ||
-          all(r.radii[i] >= 0.1 for i in eachindex(r.clusters) if r.certified[i])
 end
 
 @testset "verifyeigall: the invariant subspaces satisfy B Y = Y M" begin
@@ -146,11 +149,13 @@ end
 end
 
 @testset "verifyeigall: uncertified clusters carry no subspace" begin
-    # a triple eigenvalue: the members of the cluster cannot be certified individually, and the
-    # result must say so in every field rather than return an unjustified basis
-    rng = MersenneTwister(11)
-    _rump_cluster(30, 1, rng); _rump_cluster(30, 2, rng)
-    B = _rump_cluster(30, 3, rng)
+    # a 24-fold Jordan block under a real orthogonal similarity: the transformation is not
+    # certified (Rump's Table 12 has no inclusion for his "Jordan" matrix either), nothing is
+    # certified, and the result must say so in every field rather than return an unjustified basis
+    n = 24
+    rng = MersenneTwister(20260928)
+    Q = Matrix(qr(randn(rng, n, n)).Q)
+    B = Q * diagm(0 => fill(0.7, n), 1 => ones(n - 1)) * Q'
     r = verifyeigall(BallMatrix(B))
     @test count(r.certified) < length(r.clusters)
     for i in eachindex(r.clusters)
@@ -166,16 +171,17 @@ end
     end
 end
 
-@testset "verifyeigall: declines rather than asserting" begin
-    # a large cluster is beyond what the method can certify; it must say so
+@testset "verifyeigall: a cluster of size 5, against the input's own eigenvalues" begin
+    # Rump's Table 4 has failures from k = 5 on, so coverage is not asserted, only that whatever is
+    # returned is true: a covered spectrum means every cluster certified, every radius is finite
+    # (the theorem's or Gershgorin's), and the subspace is finite exactly where certified
     rng = MersenneTwister(5)
     B = _rump_cluster(40, 5, rng)
     r = verifyeigall(BallMatrix(B))
-    @test r.spectrum_covered == all(r.certified)
-    # every certified cluster carries a finite radius, every uncertified one carries Inf
-    for i in eachindex(r.clusters)
-        @test isfinite(r.radii[i]) == r.certified[i]
-    end
+    @test !r.spectrum_covered || all(r.certified)
+    @test all(isfinite, r.radii)
+    @test all(all(isfinite, rad(r.subspaces[i])) == r.certified[i] for i in eachindex(r.clusters))
+    @test _sound(r, _reference_eigvals(B))
 end
 
 @testset "verifyeigall: the caller selects an algorithm and rejects the rest" begin
@@ -367,8 +373,9 @@ end
     end
 
     @testset "declined clusters are skipped, since there is no subspace" begin
-        nn = 20
-        Qj = Matrix(qr(randn(MersenneTwister(4), nn, nn)).Q)
+        # the 24-fold Jordan block whose transformation is not certified, so nothing is
+        nn = 24
+        Qj = Matrix(qr(randn(MersenneTwister(20260928), nn, nn)).Q)
         J = BallMatrix(Qj * diagm(0 => fill(0.7, nn), 1 => ones(nn - 1)) * Qj')
         rj = verifyeigall(J; method = :rump2022a)
         @test count(rj.certified) == 0

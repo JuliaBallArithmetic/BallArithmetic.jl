@@ -1,6 +1,6 @@
 # Counting eigenvalues in a region from the inclusions of verifyeigall, against the eigenvalues of
 # matrices built with a known spectrum, including a double eigenvalue.
-using LinearAlgebra, Random, Printf
+using LinearAlgebra, Random
 
 @testset "eigencount_outside and eigencount_in_disc from verifyeigall" begin
     rng = MersenneTwister(5)
@@ -45,7 +45,13 @@ end
     A0 = cat(J, Diagonal([3.0, 2.0]); dims = (1, 2))
     V = randn(rng, 8, 8)
     A = ComplexF64.(V * A0 / V)
-    r = verifyeigall(BallMatrix(A))
+    # with the default recursion Theorem 2.2 covers this spectrum and the count comes from it
+    r2 = verifyeigall(BallMatrix(A))
+    @test r2.spectrum_covered
+    cnt2, ok2 = eigencount_outside(r2, 1.0)
+    @test ok2 && cnt2 == 2
+    # without the step 6 recursion (2.10) declines on the cluster, and the Gershgorin discs count
+    r = verifyeigall(BallMatrix(A); maxlevels = 0)
     @test !r.spectrum_covered
     @test length(r.gershgorin_centers) == 8
     cnt, ok = eigencount_outside(r, 1.0)
@@ -54,6 +60,4 @@ end
     @test okd && cd == 6
     # (no containment check against eigvals(A): for a defective block the floating-point
     # eigenvalues are themselves off by about u^(1/6) of its scale, so they are no reference)
-    @printf("  nearly defective cluster: spectrum covered by Theorem 2.2 %s, count outside 1 from %s = %d\n",
-        r.spectrum_covered, r.spectrum_covered ? "Theorem 2.2" : "Gershgorin", cnt)
 end

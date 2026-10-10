@@ -88,8 +88,8 @@ Outcome of [`verifyeigall`](@ref).
 - `iterations::Int`, `transform_defect::T`: the number of interval iterations, and the certified
   `‖I − RW‖` of the transformation, which must be below one.
 - `gershgorin_centers::Vector{CT}`, `gershgorin_radii::Vector{T}`: the Gershgorin row discs of the
-  transformed ball matrix, which encloses `W⁻¹BW` and so carries the eigenvalues of `B`; empty when
-  the transformation failed or the result comes from another method. Every eigenvalue lies in their
+  transformed ball matrix, which encloses `W⁻¹BW` and so carries the eigenvalues of `B`; those of
+  `B` itself when the transformation failed; empty when the result comes from another method. Every eigenvalue lies in their
   union, and a union of discs disjoint from the others holds as many eigenvalues as it has discs.
 """
 struct VerifyEigAllResult{T, CT}
@@ -328,26 +328,6 @@ end
 _rump2022a_eq2_10(Z::BallMatrix{T}, X::BallMatrix{T}, cols) where {T} =
     in0(Z[:, cols], X[:, cols])
 
-"""
-    verifyeigall(B::BallMatrix; maxiter = 20, inflate = 0.1) -> VerifyEigAllResult
-
-Verified inclusions of all eigenvalues and invariant subspaces of `B`, by Theorem 2.2 of
-Rump (2022). Returns a [`VerifyEigAllResult`](@ref); `spectrum_covered` says whether the union of
-the returned discs is proved to contain the whole spectrum.
-
-Unlike the verified block diagonalisations of this package, no numerical Jordan decomposition is
-formed. The accuracy attainable is governed by the Jordan structure: an eigenvalue whose largest
-Jordan block has size `k` cannot be enclosed more tightly than about `u^(1/k)` in floating-point
-arithmetic, so a triple eigenvalue is limited to about `1e-5` and the method will decline rather
-than return a bound it cannot justify.
-
-# Example
-```julia
-A = BallMatrix(randn(50, 50))
-r = verifyeigall(A)
-r.spectrum_covered && println("all ", length(r.clusters), " clusters certified")
-```
-"""
 # One pass of steps 3 to 6 on a fixed set of approximate eigenvalues `D`.
 # Returns (certified, radii, subspaces, blocks, covered, iters); `Z` is kept so the invariant
 # subspaces can be read off the same iteration that certified them.
@@ -541,18 +521,17 @@ enclosure uniformly. The name records the substitution. Its cost is quantitative
 clusters of size three and above are declined where Rump's Table 4 reports no failures, at
 27 of 30 clusters certified for `k = 3`, because for three eigenvalues separated by
 `u^(1/3)` the entries of `Rtilde` reach `1.6e5` against transformed off-diagonals of order
-`u*cond(W)`, and the quadratic term of the iteration then puts `Z` outside `X`. A faithful
-`_rump2022a` would need the verified solve and does not exist yet.
+`u*cond(W)`, and the quadratic term of the iteration then puts `Z` outside `X`. That figure was
+measured before the step 6 recursion transformed the uncertified columns again.
 
 No numerical Jordan decomposition is formed. The accuracy attainable is governed by the
 Jordan structure: an eigenvalue whose largest Jordan block has size `k` cannot be enclosed
 more tightly than about `u^(1/k)` in floating-point arithmetic, so a triple eigenvalue is
 limited to about `1e-5`, and the method declines rather than return a bound it cannot
-justify. Uncertified clusters carry `Inf` in radius, subspace and block.
+justify. Uncertified clusters carry a Gershgorin radius and `Inf` in subspace and block.
 
-When a pass leaves clusters uncertified, the approximate eigenvalues of those clusters are
-recomputed from the corresponding submatrix and the pass is repeated, up to `maxlevels`
-times. Soundness does not rest on that refinement: Theorem 2.1's assertions hold "for any
+When a pass leaves clusters uncertified, those columns are transformed again and the pass is
+repeated, up to `maxlevels` times, as for `_rump2022a`. Soundness does not rest on that refinement: Theorem 2.1's assertions hold "for any
 quality" of the approximation, and the certification is (2.10) alone.
 """
 _rump2022aneumann(B::BallMatrix; kwargs...) =
@@ -653,55 +632,50 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
     W = Matrix{CT}(F.vectors)
     X0 = Matrix{CT}(Diagonal(F.values))
     A, defect = transform(B, W, X0)
-    A === nothing && return VerifyEigAllResult(Vector{Int}[], Bool[], CT[], T[],
-        BallMatrix{T, CT}[], BallMatrix{T, CT}[], W, false, 0, defect)
+    A === nothing && return _rump2022a_untransformed(B, W, defect)
 
-    normA = upper_bound_L_inf_opnorm(A)
-    dm = CT[mid(A)[i, i] for i in 1:n]
-    dr = T[rad(A)[i, i] for i in 1:n]
-    clusters = cluster_rule(dm, dr, normA)
-    # Theorem 2.2 needs D constant on each cluster; see _rump2022a_collapse_clusters
-    D = _rump2022a_collapse_clusters(dm, clusters)
-    if !_rump2022a_distinct(D, clusters)
-        @warn "verifyeigall: two clusters collapsed to the same value, which Theorem 2.2 excludes; nothing is certified"
-        m = length(clusters)
-        gc, gr = _gershgorin_rows(A)
-        return VerifyEigAllResult(clusters, falses(m) |> collect, CT[D[c[1]] for c in clusters],
-            fill(T(Inf), m), [BallMatrix(zeros(CT, n, length(c)), fill(T(Inf), n, length(c))) for c in clusters],
-            [BallMatrix(zeros(CT, length(c), length(c)), fill(T(Inf), length(c), length(c))) for c in clusters],
-            W, false, 0, defect, CT.(gc), gr)
-    end
+    lv = _rump2022a_level(A, cluster_rule, maxiter, inflate)
+    total = lv.iters
+    # the similarity accumulated over the levels, as an enclosure: the invariant subspaces of B are
+    # those of the final A multiplied by it
+    S = BallMatrix(W)
 
-    certified, radii, subspaces, blocks, covered, iters =
-        _rump2022a_thm2_2_pass(A, clusters, D, maxiter, inflate)
-    total = iters
-
-    # The recursion of step 6: where a pass leaves clusters open, recompute their approximate
-    # eigenvalues from the submatrix they occupy and try again. It stops as soon as a level fails
-    # to certify more than the one before.
+    # The recursion of step 6, "if the number of successful columns does not increase, the function
+    # verifyeigall is applied recursively to the columns with no inclusion". The paper gives no code
+    # for it; it is implemented here as the algorithm's own first step applied to those columns: with
+    # J the uncertified indices, T is the identity except T[J,J], the eigenvectors of mid(A)[J,J],
+    # and `transform` encloses T⁻¹AT by the same verified solve, which also proves T nonsingular.
+    # T⁻¹AT has the eigenvalues of A and its invariant subspaces transform by T, so Theorem 2.2
+    # applied to it is as valid as on A. Recomputing only the eigenvalues of the block and keeping
+    # A, which is what this did before, leaves the coupling of a near pair in E, where it is as
+    # large as the pair's separation, and (2.10) declines again; at n = 30 with a double eigenvalue
+    # (test_rump_verifyeigall.jl, the k = 2 case) that left two clusters uncertified.
     level = 1
-    while level <= maxlevels && !all(certified)
-        J = reduce(vcat, [clusters[i] for i in eachindex(clusters) if !certified[i]];
+    while level <= maxlevels && !all(lv.certified)
+        J = reduce(vcat, [lv.clusters[i] for i in eachindex(lv.clusters) if !lv.certified[i]];
             init = Int[])
         length(J) >= 2 || break
         sub = try
-            eigen(Matrix{CT}(mid(A)[J, J])).values
+            eigen(Matrix{CT}(mid(A)[J, J]))
         catch
             break
         end
-        all(isfinite, sub) || break
-        Dnew = copy(D)
-        Dnew[J] .= sub
-        Dnew = _rump2022a_collapse_clusters(Dnew, clusters)
-        _rump2022a_distinct(Dnew, clusters) || break
-        c2, r2, s2, b2, cov2, it2 = _rump2022a_thm2_2_pass(A, clusters, Dnew, maxiter, inflate)
-        total += it2
-        count(c2) > count(certified) || break
-        certified, radii, subspaces, blocks, covered = c2, r2, s2, b2, cov2
-        D = Dnew
+        (all(isfinite, sub.values) && all(isfinite, sub.vectors)) || break
+        Tm = Matrix{CT}(I, n, n)
+        Tm[J, J] .= sub.vectors
+        d = CT[mid(A)[i, i] for i in 1:n]
+        d[J] .= sub.values
+        A2, _ = transform(A, Tm, Matrix{CT}(Diagonal(d)))
+        A2 === nothing && break
+        lv2 = _rump2022a_level(A2, cluster_rule, maxiter, inflate)
+        total += lv2.iters
+        _rump2022a_columns(lv2) > _rump2022a_columns(lv) || break
+        A, lv = A2, lv2
+        S = S * BallMatrix(Tm)
         level += 1
     end
 
+    (; clusters, D, certified, radii, subspaces, blocks, covered) = lv
     # D is constant on each cluster, so D[c[1]] IS the cluster's lambda_i of Theorem 2.2
     # Theorem 2.2 says nothing where (2.10) declined; report the Gershgorin location instead of
     # Inf, so every cluster carries SOME valid bound and `certified` marks which are the theorem's.
@@ -713,13 +687,12 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
     end
 
     centers = CT[D[c[1]] for c in clusters]
-    # the invariant subspaces of B, not of the transformed A: they transform by W
-    Wb = BallMatrix(W)
+    # the invariant subspaces of B, not of the transformed A: they transform by S
     subsB = BallMatrix{T, CT}[]
     blocksB = BallMatrix{T, CT}[]
     for i in eachindex(clusters)
         if certified[i] && isassigned(subspaces, i)
-            push!(subsB, Wb * subspaces[i])
+            push!(subsB, S * subspaces[i])
             push!(blocksB, blocks[i])
         else
             push!(subsB, BallMatrix(zeros(CT, n, length(clusters[i])),
@@ -733,14 +706,69 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
         covered, total, defect, CT.(gc), gr)
 end
 
+# Steps 2 to 6 on one transformed matrix A: the clustering, D constant on each cluster, and the
+# iteration of Theorem 2.2. Where two clusters collapse to the same value, which Theorem 2.2
+# excludes, nothing is certified and the caller's Gershgorin fallback supplies the radii.
+function _rump2022a_level(A::BallMatrix{T}, cluster_rule, maxiter, inflate) where {T}
+    n = size(A, 1)
+    CT = complex(T)
+    normA = upper_bound_L_inf_opnorm(A)
+    dm = CT[mid(A)[i, i] for i in 1:n]
+    dr = T[rad(A)[i, i] for i in 1:n]
+    clusters = cluster_rule(dm, dr, normA)
+    # Theorem 2.2 needs D constant on each cluster; see _rump2022a_collapse_clusters
+    D = _rump2022a_collapse_clusters(dm, clusters)
+    m = length(clusters)
+    if !_rump2022a_distinct(D, clusters)
+        @warn "verifyeigall: two clusters collapsed to the same value, which Theorem 2.2 excludes; nothing is certified"
+        return (; clusters, D, certified = falses(m), radii = fill(T(Inf), m),
+            subspaces = Vector{BallMatrix{T, CT}}(undef, m),
+            blocks = Vector{BallMatrix{T, CT}}(undef, m), covered = false, iters = 0)
+    end
+    certified, radii, subspaces, blocks, covered, iters =
+        _rump2022a_thm2_2_pass(A, clusters, D, maxiter, inflate)
+    return (; clusters, D, certified, radii, subspaces, blocks, covered, iters)
+end
+
+# the number of columns satisfying (2.10), which is what the paper's step 6 counts
+_rump2022a_columns(lv) = sum((length(c) for (c, ok) in zip(lv.clusters, lv.certified) if ok); init = 0)
+
+# When the transformation cannot be certified there is no enclosure of W⁻¹BW, and Theorem 2.2 has
+# nothing to work on; Rump's algorithm returns no inclusion then (his Table 12, the "Jordan" matrix).
+# The Gershgorin discs of B itself still hold every eigenvalue, a union of discs disjoint from the
+# rest holding as many as it has discs (Varga, Gersgorin and His Circles, Theorem 1.6), so each
+# eigenvalue index gets the smallest disc about the diagonal entry containing its component, with
+# `certified` false, no subspace and no block, as for any declined cluster.
+function _rump2022a_untransformed(B::BallMatrix{T}, W, defect) where {T}
+    n = size(B, 1)
+    CT = complex(T)
+    Bc = BallMatrix(Matrix{CT}(mid(B)), rad(B))
+    clusters = [[i] for i in 1:n]
+    D = CT[mid(Bc)[i, i] for i in 1:n]
+    radii, _ = _rump2022a_gershgorin_discs(Bc, D, clusters)
+    gc, gr = _gershgorin_rows(Bc)
+    return VerifyEigAllResult(clusters, falses(n) |> collect, D, radii,
+        BallMatrix{T, CT}[BallMatrix(zeros(CT, n, 1), fill(T(Inf), n, 1)) for _ in 1:n],
+        BallMatrix{T, CT}[BallMatrix(zeros(CT, 1, 1), fill(T(Inf), 1, 1)) for _ in 1:n],
+        Matrix{CT}(W), false, 0, defect, CT.(gc), gr)
+end
+
 """
-    verifyeigall(B::BallMatrix; method = :rump2022aneumann, maxiter = 20, inflate = 0.1,
+    verifyeigall(B::BallMatrix; method = :rump2022a, maxiter = 20, inflate = 0.1,
                  maxlevels = 3) -> VerifyEigAllResult
 
 Verified inclusions of all eigenvalues and invariant subspaces of `B`. Returns a
 [`VerifyEigAllResult`](@ref), whose `spectrum_covered` says whether the union of the returned
-discs is proved to contain the whole spectrum; where a cluster is not certified, its radius,
-subspace and block are `Inf` rather than an unjustified bound.
+discs is proved to contain the whole spectrum. Where a cluster is not certified, its radius is
+a Gershgorin bound and its subspace and block are `Inf`; `certified` says which is which. When
+the transformation itself cannot be certified, every eigenvalue index gets the Gershgorin disc
+of `B` about its diagonal entry and nothing is certified.
+
+`maxlevels` bounds the recursion of step 6: where a pass leaves clusters uncertified, those
+columns are transformed again by the eigenvectors of their diagonal block and Theorem 2.2 is
+applied to the result. The paper describes this step in one sentence and gives no code; the
+implementation is the algorithm's own first step applied to those columns. `maxlevels = 0`
+switches it off.
 
 This function selects an algorithm and does nothing else. Each algorithm is a separate
 unexported function named for the paper it implements, so that a deviation from a paper is
