@@ -208,3 +208,26 @@ and Akilov; Cariolaro 2016; Dieci 2022; Ozaki, Uchino, Imamura (arXiv:2504.08009
 are annex pointers without content on bemtivi. `Higham1996.pdf` is the 2002 second edition.
 `Rump2011a.pdf` is "Fast interval matrix multiplication"; the singular value paper is
 `Rump2011.pdf`.
+
+## 11. State of the entries of Section 2 on the branch `rigour-fixes`
+
+Added after the audit; the entries above are left as written on 2026-10-10.
+
+| | commits | what the code does now |
+|---|---|---|
+| C1 | `da9262c`, `1857a49` | The entry misread the contract. The refinement bisects the sides of the inscribed polygon and the certified contour is that polygon, which the docstrings now say. The side test, the stop conditions and the bound on the polygon use the emulated directed operations; a refinement that stops (non-positive bound, evaluation cap, a side that cannot be split) makes the driver throw. `circle_resolvent_bound` carries the bound from the polygon to the circle through the sagitta `h ≤ r(π/N)²/2`, `M/(1 − Mh)` when `Mh < 1`. |
+| C2 | `8148699`, `7498e24` | The side test is fed the reciprocal, rounded down, of the bound for the whole matrix. |
+| C3 | `0cac707`, `9379198` | `schur_to_original_resolvent` is Lemma 5.1 of Blumenthal, Nisoli and Taylor-Crush (arXiv:2507.09021) with its hypothesis (28) checked, and needs `zmax`. The code had `(1 + ε²)` where the lemma has `(1 + ε)²` and did not check the hypothesis. `schur_to_original_resolvent_defects` is a second bound with the two defects separate, proved in its docstring. |
+| C4 | `8148699` | A ball for σ_min that is not proved positive is returned as it is, with resolvent bound `Inf`. |
+| C5 | `8148699` | The matrix certified is the ball `T − zI`. |
+| C8 | `c693b19`, `081f7c0` | One implementation, `parametric_resolvent_bound`. `R` and the residuals of the solves are ball matrices, the shifts and the scalar operations are rounded outward, `RowCol2Norm` is removed, a `T22` with a nonzero entry below the diagonal is refused. The four other implementations are removed. |
+
+`b34d7e5` leaves one copy of the code the four drivers, the two refinement loops and the four
+workers shared. On the matrix of `probe_drivers.jl` (n = 12, 16 samples, nighthawk) the seven
+drivers that returned before it returned the same `minimum_singular_value`, `resolvent_schur` and
+`resolvent_original` to 17 digits after it; `‖Z‖` and `‖Z⁻¹‖` for Float64 input went from
+`1 + 1.7e-14` to `1 + 3.3e-15`, being now computed from `errF`. The distributed parametric driver
+did not return within 240 s before it and returns after it.
+
+Not done: C6, C7; `ordschur_ball`, `compute_spectral_coefficient`, `rigorous_block_schur`;
+`refine_svd_bounds_with_vbd`, which the evaluators call through `apply_vbd = true`.
