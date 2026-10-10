@@ -54,18 +54,35 @@ using Test
         @test positive_near > 0                      # the bound says something on this box
     end
 
-    @testset "what the block singular values buy" begin
-        # one non-normal block: inside the disc |z − c| ≤ ‖P − cI‖ only the singular value
-        # computation gives a positive bound
+    @testset "one non-normal block: what the block singular values buy" begin
+        # with the clustering separation 2 the Grcar matrix is kept as one block in the Schur
+        # frame; inside the disc |z − c| ≤ ‖P − cI‖ only the singular value computation gives a
+        # positive bound, and it is then the smallest singular value of A up to the frame
         A = grcar(12)
-        f = block_resolvent_floor(miyajima2014a_schurnewton(BallMatrix(A)))
-        if length(f.centres) == 1
-            z = f.centres[1] + 0.9 * f.nonnormality[1] * cis(2.0)
+        vbd = miyajima2014a_schurnewton(BallMatrix(A); sep = 2.0)
+        @test length(vbd.clusters) == 1
+        f = block_resolvent_floor(vbd)
+        @test 1 ≤ f.kappa ≤ 1 + 1e-10
+        for θ in (0.3, 2.0, 4.1)
+            z = f.centres[1] + 0.9 * f.nonnormality[1] * cis(θ)
+            truth = σtrue(A, z)
             @test sigma_min_floor(f, z) == 0
             near = sigma_min_floor(f, z; near = true)
-            @test near ≤ σtrue(A, z) * (1 + 1e-12)
-            σtrue(A, z) > 1e-6 && @test near > 0
+            @test near ≤ truth * (1 + 1e-12)
+            @test near ≥ truth * (1 - 1e-6)
         end
+        # the same matrix split into singletons: valid, with the conditioning in κ
+        f1 = block_resolvent_floor(miyajima2014a_schurnewton(BallMatrix(A)))
+        @test f1.kappa > 10
+        @test sigma_min_floor(f1, 5.0 + 5im) ≤ σtrue(A, 5.0 + 5im) * (1 + 1e-12)
+    end
+
+    @testset "a normal matrix: the frame is unitary and the bound is the distance" begin
+        A = gallery[1][2]
+        f = block_resolvent_floor(miyajima2014a_schurnewton(BallMatrix(A)))
+        @test f.kappa ≤ 1 + 1e-10
+        z = 2.5 + 1.0im
+        @test σtrue(A, z) * (1 - 1e-9) ≤ sigma_min_floor(f, z) ≤ σtrue(A, z) * (1 + 1e-12)
     end
 
     @testset "a ball of matrices" begin
@@ -85,7 +102,7 @@ using Test
             s = sigma_min_floor(f, z; near = true)
             @test s ≤ σtrue(H, z) * (1 + 1e-12)
         end
-        @test sigma_min_floor(f, 20.0) > 10
+        @test 0 < sigma_min_floor(f, 20.0) ≤ σtrue(H, 20.0) * (1 + 1e-12)
         setprecision(BigFloat, 256) do
             A = BigFloat.([1.0 0.4 0.0; 0.0 3.0 0.5; 0.1 0.0 -2.0])
             fb = block_resolvent_floor(miyajima2014a_schurnewton(BallMatrix(A)))
