@@ -79,18 +79,24 @@ using Test
     end
 
     @testset "from verifyeigall: no transformation, and another method" begin
-        # a Jordan block has no invertible eigenvector matrix in floating point; the result then
-        # carries the input and the identity, and the bound is the one with singleton blocks
-        J = Matrix(Bidiagonal(fill(2.0, 6), fill(1.0, 5), :U))
-        r = verifyeigall(BallMatrix(J))
+        # a 24-fold Jordan block under a real orthogonal similarity, the matrix of
+        # test_rump_verifyeigall.jl whose transformation is not certified: the result carries the
+        # input and the identity, and the bound is the one with singleton blocks in that frame
+        n = 24
+        Q = Matrix(qr(randn(MersenneTwister(20260928), n, n)).Q)
+        B = Q * diagm(0 => fill(0.7, n), 1 => ones(n - 1)) * Q'
+        r = verifyeigall(BallMatrix(B))
+        @test mid(r.similarity) == I
+        @test mid(r.transformed) == B
         f = block_resolvent_floor(r)
-        if all(iszero, mid(r.similarity) - I)
-            @test f.kappa ≤ 1 + 1e-12
-            @test mid(r.transformed) == J
+        @test f.kappa ≤ 1 + 1e-12
+        positive = 0
+        for z in grid(0.7 + 0im, 12.0, 9)
+            fl = sigma_min_floor(f, z; near = true)
+            @test 0 ≤ fl ≤ σtrue(B, z) * (1 + 1e-12)
+            positive += fl > 0
         end
-        for z in grid(2.0 + 0im, 6.0, 9)
-            @test 0 ≤ sigma_min_floor(f, z) ≤ σtrue(J, z) * (1 + 1e-12)
-        end
+        @test positive > 0
         m = verifyeigall(BallMatrix(randn(5, 5)); method = :miyajima2014a)
         @test_throws ArgumentError block_resolvent_floor(m)
     end
