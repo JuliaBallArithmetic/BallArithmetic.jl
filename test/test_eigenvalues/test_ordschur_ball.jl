@@ -376,15 +376,18 @@ end
         @test all(rad(Y_ball) .> rad(Y_plain))
     end
 
-    @testset "Large radii produce warning" begin
-        T_mid = [1.0 0.5; 0.0 1.001]  # small separation
-        T_rad = fill(0.01, 2, 2)       # radii comparable to separation
-        T_ball = BallMatrix(T_mid, T_rad)
-
-        # Should warn about separation or large perturbation
-        # (may not warn if separation holds; just check it doesn't error)
-        Y = triangular_sylvester_miyajima_enclosure(T_ball, 1)
-        @test all(isfinite, mid(Y))
+    @testset "A ball that contains a matrix with a repeated eigenvalue is refused" begin
+        # 1 ± 0.01 and 1.001 ± 0.01 overlap: the solutions over the ball are unbounded
+        T_ball = BallMatrix([1.0 0.5; 0.0 1.001], fill(0.01, 2, 2))
+        @test_throws ArgumentError triangular_sylvester_miyajima_enclosure(T_ball, 1)
+        T_tri = BallMatrix([1.0 0.5; 0.0 1.001], [0.01 0.01; 0.0 0.01])
+        Y = try
+            triangular_sylvester_miyajima_enclosure(T_tri, 1)
+        catch e
+            e isa ArgumentError || rethrow()
+            nothing
+        end
+        @test Y === nothing || !all(isfinite, rad(Y))
     end
 end
 

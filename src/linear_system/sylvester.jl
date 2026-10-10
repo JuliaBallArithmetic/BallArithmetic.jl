@@ -194,14 +194,17 @@ function triangular_sylvester_miyajima_enclosure(T::Union{AbstractMatrix, BallMa
     C = adjoint_block(1:k, (k + 1):n)
 
     Ỹ = _sylvester_triangular_columns(mid(A), mid(B), mid(C))
-    try
+    reason = try
         return sylvester_miyajima_enclosure(A, B, C, Ỹ)
     catch e
         e isa ArgumentError || rethrow()
+        e.msg
     end
 
     all(iszero, tril(Tr, -1)) ||
-        throw(ArgumentError("the triangular fallback needs zero radius below the diagonal of T"))
+        throw(ArgumentError("no enclosure: the hypotheses of Miyajima's theorem are not proved " *
+                            "($reason), and the triangular fallback needs zero radius below " *
+                            "the diagonal of T"))
     return sylvester_fallback === :residual ? _sylvester_residual_ball(A, B, C, Ỹ) :
            _sylvester_triangular_direct_ball(A, B, C)
 end
