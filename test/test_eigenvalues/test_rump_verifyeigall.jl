@@ -407,6 +407,8 @@ end
     @test same(r, (q.spectrum_covered || cols(q) > cols(p)) ? q : p)
     @test cols(r) >= cols(p)
     @test _sound(r, _reference_eigvals(mid(J)))
+    # a method asked for by name is run alone
+    @test same(verifyeigall(J; method = :rump2022a), p)
     # the fallback is a keyword, and is not run after itself or after Miyajima's method
     @test same(verifyeigall(J; fallback = :rump2022aschur),
         (s = verifyeigall(J; method = :rump2022aschur); (s.spectrum_covered || cols(s) > cols(p)) ? s : p))
