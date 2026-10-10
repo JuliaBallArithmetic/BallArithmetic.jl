@@ -333,6 +333,31 @@ end
     @test_throws MethodError verifyeigall(BallMatrix(J); method = :rump2022aschur, maxlevels = 2)
 end
 
+@testset ":rump2022aschurstep6: the Schur frame, then the recursion of step 6" begin
+    # randn(32, 32)/√32: the Schur frame alone leaves clusters uncertified; the recursion does not
+    # certify fewer columns, and every certified disc holds an eigenvalue of the input
+    rng = MersenneTwister(20261011)
+    cols(r) = sum((length(c) for (c, ok) in zip(r.clusters, r.certified) if ok); init = 0)
+    for n in (12, 32)
+        B = randn(rng, n, n) / sqrt(n)
+        a = verifyeigall(BallMatrix(B); method = :rump2022aschur)
+        b = verifyeigall(BallMatrix(B); method = :rump2022aschurstep6)
+        @test cols(b) >= cols(a)
+        λ = setprecision(() -> eigvals(Complex{BigFloat}.(B)), BigFloat, 512)
+        for i in eachindex(b.clusters)
+            b.certified[i] || continue
+            @test count(l -> abs(l - b.centers[i]) <= b.radii[i], λ) >= length(b.clusters[i])
+        end
+        if b.spectrum_covered
+            @test all(l -> any(i -> abs(l - b.centers[i]) <= b.radii[i], eachindex(b.clusters)), λ)
+        end
+        # with the recursion switched off it is the Schur variant
+        c = verifyeigall(BallMatrix(B); method = :rump2022aschurstep6, maxlevels = 0)
+        @test c.certified == a.certified && c.radii == a.radii
+        @test mid(c.similarity) == mid(a.similarity)
+    end
+end
+
 @testset "verifyeigall: an exactly singular eigenvector matrix declines the transformation" begin
     # for the 24-fold Jordan block in its own basis the computed eigenvector matrix is singular
     # and the floating-point solve of the Newton step throws; the result is then the one of a

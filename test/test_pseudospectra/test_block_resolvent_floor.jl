@@ -55,7 +55,8 @@ using Test
     end
 
     @testset "from verifyeigall, $name, $method" for (name, A) in gallery,
-        method in (:rump2022a, :rump2022aneumann, :rump2022adiscclusters, :rump2022aschur)
+        method in (:rump2022a, :rump2022aneumann, :rump2022adiscclusters, :rump2022aschur,
+            :rump2022aschurstep6)
 
         r = verifyeigall(BallMatrix(A); method)
         f = block_resolvent_floor(r)

@@ -666,6 +666,24 @@ _rump2022a_schur(B::BallMatrix; maxiter::Integer = 20, inflate::Real = 0.1) =
     _rump2022a_thm2_2_core(B, _rump2022a_transform; maxiter, inflate, maxlevels = 0,
         frame = schur)
 
+"""
+    _rump2022a_schur_step6(B::BallMatrix; maxiter = 20, inflate = 0.1, maxlevels = 3)
+        -> VerifyEigAllResult
+
+[`_rump2022a_schur`](@ref) followed by the recursion of step 6 as [`_rump2022a`](@ref) runs it:
+where a pass leaves clusters uncertified, their columns are transformed by the eigenvectors of
+their diagonal block and Theorem 2.2 is applied again, up to `maxlevels` times and for as long
+as the number of certified columns grows. **A deviation from Rump's algorithm**, named for it;
+reached through [`verifyeigall`](@ref) with `method = :rump2022aschurstep6`.
+
+The similarity returned is then `Q` multiplied by those transformations, the identity outside
+the columns that were transformed again; it is unitary up to rounding only when the recursion
+did not run, and its condition number is what [`block_resolvent_floor`](@ref) bounds from
+`similarity`.
+"""
+_rump2022a_schur_step6(B::BallMatrix; kwargs...) =
+    _rump2022a_thm2_2_core(B, _rump2022a_transform; frame = schur, kwargs...)
+
 # The algorithm of Theorem 2.2, shared by both transformations: `transform(B, W, X0)` returns an
 # enclosure of W^{-1} B W together with the diagnostic that certified it, or `nothing` when it
 # cannot certify one. Everything after the transformation is the theorem itself and is identical
@@ -841,6 +859,7 @@ visible in the name rather than buried in a docstring:
 | `:rump2022aneumann` | [`_rump2022aneumann`](@ref) | the same theorem with the transformation bounded through an explicit inverse and a uniform Neumann term |
 | `:rump2022adiscclusters` | [`_rump2022a_discclusters`](@ref) | Theorem 2.2 with the diagonal clustered at `√eps·‖A‖` rather than the `1e-14·‖A‖` of the paper's step 2, so that a multiple eigenvalue is grouped; a deviation, named for it |
 | `:rump2022aschur` | [`_rump2022a_schur`](@ref) | Theorem 2.2 in the frame of a Schur decomposition in place of the eigenvector matrix of the paper's step 1, without the recursion of step 6; a deviation, named for it |
+| `:rump2022aschurstep6` | [`_rump2022a_schur_step6`](@ref) | the Schur frame followed by the recursion of step 6 on the columns left uncertified; a deviation, named for it |
 | `:miyajima2014a` | [`_miyajima2014a_alg1`](@ref) | Algorithms 1 and 2 of Miyajima (2014): Gershgorin discs on the pencil transformed by an approximate generalised eigendecomposition, each cluster certified by Brouwer's theorem on a Newton operator |
 
 The default is `:rump2022a`. The Neumann variant is kept because it does not need the solve to
@@ -876,11 +895,12 @@ function verifyeigall(B::BallMatrix; method::Symbol = :rump2022a, kwargs...)
     method === :rump2022aneumann && return _rump2022aneumann(B; kwargs...)
     method === :rump2022adiscclusters && return _rump2022a_discclusters(B; kwargs...)
     method === :rump2022aschur && return _rump2022a_schur(B; kwargs...)
+    method === :rump2022aschurstep6 && return _rump2022a_schur_step6(B; kwargs...)
     method === :miyajima2014a &&
         return _miyajima2014a_alg1(B, BallMatrix(Matrix{eltype(mid(B))}(I, size(B)...)))
     throw(ArgumentError("verifyeigall: unknown method $(repr(method)); the implemented " *
                         "methods are :rump2022a, :rump2022aneumann, :rump2022adiscclusters, " *
-                        ":rump2022aschur and :miyajima2014a"))
+                        ":rump2022aschur, :rump2022aschurstep6 and :miyajima2014a"))
 end
 
 """
