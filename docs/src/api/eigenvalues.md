@@ -47,7 +47,6 @@ svdbox
 ```@docs
 SchurGershgorinResult
 schur_gershgorin_enclosure
-refine_svd_bounds_with_vbd
 ```
 
 ## Adaptive Ogita SVD

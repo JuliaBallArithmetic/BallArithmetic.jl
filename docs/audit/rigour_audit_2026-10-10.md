@@ -229,5 +229,8 @@ drivers that returned before it returned the same `minimum_singular_value`, `res
 `1 + 1.7e-14` to `1 + 3.3e-15`, being now computed from `errF`. The distributed parametric driver
 did not return within 240 s before it and returns after it.
 
-Not done: C6, C7; `ordschur_ball`, `compute_spectral_coefficient`, `rigorous_block_schur`;
-`refine_svd_bounds_with_vbd`, which the evaluators call through `apply_vbd = true`.
+`refine_svd_bounds_with_vbd` is removed. `apply_vbd = true` only stores a block diagonalisation of
+`Σ*Σ` in the result and leaves the singular values as they are, so the evaluators never reached
+that function (an earlier line of this section said they did); its only caller was its own test.
+
+Not done: C6, C7; `ordschur_ball`, `compute_spectral_coefficient`, `rigorous_block_schur`.

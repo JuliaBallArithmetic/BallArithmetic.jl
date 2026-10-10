@@ -100,24 +100,18 @@ using BallArithmetic
         end
     end
 
-    @testset "VBD refinement for isolated singular values" begin
-        # Create matrix with well-separated singular values
+    @testset "The block diagonalisation stored with the result" begin
         A_mid = Diagonal([10.0, 5.0, 1.0])
         A = BallMatrix(Matrix(A_mid))
-
         result = rigorous_svd(A; method=MiyajimaM1(), apply_vbd=true)
-
-        # All singular values should be isolated (each in its own cluster)
         @test result.block_diagonalisation !== nothing
         @test length(result.block_diagonalisation.clusters) == 3
-
-        # Try VBD refinement
-        refined = refine_svd_bounds_with_vbd(result)
-
-        # Refined should still be valid
+        # it does not change the singular values
+        plain = rigorous_svd(A; method=MiyajimaM1(), apply_vbd=false)
+        @test plain.block_diagonalisation === nothing
+        @test plain.singular_values == result.singular_values
         for i in 1:3
-            σ_true = A_mid[i, i]
-            @test σ_true ∈ refined.singular_values[i]
+            @test A_mid[i, i] ∈ result.singular_values[i]
         end
     end
 
