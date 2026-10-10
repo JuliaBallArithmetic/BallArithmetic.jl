@@ -79,19 +79,11 @@ function _ccr(Hrl::AbstractMatrix{<:Real}, Hru::AbstractMatrix{<:Real},
     Hru = T.(Hru)
     Hil = T.(Hil)
     Hiu = T.(Hiu)
-    half = T(0.5)
-
-    # centers at midpoints (nearest rounding is fine/tight)
-    Rc, Ic = setrounding(T, RoundNearest) do
-        (Hru .+ Hrl) .* half, (Hiu .+ Hil) .* half
-    end
-
-    # radii are half-widths combined in 2-norm, rounded upward
-    Hr = setrounding(T, RoundUp) do
-        Rr = (Hru .- Hrl) .* half
-        Ir = (Hiu .- Hil) .* half
-        sqrt.(Rr .^ 2 .+ Ir .^ 2)
-    end
+    # Algorithm 3 of Miyajima (2010): each part by Algorithm 5 (`_cr`), then the radius as the
+    # modulus of the two half-widths, rounded upward
+    Rc, Rr = _cr(Hrl, Hru, T)
+    Ic, Ir = _cr(Hil, Hiu, T)
+    Hr = abs_up.(complex.(Rr, Ir))
 
     Hc = complex.(Rc, Ic)
     return BallMatrix(Hc, Hr)  # or return (Hc, Hr)
@@ -213,13 +205,11 @@ function _cr(Fl::AbstractMatrix{<:Real}, Fu::AbstractMatrix{<:Real},
     Fu = T.(Fu)
     half = T(0.5)
 
-    Fc = setrounding(T, RoundNearest) do
-        (Fu .+ Fl) .* half
-    end
-
-    Fr = setrounding(T, RoundUp) do
-        (Fu .- Fl) .* half
-    end
+    # Algorithm 5 of Miyajima (2010): Fc = fl△(Fl + 0.5(Fu − Fl)), Fr = fl△(Fc − Fl). The centre
+    # rounded to nearest with radius (Fu − Fl)/2 does not contain Fu when the centre rounds down:
+    # for Fl = 1, Fu = nextfloat(1) it gave 1 ± 2^-53.
+    Fc = add_up.(Fl, mul_up.(half, sub_up.(Fu, Fl)))
+    Fr = sub_up.(Fc, Fl)
 
     return Fc, Fr
 end

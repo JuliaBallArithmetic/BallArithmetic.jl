@@ -24,22 +24,69 @@ mathematical notation `c ± r` for centered intervals.
 """
 ±(c, r) = Ball(c, r)
 
+# ---------------------------------------------------------------------------------------------
+# Helpers for enclosures. None of them changes the rounding mode: they are built on the emulated
+# directed operations of `rounding.jl`.
+# ---------------------------------------------------------------------------------------------
+
+# `x` converted to `T`, not below `x`. Comparisons between Julia's real types are exact, so the
+# nearest conversion is stepped up once when it fell below.
+function _convert_up(::Type{T}, x::Real) where {T <: AbstractFloat}
+    x isa T && return x
+    y = T(x)
+    return (isnan(y) || y >= x) ? y : nextfloat(y)
+end
+
+# A bound on |m − c| when `m` is `c` converted to floating point. Zero when the conversion was
+# exact, which `==` decides exactly. Otherwise each real conversion is one rounding to nearest for
+# a float, an integer or an irrational constant, and at most three (numerator, denominator,
+# quotient) for a rational, so 4u|m| per component covers it, plus the subnormal spacing.
+function _conversion_error(m::Union{T, Complex{T}}, c::Number) where {T <: AbstractFloat}
+    (m == c) && return zero(T)
+    return add_up(mul_up(mul_up(T(2), machine_epsilon(T)), abs_up(m)), mul_up(T(2), subnormal_min(T)))
+end
+
+# A bound on the rounding error of a nearest-rounded product whose computed value is `c`. A real
+# product errs by at most u|c|, or half the subnormal spacing under underflow; `machine_epsilon`
+# is 2u. A complex product satisfies fl(xy) = xy(1 + δ) with |δ| ≤ √2 γ₂ (Higham, Accuracy and
+# Stability of Numerical Algorithms, 2nd ed., Lemma 3.5), about 2.83u of the exact product and
+# below 4u of the computed one, with up to four underflowing real products.
+_product_roundoff(c::T) where {T <: AbstractFloat} =
+    add_up(subnormal_min(T), mul_up(machine_epsilon(T), abs(c)))
+_product_roundoff(c::Complex{T}) where {T <: AbstractFloat} =
+    add_up(mul_up(T(4), subnormal_min(T)), mul_up(mul_up(T(2), machine_epsilon(T)), abs_up(c)))
+
+# The real ball [lo, hi]: the centre is rounded up from the midpoint and the radius up from
+# centre − lo, which also reaches hi, since centre − lo ≥ (hi − lo)/2. `inv` and `sqrt` of a real
+# ball below build their result the same way.
+function _ball_from_bounds(lo::T, hi::T) where {T <: AbstractFloat}
+    c = add_up(lo, mul_up(one(T) / T(2), sub_up(hi, lo)))
+    return Ball(c, sub_up(c, lo))
+end
+
 """
     Ball(c, r)
 
-Construct a ball whose midpoint is `c` and radius is `r`. Both arguments
-are converted to floating-point values so that subsequent arithmetic
-obeys the package's rounding assumptions.
+Construct a ball whose midpoint is `c` and radius is `r`. Both arguments are converted to
+floating point; the radius is rounded up, and the rounding of the midpoint, when `c` is not
+exactly representable, is added to it, so the ball contains the ball it was asked for.
 """
-Ball(c, r) = Ball(float(c), float(r))
+function Ball(c, r)
+    m = float(c)
+    T = typeof(real(m))
+    return Ball(m, add_up(_convert_up(T, r), _conversion_error(m, c)))
+end
 
 """
     Ball(c::Number)
 
-Create a degenerate ball representing the exact value `c`. The midpoint
-is stored as `float(c)` and the radius is zero.
+The ball around `float(c)` containing `c`: radius zero when `c` is exactly representable, and a
+bound on the rounding of the conversion otherwise (`Ball(1//3)`, `Ball(π)`).
 """
-Ball(c::T) where {T <: Number} = Ball(float(c), zero(float(real(T))))
+function Ball(c::Number)
+    m = float(c)
+    return Ball(m, _conversion_error(m, c))
+end
 
 """
     Ball(x::Ball)
@@ -151,28 +198,13 @@ close as possible to one of the inputs so that subsequent operations remain
 stable.
 """
 function ball_hull(a::Ball{T, T}, b::Ball{T, T}) where {T}
-    lower = min(inf(a), inf(b))
-    upper = max(sup(a), sup(b))
-    center = setrounding(T, RoundNearest) do
-        (lower + upper) / 2
-    end
-    radius = setrounding(T, RoundUp) do
-        (upper - lower) / 2
-    end
-    return Ball(center, radius)
+    return _ball_from_bounds(min(inf(a), inf(b)), max(sup(a), sup(b)))
 end
 
 function ball_hull(a::Ball{T, Complex{T}}, b::Ball{T, Complex{T}}) where {T}
-    center_a = Ball(mid(a))
-    center_b = Ball(mid(b))
-    distance = abs(center_a - center_b)
-
-    coverage_from_a = setrounding(T, RoundUp) do
-        add_up(add_up(distance.c, distance.r), rad(b))
-    end
-    coverage_from_b = setrounding(T, RoundUp) do
-        add_up(add_up(distance.c, distance.r), rad(a))
-    end
+    distance = dist_up(mid(a), mid(b))
+    coverage_from_a = add_up(distance, rad(b))
+    coverage_from_b = add_up(distance, rad(a))
 
     option_a = max(rad(a), coverage_from_a)
     option_b = max(rad(b), coverage_from_b)
@@ -197,13 +229,7 @@ function intersect_ball(a::Ball{T, T}, b::Ball{T, T}) where {T}
     if lower > upper
         return nothing
     end
-    center = setrounding(T, RoundNearest) do
-        (lower + upper) / 2
-    end
-    radius = setrounding(T, RoundUp) do
-        (upper - lower) / 2
-    end
-    return Ball(center, radius)
+    return _ball_from_bounds(lower, upper)
 end
 
 ###############
@@ -218,19 +244,23 @@ and radius types. This is typically used when promoting collections of
 balls to a common numeric representation.
 """
 function Base.convert(::Type{Ball{T, CT}}, x::Ball) where {T, CT}
-    new_rad = setrounding(T, RoundUp) do
-        convert(T, rad(x))
-    end
-    Ball(convert(CT, mid(x)), new_rad)
+    x isa Ball{T, CT} && return x
+    # the radius is rounded up, and the rounding of the midpoint to the new type is added to it:
+    # converting 1/3 from BigFloat to Float64 moves the centre by about 1e-17
+    m = convert(CT, mid(x))
+    return Ball(m, add_up(_convert_up(T, rad(x)), _conversion_error(m, mid(x))))
 end
 
 """
     Base.convert(::Type{Ball{T, CT}}, c::Number)
 
-Embed a plain number into a ball with zero radius whose midpoint matches
-`c` converted to `CT`.
+Embed a plain number into a ball whose midpoint is `c` converted to `CT`. The radius is zero when
+that conversion is exact and a bound on its rounding otherwise.
 """
-Base.convert(::Type{Ball{T, CT}}, c::Number) where {T, CT} = Ball(convert(CT, c), zero(T))
+function Base.convert(::Type{Ball{T, CT}}, c::Number) where {T, CT}
+    m = convert(CT, c)
+    return Ball(m, _conversion_error(m, c))
+end
 Base.convert(::Type{Ball}, c::Number) = Ball(c)
 
 # Single-argument parametric constructor — delegates to convert so that
@@ -280,7 +310,7 @@ the radius accounts for both operands plus floating-point roundoff.
 function Base.:+(x::Ball{T}, y::Ball{T}) where {T}
     c = mid(x) + mid(y)
     ϵ = machine_epsilon(T)
-    r = add_up(add_up(mul_up(ϵ, abs(c)), rad(x)), rad(y))
+    r = add_up(add_up(mul_up(ϵ, abs_up(c)), rad(x)), rad(y))
     Ball(c, r)
 end
 
@@ -295,7 +325,7 @@ roundoff.
 function Base.:-(x::Ball{T}, y::Ball{T}) where {T}
     c = mid(x) - mid(y)
     ϵ = machine_epsilon(T)
-    r = add_up(add_up(mul_up(ϵ, abs(c)), rad(x)), rad(y))
+    r = add_up(add_up(mul_up(ϵ, abs_up(c)), rad(x)), rad(y))
     Ball(c, r)
 end
 
@@ -309,12 +339,11 @@ operation.
 """
 function Base.:*(x::Ball{T}, y::Ball{T}) where {T}
     c = mid(x) * mid(y)
-    ϵ = machine_epsilon(T)
-    η_val = subnormal_min(T)
-    # r = (η + ϵ * |c|) + ((|mid(x)| + rad(x)) * rad(y) + rad(x) * |mid(y)|)
-    abs_mx = abs(mid(x))
-    abs_my = abs(mid(y))
-    term1 = add_up(η_val, mul_up(ϵ, abs(c)))
+    # r = roundoff(c) + ((|mid(x)| + rad(x)) * rad(y) + rad(x) * |mid(y)|), the moduli bounded
+    # above; the roundoff of a complex product is larger than that of a real one
+    abs_mx = abs_up(mid(x))
+    abs_my = abs_up(mid(y))
+    term1 = _product_roundoff(c)
     term2 = mul_up(add_up(abs_mx, rad(x)), rad(y))
     term3 = mul_up(rad(x), abs_my)
     r = add_up(term1, add_up(term2, term3))
@@ -343,28 +372,25 @@ end
 """
     inv(x::Ball{T, Complex{T}})
 
-Return the multiplicative inverse of a complex ball. The method throws an
-`ArgumentError` when the ball contains zero. The image of the disk `B(my, ry)`
-under `1/z` is the disk `B(conj(my)/D, ry/D)` where `D = |my|² - ry²`.
-Rounding is outward: `D_lo` is a lower bound on `D` that accounts for the
-≤ 1 ulp error in `abs(my)`, ensuring `ry/D_lo` over-approximates the true
-image radius, and `ϵp*abs(c) + η` covers the floating-point error in the center.
+Return the multiplicative inverse of a complex ball. The method throws an `ArgumentError` when the
+ball is not proved to exclude zero. The image of the disc `B(m, r)` under `1/z` is the disc
+`B(conj(m)/D, r/D)` with `D = |m|² − r²`. `D` is bracketed by `D_lo ≤ D ≤ D_hi` with directed
+operations and `D_lo > 0` is required; the centre is computed with `D_lo`, and the radius is
+`r/D_lo` plus the distance `|m|(1/D_lo − 1/D_hi)` between that centre and the exact one, plus the
+rounding of its two divisions.
 """
 function Base.inv(y::Ball{T, Complex{T}}) where {T <: AbstractFloat}
     my, ry = mid(y), rad(y)
-    ry < abs(my) || throw(ArgumentError("Ball $y contains zero."))
-    # Image of B(my,ry) under 1/z is B(conj(my)/D, ry/D), D = |my|²-ry²
-    # abs(my) has ≤1 ulp relative error, so amy² ≥ |my|²*(1-2ϵp); use this
-    # to form a valid lower bound on D for the radius computation.
-    amy = abs(my)
-    # Use the type-generic roundoff constants so the method also works for
-    # BigFloat balls (the Float64 `ϵp`/`η` would raise a MethodError there).
-    ϵ_T = machine_epsilon(T)
-    η_T = subnormal_min(T)
-    two_eps = mul_up(T(2), ϵ_T)
-    D_lo = sub_down(mul_down(sub_down(one(T), two_eps), mul_down(amy, amy)), mul_up(ry, ry))
-    c = conj(my) / (amy * amy - ry * ry)
-    r = add_up(div_up(ry, D_lo), add_up(mul_up(ϵ_T, abs(c)), η_T))
+    a, b = real(my), imag(my)
+    n2_lo = add_down(mul_down(a, a), mul_down(b, b))
+    n2_hi = add_up(mul_up(a, a), mul_up(b, b))
+    D_lo = sub_down(n2_lo, mul_up(ry, ry))
+    D_hi = sub_up(n2_hi, mul_down(ry, ry))
+    D_lo > 0 || throw(ArgumentError("Ball $y contains zero."))
+    c = complex(a / D_lo, -b / D_lo)
+    spread = mul_up(abs_up(my), sub_up(div_up(one(T), D_lo), div_down(one(T), D_hi)))
+    roundoff = add_up(mul_up(machine_epsilon(T), abs_up(c)), mul_up(T(2), subnormal_min(T)))
+    r = add_up(div_up(ry, D_lo), add_up(spread, roundoff))
     Ball(c, r)
 end
 
@@ -394,25 +420,21 @@ function Base.sqrt(y::Ball{T}) where {T <: AbstractFloat}
     Ball(c, r)
 end
 
-# Base.abs(x::Ball) = Ball(max(0, sub_down(abs(mid(x)), rad(x))), add_up(abs(mid(x)), rad(x)))
-#
 """
     abs(x::Ball)
 
-Return a ball that encloses the absolute value of `x`. When the interval
-does not cross zero, the midpoint is simply the absolute value of the
-stored center; otherwise the result widens to account for the possible
-sign change.
+Return a real ball that encloses `|z|` for every `z` in `x`, that is the interval
+`[max(0, |c| − r), |c| + r]`. For a real ball that does not contain zero this is the ball of
+centre `|c|` and the same radius, exactly. For a complex ball the modulus of the centre is
+bounded below and above, since `hypot` is not correctly rounded.
 """
-function Base.abs(x::Ball)
-    if abs(x.c) > x.r
-        return Ball(abs(x.c), x.r)
-    else
-        # NOTE: Division by 2 is exact in IEEE 754 binary floating point
-        # (just decrements the exponent), so no setrounding needed here.
-        val = add_up(abs(x.c), x.r) / 2
-        return Ball(val, val)
-    end
+function Base.abs(x::Ball{T, T}) where {T <: AbstractFloat}
+    abs(x.c) > x.r && return Ball(abs(x.c), x.r)
+    return _ball_from_bounds(zero(T), add_up(abs(x.c), x.r))
+end
+function Base.abs(x::Ball{T, Complex{T}}) where {T <: AbstractFloat}
+    lo = max(zero(T), sub_down(abs_down(x.c), x.r))
+    return _ball_from_bounds(lo, add_up(abs_up(x.c), x.r))
 end
 
 """
@@ -426,9 +448,15 @@ Base.conj(x::Ball) = Ball(conj(x.c), x.r)
 """
     in(x::Number, B::Ball)
 
-Return `true` if the scalar `x` is contained in the ball `B`.
+Return `true` when the scalar `x` is proved to lie in the ball `B`: an upper bound of `|c − x|` is
+compared with the radius. A number that is not a float is first enclosed by `Ball(x)`.
 """
-Base.in(x::Number, B::Ball) = abs(B.c - x) <= B.r
+Base.in(x::Union{AbstractFloat, Complex{<:AbstractFloat}}, B::Ball) = dist_up(B.c, x) <= B.r
+Base.in(x::Number, B::Ball) = _ball_in(Ball(x), B)
+
+# B1 ⊆ B2, proved: an upper bound of the distance of the centres plus the inner radius against
+# the outer radius
+_ball_in(B1::Ball, B2::Ball) = add_up(dist_up(B1.c, B2.c), B1.r) <= B2.r
 
 """
     in(B₁::Ball{T}, B₂::Ball{T})
@@ -438,8 +466,8 @@ expands the endpoints using outward rounding to ensure a rigorous
 decision.
 """
 function Base.in(B1::Ball{T, T}, B2::Ball{T, T}) where {T <: AbstractFloat}
-    upper = (@up B1.c + B1.r) <= (@down B2.c + B2.r)
-    lower = (@up B2.c - B2.r) <= (@down B1.c - B1.r)
+    upper = add_up(B1.c, B1.r) <= add_down(B2.c, B2.r)
+    lower = sub_up(B2.c, B2.r) <= sub_down(B1.c, B1.r)
     return lower && upper
 end
 
@@ -452,25 +480,18 @@ the two enclosures.
 """
 function Base.in(
         B1::Ball{T, Complex{T}}, B2::Ball{T, Complex{T}}) where {T <: AbstractFloat}
-    center1 = Ball(B1.c)
-    center2 = Ball(B2.c)
-
-    d = abs(center2 - center1)
-
-    if B2.r >= add_up(add_up(d.c, d.r), B1.r)
-        return true
-    else
-        return false
-    end
+    return _ball_in(B1, B2)
 end
 
 """
     in0(B₁::Ball, B₂::Ball)
 
 Return `true` when `B₁` is contained in the **interior** of `B₂`, which for balls is
-`|mid(B₁) − mid(B₂)| + rad(B₁) < rad(B₂)`. The left-hand side is evaluated with the rounding
-mode set upward and compared against the stored radius, which is exact, so a `true` answer is
-a proof of the containment.
+`|mid(B₁) − mid(B₂)| + rad(B₁) < rad(B₂)`. The left-hand side is bounded above, the distance of
+the centres by `dist_up` and the sum by `add_up`, and compared against the stored radius, which is
+exact, so a `true` answer is a proof of the containment. (The modulus of a complex difference is
+not obtained from `abs` under an upward rounding mode: `abs` is `hypot`, which does not honour it,
+and the difference itself rounds a negative component toward zero.)
 
 This is the predicate Rump writes `in0` and defines in footnote 19 of
 
@@ -483,9 +504,7 @@ without giving the contraction the argument rests on, so [`in`](@ref), which is 
 not a substitute.
 """
 function in0(B1::Ball{T, NT1}, B2::Ball{T, NT2}) where {T <: AbstractFloat, NT1, NT2}
-    return setrounding(T, RoundUp) do
-        abs(B1.c - B2.c) + B1.r < B2.r
-    end
+    return add_up(dist_up(B1.c, B2.c), B1.r) < B2.r
 end
 
 #==============================================================================#

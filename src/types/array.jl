@@ -283,12 +283,11 @@ function in0(A1::BallArray{T}, A2::BallArray{T}) where {T <: AbstractFloat}
     size(A1) == size(A2) ||
         throw(DimensionMismatch("in0 expects arrays of the same size"))
     m1, r1, m2, r2 = mid(A1), rad(A1), mid(A2), rad(A2)
-    return setrounding(T, RoundUp) do
-        for i in eachindex(m1)
-            abs(m1[i] - m2[i]) + r1[i] < r2[i] || return false
-        end
-        return true
+    # the distance of the centres bounded above by `dist_up`, as in the scalar `in0`
+    for i in eachindex(m1)
+        add_up(dist_up(m1[i], m2[i]), r1[i]) < r2[i] || return false
     end
+    return true
 end
 
 """

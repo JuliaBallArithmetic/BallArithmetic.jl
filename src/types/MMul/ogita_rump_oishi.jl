@@ -66,15 +66,31 @@ export mmul_ogita_rump_oishi_2005
 _modulus_up(M::AbstractMatrix{<:Real}) = abs_preserving_structure(M)
 _modulus_up(M::AbstractMatrix{<:Complex}) = abs_up.(M)
 
-# The Ogita-Rump-Oishi accuracy term for one block of products: u |computed| + gamma_N^2 * absprod,
-# with N the number of summands. `absprod` must already bound sum_i |a_i| |b_i| from above.
+# The accuracy term for one block of products. Proposition 5.5 of Ogita, Rump and Oishi (2005), for
+# the compensated dot product of N terms, in the presence of underflow (5.6):
+#
+#     |res − xᵀy| ≤ u |xᵀy| + γ_N² |x|ᵀ|y| + 5 N eta,
+#
+# u the unit roundoff and eta the underflow unit. The paper proves it for TwoProduct by Dekker's
+# splitting; `two_product` here uses one FMA, whose error under underflow is one rounding of the
+# exact residual, at most eta/2 per product, so the 5 N eta of the paper covers it. Two steps are
+# ours:
+#   * the bound is in terms of the exact |xᵀy|; with only the computed c at hand, |xᵀy| ≤ |c| + err
+#     gives err ≤ (u|c| + t)/(1 − u), t the remaining terms;
+#   * the paper is for real vectors. For a complex entry the real and imaginary parts are each such
+#     a dot product of N = 2k terms with Σ|x_i||y_i| at most `absprod`, so the modulus of the error
+#     is at most u|xᵀy| + √2 t, and 3/2 ≥ √2 is used.
+# `absprod` must already bound Σ_i |a_i||b_i| from above.
 function _accuracy_term(absC::AbstractMatrix{T}, absprod::AbstractMatrix{T}, N::Integer,
-        ::Type{T}) where {T <: AbstractFloat}
-    u = eps(T) / 2
+        ::Type{T}, iscomplex::Bool) where {T <: AbstractFloat}
+    u = unit_roundoff(T)
     g = gamma_bound(N, T)
-    return setrounding(T, RoundUp) do
-        u .* absC .+ (g * g) .* absprod
-    end
+    g2 = mul_up(g, g)
+    under = mul_up(T(5 * N), subnormal_min(T))
+    κ = iscomplex ? T(3) / T(2) : one(T)
+    scale = div_up(one(T), sub_down(one(T), u))
+    return mul_up.(scale,
+        add_up.(mul_up.(u, absC), mul_up.(κ, add_up.(mul_up.(g2, absprod), under))))
 end
 
 """
@@ -88,8 +104,9 @@ For every `X ∈ A` and `Y ∈ B` the returned ball contains `XY`. The radius is
 
 * the interval part, `rad(A)(|mid(B)| + rad(B)) + |mid(A)| rad(B)` entrywise, which is what any
   midpoint-radius product must carry and is identical to [`MMul4`](@ref)'s; and
-* the accuracy part, `u|C| + γ_N² Σᵢ|aᵢ||bᵢ|` with `N` the number of products summed and
-  `γ_N = Nu/(1−Nu)`, from [`compensated_terms`](@ref)'s docstring.
+* the accuracy part, `(u|C| + κ(γ_N² Σᵢ|aᵢ||bᵢ| + 5N·eta))/(1 − u)` with `N` the number of products
+  summed, `γ_N = Nu/(1−Nu)`, `eta` the underflow unit and `κ = 1` for real data, `3/2` for complex:
+  Proposition 5.5 of the reference with its underflow term, see `_accuracy_term`.
 
 The `γ_N²` is the point: `MMul3`, `MMul4` and `MMul5` all charge the accumulation over the `k`
 summands at order `γ_k`, and at `k = 5000` in `Float64` that is `1.1e-12` against this routine's
@@ -130,14 +147,12 @@ function mmul_ogita_rump_oishi_2005(A::BallMatrix{T, S}, B::BallMatrix{T, S}) wh
     # N summands per entry: k for a real product, 2k for a complex one, whose real and imaginary
     # parts are each a difference or sum of two real dot products of length k
     N = S <: Complex ? 2k : k
-    rC = _accuracy_term(_modulus_up(mC), absprod, N, T)
+    rC = _accuracy_term(_modulus_up(mC), absprod, N, T, S <: Complex)
 
     # the interval part, as in MMul4
     rC = setrounding(T, RoundUp) do
         rC .+ absA * rB .+ rA * (absB .+ rB)
     end
-    # a complex radius must cover both components; the accuracy term above bounds each part, so
-    # their sum bounds the modulus
     return BallMatrix(mC, rC)
 end
 

@@ -10,24 +10,26 @@ import RoundingEmulator: add_up, add_down, sub_up, sub_down,
 """
     machine_epsilon(::Type{T}) where T <: AbstractFloat
 
-Return the machine epsilon (unit roundoff) for floating-point type `T`.
-This is the maximum relative error introduced by a single rounded floating-point
-operation and is used throughout the package when inflating radii.
+Return the machine epsilon `eps(T)` of the floating-point type `T`, the spacing of the floats
+in `[1, 2)`. It is TWICE the unit roundoff `u` of round-to-nearest ([`unit_roundoff`](@ref)), so
+`machine_epsilon(T)·|c|` bounds the error of one correctly rounded operation with a factor two to
+spare; the radii of the scalar ball operations are inflated with it.
 
 For Float64, this equals 2^-52 ≈ 2.22e-16.
 For Float32, this equals 2^-23 ≈ 1.19e-7.
-For BigFloat, this depends on the current precision setting.
+For BigFloat, this is `eps(BigFloat) = 2^(1 − precision)`, with the same factor two as the others
+(it was `2^(−precision)`, the unit roundoff itself, which left the complex operations short).
 
 # Examples
 ```julia
 machine_epsilon(Float64)  # 2.220446049250313e-16
 machine_epsilon(Float32)  # 1.1920929f-7
-setprecision(256); machine_epsilon(BigFloat)  # ≈ 8.6e-78
+setprecision(256); machine_epsilon(BigFloat)  # ≈ 1.7e-77
 ```
 """
 machine_epsilon(::Type{Float64}) = 2.0^-52
 machine_epsilon(::Type{Float32}) = Float32(2.0^-23)
-machine_epsilon(::Type{BigFloat}) = BigFloat(2)^(-precision(BigFloat))
+machine_epsilon(::Type{BigFloat}) = eps(BigFloat)
 machine_epsilon(::Type{Complex{T}}) where T = machine_epsilon(T)
 
 """

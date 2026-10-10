@@ -158,6 +158,26 @@ function Base.:-(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
     BallMatrix(C, R)
 end
 
+# The scalar factor of a product λ·A as a midpoint in the working type and a radius: a ball gives
+# its own, and a plain number is converted, with the rounding of the conversion as radius (zero for
+# a float of the working type).
+_scalar_factor(::Type{T}, lam::Ball{T}) where {T} = (mid(lam), rad(lam))
+function _scalar_factor(::Type{T}, lam::Number) where {T}
+    m = lam isa Real ? convert(T, lam) : convert(Complex{T}, lam)
+    return m, _conversion_error(m, lam)
+end
+
+# Midpoint and radius of λ·A for λ in the ball (m, r) and A in the ball array (Ac, Ar), entrywise:
+#   |λa − m·a_c| ≤ roundoff(m a_c) + (|a_c| + a_r) r + a_r |m|,
+# every modulus bounded above and every operation rounded upward by emulation.
+function _scale_ball_array(m, r::T, Ac, Ar) where {T}
+    B = m * Ac
+    am = abs_up(m)
+    R = add_up.(_product_roundoff.(B),
+        add_up.(mul_up.(add_up.(abs_up.(Ac), Ar), r), mul_up.(Ar, am)))
+    return B, R
+end
+
 """
     *(λ::Number, A::BallMatrix)
 
@@ -166,26 +186,8 @@ radius are scaled, and an outward-rounded padding proportional to
 floating-point error is added so the result remains a rigorous enclosure.
 """
 function Base.:*(lam::Number, A::BallMatrix{T}) where {T}
-    # Prepare a mutable midpoint buffer with the correct promoted element
-    # type before performing the scaling.
-    B = LinearAlgebra.copymutable_oftype(A.c,
-        Base._return_type(+,
-            Tuple{eltype(A.c), typeof(lam)}))
-
-    # Scale the midpoint matrix using the standard matrix-scalar product.
-    B = lam * A.c
-
-    # Use type-parametric constants for BigFloat support
-    ϵ = machine_epsilon(T)
-    η_val = subnormal_min(T)
-    R = setrounding(T, RoundUp) do
-        # The resulting radius is composed of three pieces:
-        #   • `η_val` to account for gradual underflow;
-        #   • a proportional floating-point error term;
-        #   • the original radii scaled by `|λ|`.
-        return (η_val .+ ϵ * abs.(B)) + (A.r * abs(mid(lam)))
-    end
-
+    m, r = _scalar_factor(T, lam)
+    B, R = _scale_ball_array(m, r, A.c, A.r)
     return BallMatrix(B, R)
 end
 
@@ -197,27 +199,7 @@ Scale `A` by a scalar `Ball`. The midpoint is scaled by the midpoint of
 `λ` and floating-point rounding.
 """
 function Base.:*(lam::Ball{T, NT}, A::BallMatrix{T}) where {T, NT <: Union{T, Complex{T}}}
-    # As above, allocate mutable storage that matches the promoted midpoint
-    # type (here determined by the midpoint of `λ`).
-    B = LinearAlgebra.copymutable_oftype(A.c,
-        Base._return_type(+,
-            Tuple{eltype(A.c),
-                typeof(mid(lam))}))
-
-    # Only the midpoint of the scalar contributes to the midpoint of the
-    # result; the radius enters the enclosure bookkeeping below.
-    B = mid(lam) * A.c
-
-    # Use type-parametric constants for BigFloat support
-    ϵ = machine_epsilon(T)
-    η_val = subnormal_min(T)
-    R = setrounding(T, RoundUp) do
-        # The uncertainty now has to capture the radius of `λ` as well.  Each
-        # midpoint entry is magnified by `rad(λ)` and combined with the input
-        # radii, in addition to the floating-point padding described above.
-        return (η_val .+ ϵ * abs.(B)) + ((abs.(A.c) + A.r) * rad(lam) + A.r * abs(mid(lam)))
-    end
-
+    B, R = _scale_ball_array(mid(lam), rad(lam), A.c, A.r)
     return BallMatrix(B, R)
 end
 

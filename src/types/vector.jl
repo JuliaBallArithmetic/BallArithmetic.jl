@@ -97,18 +97,8 @@ Scale a ball vector by a scalar. The midpoint is scaled directly while
 the radius accounts for propagated uncertainty and roundoff.
 """
 function Base.:*(lam::Number, A::BallVector{T}) where {T}
-    B = LinearAlgebra.copymutable_oftype(A.c,
-        Base._return_type(+,
-            Tuple{eltype(A.c), typeof(lam)}))
-
-    B = lam * A.c
-
-    ϵ = machine_epsilon(T)
-    η_val = subnormal_min(T)
-    R = setrounding(T, RoundUp) do
-        return (η_val .+ ϵ * abs.(B)) + (A.r * abs(mid(lam)))
-    end
-
+    m, r = _scalar_factor(T, lam)
+    B, R = _scale_ball_array(m, r, A.c, A.r)
     return BallVector(B, R)
 end
 
@@ -119,19 +109,7 @@ Scale a ball vector by a ball-valued scalar, combining the uncertainty in
 both arguments.
 """
 function Base.:*(lam::Ball{T, NT}, A::BallVector{T}) where {T, NT <: Union{T, Complex{T}}}
-    B = LinearAlgebra.copymutable_oftype(A.c,
-        Base._return_type(+,
-            Tuple{eltype(A.c),
-                typeof(mid(lam))}))
-
-    B = mid(lam) * A.c
-
-    ϵ = machine_epsilon(T)
-    η_val = subnormal_min(T)
-    R = setrounding(T, RoundUp) do
-        return (η_val .+ ϵ * abs.(B)) + ((abs.(A.c) + A.r) * rad(lam) + A.r * abs(mid(lam)))
-    end
-
+    B, R = _scale_ball_array(mid(lam), rad(lam), A.c, A.r)
     return BallVector(B, R)
 end
 
