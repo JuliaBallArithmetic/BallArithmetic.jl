@@ -242,6 +242,24 @@ radius bookkeeping through the Givens rotations and the zero defects are gone.
 `‖Q_inv(AQ − QT)‖` and `‖Q_inv Q − I‖`, and the bound `‖R₁‖/(1 − ‖R₂‖)` for `S` in
 `Q⁻¹AQ = T + S`. `refine_off_diagonal_block` and `compute_block_sylvester_rhs` are removed.
 
-Not done: C6, C7; `compute_spectral_projector_schur` and `compute_spectral_coefficient`, which call
-`ordschur_ball` and still present `Q P Q*` as an enclosure of the projector; the unfaithful
-`sylvester_miyajima_enclosure`.
+`sylvester_miyajima_enclosure` (`10f9bdc`, `002150d`, `3b88e8f`): Theorems 1 and 2 of Miyajima
+(2013) in full, with `R_V` computed, `|D̃|` bounded from below and ball data accepted. Section 2.2
+of the paper (Theorems 3 and 4), Section 3 and Section 4 are not implemented, and the docstring
+says so. `triangular_sylvester_miyajima_enclosure` has one method for matrices and balls, the
+radii entering the residuals; the first-order inflation is gone. `schur_sylvester_miyajima_enclosure`
+and the stub `sylvester_krawczyk_enclosure` are removed. The direct triangular fallback threw a
+`MethodError` for `k > 1`. Unary minus of a `BallMatrix` returned a `Matrix` of balls; the method
+is added to the type.
+
+`compute_spectral_projector_schur`, `compute_spectral_projector_hermitian`,
+`compute_spectral_coefficient` (`9198871`): the defects of the ordered pair are measured against
+the ball `A`, and with `resolvent_bound` and `contour_radius` the bound of
+`spectral_projector_error_bound` is added to the radii, so that the result encloses the projector
+of every matrix of the ball; without them `projector_error_bound` is `Inf`.
+
+C6 (`4b33de2`): `rigorous_contour.jl` pairs each disc with its centre, checks the closure of the
+chain, and no longer exports `bound_enclosure`. Its bounds are for the Schur factor and the
+docstring says so. C7 (`4b33de2`, `a2fb59c`): the Gram diagnostics are converted upward.
+
+Not done in Section 2 of this report: nothing. `krawczyk_sylvester` (Section 4, a stub) is
+untouched.
