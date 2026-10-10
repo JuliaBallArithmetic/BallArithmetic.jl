@@ -156,7 +156,8 @@ end
     rng = MersenneTwister(20260928)
     Q = Matrix(qr(randn(rng, n, n)).Q)
     B = Q * diagm(0 => fill(0.7, n), 1 => ones(n - 1)) * Q'
-    r = verifyeigall(BallMatrix(B))
+    # the paper's algorithm alone; the fallback certifies these clusters (testset below)
+    r = verifyeigall(BallMatrix(B); fallback = nothing)
     @test count(r.certified) < length(r.clusters)
     for i in eachindex(r.clusters)
         if r.certified[i]
