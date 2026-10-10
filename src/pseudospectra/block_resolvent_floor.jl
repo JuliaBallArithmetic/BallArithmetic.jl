@@ -69,13 +69,25 @@ function block_resolvent_floor(vbd)
     bW = BallMatrix(W)
     bY = BallMatrix(inv(W))
     ρ = upper_bound_L2_opnorm(bY * bW - I)
-    kappa = ρ < 1 ?
-            mul_up(upper_bound_L2_opnorm(bW),
-        div_up(upper_bound_L2_opnorm(bY), sub_down(one(T), T(ρ)))) : T(Inf)
+    kappa = ρ < 1 ? mul_up(T(_frame_norm(bW)), div_up(T(_frame_norm(bY)), sub_down(one(T), T(ρ)))) :
+            T(Inf)
     blocks = BallMatrix[vbd.block_diagonal[cl, cl] for cl in vbd.clusters]
     return BlockResolventFloor{T}(Complex{T}.(vbd.block_centers),
         Vector{T}(vbd.block_nonnormality), Vector{T}(vbd.block_coupling), blocks,
         T(vbd.block_residual_norm), T(kappa))
+end
+
+# Upper bound of the spectral norm of a frame: the smaller of the bound from a verified singular
+# value computation and of the cheap ones. For a frame with nearly orthonormal columns the cheap
+# bounds (through |W|, or √(‖W‖₁‖W‖_∞)) exceed the norm by a factor that grows like √n.
+function _frame_norm(M::BallMatrix)
+    cheap = upper_bound_L2_opnorm(M)
+    tight = try
+        svd_bound_L2_opnorm(M)
+    catch
+        cheap
+    end
+    return (isfinite(tight) && tight > 0) ? min(cheap, tight) : cheap
 end
 
 # lower bound of σ_min(P − zI) over the ball P, by a verified singular value computation
