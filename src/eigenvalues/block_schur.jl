@@ -1,20 +1,26 @@
-# Rigorous block Schur decomposition with verified error bounds
-# Based on Miyajima's verified block diagonalization framework
+# A block form of a matrix in the basis of a verified block diagonalisation, with the two residuals
+# that say how far it is from a similarity.
 
 """
     RigorousBlockSchurResult
 
-Container returned by [`rigorous_block_schur`](@ref) encapsulating a verified
-block Schur decomposition `A ≈ Q * T * Q'` where:
-- `Q` is an approximately orthogonal/unitary transformation (as ball matrix)
-- `T` is in block upper quasi-triangular form
-- Diagonal blocks correspond to eigenvalue clusters
-- Off-diagonal blocks are rigorously bounded
+Returned by [`rigorous_block_schur`](@ref). For the matrix `A`, a basis `Q`, a matrix
+`Q_inv ≈ Q⁻¹` computed in floating point, and a block matrix `T`, it holds the two residuals
 
-The decomposition satisfies:
-- `A ≈ Q * T * Q'` with rigorous residual bounds
-- `Q' * Q ≈ I` with rigorous orthogonality defect bounds
-- Each diagonal block `T[cluster_k, cluster_k]` contains eigenvalues from cluster k
+    R₁ = Q_inv (A Q − Q T),        R₂ = Q_inv Q − I,
+
+through upper bounds of their spectral norms, `projected_residual_norm` and
+`inverse_defect_norm`. When `inverse_defect_norm < 1`, `Q` is invertible,
+`Q⁻¹ = (I + R₂)⁻¹ Q_inv`, and
+
+    Q⁻¹ A Q = T + S,        S = (I + R₂)⁻¹ R₁,        ‖S‖₂ ≤ ‖R₁‖₂ / (1 − ‖R₂‖₂),
+
+an identity; the last bound is `perturbation_norm` (`Inf` when `inverse_defect_norm ≥ 1`). So `A`
+is similar to a matrix within `perturbation_norm` of `T`, and no inverse is enclosed. The
+statements hold for every `A`, `Q` and `T` in the respective balls.
+
+`Q_inv` is the adjoint of `Q` when the basis is unitary and `inv` of its midpoint otherwise; it is
+NOT `Q'` in general.
 """
 struct RigorousBlockSchurResult{QT, TT, IT, RT, VT}
     """Orthogonal/unitary transformation matrix (as ball matrix)."""
@@ -27,10 +33,14 @@ struct RigorousBlockSchurResult{QT, TT, IT, RT, VT}
     cluster_intervals::Vector{IT}
     """Diagonal blocks extracted from T."""
     diagonal_blocks::Vector{TT}
-    """Rigorous bound on residual ‖A - Q*T*Q'‖₂."""
-    residual_norm::RT
-    """Rigorous bound on orthogonality defect ‖Q'*Q - I‖₂."""
-    orthogonality_defect::RT
+    """Upper bound of ‖Q_inv (A Q − Q T)‖₂."""
+    projected_residual_norm::RT
+    """Upper bound of ‖Q_inv Q − I‖₂."""
+    inverse_defect_norm::RT
+    """Upper bound of ‖S‖₂ in Q⁻¹AQ = T + S; Inf when the inverse defect is not below 1."""
+    perturbation_norm::RT
+    """The floating-point approximate inverse of Q the residuals were computed with."""
+    Q_inv::QT
     """Rigorous bound on ‖T‖₂ (norm of block triangular form)."""
     block_schur_norm::RT
     """Maximum norm of off-diagonal blocks."""
@@ -44,54 +54,36 @@ end
 Base.length(result::RigorousBlockSchurResult) = length(result.clusters)
 
 """
-    rigorous_block_schur(A::BallMatrix; hermitian=false, block_structure=:quasi_triangular)
+    rigorous_block_schur(A::BallMatrix; hermitian = false, block_structure = :quasi_triangular,
+                         vbd_method = :auto)
 
-Compute a rigorous block Schur decomposition `A ≈ Q * T * Q'` where `Q` is
-orthogonal/unitary and `T` is in block form determined by eigenvalue clustering.
+A block form `T` of `A` in the basis `Q` of a verified block diagonalisation, with the residuals
+that bound its distance from a similarity. See [`RigorousBlockSchurResult`](@ref) for the
+statement that the result carries.
 
-The method follows Miyajima's VBD framework:
-1. Apply verified block diagonalization to identify eigenvalue clusters
-2. Construct orthogonal basis `Q` from the diagonalizing transformation
-3. Transform matrix to block form `T = Q' * A * Q`
-4. Verify orthogonality of `Q` and residual bounds
+# Steps
 
-# Arguments
-- `A::BallMatrix`: Square ball matrix to decompose
-- `hermitian::Bool = false`: Whether to assume `A` is Hermitian
-- `block_structure::Symbol = :quasi_triangular`: Block structure to compute
-  - `:diagonal`: Keep only diagonal blocks (same as VBD)
-  - `:quasi_triangular`: Keep upper triangular block structure
-  - `:full`: Keep all blocks (no truncation)
+1. The verified block diagonalisation gives the clusters, their intervals and the basis:
+   [`miyajima2014a_schurnewton`](@ref) (Schur form followed by a Newton step for the decoupling)
+   for a non-Hermitian matrix, [`schur_gershgorin_enclosure`](@ref) for a Hermitian one
+   (`vbd_method = :schur_newton` or `:nsd`; `:auto` chooses by `hermitian`). The clusters and
+   intervals of the result are the certified ones of that routine.
+2. `Q` is that basis and `Q_inv` an approximate inverse in floating point (the adjoint for a
+   unitary basis).
+3. `T = Q_inv A Q` in ball arithmetic, with the blocks that `block_structure` drops set to zero:
+   `:diagonal` keeps the diagonal blocks, `:quasi_triangular` the blocks on and above the
+   diagonal, `:full` everything.
+4. `R₁ = Q_inv (A Q − Q T)` and `R₂ = Q_inv Q − I` are computed in ball arithmetic and their
+   spectral norms bounded from above; the dropped blocks are therefore in `R₁`.
 
-# Returns
-[`RigorousBlockSchurResult`](@ref) containing the decomposition and verification data.
+The device of an arbitrary `Y ≈ X⁻¹` with the two residuals `Y(AX − XD)` and `YX − I` in place of
+an enclosed inverse is that of Theorem 2 of
 
-# Example
-```julia
-using BallArithmetic, LinearAlgebra
+S. Miyajima, *Fast enclosure for all eigenvalues and invariant subspaces in generalized
+eigenvalue problems*, SIAM J. Matrix Anal. Appl. 35 (2014), 1205–1225,
+doi:10.1137/140953150 ([Miyajima2014a](@cite)),
 
-# Create a matrix with clustered eigenvalues
-A = BallMatrix([2.0 0.1 0.05 0.02;
-                0.1 2.1 0.03 0.01;
-                0.05 0.03 5.0 0.15;
-                0.02 0.01 0.15 5.1])
-
-# Compute block Schur form
-result = rigorous_block_schur(A; hermitian=true)
-
-# Access components
-Q = result.Q
-T = result.T
-
-# Verify decomposition
-@assert result.residual_norm < 1e-10
-@assert result.orthogonality_defect < 1e-10
-```
-
-# References
-
-* [Miyajima2014a](@cite) Miyajima, SIAM J. Matrix Anal. Appl. 35, 1205–1225 (2014)
-* [Miyajima2014](@cite) Miyajima, Japan J. Indust. Appl. Math. 31, 513–539 (2014)
+used here with a block matrix `T` in place of the diagonal one.
 """
 function rigorous_block_schur(A::BallMatrix{RT, NT};
                                hermitian::Bool = false,
@@ -138,26 +130,23 @@ function rigorous_block_schur(A::BallMatrix{RT, NT};
     # Step 5: Extract diagonal blocks
     diagonal_blocks = [T[cluster, cluster] for cluster in vbd.clusters]
 
-    # Step 6: Defect of the transformation.  For a unitary basis this is the
-    # orthogonality defect ‖QᴴQ − I‖₂; for the block-orthonormal basis it measures the
-    # inter-block non-orthogonality of W (still ‖Q⁻¹Q − I‖₂ = 0 in exact arithmetic,
-    # so it reports the certified rounding/coupling slack).
+    # Step 6: the two residuals. R₂ = Q_inv Q − I says how far Q_inv is from the inverse of Q,
+    # R₁ = Q_inv (A Q − Q T) how far T is from Q_inv A Q; with ‖R₂‖ < 1, Q⁻¹AQ = T + (I + R₂)⁻¹R₁.
     I_ball = BallMatrix(Matrix{NT}(I, n, n))
-    orthogonality_defect = collatz_upper_bound_L2_opnorm(Q_inv * Q - I_ball)
+    inverse_defect_norm = collatz_upper_bound_L2_opnorm(Q_inv * Q - I_ball)
+    projected_residual_norm = collatz_upper_bound_L2_opnorm(Q_inv * (A * Q - Q * T))
+    perturbation_norm = inverse_defect_norm < 1 ?
+                        div_up(projected_residual_norm, sub_down(one(RT), inverse_defect_norm)) :
+                        RT(Inf)
 
-    # Step 7: Compute residual ‖A - Q*T*Q⁻¹‖₂ (the similarity, not Q*T*Qᴴ)
-    reconstruction = Q * T * Q_inv
-    residual = A - reconstruction
-    residual_norm = collatz_upper_bound_L2_opnorm(residual)
-
-    # Step 8: Compute norms
+    # Step 7: norms of T
     block_schur_norm = collatz_upper_bound_L2_opnorm(T)
     off_diagonal_norm = _compute_off_diagonal_norm(T, vbd.clusters)
 
     return RigorousBlockSchurResult(
         Q, T, vbd.clusters, vbd.cluster_intervals,
-        diagonal_blocks, residual_norm, orthogonality_defect,
-        block_schur_norm, off_diagonal_norm, A, vbd
+        diagonal_blocks, projected_residual_norm, inverse_defect_norm, perturbation_norm,
+        Q_inv, block_schur_norm, off_diagonal_norm, A, vbd
     )
 end
 
@@ -244,45 +233,12 @@ function extract_cluster_block(result::RigorousBlockSchurResult, i::Int, j::Int)
 end
 
 """
-    verify_block_schur_properties(result::RigorousBlockSchurResult; tol=1e-10)
+    verify_block_schur_properties(result::RigorousBlockSchurResult; tol = 1e-10)
 
-Verify that the block Schur decomposition satisfies all required properties
-within the specified tolerance.
-
-Checks:
-1. Residual: ‖A - Q*T*Q'‖₂ < tol
-2. Orthogonality: ‖Q'*Q - I‖₂ < tol
-3. Block structure preserved (if applicable)
-
-Returns `true` if all properties are satisfied, `false` otherwise.
+Whether `projected_residual_norm` and `inverse_defect_norm` are both below `tol`.
 """
-function verify_block_schur_properties(result::RigorousBlockSchurResult;
-                                        tol::Real = 1e-10)
-    checks = [
-        result.residual_norm < tol,
-        result.orthogonality_defect < tol
-    ]
-
-    return all(checks)
-end
-
-"""
-    compute_block_sylvester_rhs(result::RigorousBlockSchurResult, i::Int, j::Int)
-
-For clusters i < j, compute the right-hand side for the block Sylvester equation
-that would refine the (i,j) off-diagonal block.
-
-Given `T_ii * X + X * T_jj = C`, returns the matrix `C` that should equal
-`T[cluster_i, cluster_j]` if the block Schur form were exact.
-"""
-function compute_block_sylvester_rhs(result::RigorousBlockSchurResult, i::Int, j::Int)
-    i < j || throw(ArgumentError("Must have i < j for off-diagonal block"))
-
-    # The RHS for Sylvester equation T_ii * X + X * T_jj = C is C = T_ij
-    # This can be used to verify or refine the off-diagonal block
-    T_ij = extract_cluster_block(result, i, j)
-    return T_ij
-end
+verify_block_schur_properties(result::RigorousBlockSchurResult; tol::Real = 1e-10) =
+    result.projected_residual_norm < tol && result.inverse_defect_norm < tol
 
 """
     estimate_block_separation(result::RigorousBlockSchurResult, i::Int, j::Int)
@@ -293,43 +249,4 @@ separating the corresponding invariant subspaces.
 """
 function estimate_block_separation(result::RigorousBlockSchurResult, i::Int, j::Int)
     return sep_clusters(result.cluster_intervals, result.clusters[i], result.clusters[j])
-end
-
-"""
-    refine_off_diagonal_block(result::RigorousBlockSchurResult, i::Int, j::Int)
-
-Refine the (i,j) off-diagonal block by solving the block Sylvester equation
-with Miyajima's verified solver.
-
-For i < j, solves `T_ii' * Y - Y * T_jj' = T_ij'` to obtain a refined
-enclosure for the (i,j) off-diagonal block.
-
-Returns a `BallMatrix` with rigorous enclosure for the refined block.
-"""
-function refine_off_diagonal_block(result::RigorousBlockSchurResult, i::Int, j::Int)
-    i < j || throw(ArgumentError("Only upper triangular blocks (i < j) can be refined"))
-
-    # Extract blocks
-    T_ii = result.diagonal_blocks[i]
-    T_jj = result.diagonal_blocks[j]
-    T_ij = extract_cluster_block(result, i, j)
-
-    # Set up Sylvester equation: T_ii' * Y - Y * T_jj' = T_ij'
-    # This is equivalent to: A * Y + Y * B = C
-    # where A = T_ii', B = -T_jj', C = T_ij'
-
-    A = BallMatrix(adjoint(mid(T_ii)))
-    B = -BallMatrix(adjoint(mid(T_jj)))
-    C = BallMatrix(adjoint(mid(T_ij)))
-
-    # Compute approximate solution
-    Y_approx = sylvester(mid(A), mid(B), mid(C))
-
-    # Apply Miyajima verification
-    Y_verified = sylvester_miyajima_enclosure(mid(A), mid(B), mid(C), Y_approx)
-
-    # Transpose back to get refined X_ij
-    X_ij_refined = BallMatrix(adjoint(mid(Y_verified)), adjoint(rad(Y_verified)))
-
-    return X_ij_refined
 end

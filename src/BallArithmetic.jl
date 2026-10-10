@@ -130,8 +130,7 @@ export RigorousSpectralProjectorsResult, miyajima_spectral_projectors,
        projector_condition_number
 export GEVInvariantSubspace, gev_invariant_subspaces
 export RigorousBlockSchurResult, rigorous_block_schur, extract_cluster_block,
-       verify_block_schur_properties, estimate_block_separation,
-       refine_off_diagonal_block, compute_block_sylvester_rhs
+       verify_block_schur_properties, estimate_block_separation
 include("eigenvalues/verified_gev.jl")
 export GEVResult, verify_generalized_eigenpairs, compute_beta_bound
 export eigenvalue_intervals_disjoint

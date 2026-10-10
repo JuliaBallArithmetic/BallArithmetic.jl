@@ -84,8 +84,6 @@ rigorous_block_schur
 extract_cluster_block
 verify_block_schur_properties
 estimate_block_separation
-refine_off_diagonal_block
-compute_block_sylvester_rhs
 ```
 
 ## Schur Spectral Projectors

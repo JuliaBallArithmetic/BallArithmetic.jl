@@ -172,10 +172,10 @@ end
     @test length(result.clusters) == 2
 
     # Verify orthogonality
-    @test result.orthogonality_defect < 1e-10
+    @test result.inverse_defect_norm < 1e-10
 
     # Verify residual
-    @test result.residual_norm < 1e-10
+    @test result.projected_residual_norm < 1e-10
 
     # Test verify function
     @test verify_block_schur_properties(result; tol=1e-9)
@@ -196,8 +196,8 @@ end
     @test length(result.diagonal_blocks) >= 2
 
     # Verify basic properties (residual scales with radii for interval matrices)
-    @test result.residual_norm < 2.0
-    @test result.orthogonality_defect < 1e-9
+    @test result.projected_residual_norm < 2.0
+    @test result.inverse_defect_norm < 1e-9
 
     # If we have at least 2 clusters, test block extraction
     if length(result.clusters) >= 2
@@ -223,9 +223,9 @@ end
     @test result_diag.clusters == result_quasi.clusters == result_full.clusters
 
     # Residuals should all be small
-    @test result_diag.residual_norm < 1e-10
-    @test result_quasi.residual_norm < 1e-10
-    @test result_full.residual_norm < 1e-10
+    @test result_diag.projected_residual_norm < 1e-10
+    @test result_quasi.projected_residual_norm < 1e-10
+    @test result_full.projected_residual_norm < 1e-10
 
     # Diagonal structure should have minimal off-diagonal norm
     @test result_diag.off_diagonal_norm < 1e-15
@@ -249,26 +249,26 @@ end
     @test 2.5 < sep < 3.5
 end
 
-@testset "Block Schur - Off-Diagonal Refinement" begin
-    # Create matrix with non-trivial off-diagonal
-    A = BallMatrix([2.0  0.2  0.1;
-                    0.2  2.5  0.05;
-                    0.1  0.05 5.0])
+@testset "Block Schur - the similarity it certifies" begin
+    # Q⁻¹AQ = T + S with ‖S‖ ≤ perturbation_norm: checked at 512 bits for the midpoints
+    for (A, herm) in (([4.0 1.0 0.2 0.1; 0.3 3.0 0.5 0.2; 0.1 0.2 -1.0 0.4; 0.05 0.1 0.3 -2.0], false),
+        ([2.0 0.1 0.05; 0.1 5.0 0.2; 0.05 0.2 9.0], true)),
+        structure in (:full, :quasi_triangular, :diagonal)
 
-    result = rigorous_block_schur(A; hermitian=true, block_structure=:quasi_triangular)
-
-    if length(result.clusters) >= 2
-        # Try to refine first off-diagonal block
-        # This should work if clusters are well-separated
-        try
-            T_12_refined = refine_off_diagonal_block(result, 1, 2)
-            @test size(T_12_refined) == (length(result.clusters[1]), length(result.clusters[2]))
-        catch e
-            # May fail if spectral gap is too small or Sylvester conditions not met
-            # Just check that an exception was thrown (expected for some cases)
-            @test e isa Exception
+        r = rigorous_block_schur(BallMatrix(A); hermitian = herm, block_structure = structure)
+        @test r.inverse_defect_norm < 1e-10
+        @test isfinite(r.perturbation_norm)
+        @test r.perturbation_norm ≥ r.projected_residual_norm
+        S_norm, R1_norm, R2_norm = setprecision(BigFloat, 512) do
+            Ab, Qb, Yb, Tb = big.(A), big.(mid(r.Q)), big.(mid(r.Q_inv)), big.(mid(r.T))
+            opnorm(ComplexF64.(inv(Qb) * Ab * Qb - Tb)), opnorm(ComplexF64.(Yb * (Ab * Qb - Qb * Tb))),
+            opnorm(ComplexF64.(Yb * Qb - I))
         end
+        @test r.perturbation_norm ≥ S_norm * (1 - 1e-10)
+        @test r.projected_residual_norm ≥ R1_norm * (1 - 1e-10)
+        @test r.inverse_defect_norm ≥ R2_norm * (1 - 1e-10)
     end
+    @test !isdefined(BallArithmetic, :refine_off_diagonal_block)
 end
 
 @testset "Integration: VBD → Projectors → Block Schur" begin
@@ -318,7 +318,7 @@ end
 
         # Block Schur
         schur = rigorous_block_schur(A_big; hermitian=true)
-        @test schur.residual_norm < BigFloat(1e-30)
+        @test schur.projected_residual_norm < BigFloat(1e-30)
     end
 end
 
@@ -355,5 +355,5 @@ end
 
     # Block Schur
     schur = rigorous_block_schur(A; hermitian=false)
-    @test schur.residual_norm < 1e-9
+    @test schur.projected_residual_norm < 1e-9
 end

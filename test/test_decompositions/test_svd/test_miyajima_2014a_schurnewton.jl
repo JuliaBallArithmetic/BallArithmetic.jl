@@ -153,14 +153,14 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
         # block_schur: the inv-based reconstruction (adjoint→inv fix) gives a small
         # residual for the non-unitary basis (the old adjoint version inflated it).
         bs = rigorous_block_schur(A; vbd_method = :schur_newton)
-        @test bs.residual_norm < 1e-8
+        @test bs.projected_residual_norm < 1e-8
 
         sp = miyajima_spectral_projectors(A; vbd_method = :schur_newton)
         @test sp.idempotency_defect < 1e-8
 
         # :njd is accepted as a deprecated synonym (same result)
         bs2 = rigorous_block_schur(A; vbd_method = :njd)
-        @test bs2.residual_norm < 1e-8
+        @test bs2.projected_residual_norm < 1e-8
     end
 
     @testset "BigFloat genericity" begin
