@@ -157,6 +157,50 @@ _rc_circle_max(d, c, r; n = 200_000) =
             zmax = 1.0, method = :other)
     end
 
+    @testset "the sample evaluators (audit items C2, C4, C5)" begin
+        # C5, the Ogita cache path: the radius of T must be in the certified matrix. T = diag(2,
+        # 0.5) ± 0.3 contains diag(2, 0.8), whose σ_min at z = 1 + 1e-5i is 0.2.
+        _RC._clear_ogita_cache!()
+        T = BallMatrix(ComplexF64[2 0; 0 0.5], fill(0.3, 2, 2))
+        _RC._evaluate_sample_with_ogita_cache(T, 1.0 + 0.0im, 1)              # seeds the cache
+        r = _RC._evaluate_sample_with_ogita_cache(T, 1.0 + 1e-5im, 2)
+        @test r.lo_val <= abs(0.8 - (1.0 + 1e-5im))
+        @test r.hi_res >= 1 / abs(0.8 - (1.0 + 1e-5im)) || r.hi_res == Inf
+        _RC._clear_ogita_cache!()
+
+        # C4, the BigFloat Ogita path at an exact eigenvalue: σ_min = 0, so no positive lower
+        # bound and no finite resolvent bound may be reported, and nothing may be NaN
+        setprecision(BigFloat, 256) do
+            _RC._clear_bf_ogita_cache!()
+            for Tm in (Complex{BigFloat}[1 0; 0 0.5], Complex{BigFloat}[1 1000; 0 0.5])
+                Tb = BallMatrix(Tm)
+                r = _RC._evaluate_sample_ogita_bigfloat(Tb, 1.0 + 0.0im, 1; use_cache = false)
+                @test r.lo_val <= 0
+                @test r.hi_res == Inf
+                @test !isnan(r.hi_res) && !isnan(r.lo_val)
+            end
+            # and away from the spectrum it still certifies
+            r = _RC._evaluate_sample_ogita_bigfloat(BallMatrix(Complex{BigFloat}[1 0; 0 0.5]),
+                2.0 + 0.0im, 1; use_cache = false)
+            @test r.lo_val > 0 && r.lo_val <= 1          # σ_min(T − 2I) = 1
+            @test r.hi_res >= 1
+        end
+
+        # C2, the parametric driver: the bound it returns must hold on the polygon. The audit's
+        # matrix: an eigenvalue 1e-6 outside the circle, between two vertices, which the leading
+        # block alone does not see. Either the run fails loudly or its bound is one.
+        N = 256
+        pp = (1 + 1e-6) * cis(π / N)
+        d = ComplexF64[0, 0.3, pp, -0.2]
+        circle = _RC.CertificationCircle(0.0, 1.0; samples = N)
+        out = try
+            _RC.run_certification_parametric(Matrix(Diagonal(d)), circle; η = 0.5, log_io = devnull)
+        catch e
+            e
+        end
+        @test out isa Exception || out.resolvent_schur >= _rc_polygon_max(d, 0.0, 1.0, N) * (1 - 1e-9)
+    end
+
     @testset "bound_resolvent_schur" begin
         @test _RC.bound_resolvent_schur(2.0, 0.5) >= 4.0
         @test _RC.bound_resolvent_schur(2.0, 1.0) == Inf

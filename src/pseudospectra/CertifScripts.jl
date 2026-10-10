@@ -6,7 +6,7 @@ using Base: dirname, mod1
 
 using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm,
                         upper_bound_L2_opnorm, inf,
-                        add_up, sub_down, mul_up, div_up, abs_up, dist_up,
+                        add_up, sub_down, mul_up, div_up, div_down, abs_up, dist_up,
                         verified_cholesky,
                         backward_substitution, forward_substitution,
                         refine_schur_decomposition,
@@ -156,6 +156,20 @@ function _require_config(ref::Base.RefValue, name::AbstractString)
     return value
 end
 
+# From the certified ball for σ_min(T − zI): its lower end, an enclosure of 1/σ_min and an upper
+# bound of it. When the ball is not proved positive nothing bounds the resolvent at this point: the
+# lower end is returned as it is (zero or negative) and the resolvent bound as Inf, and the
+# refinement stops on it. The ball is never replaced by a guess.
+function _sigma_fields(val::Ball)
+    lo = _lower_bound(val)
+    if isfinite(lo) && lo > 0
+        res = inv(val)
+        return lo, res, _upper_bound(res)
+    end
+    RT = typeof(lo)
+    return lo, Ball(RT(Inf), zero(RT)), RT(Inf)
+end
+
 function _evaluate_sample(T::BallMatrix{ET}, z::Number, idx::Int) where {ET}
     # Convert z to the precision of the matrix
     RT = real(ET)
@@ -166,15 +180,7 @@ function _evaluate_sample(T::BallMatrix{ET}, z::Number, idx::Int) where {ET}
     elapsed = @elapsed Σ = svdbox(T - bz * LinearAlgebra.I)
 
     val = Σ[end]
-    res = 1 / val
-
-    lo_val = setrounding(RT, RoundDown) do
-        return RT(val.c) - RT(val.r)
-    end
-
-    hi_res = setrounding(RT, RoundUp) do
-        return RT(res.c) + RT(res.r)
-    end
+    lo_val, res, hi_res = _sigma_fields(val)
 
     return (
         i = idx,
@@ -321,8 +327,11 @@ function _evaluate_sample_with_ogita_cache(T::BallMatrix{ET}, z::Number, idx::In
                     ogita_success = true
                     _ogita_cache_hits[] += 1
 
-                    # Create BallMatrix for certification
-                    T_ball = BallMatrix(T_shifted, fill(eps(RT) * matrix_norm, n, n))
+                    # The matrix certified is the ball T − zI itself, so the radius of T (nonzero
+                    # when a polynomial of the Schur factor is certified) and the rounding of the
+                    # shift are in it. The refined SVD is only the approximation Theorem 7 of
+                    # Miyajima (2014) is applied with.
+                    T_ball = T - Ball(z_converted, zero(RT)) * LinearAlgebra.I
                     svd_refined = (U = refined.U, S = Σ_vec, V = refined.V, Vt = refined.V')
                     Σ = _certify_svd(T_ball, svd_refined, MiyajimaM1(); apply_vbd = false)
 
@@ -359,15 +368,7 @@ function _evaluate_sample_with_ogita_cache(T::BallMatrix{ET}, z::Number, idx::In
     end
 
     val = Σ[end]
-    res = 1 / val
-
-    lo_val = setrounding(RT, RoundDown) do
-        return RT(val.c) - RT(val.r)
-    end
-
-    hi_res = setrounding(RT, RoundUp) do
-        return RT(res.c) + RT(res.r)
-    end
+    lo_val, res, hi_res = _sigma_fields(val)
 
     return (
         i = idx,
@@ -628,6 +629,9 @@ function _evaluate_sample_parametric(T::BallMatrix{ET}, z::Number, idx::Int;
         _parametric_cache_misses[] += 1
     end
 
+    # the Sylvester route works on the midpoint: a Schur factor with a radius is not covered by it
+    all(iszero, T.r) ||
+        throw(ArgumentError("the parametric certifier needs a Schur factor with zero radius"))
     elapsed = @elapsed result = parametric_resolvent_bound(
         precomp, Matrix(T.c), z_converted, config;
         R = R, svd_warm_start = warm_start
@@ -650,24 +654,19 @@ function _evaluate_sample_parametric(T::BallMatrix{ET}, z::Number, idx::Int;
     end
 
     # Convert to standard format
-    if result.success
-        # Compute σ_min from M_A (M_A = 1/σ_min)
-        sigma_min = RT(1) / result.M_A
-        sigma_min_ball = Ball(sigma_min, zero(RT))  # Approximate
-
-        lo_val = setrounding(RT, RoundDown) do
-            sigma_min
-        end
-
-        hi_res = setrounding(RT, RoundUp) do
-            result.resolvent_bound
-        end
+    if result.success && isfinite(result.resolvent_bound) && result.resolvent_bound > 0
+        # The refinement needs a lower bound of σ_min(T − zI) for the WHOLE matrix: the reciprocal,
+        # rounded down, of the bound on ‖(zI − T)⁻¹‖. (It used 1/M_A, the bound for the leading
+        # k×k block alone, which is not a bound for T.) It is stored as a ball of radius zero whose
+        # value is that lower bound; the smallest singular value itself is not enclosed here.
+        hi_res = RT(result.resolvent_bound)
+        lo_val = div_down(one(RT), hi_res)
 
         return (
             i = idx,
-            val = sigma_min_ball,
+            val = Ball(lo_val, zero(RT)),
             lo_val = lo_val,
-            res = Ball(result.resolvent_bound, zero(RT)),
+            res = Ball(hi_res, zero(RT)),
             hi_res = hi_res,
             second_val = Ball(zero(RT), zero(RT)),  # Not available from parametric
             z = z_converted,
@@ -1819,50 +1818,19 @@ function _evaluate_sample_ogita_bigfloat(T_matrix::BallMatrix{ET}, z::Number, id
         Σ_vec = isa(refined.Σ, Diagonal) ? diag(refined.Σ) : refined.Σ
         svd_refined = (U = refined.U, S = Σ_vec, V = refined.V, Vt = refined.V')
 
-        # Create BallMatrix for certification (with zero radius since we're working with midpoint)
-        T_shifted_ball = BallMatrix(T_shifted, fill(zero(RT), n, n))
+        # The matrix certified is the ball T − zI, with the radius of T and the rounding of the
+        # shift; the refined SVD is the approximation the certificate is computed with.
+        T_shifted_ball = T_matrix - Ball(z_converted, zero(RT)) * I
         result = _certify_svd(T_shifted_ball, svd_refined, MiyajimaM1(); apply_vbd = true)
         Σ = result.singular_values
 
-        # Check if smallest singular value Ball contains zero but has positive midpoint
-        # This happens when certification radius swamps tiny singular values
-        # In this case, use a relative error bound instead
-        σ_min_ball = Σ[end]
-        if σ_min_ball.c > zero(RT) && σ_min_ball.c - σ_min_ball.r <= zero(RT)
-            # Certification radius is too large - use conservative relative bound
-            # For inverse iteration, typical relative error is O(eps) after convergence
-            rel_error = RT(100) * eps(RT)  # Conservative factor
-            new_radius = setrounding(RT, RoundUp) do
-                abs(σ_min_ball.c) * rel_error
-            end
-            Σ[end] = Ball(σ_min_ball.c, max(new_radius, σ_min_ball.r * eps(RT)))
-            @debug "Certification radius too large for tiny σ_min, using relative bound" σ_min=σ_min_ball.c old_rad=σ_min_ball.r new_rad=Σ[end].r
-        end
     end
 
+    # A certified ball for σ_min that contains zero is reported as such: its radius was once
+    # replaced here by 100·eps·|c| and its lower end by a positive number, which turned "not
+    # certified" into a bound (at an exact eigenvalue it returned σ_min ≥ 1.7e-77).
     val = Σ[end]
-
-    # Compute lo_val (lower bound of smallest singular value)
-    lo_val = setrounding(RT, RoundDown) do
-        return RT(val.c) - RT(val.r)
-    end
-
-    # Check if val contains zero (certification radius swamped tiny σ_min)
-    if lo_val <= zero(RT)
-        # Use midpoint with conservative relative error for resolvent
-        lo_val = setrounding(RT, RoundDown) do
-            val.c * (one(RT) - RT(100) * eps(RT))
-        end
-        lo_val = max(lo_val, eps(RT))  # Ensure positive
-    end
-
-    res = Ball(one(RT) / val.c, setrounding(RT, RoundUp) do
-        one(RT) / lo_val - one(RT) / val.c
-    end)
-
-    hi_res = setrounding(RT, RoundUp) do
-        return RT(res.c) + RT(res.r)
-    end
+    lo_val, res, hi_res = _sigma_fields(val)
 
     return (
         i = idx,
