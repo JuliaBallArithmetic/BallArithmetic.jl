@@ -267,6 +267,24 @@ end
         @test r.perturbation_norm ≥ S_norm * (1 - 1e-10)
         @test r.projected_residual_norm ≥ R1_norm * (1 - 1e-10)
         @test r.inverse_defect_norm ≥ R2_norm * (1 - 1e-10)
+        # the ball matrix `similar` contains Q⁻¹AQ, whatever blocks T keeps
+        M = setprecision(() -> (Qb = big.(mid(r.Q)); inv(Qb) * big.(A) * Qb), BigFloat, 512)
+        @test r.perturbation_error < 1e-12
+        @test all(abs.(M - mid(r.similar)) .≤ rad(r.similar) .* (1 + 1e-12))
+        @test size(r.perturbation_approx) == size(A)
+        # the blocks T drops are in S̃
+        structure === :diagonal && length(r.clusters) > 1 &&
+            @test opnorm(r.perturbation_approx) ≥ 0.5 * S_norm
+    end
+    # a ball of matrices: Q⁻¹BQ is in `similar` for members B of the ball
+    rng = MersenneTwister(20261011)
+    A = [4.0 1.0 0.2 0.1; 0.3 3.0 0.5 0.2; 0.1 0.2 -1.0 0.4; 0.05 0.1 0.3 -2.0]
+    r = rigorous_block_schur(BallMatrix(A, fill(1e-6, 4, 4)))
+    @test isfinite(r.perturbation_error)
+    for _ in 1:20
+        B = A + 1e-6 * (2 * rand(rng, 4, 4) .- 1)
+        M = setprecision(() -> (Qb = big.(mid(r.Q)); inv(Qb) * big.(B) * Qb), BigFloat, 512)
+        @test all(abs.(M - mid(r.similar)) .≤ rad(r.similar) .* (1 + 1e-12))
     end
     @test !isdefined(BallArithmetic, :refine_off_diagonal_block)
 end

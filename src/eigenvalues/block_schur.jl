@@ -19,6 +19,15 @@ an identity; the last bound is `perturbation_norm` (`Inf` when `inverse_defect_n
 is similar to a matrix within `perturbation_norm` of `T`, and no inverse is enclosed. The
 statements hold for every `A`, `Q` and `T` in the respective balls.
 
+`S` itself is enclosed through a floating-point solution `S̃` of `(I + R₂)S̃ = R₁`
+(`perturbation_approx`) and the residual `V = (I + R₂)S̃ − R₁`, computed in ball arithmetic:
+
+    S − S̃ = −(I + R₂)⁻¹V,        ‖S − S̃‖_p ≤ ‖V‖_p / (1 − ‖R₂‖_p),        p ∈ {2, ∞},
+
+and an entry of a matrix is at most its norm in either, so every entry of `S − S̃` is at most
+`perturbation_error`, the smaller of the two bounds (`Inf` when neither `‖R₂‖_p` is below 1).
+`similar = T + S̃ ± perturbation_error` is then a ball matrix containing `Q⁻¹AQ`.
+
 `Q_inv` is the adjoint of `Q` when the basis is unitary and `inv` of its midpoint otherwise; it is
 NOT `Q'` in general.
 """
@@ -41,6 +50,12 @@ struct RigorousBlockSchurResult{QT, TT, IT, RT, VT}
     perturbation_norm::RT
     """The floating-point approximate inverse of Q the residuals were computed with."""
     Q_inv::BallMatrix
+    """Floating-point solution S̃ of (I + R₂)S̃ = R₁."""
+    perturbation_approx::Matrix
+    """Upper bound of every entry of |S − S̃|; Inf when no ‖R₂‖_p, p ∈ {2, ∞}, is below 1."""
+    perturbation_error::RT
+    """Ball matrix containing Q⁻¹AQ: T + S̃ with `perturbation_error` added to every radius."""
+    similar::BallMatrix
     """Rigorous bound on ‖T‖₂ (norm of block triangular form)."""
     block_schur_norm::RT
     """Maximum norm of off-diagonal blocks."""
@@ -75,6 +90,9 @@ statement that the result carries.
    diagonal, `:full` everything.
 4. `R₁ = Q_inv (A Q − Q T)` and `R₂ = Q_inv Q − I` are computed in ball arithmetic and their
    spectral norms bounded from above; the dropped blocks are therefore in `R₁`.
+5. `(I + R₂)S̃ = R₁` is solved in floating point and the residual of that solve bounded in ball
+   arithmetic, which gives the ball matrix `similar` containing `Q⁻¹AQ`. The dropped blocks are
+   in `S̃`, so `similar` does not depend on `block_structure` beyond rounding.
 
 The device of an arbitrary `Y ≈ X⁻¹` with the two residuals `Y(AX − XD)` and `YX − I` in place of
 an enclosed inverse is that of Theorem 2 of
@@ -83,7 +101,10 @@ S. Miyajima, *Fast enclosure for all eigenvalues and invariant subspaces in gene
 eigenvalue problems*, SIAM J. Matrix Anal. Appl. 35 (2014), 1205–1225,
 doi:10.1137/140953150 ([Miyajima2014a](@cite)),
 
-used here with a block matrix `T` in place of the diagonal one.
+used here with a block matrix `T` in place of the diagonal one. The enclosure of `S` by a
+computed `S̃` and the residual of its solve is the lemma "Residual control of S" of I. Nisoli,
+*Enclosure of eigenvalues via approximate diagonalization* (unpublished note, 2026); the argument is the identity
+`S − S̃ = −(I + R₂)⁻¹((I + R₂)S̃ − R₁)` stated in [`RigorousBlockSchurResult`](@ref).
 """
 function rigorous_block_schur(A::BallMatrix{RT, NT};
                                hermitian::Bool = false,
@@ -133,11 +154,27 @@ function rigorous_block_schur(A::BallMatrix{RT, NT};
     # Step 6: the two residuals. R₂ = Q_inv Q − I says how far Q_inv is from the inverse of Q,
     # R₁ = Q_inv (A Q − Q T) how far T is from Q_inv A Q; with ‖R₂‖ < 1, Q⁻¹AQ = T + (I + R₂)⁻¹R₁.
     I_ball = BallMatrix(Matrix{NT}(I, n, n))
-    inverse_defect_norm = collatz_upper_bound_L2_opnorm(Q_inv * Q - I_ball)
-    projected_residual_norm = collatz_upper_bound_L2_opnorm(Q_inv * (A * Q - Q * T))
+    R2 = Q_inv * Q - I_ball
+    R1 = Q_inv * (A * Q - Q * T)
+    inverse_defect_norm = collatz_upper_bound_L2_opnorm(R2)
+    projected_residual_norm = collatz_upper_bound_L2_opnorm(R1)
     perturbation_norm = inverse_defect_norm < 1 ?
                         div_up(projected_residual_norm, sub_down(one(RT), inverse_defect_norm)) :
                         RT(Inf)
+
+    # S̃ and the residual V = (I + R₂)S̃ − R₁: ‖S − S̃‖_p ≤ ‖V‖_p/(1 − ‖R₂‖_p) for p = 2 and ∞,
+    # each of which bounds every entry of S − S̃
+    S_approx = (I + mid(R2)) \ mid(R1)
+    V = (I_ball + R2) * BallMatrix(S_approx) - R1
+    perturbation_error = RT(Inf)
+    inverse_defect_norm < 1 && (perturbation_error = div_up(collatz_upper_bound_L2_opnorm(V),
+        sub_down(one(RT), inverse_defect_norm)))
+    defect_inf = upper_bound_L_inf_opnorm(R2)
+    defect_inf < 1 && (perturbation_error = min(perturbation_error,
+        div_up(upper_bound_L_inf_opnorm(V), sub_down(one(RT), defect_inf))))
+    similar = isfinite(perturbation_error) ?
+              T + BallMatrix(S_approx, fill(perturbation_error, n, n)) :
+              BallMatrix(mid(T), fill(RT(Inf), n, n))
 
     # Step 7: norms of T
     block_schur_norm = collatz_upper_bound_L2_opnorm(T)
@@ -146,7 +183,7 @@ function rigorous_block_schur(A::BallMatrix{RT, NT};
     return RigorousBlockSchurResult(
         Q, T, vbd.clusters, vbd.cluster_intervals,
         diagonal_blocks, projected_residual_norm, inverse_defect_norm, perturbation_norm,
-        Q_inv, block_schur_norm, off_diagonal_norm, A, vbd
+        Q_inv, S_approx, perturbation_error, similar, block_schur_norm, off_diagonal_norm, A, vbd
     )
 end
 
