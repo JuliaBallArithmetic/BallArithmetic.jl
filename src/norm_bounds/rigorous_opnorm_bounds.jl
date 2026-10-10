@@ -25,6 +25,8 @@ function upper_abs(A::BallMatrix{T}) where {T <: Union{Float32, Float64}}
     end
     return out
 end
+# BigFloat: the same construction with the MPFR directed operations, so no rounding mode is set
+upper_abs(A::BallMatrix{BigFloat}) = add_up.(abs_up.(A.c), A.r)
 function upper_abs(A::BallMatrix{T}) where {T}
     absA = setrounding(T, RoundUp) do
         return abs.(A.c) + A.r
@@ -34,51 +36,71 @@ end
 upper_abs(A::AbstractMatrix{<:Union{Float32, Float64, Complex{Float32}, Complex{Float64}}}) =
     [abs_up(x) for x in A]
 
+# Collatz's inclusion for a nonnegative matrix M, applied through the map x ↦ Mx:
+#
+#     ρ(M) ≤ max_i (Mx)_i / x_i      for every positive vector x
+#
+# (L. Collatz, Einschließungssatz für die charakteristischen Zahlen von Matrizen, Math. Z. 48
+# (1942) 221-226; used in this form in (3.3) of Rump (2011), quoted at
+# `collatz_upper_bound_L2_opnorm`). The hypothesis is x > 0 in every component, so the iterate is
+# kept strictly positive: it is normalised by its largest entry and floored at eps, which is
+# allowed because ANY positive vector gives a bound, and the iteration only chooses a good one.
+# What must be rounded is the last step alone: `mulM(x)` is evaluated with the rounding mode
+# upward (a product of nonnegative arrays, so every entry is an upper bound) and each quotient
+# with `div_up`. A result that is not a number is returned as Inf, never as NaN.
+function _collatz_quotient_up(mulM, n::Integer, ::Type{RT}, iterates::Integer) where {RT <: AbstractFloat}
+    n == 0 && return zero(RT)
+    x = ones(RT, n)
+    for _ in 1:iterates
+        y = mulM(x)
+        smax = maximum(y)
+        (isfinite(smax) && smax > 0) || break
+        x = max.(y ./ smax, eps(RT))
+    end
+    y = setrounding(RT, RoundUp) do
+        mulM(x)
+    end
+    lam = zero(RT)
+    for i in 1:n
+        q = div_up(y[i], x[i])
+        q >= 0 || return RT(Inf)               # NaN, or a negative entry that should not exist
+        lam = max(lam, q)
+    end
+    return lam
+end
+
 """
-    collatz_upper_bound_L2_opnorm(A::BallMatrix; iterates=10)
+    collatz_upper_bound_L2_opnorm(A::BallMatrix; iterates = 5)
 
-Give a rigorous upper bound on the ℓ² norm of the matrix `A`
-by using the Collatz theorem.
+A rigorous upper bound on the spectral norm of every matrix in the ball `A`, by Collatz's
+inclusion applied to `|A|ᵀ|A|`.
 
-We use Perron theory here: if for two matrices with `B` positive
-`|A| < B` we have ρ(A)<=ρ(B) by Wielandt's theorem
-[Wielandt's theorem](https://mathworld.wolfram.com/WielandtsTheorem.html)
+# Reference
 
-The keyword argument `iterates` is used to establish how many
-times we are iterating the vector of ones before we use Collatz's
-estimate.
+S. M. Rump, *Verified bounds for singular values, in particular for the spectral norm of a matrix
+and its inverse*, BIT Numer. Math. **51** (2011) 367-384, doi 10.1007/s10543-010-0294-0, Section 3:
+for real or complex `A`,
+
+    ‖A‖₂ ≤ ‖ |A| ‖₂                                                      (3.2)
+
+and, for nonnegative `B`, since `‖B‖₂² = ρ(BᵀB)` and `BᵀB` is nonnegative, "Collatz' Theorem in
+Perron-Frobenius Theory yields"
+
+    ‖B‖₂² ≤ max_i (Bᵀ(Bx))_i / x_i      for every positive vector x.     (3.3)
+
+"Few power set iterations starting with the vector of 1's" give the vector. Here `B` is
+[`upper_abs`](@ref)`(A)`, an entrywise upper bound of `|M|` for every `M` in the ball, which is
+enough because `ρ` is monotone on nonnegative matrices.
+
+`iterates` is the number of power iterations used to choose `x`; any value, including zero, gives
+a valid bound (with zero it is `√‖BᵀB‖_∞`). The result is `Inf` when the quotient is not finite.
 """
 function collatz_upper_bound_L2_opnorm(A::BallMatrix{T}; iterates = 5) where {T}
-    m, k = size(A)
-    # Use the real type of the matrix elements for the iteration vectors
-    # This ensures BigFloat matrices get BigFloat precision in the iteration
+    k = size(A, 2)
     RT = real(eltype(A.c))
-    x_old = ones(RT, k)
-    x_new = x_old
-
     absA = upper_abs(A)
-    #@info opnorm(absA, Inf)
-
-    # @info absA
-
-    # using Collatz theorem
-    lam = setrounding(T, RoundUp) do
-        for _ in 1:iterates
-            x_old = x_new
-            x_new = absA' * (absA * x_old)
-            # @info x_new
-            # @info x_old
-            # @info maximum(x_new ./ x_old)
-        end
-        lam = zero(RT)
-        for i in 1:k
-            if x_old[i] != zero(RT)
-                lam = max(lam, x_new[i] / x_old[i])
-            end
-        end
-        return lam
-    end
-    return sqrt_up(lam)
+    lam = _collatz_quotient_up(x -> absA' * (absA * x), k, RT, iterates)
+    return isfinite(lam) ? sqrt_up(lam) : RT(Inf)
 end
 
 using LinearAlgebra

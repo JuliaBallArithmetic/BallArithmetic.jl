@@ -180,12 +180,19 @@ function _rump2022a_prodK(B::BallMatrix{T}, W::Matrix{CT}, X::Matrix{CT}) where 
                 (Wre, Xim, m1), (Wim, Xre, m1)), i, j)
         M[i, j] = CT(re, im_)
     end
-    u = eps(T) / 2
-    γ = gamma_bound(4 * max(n, k), T)          # products summed per entry
-    r = setrounding(T, RoundUp) do
-        absprod = (abs.(Bm) * abs.(W)) .+ (abs.(W) * abs.(X))
-        u .* abs.(M) .+ (γ * γ) .* absprod .+ Br * abs.(W)
+    # The radius. Each of the real and imaginary parts of an entry is a compensated dot product
+    # of N = 2n + 2k ≤ 4 max(n, k) terms, to which Proposition 5.5 of Ogita, Rump and Oishi (2005)
+    # applies with its underflow term (the reference and the two steps that are ours, the passage
+    # from |exact| to |computed| and the factor for a complex entry, are at `_accuracy_term` in
+    # src/types/MMul/ogita_rump_oishi.jl):
+    #     |M − (BW − WX)| ≤ (u|M| + (3/2)(γ_N² (|B||W| + |W||X|) + 5 N eta)) / (1 − u),
+    # to which the interval part rad(B)|W| is added. The moduli are bounded above with `abs_up`.
+    N = 4 * max(n, k)
+    absW, absX, absB = abs_up.(W), abs_up.(X), abs_up.(Bm)
+    absprod, interval_part = setrounding(T, RoundUp) do
+        (absB * absW) .+ (absW * absX), Br * absW
     end
+    r = add_up.(_accuracy_term(abs_up.(M), absprod, N, T, true), interval_part)
     return BallMatrix(M, r)
 end
 
@@ -219,12 +226,9 @@ function _rump2022aneumann_transform(B::BallMatrix{T}, W::Matrix{CT}, X0::Matrix
 
     Res = _rump2022a_prodK(B, W, X)          # certified enclosure of B W − W X
     P = Rb * Res                           # encloses R (B W − W X)
-    extra = setrounding(T, RoundUp) do
-        defect * upper_bound_L2_opnorm(P) / (one(T) - defect)
-    end
-    Delta = BallMatrix(mid(P), setrounding(T, RoundUp) do
-        rad(P) .+ extra
-    end)
+    # defect ‖P‖ / (1 − defect), the numerator rounded up and the denominator down
+    extra = div_up(mul_up(defect, upper_bound_L2_opnorm(P)), sub_down(one(T), defect))
+    Delta = BallMatrix(mid(P), add_up.(rad(P), extra))
     return BallMatrix(X) + Delta, defect
 end
 
@@ -294,9 +298,10 @@ end
 # complex product (relative error at most gamma_4 ~ 4u, against eps = 2u).
 function _rump2022a_eq2_3(Rm::Matrix{CT}, Rr::Matrix{T}, Y::BallMatrix{T}) where {T, CT}
     m = Rm .* mid(Y)
-    r = setrounding(T, RoundUp) do
-        abs.(Rm) .* rad(Y) .+ Rr .* abs.(mid(Y)) .+ Rr .* rad(Y) .+ 4 .* eps.(abs.(m))
-    end
+    # the moduli bounded above (`abs` of a complex number is `hypot`, which does not honour the
+    # rounding mode) and the rounding of each complex product by `_product_roundoff`
+    r = add_up.(add_up.(mul_up.(abs_up.(Rm), rad(Y)), mul_up.(Rr, abs_up.(mid(Y)))),
+        add_up.(mul_up.(Rr, rad(Y)), _product_roundoff.(m)))
     return BallMatrix(m, r)
 end
 
@@ -420,8 +425,16 @@ function _rump2022a_thm2_2_pass(A::BallMatrix{T}, clusters, D::Vector{CT}, maxit
         if cid[l] == cid[j]
             RRm[l, j] = -one(CT)
         else
-            dif = D[l] - D[j]
-            b = inv(Ball(dif, max(eps(abs(dif)), floatmin(T))))
+            # 1/(D_l − D_j) as an enclosure: the ball difference contains the exact difference
+            # of the two floats, and the complex ball inverse the reciprocal of every member. A
+            # difference not proved away from zero means this partition cannot be used.
+            dif = Ball(D[l]) - Ball(D[j])
+            b = try
+                inv(dif)
+            catch e
+                e isa ArgumentError || rethrow(e)
+                return (falses(m), fill(T(Inf), m), Matrix{CT}[], BallMatrix[], false, 0)
+            end
             RRm[l, j] = mid(b)
             RRr[l, j] = rad(b)
         end
@@ -486,6 +499,11 @@ function _rump2022a_thm2_2_block(Z::BallMatrix{T, CT}, D::Vector{CT}, c) where {
 
     Mm = Zm[c, c] + Diagonal(fill(D[c[1]], k))
     Mr = Zr[c, c]
+    # the diagonal entries are rounded sums λ_i + Z_tt: their rounding goes into the radius
+    ϵ = machine_epsilon(T)
+    for t in 1:k
+        Mr[t, t] = add_up(Mr[t, t], mul_up(ϵ, abs_up(Mm[t, t])))
+    end
     block = BallMatrix(Mm, Mr)
 
     Ym = Zm[:, c]

@@ -32,6 +32,7 @@ using Test
     include("test_eigenvalues/test_eigen.jl")
     include("test_error_free_transformations.jl")
     include("test_eigenvalues/test_rump_verifyeigall.jl")
+    include("test_eigenvalues/test_rigour_verifyeigall.jl")
     include("test_eigenvalues/test_verifyeigall_count.jl")
     include("test_eigenvalues/test_miyajima_2014a.jl")
     include("test_eigenvalues/test_miyajima_new.jl")
