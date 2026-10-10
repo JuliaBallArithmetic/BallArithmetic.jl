@@ -7,7 +7,7 @@ using Base: dirname, mod1
 using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm,
                         upper_bound_L2_opnorm, inf,
                         add_up, sub_down, mul_up, div_up, div_down, abs_up, dist_up,
-                        sqrt_up, sqrt_down,
+                        sqrt_up, sqrt_down, _float_up,
                         verified_cholesky,
                         backward_substitution, forward_substitution,
                         refine_schur_decomposition,
