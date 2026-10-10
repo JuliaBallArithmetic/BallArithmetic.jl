@@ -267,8 +267,7 @@ include("linear_system/sylvester.jl")
 
 export triangular_eigenvectors
 export sylvester_miyajima_enclosure, triangular_sylvester_miyajima_enclosure
-export verified_sylvester_enclosure, schur_sylvester_miyajima_enclosure,
-       schur_sylvester_midpoint
+export verified_sylvester_enclosure, schur_sylvester_midpoint
 
 # The resolvent of a block triangular matrix through the similarity S(X)
 export SylvesterResolventResult, sylvester_resolvent_precompute, solve_sylvester_oracle

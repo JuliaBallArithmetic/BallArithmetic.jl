@@ -1,17 +1,89 @@
+# Enclosures for the solution of the Sylvester equation A X + X B = C.
+#
+# The scheme of every routine here: an approximate solution in floating point, its residual in
+# ball arithmetic, and a bound of the error from the residual.
+
+_real_type(::Type{T}) where {T <: Real} = float(T)
+_real_type(::Type{Complex{T}}) where {T <: Real} = float(T)
+
+# a matrix or a ball matrix as a ball matrix with midpoints of type CT
+_ball_as(::Type{CT}, M::BallMatrix) where {CT} = BallMatrix(Matrix{CT}(mid(M)), Matrix(rad(M)))
+_ball_as(::Type{CT}, M::AbstractMatrix) where {CT} = BallMatrix(Matrix{CT}(M))
+_mid_eltype(M::BallMatrix) = eltype(mid(M))
+_mid_eltype(M::AbstractMatrix) = eltype(M)
+
+# approximate eigenvectors V, an approximate inverse W of V, and approximate eigenvalues, in
+# floating point: nothing is assumed about their accuracy
+function _approx_eigen(M::Matrix)
+    RT = _real_type(eltype(M))
+    if (istriu(M) || istril(M)) && _has_distinct_diagonal(M, eps(RT))
+        return triangular_eigenvectors(M; tol = eps(RT))
+    end
+    F = eigen(M)
+    V = Matrix(F.vectors)
+    return V, inv(V), F.values
+end
+
+_rowsums_up(M::AbstractMatrix{T}) where {T} =
+    [foldl(add_up, view(M, i, :); init = zero(T)) for i in axes(M, 1)]
+
 """
     sylvester_miyajima_enclosure(A, B, C, X̃)
 
-Compute a Miyajima-style verified enclosure for the solution of the Sylvester
-problem `A * X + X * B = C`.  The method follows the componentwise certificate
-from Ref. [MiyajimaSylvester2013](@cite) and returns a `BallMatrix` whose
-midpoint is the supplied approximation `X̃` and whose radii enclose the exact
-solution entrywise.
+An entrywise enclosure of the solution `X*` of `A X + X B = C`, as a `BallMatrix` with midpoint
+`X̃` (an approximate solution, in floating point) and radius `X^ε` with `|X̃ − X*| ≤ X^ε`. `A`
+(`m×m`), `B` (`n×n`) and `C` may be matrices or `BallMatrix`; with balls, the enclosure holds for
+the solution of every equation with data in them.
 
-The routine raises an error when the spectral gaps `λ_i(A) + λ_j(B)` vanish or
-when the contraction bound is not satisfied.
+Theorems 1 and 2 of
+
+S. Miyajima, *Fast enclosure for solutions of Sylvester equations*, Linear Algebra Appl. 439
+(2013), 856–878, doi:10.1016/j.laa.2012.07.001 ([MiyajimaSylvester2013](@cite)),
+
+Section 2.1 (spectral decomposition). The block-diagonalisation variant of Section 2.2
+(Theorems 3 and 4), the accelerations of Section 3 and the refinement of Section 4 are not
+implemented.
+
+# The statement
+
+Let `Ṽ_A, W_A` (`m×m`), `Ṽ_B, W_B` (`n×n`) be any matrices and `D̃_A, D̃_B` diagonal; in practice
+`A ≈ Ṽ_A D̃_A Ṽ_A⁻¹`, `Bᵀ ≈ Ṽ_B D̃_B Ṽ_B⁻¹`, `W_A ≈ Ṽ_A⁻¹`, `W_B ≈ Ṽ_B⁻¹`, all computed in floating
+point. `E` is the `m×n` matrix of ones, `./` and `|·|` are entrywise, `‖·‖_∞` is the maximum row
+sum and `‖·‖_M` the largest entry in modulus.
+
+    R_A = W_A(Ṽ_A D̃_A − A Ṽ_A),     R_B = W_B(Ṽ_B D̃_B − Bᵀ Ṽ_B),
+    S_A = I − W_A Ṽ_A,              S_B = I − W_B Ṽ_B,
+    T_A = |R_A| + ‖R_A‖_∞/(1 − ‖S_A‖_∞) |S_A|,     T_B likewise,
+    T = T_A E + E T_Bᵀ,     D̃ = D̃_A E + E D̃_B,     T_D = T ./ |D̃|.
+
+*Theorem 1.* If `‖S_A‖_∞ < 1`, `‖S_B‖_∞ < 1`, `D̃` has no zero entry and `‖T_D‖_M < 1`, the
+equation has a unique solution `X*`.
+
+With `R = A X̃ + X̃ B − C`, `R_W = W_A R W_Bᵀ`, and `ρ_i(M)`, `κ_j(M)` the largest entry in
+modulus of row `i` and of column `j`,
+
+    R_W⁽¹⁾ = |R_W| + 1/(1 − ‖S_B‖_∞) · diag(ρ(R_W)) E |S_B|ᵀ,
+    R_V⁽¹⁾ = R_W⁽¹⁾ + 1/(1 − ‖S_A‖_∞) · |S_A| E diag(κ(R_W⁽¹⁾)),
+    R_W⁽²⁾ = |R_W| + 1/(1 − ‖S_A‖_∞) · |S_A| E diag(κ(R_W)),
+    R_V⁽²⁾ = R_W⁽²⁾ + 1/(1 − ‖S_B‖_∞) · diag(ρ(R_W⁽²⁾)) E |S_B|ᵀ,
+    R_V = min(R_V⁽¹⁾, R_V⁽²⁾),     R_D = R_V ./ |D̃|,
+    U = R_D + ‖R_D‖_M/(1 − ‖T_D‖_M) · T_D.
+
+*Theorem 2.* Under the hypotheses of Theorem 1, `|X̃ − X*| ≤ X^ε := |Ṽ_A| U |Ṽ_B|ᵀ`.
+
+`R_V` bounds `|Ṽ_A⁻¹ R Ṽ_B⁻ᵀ|`, the residual in the exact inverse frames, from `R_W`, the one in
+the computed `W_A`, `W_B`.
+
+# How it is evaluated
+
+The products of matrices are ball products, of which the entrywise upper bound is taken. The
+products with `E` are row sums (`(M E)_ij` is the sum of row `i` of `M`), accumulated rounded up;
+`|D̃_ij|` is bounded from below; every other operation is rounded up. Throws `ArgumentError` when a
+hypothesis of Theorem 1 is not proved.
 """
-function sylvester_miyajima_enclosure(A::AbstractMatrix, B::AbstractMatrix,
-        C::AbstractMatrix, X̃::AbstractMatrix)
+function sylvester_miyajima_enclosure(A::Union{AbstractMatrix, BallMatrix},
+        B::Union{AbstractMatrix, BallMatrix}, C::Union{AbstractMatrix, BallMatrix},
+        X̃::AbstractMatrix)
     m, mA = size(A)
     m == mA || throw(DimensionMismatch("A must be square"))
     nB, n = size(B)
@@ -19,315 +91,119 @@ function sylvester_miyajima_enclosure(A::AbstractMatrix, B::AbstractMatrix,
     size(C) == (m, n) || throw(DimensionMismatch("C must be of size ($m, $n)"))
     size(X̃) == (m, n) || throw(DimensionMismatch("X̃ must be of size ($m, $n)"))
 
-    realtype = promote_type(_real_type(eltype(A)), _real_type(eltype(B)),
-        _real_type(eltype(C)), _real_type(eltype(X̃)))
+    CT0 = float(promote_type(_mid_eltype(A), _mid_eltype(B), _mid_eltype(C), eltype(X̃)))
+    VA, WA, λA = _approx_eigen(Matrix{CT0}(A isa BallMatrix ? mid(A) : A))
+    VB, WB, λB = _approx_eigen(Matrix{CT0}(transpose(B isa BallMatrix ? mid(B) : B)))
+    CT = promote_type(CT0, eltype(VA), eltype(WA), eltype(λA), eltype(VB), eltype(WB), eltype(λB))
+    RT = real(CT)
+    one_ = one(RT)
 
-    AMat = Matrix(A)
-    if (istriu(AMat) || istril(AMat)) && _has_distinct_diagonal(AMat, eps(realtype))
-        VA, WA, λA = triangular_eigenvectors(AMat; tol=eps(realtype))
-    else
-        eigA = eigen(AMat)
-        VA = Matrix(eigA.vectors)
-        λA = eigA.values
-        WA = inv(VA)
+    bA, bB, bC = _ball_as(CT, A), _ball_as(CT, B), _ball_as(CT, C)
+    bBt = BallMatrix(Matrix(transpose(mid(bB))), Matrix(transpose(rad(bB))))
+    bVA, bWA = BallMatrix(Matrix{CT}(VA)), BallMatrix(Matrix{CT}(WA))
+    bVB, bWB = BallMatrix(Matrix{CT}(VB)), BallMatrix(Matrix{CT}(WB))
+    λA, λB = Vector{CT}(λA), Vector{CT}(λB)
+
+    # Theorem 1
+    absSA = upper_abs(bWA * bVA - I)
+    absSB = upper_abs(bWB * bVB - I)
+    absRA = upper_abs(bWA * (bVA * BallMatrix(Matrix(Diagonal(λA))) - bA * bVA))
+    absRB = upper_abs(bWB * (bVB * BallMatrix(Matrix(Diagonal(λB))) - bBt * bVB))
+    sA, sB = _rowsums_up(absSA), _rowsums_up(absSB)
+    rA, rB = _rowsums_up(absRA), _rowsums_up(absRB)
+    norm_SA, norm_SB = maximum(sA), maximum(sB)
+    norm_SA < 1 || throw(ArgumentError("‖S_A‖_∞ must be < 1"))
+    norm_SB < 1 || throw(ArgumentError("‖S_B‖_∞ must be < 1"))
+    cA = div_up(one_, sub_down(one_, norm_SA))
+    cB = div_up(one_, sub_down(one_, norm_SB))
+    # the row sums of T_A and T_B: (T_A E)_ij = tA[i], (E T_Bᵀ)_ij = tB[j]
+    tA = [add_up(rA[i], mul_up(mul_up(maximum(rA), cA), sA[i])) for i in 1:m]
+    tB = [add_up(rB[j], mul_up(mul_up(maximum(rB), cB), sB[j])) for j in 1:n]
+    # lower bounds of |D̃_ij| = |λA[i] + λB[j]|
+    D_lo = Matrix{RT}(undef, m, n)
+    for j in 1:n, i in 1:m
+        d = Ball(λA[i], zero(RT)) + Ball(λB[j], zero(RT))
+        D_lo[i, j] = sub_down(_abs_lo(mid(d)), rad(d))
     end
-
-    BT = Matrix(transpose(B))
-    if (istriu(BT) || istril(BT)) && _has_distinct_diagonal(BT, eps(realtype))
-        VB, WB, λB = triangular_eigenvectors(BT; tol=eps(realtype))
-    else
-        eigBT = eigen(BT)
-        VB = Matrix(eigBT.vectors)
-        λB = eigBT.values
-        WB = inv(VB)
-    end
-
-    VA_ball = BallMatrix(VA)
-    WA_ball = BallMatrix(WA)
-    VB_ball = BallMatrix(VB)
-    WB_ball = BallMatrix(WB)
-    AMat_ball = BallMatrix(AMat)
-    BT_ball = BallMatrix(BT)
-    diagA_ball = BallMatrix(Diagonal(λA))
-    diagB_ball = BallMatrix(Diagonal(λB))
-
-    I_m = Matrix{eltype(WA)}(I, m, m)
-    I_n = Matrix{eltype(WB)}(I, n, n)
-
-    SA = BallMatrix(I_m) - WA_ball * VA_ball
-    SB = BallMatrix(I_n) - WB_ball * VB_ball
-
-    RA = WA_ball * (VA_ball * diagA_ball - AMat_ball * VA_ball)
-    RB = WB_ball * (VB_ball * diagB_ball - BT_ball * VB_ball)
-
-    abs_RA = _abs_sup_matrix(RA, realtype)
-    abs_SA = _abs_sup_matrix(SA, realtype)
-    abs_RB = _abs_sup_matrix(RB, realtype)
-    abs_SB = _abs_sup_matrix(SB, realtype)
-
-    norm_RA = setrounding(realtype, RoundUp) do
-        _matrix_norm_inf(abs_RA)
-    end
-    norm_SA = setrounding(realtype, RoundUp) do
-        _matrix_norm_inf(abs_SA)
-    end
-    norm_RB = setrounding(realtype, RoundUp) do
-        _matrix_norm_inf(abs_RB)
-    end
-    norm_SB = setrounding(realtype, RoundUp) do
-        _matrix_norm_inf(abs_SB)
-    end
-
-    norm_SA < 1 || throw(ArgumentError("\u2225S_A\u2225_\u221E must be < 1"))
-    norm_SB < 1 || throw(ArgumentError("\u2225S_B\u2225_\u221E must be < 1"))
-
-    TA = setrounding(realtype, RoundUp) do
-        abs_RA .+ (norm_RA / (1 - norm_SA)) .* abs_SA
-    end
-    TB = setrounding(realtype, RoundUp) do
-        abs_RB .+ (norm_RB / (1 - norm_SB)) .* abs_SB
-    end
-
-    E = ones(realtype, m, n)
-    T_ball = BallMatrix(TA) * BallMatrix(E) + BallMatrix(E) * BallMatrix(transpose(TB))
-    T = _abs_sup_matrix(T_ball, realtype)
-
-    λA_mat = reshape(λA, m, 1)
-    λB_row = reshape(λB, 1, n)
-    D̃ = λA_mat .+ λB_row
-    abs_D̃ = abs.(D̃)
-    minimum(abs_D̃) > eps(realtype) || throw(ArgumentError("Encountered zero spectral gap"))
-
-    T_D = setrounding(realtype, RoundUp) do
-        T ./ abs_D̃
-    end
-
-    X̃Mat = Matrix(X̃)
-    BMat = Matrix(B)
-    CMat = Matrix(C)
-
-    X̃_ball = BallMatrix(X̃Mat)
-    BMat_ball = BallMatrix(BMat)
-    CMat_ball = BallMatrix(CMat)
-
-    R = AMat_ball * X̃_ball + X̃_ball * BMat_ball - CMat_ball
-    WB_T_ball = BallMatrix(Matrix(transpose(WB)))
-    R_W = WA_ball * R * WB_T_ball
-
-    R_W_abs = _abs_sup_matrix(R_W, realtype)
-
-    R_D = setrounding(realtype, RoundUp) do
-        R_W_abs ./ abs_D̃
-    end
-
-    norm_TD = setrounding(realtype, RoundUp) do
-        _entrywise_max_norm(T_D)
-    end
-    norm_RD = setrounding(realtype, RoundUp) do
-        _entrywise_max_norm(R_D)
-    end
-
+    all(>(0), D_lo) || throw(ArgumentError("Encountered zero spectral gap"))
+    T_D = [div_up(add_up(tA[i], tB[j]), D_lo[i, j]) for i in 1:m, j in 1:n]
+    norm_TD = maximum(T_D)
     norm_TD < 1 || throw(ArgumentError("Entrywise max norm of T_D must be < 1"))
 
-    U = setrounding(realtype, RoundUp) do
-        R_D .+ (norm_RD / (1 - norm_TD)) .* T_D
-    end
+    # Theorem 2
+    bX = BallMatrix(Matrix{CT}(X̃))
+    R = bA * bX + bX * bB - bC
+    RW = upper_abs(bWA * R * BallMatrix(Matrix(transpose(mid(bWB)))))
+    rowmax(M) = [maximum(view(M, i, :)) for i in 1:m]
+    colmax(M) = [maximum(view(M, :, j)) for j in 1:n]
+    with_SB(M, d) = [add_up(M[i, j], mul_up(mul_up(cB, d[i]), sB[j])) for i in 1:m, j in 1:n]
+    with_SA(M, d) = [add_up(M[i, j], mul_up(mul_up(cA, sA[i]), d[j])) for i in 1:m, j in 1:n]
+    RW1 = with_SB(RW, rowmax(RW))
+    RV1 = with_SA(RW1, colmax(RW1))
+    RW2 = with_SA(RW, colmax(RW))
+    RV2 = with_SB(RW2, rowmax(RW2))
+    R_D = [div_up(min(RV1[i, j], RV2[i, j]), D_lo[i, j]) for i in 1:m, j in 1:n]
+    factor = div_up(maximum(R_D), sub_down(one_, norm_TD))
+    U = [add_up(R_D[i, j], mul_up(factor, T_D[i, j])) for i in 1:m, j in 1:n]
 
-    abs_VA = abs.(VA)
-    abs_VB = abs.(VB)
-    Xε = setrounding(realtype, RoundUp) do
-        abs_VA * U * transpose(abs_VB)
-    end
-
-    Xε = max.(Xε, zero(realtype))
-    return BallMatrix(X̃Mat, Xε)
-end
-
-function _real_type(::Type{T}) where {T <: Real}
-    return float(T)
-end
-
-function _real_type(::Type{Complex{T}}) where {T <: Real}
-    return float(T)
-end
-
-function _abs_sup_matrix(M::BallMatrix, ::Type{T}) where {T <: AbstractFloat}
-    setrounding(T, RoundUp) do
-        result = Matrix{T}(undef, size(M))
-        for i in axes(M, 1), j in axes(M, 2)
-            result[i, j] = sup(abs(M[i, j]))
-        end
-        result
-    end
-end
-
-function _entrywise_max_norm(M)
-    T = _real_type(eltype(M))
-    max_val = zero(T)
-    for v in M
-        max_val = max(max_val, abs(v))
-    end
-    return max_val
-end
-
-function _matrix_norm_inf(M)
-    T = _real_type(eltype(M))
-    max_sum = zero(T)
-    for i in axes(M, 1)
-        row_sum = zero(T)
-        for j in axes(M, 2)
-            row_sum += abs(M[i, j])
-        end
-        max_sum = max(max_sum, row_sum)
-    end
-    return max_sum
+    Xε = upper_abs(BallMatrix(_abs_hi.(mid(bVA))) * BallMatrix(U) *
+                   BallMatrix(Matrix(transpose(_abs_hi.(mid(bVB))))))
+    return BallMatrix(Matrix(X̃), Matrix{_real_type(eltype(X̃))}(Xε))
 end
 
 """
-    triangular_sylvester_miyajima_enclosure(T, k)
+    triangular_sylvester_miyajima_enclosure(T, k; sylvester_fallback = :direct)
 
-Construct a verified enclosure for the Sylvester system associated with the
-upper-triangular matrix `T` partitioned as
+For the upper triangular `T = [T₁₁ T₁₂; 0 T₂₂]` with `T₁₁` of size `k×k`, an enclosure of the
+solution `Y` of
 
-```
-T = [T₁₁  T₁₂;
-     0    T₂₂],
-```
+    T₂₂* Y − Y T₁₁* = T₁₂*,
 
-where `T₁₁` is `k × k`.  The enclosure is computed for the solution `Y₂` of the
-transformed Sylvester equation `T₂₂' * Y₂ - Y₂ * T₁₁' = T₁₂'`.  Forming the
-standard Sylvester data `A = T₂₂'`, `B = -T₁₁'`, and `C = T₁₂'`, the routine
-first attempts a Miyajima-style eigenvector-based enclosure, and falls back to
-a direct column-by-column triangular solve in ball arithmetic when the
-eigenvector approach fails (e.g. for large ill-conditioned triangular matrices
-where the eigenvector condition number is too large).
+that is of `A Y + Y B = C` with `A = T₂₂*`, `B = −T₁₁*`, `C = T₁₂*`. `T` is a matrix or a
+`BallMatrix`; with a ball the enclosure holds for every matrix in it, the radii entering the
+residuals (no perturbation expansion is used).
 
-The matrix `T` must be square and upper triangular, and the block size `k`
-must satisfy `1 ≤ k < size(T, 1)`.
+An approximate solution is computed column by column, and enclosed by
+[`sylvester_miyajima_enclosure`](@ref). When that does not apply (its hypotheses are not proved,
+typically for large triangular matrices whose eigenvector matrix is ill conditioned), the
+enclosure comes from the triangular structure, which requires the radii of `T` below the diagonal
+to be zero:
+
+- `sylvester_fallback = :direct`: the column recurrence solved by forward substitution in ball
+  arithmetic;
+- `sylvester_fallback = :residual`: the residual of the approximate solution in ball arithmetic
+  and, column by column from the last, `(A + b_jj I) e_j = R_j − Σ_{l>j} e_l b_lj` for the error
+  `e_j` of column `j`, so `‖e_j‖₂ ≤ ‖(A + b_jj I)⁻¹‖₂ (‖R_j‖₂ + Σ_{l>j} ‖e_l‖₂ |b_lj|)`, the norm
+  of the inverse of the triangular matrix bounded as in
+  [`triangular_inverse_two_norm_bound`](@ref). The radius is uniform in each column.
 """
-function triangular_sylvester_miyajima_enclosure(T::AbstractMatrix, k::Integer;
-                                                  sylvester_fallback::Symbol=:direct)
+function triangular_sylvester_miyajima_enclosure(T::Union{AbstractMatrix, BallMatrix},
+        k::Integer; sylvester_fallback::Symbol = :direct)
     sylvester_fallback ∈ (:direct, :residual) ||
         throw(ArgumentError("sylvester_fallback must be :direct or :residual, got :$sylvester_fallback"))
-
     n, m = size(T)
     n == m || throw(DimensionMismatch("T must be square"))
     1 <= k < n || throw(ArgumentError("k must satisfy 1 ≤ k < $n"))
 
-    Ttype = promote_type(eltype(T), Float64)
-    Tmat = Matrix{Ttype}(T)
-    istriu(Tmat) || throw(ArgumentError("T must be upper triangular"))
+    bT = _ball_as(float(_mid_eltype(T)), T)
+    Tm, Tr = mid(bT), rad(bT)
+    istriu(Tm) || throw(ArgumentError("T must be upper triangular"))
+    adjoint_block(I, J) = BallMatrix(Matrix(adjoint(Tm[I, J])), Matrix(transpose(Tr[I, J])))
+    A = adjoint_block((k + 1):n, (k + 1):n)       # lower triangular
+    B = -adjoint_block(1:k, 1:k)                  # lower triangular
+    C = adjoint_block(1:k, (k + 1):n)
 
-    T11 = @view Tmat[1:k, 1:k]
-    T22 = @view Tmat[(k + 1):n, (k + 1):n]
-    T12 = @view Tmat[1:k, (k + 1):n]
-
-    A = Matrix{Ttype}(adjoint(T22))   # lower triangular
-    B = -Matrix{Ttype}(adjoint(T11))  # lower triangular
-    C = Matrix{Ttype}(adjoint(T12))
-
-    # Approximate solution via column-by-column triangular solve (O(n²k))
-    Ỹ = _sylvester_triangular_columns(A, B, C)
-
-    # Try Miyajima eigenvector-based enclosure first (tighter bounds)
+    Ỹ = _sylvester_triangular_columns(mid(A), mid(B), mid(C))
     try
         return sylvester_miyajima_enclosure(A, B, C, Ỹ)
     catch e
-        if !(e isa ArgumentError)
-            rethrow()
-        end
+        e isa ArgumentError || rethrow()
     end
 
-    # Fallback: select method based on sylvester_fallback kwarg
-    if sylvester_fallback === :residual
-        return _sylvester_residual_ball(A, B, C, Ỹ)
-    else
-        return _sylvester_triangular_direct_ball(A, B, C)
-    end
-end
-
-"""
-    triangular_sylvester_miyajima_enclosure(T_ball::BallMatrix, k::Integer)
-
-Miyajima enclosure for the Sylvester system when the triangular matrix `T` is
-given as a `BallMatrix` (midpoint + radii).
-
-The midpoint `mid(T_ball)` is used to solve the Sylvester equation via the
-scalar method. The radii of `T_ball` produce a first-order perturbation
-bound on the solution `Y`, which inflates the returned enclosure.
-
-# Algorithm
-1. Solve on midpoint: `Y_mid = triangular_sylvester_miyajima_enclosure(mid(T_ball), k)`
-2. Compute separation: `sep = min_{i,j} |T₁₁[i,i] - T₂₂[j,j]|` (lower-bounded rigorously)
-3. First-order perturbation bound on Y from T_ball radii:
-   `δY ≤ sep⁻¹ · (‖ΔT₂₂‖·‖Y‖ + ‖ΔT₁₁‖·‖Y‖ + ‖ΔT₁₂‖)`
-   where `ΔT_ij` are the radius sub-blocks
-4. Inflate: `BallMatrix(mid(Y_mid), rad(Y_mid) .+ δY)`
-
-The matrix `T_ball` must be square, and `mid(T_ball)` must be upper triangular.
-"""
-function triangular_sylvester_miyajima_enclosure(T_ball::BallMatrix, k::Integer;
-                                                  sylvester_fallback::Symbol=:direct)
-    n = size(T_ball, 1)
-    n == size(T_ball, 2) || throw(DimensionMismatch("T_ball must be square"))
-    1 <= k < n || throw(ArgumentError("k must satisfy 1 ≤ k < $n"))
-
-    T_mid = mid(T_ball)
-    T_rad = rad(T_ball)
-
-    # Step 1: Solve on midpoint
-    Y_mid_ball = triangular_sylvester_miyajima_enclosure(T_mid, k;
-                                                          sylvester_fallback=sylvester_fallback)
-
-    # Step 2: Compute separation from diagonal entries (upper triangular → eigenvalues on diagonal)
-    RT = real(eltype(T_mid))
-    T11_diag = diag(T_mid[1:k, 1:k])
-    T22_diag = diag(T_mid[(k+1):n, (k+1):n])
-
-    # Rigorous lower bound on sep: min|λ_i(T11) - λ_j(T22)| - radii of diagonals
-    sep = convert(RT, Inf)
-    for i in 1:k
-        for j in 1:(n-k)
-            diff = abs(T11_diag[i] - T22_diag[j])
-            # Subtract the radii contribution for rigorous lower bound
-            diff_lower = diff - T_rad[i, i] - T_rad[k+j, k+j]
-            sep = min(sep, diff_lower)
-        end
-    end
-
-    if sep <= zero(RT)
-        @warn "triangular_sylvester_miyajima_enclosure(BallMatrix): " *
-              "separation ≤ 0 after accounting for radii. Perturbation bound is infinite."
-        return Y_mid_ball
-    end
-
-    # Step 3: First-order perturbation bound
-    # For the Sylvester equation T11 Y - Y T22 = T12,
-    # the first-order perturbation gives:
-    # ‖δY‖ ≤ sep⁻¹ · (‖ΔT11‖·‖Y‖ + ‖Y‖·‖ΔT22‖ + ‖ΔT12‖)
-    dT11 = BallMatrix(T_rad[1:k, 1:k])
-    dT22 = BallMatrix(T_rad[(k+1):n, (k+1):n])
-    dT12 = BallMatrix(T_rad[1:k, (k+1):n])
-
-    norm_dT11 = upper_bound_L2_opnorm(dT11)
-    norm_dT22 = upper_bound_L2_opnorm(dT22)
-    norm_dT12 = upper_bound_L2_opnorm(dT12)
-    norm_Y = upper_bound_L2_opnorm(Y_mid_ball)
-
-    delta_Y_norm = (norm_dT11 * norm_Y + norm_Y * norm_dT22 + norm_dT12) / sep
-
-    if norm_Y > zero(RT) && delta_Y_norm / norm_Y > RT(0.1)
-        @warn "triangular_sylvester_miyajima_enclosure(BallMatrix): " *
-              "large relative perturbation δY/Y = $(Float64(delta_Y_norm / norm_Y)). " *
-              "Bound may be loose."
-    end
-
-    # Step 4: Inflate radii
-    m_Y = size(Y_mid_ball, 1)
-    n_Y = size(Y_mid_ball, 2)
-    inflated_rad = rad(Y_mid_ball) .+ fill(delta_Y_norm, m_Y, n_Y)
-
-    return BallMatrix(mid(Y_mid_ball), inflated_rad)
+    all(iszero, tril(Tr, -1)) ||
+        throw(ArgumentError("the triangular fallback needs zero radius below the diagonal of T"))
+    return sylvester_fallback === :residual ? _sylvester_residual_ball(A, B, C, Ỹ) :
+           _sylvester_triangular_direct_ball(A, B, C)
 end
 
 # ============================================================================
@@ -393,17 +269,14 @@ Each column solve uses [`forward_substitution`](@ref) on a lower-triangular
 requires eigenvector decomposition and works for arbitrarily ill-conditioned
 triangular matrices (provided the diagonal entries of `A + B[j,j]*I` are nonzero).
 """
-function _sylvester_triangular_direct_ball(A::AbstractMatrix, B::AbstractMatrix,
-                                            C::AbstractMatrix)
+function _sylvester_triangular_direct_ball(A::Union{AbstractMatrix, BallMatrix},
+        B::Union{AbstractMatrix, BallMatrix}, C::Union{AbstractMatrix, BallMatrix})
     m = size(A, 1)
     k = size(B, 1)
-
-    CT = promote_type(eltype(A), eltype(B), eltype(C))
+    CT = float(promote_type(_mid_eltype(A), _mid_eltype(B), _mid_eltype(C)))
     RT = _real_type(CT)
 
-    A_ball = BallMatrix(Matrix{CT}(A))
-    B_ball = BallMatrix(Matrix{CT}(B))
-    C_ball = BallMatrix(Matrix{CT}(C))
+    A_ball, B_ball, C_ball = _ball_as(CT, A), _ball_as(CT, B), _ball_as(CT, C)
 
     X_mid = zeros(CT, m, k)
     X_rad = zeros(RT, m, k)
@@ -436,359 +309,60 @@ function _sylvester_triangular_direct_ball(A::AbstractMatrix, B::AbstractMatrix,
     return BallMatrix(X_mid, X_rad)
 end
 
-"""
-    _rigorous_tri_inv_two_norm_bound(U::AbstractMatrix{CT}) where {CT}
-
-Compute a rigorous upper bound on `‖U⁻¹‖₂` for upper triangular `U` using
-directed rounding throughout.
-
-Unlike [`triangular_inverse_two_norm_bound`](@ref), which uses default
-(round-to-nearest) arithmetic, this version computes:
-
-1. **Diagonal lower bounds** via `setrounding(RoundDown)` — ensures dividing by
-   a smaller denominator gives a larger (safe) quotient.
-2. **∞-norm and 1-norm recursions** via `setrounding(RoundUp)` — all absolute
-   values, products, and sums round upward.
-3. **Final combination** `√(‖U⁻¹‖₁ · ‖U⁻¹‖_∞)` with `RoundUp`.
-
-This guarantees the returned value is a mathematically valid upper bound,
-suitable for rigorous enclosure computations.
-"""
-function _rigorous_tri_inv_two_norm_bound(U::AbstractMatrix{CT}) where {CT}
-    RT = real(CT)
-    m = size(U, 1)
-    m == size(U, 2) || throw(DimensionMismatch("U must be square"))
-
-    # Rigorous lower bounds on |diagonal entries| (denominators in the recursion).
-    # RoundDown ensures diag_lower[i] ≤ |U[i,i]|_exact, so dividing by it
-    # gives an upper bound on the quotient.
-    diag_lower = Vector{RT}(undef, m)
-    setrounding(RT, RoundDown) do
-        for i in 1:m
-            diag_lower[i] = abs(U[i, i])
-        end
-    end
-
-    for i in 1:m
-        if diag_lower[i] ≤ zero(RT)
-            return RT(Inf)
-        end
-    end
-
-    # ∞-norm bound: backward recursion y[i] = (1 + Σ_{j>i} |u[i,j]|·y[j]) / |u[i,i]|
-    y_inf = zeros(RT, m)
-    setrounding(RT, RoundUp) do
-        for i in m:-1:1
-            row_sum = zero(RT)
-            for j in (i+1):m
-                row_sum += abs(U[i, j]) * y_inf[j]
-            end
-            y_inf[i] = (one(RT) + row_sum) / diag_lower[i]
-        end
-    end
-
-    # 1-norm bound: forward recursion z[i] = (1 + Σ_{j<i} |u[j,i]|·z[j]) / |u[i,i]|
-    y_one = zeros(RT, m)
-    setrounding(RT, RoundUp) do
-        for i in 1:m
-            col_sum = zero(RT)
-            for j in 1:(i-1)
-                col_sum += abs(U[j, i]) * y_one[j]
-            end
-            y_one[i] = (one(RT) + col_sum) / diag_lower[i]
-        end
-    end
-
-    norm_inf = maximum(y_inf)
-    norm_one = maximum(y_one)
-
-    return setrounding(RT, RoundUp) do
-        sqrt(norm_one * norm_inf)
-    end
-end
-
-"""
-    _sylvester_residual_ball(A, B, C, X̃)
-
-Solve `A * X + X * B = C` rigorously via residual bounding when A and B are
-lower triangular.  The approximate solution `X̃` (computed in plain arithmetic)
-is enclosed by computing the residual `R = C - A*X̃ - X̃*B` with ball matrix
-multiplication (MMul4, only ~6 `setrounding` calls) and then bounding the
-per-column error via a backward recurrence on triangular inverse norm bounds.
-
-This is asymptotically faster than [`_sylvester_triangular_direct_ball`](@ref)
-for high-precision `BigFloat` because the number of `setrounding` calls is
-O(1) for the matrix multiply plus O(k) for the column recurrence, versus
-O(n²k) for the direct ball solve.
-
-Falls back to [`_sylvester_triangular_direct_ball`](@ref) if any coefficient
-matrix `A + B[j,j]*I` is detected as singular.
-"""
-function _sylvester_residual_ball(A::AbstractMatrix, B::AbstractMatrix,
-                                   C::AbstractMatrix, X̃::AbstractMatrix)
+# The enclosure by the residual and the column recurrence described in
+# `triangular_sylvester_miyajima_enclosure`, for lower triangular ball matrices A and B.
+function _sylvester_residual_ball(A::BallMatrix, B::BallMatrix, C::BallMatrix,
+        X̃::AbstractMatrix)
     m = size(A, 1)
     k = size(B, 1)
+    RT = _real_type(eltype(mid(A)))
+    bX = BallMatrix(Matrix{eltype(mid(A))}(X̃))
+    R = C - A * bX - bX * B
+    absB = upper_abs(B)
+    absAt = Matrix(transpose(upper_abs(A)))       # entrywise bound of the upper triangular Aᵀ
 
-    CT = promote_type(eltype(A), eltype(B), eltype(C), eltype(X̃))
-    RT = _real_type(CT)
-
-    # Step 1: Rigorous residual via BallMatrix multiplication (MMul4)
-    A_ball = BallMatrix(Matrix{CT}(A))
-    B_ball = BallMatrix(Matrix{CT}(B))
-    C_ball = BallMatrix(Matrix{CT}(C))
-    X̃_ball = BallMatrix(Matrix{CT}(X̃))
-
-    R_ball = C_ball - A_ball * X̃_ball - X̃_ball * B_ball
-
-    # Step 2: Per-column error bound via backward recurrence j = k,...,1
-    # For column j: (A + B[j,j]*I) * e_j = R[:,j] - Σ_{l>j} e_l * B[l,j]
-    # so ‖e_j‖₂ ≤ ‖L_j⁻¹‖₂ · (‖R[:,j]‖₂ + Σ_{l>j} ε_l · |B[l,j]|)
     ε = zeros(RT, k)
-    A_ct = Matrix{CT}(A)
-
-    # Precompute |B[l,j]| as rigorous upper bounds (RoundUp for abs of complex entries)
-    abs_B = setrounding(RT, RoundUp) do
-        RT.(abs.(B))
-    end
-
     for j in k:-1:1
-        # L_j = A + B[j,j]*I is lower triangular
-        L_j = A_ct + CT(B[j, j]) * I
-
-        # Rigorous upper bound on ‖L_j⁻¹‖₂ via directed-rounding recursion
-        L_j_inv_norm = _rigorous_tri_inv_two_norm_bound(transpose(L_j))
-
-        if !isfinite(L_j_inv_norm)
-            # Singular L_j — fall back to direct ball method
-            return _sylvester_triangular_direct_ball(A, B, C)
+        # lower bounds of the diagonal of A + b_jj I
+        dlo = Vector{RT}(undef, m)
+        for i in 1:m
+            d = A[i, i] + B[j, j]
+            dlo[i] = sub_down(_abs_lo(mid(d)), rad(d))
         end
-
-        # Rigorous upper bound on ‖R[:,j]‖₂
-        R_col = BallVector(R_ball.c[:, j], R_ball.r[:, j])
-        R_col_norm = upper_bound_norm(R_col, 2)
-
-        # Coupling from later columns + final bound, all with upward rounding
-        ε[j] = setrounding(RT, RoundUp) do
-            coupling = zero(RT)
-            for l in (j+1):k
-                coupling += ε[l] * abs_B[l, j]
-            end
-            L_j_inv_norm * (R_col_norm + coupling)
+        L_inv = _two_norm_from_one_inf(_triangular_inverse_bounds(dlo, absAt)...)
+        isfinite(L_inv) || return _sylvester_triangular_direct_ball(A, B, C)
+        s = upper_bound_norm(BallVector(R.c[:, j], R.r[:, j]), 2)
+        for l in (j + 1):k
+            s = add_up(s, mul_up(ε[l], absB[l, j]))
         end
+        ε[j] = mul_up(L_inv, s)
     end
-
-    # Step 3: Construct BallMatrix with uniform per-column radii
-    X_mid = Matrix{CT}(X̃)
-    X_rad = zeros(RT, m, k)
-    for j in 1:k
-        X_rad[:, j] .= ε[j]
-    end
-
-    return BallMatrix(X_mid, X_rad)
-end
-
-# Input: A,B,C
-# 1. [Schur] A = Q TA Q*, B = Z TB Z*          // real Schur if real
-# 2. [Approx solve] Solve TA Yhat + Yhat TB = Q* C Z  (back/forward substitution)
-# 3. [Residual] R = (Q* C Z) - (TA Yhat + Yhat TB)
-# 4. [Preconditioner M] define M(·) as: solve TA Δ + Δ TB = (·)
-# 5. [Interval radius] pick initial Δ0 (e.g. scaled ||R|| bound)
-# 6. loop:
-#       // Krawczyk interval evaluation, outward rounding
-#       Kmid = Yhat - M( (TA Yhat + Yhat TB) - (Q* C Z) )
-#       E = I - M∘L   // realized by two triangular solves inside interval arithmetic
-#       Kset = Kmid + E([-Δ, +Δ])
-#       if Kset ⊆ (Yhat + (-Δ, +Δ)) then
-#           return verified enclosure for Y*, hence X* = Q Y* Z*
-#       else
-#           shrink Δ or recompute using refined Yhat; repeat
-
-function sylvester_krawczyk_enclosure(A::AbstractMatrix,
-        B::AbstractMatrix, C::AbstractMatrix, X̃::AbstractMatrix;
-        maxiter::Int = 10, tol::Real = 1e-12)
-    TA, QA, _ = schur(Matrix(A))
-    TB, QB, _ = schur(Matrix(B))
-
-    tildeC = adjoint(QA) * C * QB
-    Yhat = sylvester(TA, TB, tildeC)
-    R = tildeC - (TA * Yhat + Yhat * TB)
-
-    throw(ErrorException("sylvester_krawczyk_enclosure is not yet implemented"))
-end
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Schur-fallback Sylvester enclosure (salvaged from the Sylvester-schur branch).
-# When the eigenvector-based `sylvester_miyajima_enclosure` is inapplicable (e.g.
-# A or B defective / not diagonalizable), fall back to a unitary Schur frame and a
-# verified block-by-block back-substitution that propagates the per-block radii.
-# `_real_type` and `sylvester_miyajima_enclosure(A,B,C,X̃)` are reused from above.
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Insert block `B` into `M` at row-range `I`, col-range `J`.
-@inline function place!(M, I::UnitRange{Int}, J::UnitRange{Int}, B)
-    @inbounds M[I, J] .= B
-    return M
+    return BallMatrix(Matrix(X̃), repeat(reshape(ε, 1, k), m, 1))
 end
 
 """
-    schur_blocks(T; tol=nothing) -> Vector{UnitRange{Int}}
+    schur_sylvester_midpoint(A, B, C; prefer_complex_schur = true)
 
-Diagonal block ranges of a Schur form `T`: all 1×1 for a complex Schur form; for a
-real (quasi-triangular) Schur form, a `2×2` block wherever `abs(T[i+1,i]) > tol`.
-"""
-function schur_blocks(T; tol = nothing)
-    n, m = size(T)
-    n == m || throw(DimensionMismatch("T must be square"))
-    eltype(T) <: Complex && return [i:i for i in 1:n]
-    RT = float(real(one(eltype(T))))
-    if tol === nothing
-        maxrowsum = zero(RT)
-        @inbounds for i in 1:n
-            s = zero(RT)
-            for j in 1:n
-                s += abs(T[i, j])
-            end
-            maxrowsum = max(maxrowsum, s)
-        end
-        tol = sqrt(eps(RT)) * max(maxrowsum, one(RT))
-    end
-    blocks = UnitRange{Int}[]
-    i = 1
-    @inbounds while i <= n
-        if i < n && abs(T[i + 1, i]) > tol
-            push!(blocks, i:(i + 1)); i += 2
-        else
-            push!(blocks, i:i); i += 1
-        end
-    end
-    return blocks
-end
-
-# Fast (non-verified) midpoint for the tiny subproblem `Aii*Y + Y*Bjj = RHS`
-# (1×1 or 2×2 blocks); used only as a candidate.
-function tiny_sylvester_midpoint(Aii, Bjj, RHS)
-    p = size(Aii, 1); q = size(Bjj, 1)
-    if p == 1 && q == 1
-        return RHS / (Aii[1, 1] + Bjj[1, 1])
-    elseif p == 2 && q == 1
-        return (Aii + Bjj[1, 1] * I(2)) \ RHS
-    elseif p == 1 && q == 2
-        return ((Bjj + Aii[1, 1] * I(2))' \ RHS')'
-    elseif p == 2 && q == 2
-        K = kron(I(2), Aii) + kron(Bjj', I(2))
-        return reshape(K \ vec(RHS), 2, 2)
-    else
-        throw(ArgumentError("Unsupported block sizes p=$p, q=$q"))
-    end
-end
-
-"""
-    schur_sylvester_midpoint(A, B, C; prefer_complex_schur=true)
-
-Numerical midpoint for `A*X + X*B = C` via Schur back-substitution (no verification);
-the default candidate `X̃` for [`verified_sylvester_enclosure`](@ref).
+An approximate solution of `A X + X B = C` in floating point, by Schur forms of `A` and `B` and
+back substitution. No bound comes with it; it is the default approximation of
+[`verified_sylvester_enclosure`](@ref).
 """
 function schur_sylvester_midpoint(A, B, C; prefer_complex_schur::Bool = true)
     SA = prefer_complex_schur ? schur(complex.(A)) : schur(A)
     SB = prefer_complex_schur ? schur(complex.(B)) : schur(B)
-    QA, TA = SA.Z, SA.T
-    QB, TB = SB.Z, SB.T
-    C̃ = QA' * C * QB
-    Ab = schur_blocks(TA); Bb = schur_blocks(TB)
-    Y = zero(C̃)
-    for ii in length(Ab):-1:1
-        IA = Ab[ii]; Aii = TA[IA, IA]
-        for jj in 1:length(Bb)
-            JB = Bb[jj]; Bjj = TB[JB, JB]
-            RHS = C̃[IA, JB]
-            for kk in (ii + 1):length(Ab)
-                IK = Ab[kk]; RHS -= TA[IA, IK] * Y[IK, JB]
-            end
-            for ℓ in 1:(jj - 1)
-                JL = Bb[ℓ]; RHS -= Y[IA, JL] * TB[JL, JB]
-            end
-            place!(Y, IA, JB, tiny_sylvester_midpoint(Aii, Bjj, RHS))
-        end
-    end
-    return QA * Y * QB'
+    Y = sylvester(SA.T, SB.T, -(SA.Z' * C * SB.Z))      # T_A Y + Y T_B = Q_A* C Q_B
+    return SA.Z * Y * SB.Z'
 end
 
 """
-    schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur=true) -> BallMatrix
+    verified_sylvester_enclosure(A, B, C; X̃ = nothing, prefer_complex_schur = true)
 
-Verified enclosure for `A*X + X*B = C` via unitary Schur frames `A=QA TA QAᴴ`,
-`B=QB TB QBᴴ` and reverse-order block back-substitution: each tiny diagonal block is
-enclosed by [`sylvester_miyajima_enclosure`](@ref) on the midpoint RHS, and the
-uncertainty of already-solved blocks is propagated into the per-block radius
-(`ΔRHS`). Use when the eigenvector method is inapplicable (defective `A`/`B`).
-
-With `prefer_complex_schur=true` (default) every block is `1×1`, which is rigorous.
-The real-Schur path (`prefer_complex_schur=false`) can produce `2×2` blocks whose
-radius inflation is not yet rigorous; that case is refused.
-"""
-function schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur::Bool = true)
-    SA = prefer_complex_schur ? schur(complex.(A)) : schur(A)
-    SB = prefer_complex_schur ? schur(complex.(B)) : schur(B)
-    QA, TA = SA.Z, SA.T
-    QB, TB = SB.Z, SB.T
-    C̃ = QA' * C * QB
-    Ab = schur_blocks(TA); Bb = schur_blocks(TB)
-    RT = _real_type(eltype(C̃))
-    Ymid = zero(C̃)
-    Yrad = zeros(RT, size(C̃))
-    for ii in length(Ab):-1:1
-        IA = Ab[ii]; Aii = TA[IA, IA]
-        for jj in 1:length(Bb)
-            JB = Bb[jj]; Bjj = TB[JB, JB]
-            RHS_mid = C̃[IA, JB]
-            for kk in (ii + 1):length(Ab)
-                IK = Ab[kk]; RHS_mid -= TA[IA, IK] * Ymid[IK, JB]
-            end
-            for ℓ in 1:(jj - 1)
-                JL = Bb[ℓ]; RHS_mid -= Ymid[IA, JL] * TB[JL, JB]
-            end
-            # propagate the radii of already-solved blocks into a ΔRHS bound:
-            # |ΔRHS| ≤ Σ |TA[IA,IK]|·Yrad[IK,JB] + Σ Yrad[IA,JL]·|TB[JL,JB]|
-            ΔRHS_abs = zeros(RT, length(IA), length(JB))
-            for kk in (ii + 1):length(Ab)
-                IK = Ab[kk]; ΔRHS_abs .+= abs.(TA[IA, IK]) * Yrad[IK, JB]
-            end
-            for ℓ in (jj + 1):length(Bb)
-                JL = Bb[ℓ]; ΔRHS_abs .+= Yrad[IA, JL] * abs.(TB[JL, JB])
-            end
-            Ỹ = tiny_sylvester_midpoint(Aii, Bjj, RHS_mid)
-            place!(Ymid, IA, JB, Ỹ)
-            Bij = sylvester_miyajima_enclosure(Aii, Bjj, RHS_mid, Ỹ)
-            Eij = rad(Bij)
-            if size(Aii, 1) == 1 && size(Bjj, 1) == 1
-                Eij .+= ΔRHS_abs ./ abs(Aii[1, 1] + Bjj[1, 1])
-            else
-                throw(ArgumentError("schur_sylvester_miyajima_enclosure: rigorous radius " *
-                    "inflation for 2×2 real-Schur blocks is not implemented; call with " *
-                    "prefer_complex_schur=true (all-1×1, rigorous)."))
-            end
-            place!(Yrad, IA, JB, Eij)
-        end
-    end
-    Xmid = QA * Ymid * QB'
-    Xrad = abs.(QA) * Yrad * abs.(QB)'
-    return BallMatrix(Xmid, Xrad)
-end
-
-"""
-    verified_sylvester_enclosure(A, B, C; X̃=nothing, prefer_complex_schur=true) -> BallMatrix
-
-Robust verified enclosure for the Sylvester equation `A*X + X*B = C`: try the fast
-eigenvector-based [`sylvester_miyajima_enclosure`](@ref), and on failure fall back to
-the Schur-frame [`schur_sylvester_miyajima_enclosure`](@ref). A numerical midpoint `X̃`
-is produced via Schur back-substitution if not supplied.
+[`sylvester_miyajima_enclosure`](@ref) with the approximate solution computed by
+[`schur_sylvester_midpoint`](@ref) when `X̃` is not given. It throws `ArgumentError` when the
+hypotheses of that enclosure are not proved, as happens for a defective `A` or `B`.
 """
 function verified_sylvester_enclosure(A, B, C; X̃ = nothing,
         prefer_complex_schur::Bool = true)
     X̃ === nothing && (X̃ = schur_sylvester_midpoint(A, B, C; prefer_complex_schur))
-    try
-        return sylvester_miyajima_enclosure(A, B, C, X̃)
-    catch
-        return schur_sylvester_miyajima_enclosure(A, B, C; prefer_complex_schur)
-    end
+    return sylvester_miyajima_enclosure(A, B, C, X̃)
 end
