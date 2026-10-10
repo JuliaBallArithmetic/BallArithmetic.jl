@@ -1,5 +1,5 @@
-# Verified ordered Schur decomposition for BigFloat / BallMatrix
-# Wraps GenericSchur's ordschur and adds rigorous error propagation
+# Reordering of an approximate Schur pair, with its defects measured afterwards, and the bound
+# on the spectral projector that uses them.
 
 """
     ordschur_bigfloat(T::AbstractMatrix, Q::AbstractMatrix,
@@ -27,306 +27,119 @@ function ordschur_bigfloat(T::AbstractMatrix, Q::AbstractMatrix,
     return F_ord.Z, F_ord.T, F_ord.values
 end
 
-# ── Ball-arithmetic Givens primitives ──────────────────────────────────
-
 """
-    _ball_abs_s(s, RT)
+    ordschur_ball(Q_ball::BallMatrix, T_ball::BallMatrix, select; A = nothing)
 
-Compute a rigorous upper bound on |s| for a Givens rotation parameter `s`.
-Uses directed rounding for BigFloat; plain `abs` otherwise.
-"""
-function _ball_abs_s(s::Complex{T}, ::Type{T}) where {T<:BigFloat}
-    setrounding(T, RoundUp) do
-        sqrt(real(s) * real(s) + imag(s) * imag(s))
-    end
-end
-_ball_abs_s(s::Complex{T}, ::Type{T}) where {T<:AbstractFloat} = abs(s)
-_ball_abs_s(s::T, ::Type{T}) where {T<:Real} = abs(s)
+Reorder an approximate Schur pair so that the diagonal entries with `select[i] == true` come
+first, and bound the defects of the reordered pair.
 
-"""
-    _ball_givens_lmul!(c, s, abs_s, k, M_mid, M_rad, eps_RT)
+The reordering itself is the floating-point one: `ordschur` on the midpoint of `T_ball` returns
+the reordered matrix and the accumulated rotation `G`. No error is propagated through the
+rotations. What the reordered pair satisfies is measured afterwards, in ball arithmetic.
 
-Apply a Givens rotation `G(k, k+1)` from the left: `M ← G * M`.
-Operates in-place on rows `k` and `k+1` of `(M_mid, M_rad)`.
+# What is returned
 
-`c` is real ≥ 0, `s` is the Givens sine, `abs_s = |s|` (precomputed with RoundUp),
-and `eps_RT` is the machine epsilon for the real type.
+A `NamedTuple` with
 
-Radius formula: for exact `c, s` applied to ball `[m ± r]`:
-  new_r = c * r_k + |s| * r_{k+1}  +  eps * (c * |old_mid_k| + |s| * |old_mid_{k+1}|)
-The last term bounds floating-point error in the midpoint computation.
-"""
-function _ball_givens_lmul!(c::RT, s, abs_s::RT, k::Int,
-                            M_mid::AbstractMatrix, M_rad::AbstractMatrix{RT},
-                            eps_RT::RT) where {RT<:AbstractFloat}
-    n = size(M_mid, 2)
-    sc = conj(s)
-    @inbounds for j in 1:n
-        m_k  = M_mid[k, j]
-        m_k1 = M_mid[k+1, j]
-        r_k  = M_rad[k, j]
-        r_k1 = M_rad[k+1, j]
+- `G`: the accumulated rotation, a matrix with exact entries (it is only approximately unitary);
+- `T`: `T̃`, the upper triangle of the reordered midpoint, as a `BallMatrix` of radius zero. It is
+  exactly upper triangular, and whatever the floating-point reordering left below the diagonal is
+  in the residuals below;
+- `Q`: the ball matrix `Q_ball·G`;
+- `values`: the diagonal of `T̃`;
+- `rotation_orth_defect`: upper bound of `‖G*G − I‖₂`;
+- `rotation_residual`: upper bound of `‖TG − GT̃‖₂` for every `T` in `T_ball`;
+- `orth_defect`, `fact_defect`: when the matrix `A` is given (a `BallMatrix`), upper bounds of
+  `‖Q*Q − I‖₂` and of `‖AQ − QT̃‖₂` for every `Q` in the returned ball and every `A` in the
+  ball `A`; `nothing` otherwise.
 
-        # Midpoint update (default rounding)
-        M_mid[k, j]   =  c * m_k + s * m_k1
-        M_mid[k+1, j] = -sc * m_k + c * m_k1
+These are the two numbers [`spectral_projector_error_bound`](@ref) takes. Without `A`, they
+follow from the defects `δ₀ ≥ ‖Q₀*Q₀ − I‖₂` and `ε₀ ≥ ‖AQ₀ − Q₀T‖₂` of the pair that was given,
+since `AQ₀G − Q₀GT̃ = (AQ₀ − Q₀T)G + Q₀(TG − GT̃)`:
 
-        # Radius update (outward rounding)
-        abs_mk  = abs(m_k)
-        abs_mk1 = abs(m_k1)
-        setrounding(RT, RoundUp) do
-            inp_k  = c * abs_mk + abs_s * abs_mk1   # bound on |exact result|
-            M_rad[k, j]   = (c * r_k + abs_s * r_k1) + eps_RT * inp_k
-            M_rad[k+1, j] = (abs_s * r_k + c * r_k1) + eps_RT * inp_k
-        end
-    end
-    return nothing
-end
+    ‖AQ − QT̃‖₂ ≤ ε₀ √(1 + δ_G) + √(1 + δ₀) ρ,
 
-"""
-    _ball_givens_rmul_adj!(c, s, abs_s, k, M_mid, M_rad, eps_RT)
+with `δ_G` and `ρ` the two rotation bounds.
 
-Apply `M ← M * G(k, k+1)^H` in-place on columns `k` and `k+1`.
-Same radius logic as `_ball_givens_lmul!`, transposed.
-"""
-function _ball_givens_rmul_adj!(c::RT, s, abs_s::RT, k::Int,
-                                M_mid::AbstractMatrix, M_rad::AbstractMatrix{RT},
-                                eps_RT::RT) where {RT<:AbstractFloat}
-    m = size(M_mid, 1)
-    sc = conj(s)
-    @inbounds for i in 1:m
-        m_k  = M_mid[i, k]
-        m_k1 = M_mid[i, k+1]
-        r_k  = M_rad[i, k]
-        r_k1 = M_rad[i, k+1]
-
-        # M * G^H: column k  ←  c * col_k + conj(s) * col_{k+1}
-        #          column k+1 ← -s * col_k + c * col_{k+1}
-        M_mid[i, k]   =  c * m_k + sc * m_k1
-        M_mid[i, k+1] = -s * m_k + c * m_k1
-
-        abs_mk  = abs(m_k)
-        abs_mk1 = abs(m_k1)
-        setrounding(RT, RoundUp) do
-            inp_k = c * abs_mk + abs_s * abs_mk1
-            M_rad[i, k]   = (c * r_k + abs_s * r_k1) + eps_RT * inp_k
-            M_rad[i, k+1] = (abs_s * r_k + c * r_k1) + eps_RT * inp_k
-        end
-    end
-    return nothing
-end
-
-"""
-    _ball_trexchange!(T_mid, T_rad, Q_mid, Q_rad, iold, inew, eps_RT)
-
-Move the eigenvalue at position `iold` to position `inew` via a sequence
-of Givens rotations applied directly to the ball-arithmetic arrays.
-Mirrors GenericSchur's `_trexchange!`.
-"""
-function _ball_trexchange!(T_mid, T_rad, Q_mid, Q_rad, iold::Int, inew::Int,
-                           eps_RT)
-    RT = typeof(eps_RT)
-    krange = iold > inew ? (iold-1:-1:inew) : (iold:inew-1)
-    for k in krange
-        # Givens to annihilate T[k+1,k] after swapping diagonal entries
-        G, _ = givens(T_mid[k, k+1], T_mid[k+1, k+1] - T_mid[k, k], k, k+1)
-        c = real(G.c)
-        s = G.s
-        abs_s = _ball_abs_s(s, RT)
-
-        # T ← G * T * G^H
-        _ball_givens_lmul!(c, s, abs_s, k, T_mid, T_rad, eps_RT)
-        _ball_givens_rmul_adj!(c, s, abs_s, k, T_mid, T_rad, eps_RT)
-
-        # Q ← Q * G^H
-        _ball_givens_rmul_adj!(c, s, abs_s, k, Q_mid, Q_rad, eps_RT)
-    end
-    return nothing
-end
-
-# ── End Givens primitives ─────────────────────────────────────────────
-
-"""
-    ordschur_ball(Q_ball::BallMatrix, T_ball::BallMatrix,
-                  select::AbstractVector{Bool})
-
-Reorder a rigorous Schur decomposition enclosed in `BallMatrix` form.
-
-Given `(Q_ball, T_ball)` enclosing the true Schur factors (e.g. from
-[`rigorous_schur_bigfloat`](@ref)), reorder so that eigenvalues with
-`select[i] == true` move to the top-left block, and return rigorous
-`BallMatrix` enclosures of the reordered factors.
-
-# Algorithm (incremental Givens)
-Instead of computing `ordschur` on midpoints and then propagating through
-full O(n³) ball-matrix multiplies, this applies each Givens rotation of the
-reordering directly to the `(mid, rad)` arrays. This is O(kn) rotations at
-O(n) ball operations each — dramatically faster for large matrices.
-
-The radius propagation through each Givens rotation is rigorous: for exact
-rotation parameters `(c, s)` applied to a ball `[m ± r]`, the output radius
-bounds both the input-radius contribution and the floating-point rounding
-error of the midpoint computation.
-
-# Returns
-A `NamedTuple` with fields:
-- `Q::BallMatrix` — rigorous enclosure of the reordered Schur basis
-- `T::BallMatrix` — rigorous enclosure of the reordered Schur form
-- `values::Vector` — reordered eigenvalues (midpoint only)
-- `orth_defect` — zero (tracked in radii)
-- `fact_defect` — zero (tracked in radii)
-
-# Example
-```julia
-A = BallMatrix(randn(ComplexF64, 5, 5))
-Q_ball, T_ball, _ = rigorous_schur_bigfloat(A)
-select = [true, true, false, false, false]
-result = ordschur_ball(Q_ball, T_ball, select)
-result.T  # reordered Schur form with rigorous radii
-```
+`T_ball` is expected to be upper triangular (a complex Schur form). The cost is that of
+`ordschur` plus three products of n×n ball matrices, and three more when `A` is given.
 """
 function ordschur_ball(Q_ball::BallMatrix, T_ball::BallMatrix,
-                       select::AbstractVector{Bool})
+        select::AbstractVector{Bool}; A::Union{Nothing, BallMatrix} = nothing)
     n = size(T_ball, 1)
     n == size(T_ball, 2) || throw(DimensionMismatch("T_ball must be square"))
     n == size(Q_ball, 1) == size(Q_ball, 2) || throw(DimensionMismatch("Q_ball must be n×n"))
     length(select) == n || throw(DimensionMismatch("select must have length n"))
+    A === nothing || size(A) == (n, n) || throw(DimensionMismatch("A must be n×n"))
 
-    ET = eltype(mid(T_ball))   # e.g. Complex{BigFloat}
-    RT = real(ET)              # e.g. BigFloat
-    eps_RT = machine_epsilon(RT)
+    ET = eltype(mid(T_ball))
+    # the rotation: the reordering applied to the identity
+    G, T_ord, _ = ordschur_bigfloat(mid(T_ball), Matrix{ET}(I, n, n), select)
+    T̃ = Matrix(UpperTriangular(Matrix(T_ord)))
+    bG = BallMatrix(Matrix(G))
+    bT̃ = BallMatrix(T̃)
 
-    # Work on copies of mid/rad arrays
-    T_mid = copy(mid(T_ball))
-    T_rad = copy(rad(T_ball))
-    Q_mid = copy(mid(Q_ball))
-    Q_rad = copy(rad(Q_ball))
+    rotation_orth_defect = upper_bound_L2_opnorm(bG' * bG - I)
+    rotation_residual = upper_bound_L2_opnorm(T_ball * bG - bG * bT̃)
+    Q = Q_ball * bG
 
-    # Incremental ordschur: bubble selected eigenvalues to top-left
-    ks = 0
-    for k in 1:n
-        if select[k]
-            ks += 1
-            if k != ks
-                _ball_trexchange!(T_mid, T_rad, Q_mid, Q_rad, k, ks, eps_RT)
-            end
-        end
+    orth_defect = fact_defect = nothing
+    if A !== nothing
+        orth_defect = upper_bound_L2_opnorm(Q' * Q - I)
+        fact_defect = upper_bound_L2_opnorm(A * Q - Q * bT̃)
     end
 
-    # Enforce upper triangularity: absorb subdiagonal midpoints into radii
-    for i in 2:n, j in 1:i-1
-        T_rad[i, j] += abs(T_mid[i, j])
-        T_mid[i, j] = zero(ET)
-    end
-
-    return (Q=BallMatrix(Q_mid, Q_rad), T=BallMatrix(T_mid, T_rad),
-            values=diag(T_mid), orth_defect=zero(RT), fact_defect=zero(RT))
+    return (; Q, T = bT̃, values = diag(T̃), G = Matrix(G), rotation_orth_defect,
+        rotation_residual, orth_defect, fact_defect)
 end
 
 """
-    spectral_projector_error_bound(; resolvent_bound_A, contour_radius,
-                                     orth_defect, fact_defect)
+    spectral_projector_error_bound(; resolvent_bound_A, contour_radius, orth_defect, fact_defect)
 
-Rigorous upper bound on `‖P_A - P_computed‖₂`, the distance between the true
-spectral projector of `A` and the projector computed from the Miyajima
-Sylvester solve on the point Schur form `T̃`.
+An upper bound of `‖P_A − P_c‖₂`, where `P_A` is the spectral projector of `A` for the part of
+its spectrum inside a contour `Γ`, and `P_c = Q P_T̃ Q*` with `P_T̃` the spectral projector of a
+matrix `T̃` for the part of its spectrum inside the same contour. `Q` and `T̃` are any pair with
+`δ = orth_defect ≥ ‖I − Q*Q‖₂ < 1` and `ε = fact_defect ≥ ‖AQ − QT̃‖₂`, for instance the one
+returned by [`ordschur_ball`](@ref) with `A` given.
 
-# Mathematical Background
+# The bound
 
-The true spectral projector is the contour integral of the resolvent:
+Both projectors are contour integrals, `P_A = (1/2πi)∮_Γ (zI − A)⁻¹ dz` and
+`P_c = (1/2πi)∮_Γ Q(zI − T̃)⁻¹Q* dz`. With `R = AQ − QT̃`, so that `(zI − A)Q = Q(zI − T̃) − R`,
 
-    P_A = (1/2πi) ∮_Γ (zI - A)⁻¹ dz
+    (zI − A)⁻¹ − Q(zI − T̃)⁻¹Q* = (zI − A)⁻¹ [ (I − QQ*) + R (zI − T̃)⁻¹ Q* ].
 
-The computed projector uses the reordered Schur form:
+With `M_A ≥ ‖(zI − A)⁻¹‖₂` on `Γ` (`resolvent_bound_A`), `M_T̃ ≥ ‖(zI − T̃)⁻¹‖₂` on `Γ`,
+`‖I − QQ*‖₂ = ‖I − Q*Q‖₂ ≤ δ` for a square `Q`, `‖Q‖₂ ≤ √(1 + δ)`, and a contour of length at most
+`2πr` (`contour_radius`; a circle of radius `r` or a polygon inscribed in it),
 
-    P_computed = Q_ord · [I  Y; 0  0] · Q_ord^H
-              = (1/2πi) ∮_Γ Q_ord (zI - T̃)⁻¹ Q_ord^H dz
+    ‖P_A − P_c‖₂ ≤ r · M_A · ( δ + ε · M_T̃ · √(1 + δ) ).
 
-The resolvent identity gives:
+`M_T̃` is obtained from `M_A`: with `E = I − Q*Q` and `F = Q*(zI − A)Q`,
+`(I − E)(zI − T̃) = F + Q*R`, `‖F⁻¹‖₂ ≤ M_A/(1 − δ)`, so with
+`γ = M_A √(1 + δ) ε/(1 − δ) < 1`,
 
-    (zI-A)⁻¹ - Q_ord(zI-T̃)⁻¹Q_ord^H
-        = (zI-A)⁻¹(I - Q_ord Q_ord^H) + (zI-A)⁻¹ R (zI-T̃)⁻¹ Q_ord^H
+    M_T̃ ≤ M_A (1 + δ) / ((1 − δ)(1 − γ)).
 
-where `R = A Q_ord - Q_ord T̃` is the factorization residual. Integrating over
-the circle Γ of radius `r`:
-
-    ‖P_A - P_computed‖ ≤ r · M_A · (δ + ε · M_T̃ · √(1+δ))
-
-where:
-- `M_A = max_{z∈Γ} ‖(zI-A)⁻¹‖` — input resolvent bound
-- `δ` — orthogonality defect `‖I - Q_ord^H Q_ord‖`
-- `ε` — factorization defect `‖A Q_ord - Q_ord T̃‖`
-- `M_T̃` — resolvent of `T̃`, bounded from `M_A` via:
-
-    (zI - T̃) = (I-E)⁻¹ [Q_ord^H(zI-A)Q_ord + Q_ord^H R]
-
-    M_T̃ ≤ M_A · (1+δ) / [(1-δ)(1-γ)]
-
-  with `γ = M_A · √(1+δ) · ε / (1-δ)`.
-
-# Arguments (keyword)
-- `resolvent_bound_A::Real`: `max_{z∈Γ} ‖(zI-A)⁻¹‖₂` on the enclosing circle
-- `contour_radius::Real`: radius `r` of the circular contour Γ
-- `orth_defect::Real`: `‖I - Q_ord^H Q_ord‖₂` (from `ordschur_ball`)
-- `fact_defect::Real`: `‖A Q_ord - Q_ord T̃‖₂` (from `ordschur_ball`)
-
-# Returns
-Scalar upper bound on `‖P_A - P_computed‖₂`. Returns `Inf` if the Neumann
-series conditions are not met (γ ≥ 1 or δ ≥ 1).
-
-# Example
-```julia
-# After ordschur_ball and CertifScripts resolvent bound on a circle:
-bound = spectral_projector_error_bound(
-    resolvent_bound_A = 42.0,    # from CertifScripts
-    contour_radius = 0.5,        # circle separating eigenvalue clusters
-    orth_defect = 1e-77,         # from ordschur_ball
-    fact_defect = 1e-75          # from ordschur_ball
-)
-```
+The hypothesis that `T̃` has no spectrum on `Γ` follows from `γ < 1`. Every operation is rounded
+up. Returns `Inf` when `δ ≥ 1` or `γ ≥ 1`.
 """
-function spectral_projector_error_bound(; resolvent_bound_A::Real,
-                                          contour_radius::Real,
-                                          orth_defect::Real,
-                                          fact_defect::Real)
-    M_A = resolvent_bound_A
-    r   = contour_radius
-    δ   = orth_defect
-    ε   = fact_defect
-    RT  = promote_type(typeof(M_A), typeof(r), typeof(δ), typeof(ε))
-
-    if δ >= one(RT)
-        return RT(Inf)
-    end
-
-    # ‖Q_ord‖ ≤ √(1+δ) from Q^H Q = I - E with ‖E‖ ≤ δ
-    σ_max_Q = sqrt(one(RT) + δ)
-
-    # Step 1: Bound ‖(zI - T̃)⁻¹‖ from M_A and residuals
-    #
-    # From (I-E)(zI-T̃) = Q^H(zI-A)Q + Q^H R:
-    #   F = Q^H(zI-A)Q  ⟹  ‖F⁻¹‖ ≤ M_A / (1-δ)
-    #   γ  = ‖F⁻¹ Q^H R‖ ≤ M_A · √(1+δ) · ε / (1-δ)
-    #   M_T̃ = ‖(zI-T̃)⁻¹‖ ≤ M_A · (1+δ) / [(1-δ)(1-γ)]
-
-    F_inv_bound = M_A / (one(RT) - δ)
-    γ = F_inv_bound * σ_max_Q * ε
-
-    if γ >= one(RT)
-        return RT(Inf)
-    end
-
-    M_T = F_inv_bound * (one(RT) + δ) / (one(RT) - γ)
-
-    # Step 2: Projector error bound via contour integral
-    #
-    # ‖P_A - P_computed‖ ≤ r · M_A · (δ + ε · M_T̃ · √(1+δ))
-    #
-    # Two terms from the resolvent identity:
-    #   (zI-A)⁻¹(I - Q Q^H)           → M_A · δ
-    #   (zI-A)⁻¹ R (zI-T̃)⁻¹ Q^H     → M_A · ε · M_T̃ · ‖Q‖
-
-    return r * M_A * (δ + ε * M_T * σ_max_Q)
+function spectral_projector_error_bound(; resolvent_bound_A::Real, contour_radius::Real,
+        orth_defect::Real, fact_defect::Real)
+    M_A, r, δ, ε = promote(float(resolvent_bound_A), float(contour_radius), float(orth_defect),
+        float(fact_defect))
+    RT = typeof(M_A)
+    (isfinite(M_A) && isfinite(r) && isfinite(δ) && isfinite(ε)) || return RT(Inf)
+    (M_A >= 0 && r >= 0 && δ >= 0 && ε >= 0) ||
+        throw(ArgumentError("spectral_projector_error_bound: the four bounds must be nonnegative"))
+    δ < 1 || return RT(Inf)
+    one_ = one(RT)
+    σ_Q = sqrt_up(add_up(one_, δ))                              # ‖Q‖₂
+    F_inv = div_up(M_A, sub_down(one_, δ))                      # ‖F⁻¹‖₂
+    γ = mul_up(mul_up(F_inv, σ_Q), ε)
+    γ < 1 || return RT(Inf)
+    M_T = div_up(mul_up(F_inv, add_up(one_, δ)), sub_down(one_, γ))
+    return mul_up(mul_up(r, M_A), add_up(δ, mul_up(mul_up(ε, M_T), σ_Q)))
 end
 
 export ordschur_bigfloat, ordschur_ball, spectral_projector_error_bound

@@ -72,113 +72,93 @@ using Test
         @test Q_ord * T_ord * Q_ord' ≈ Ac atol = 1e-10
     end
 
-    @testset "ordschur_ball — BallMatrix with zero radii" begin
-        n = 4
-        A = randn(n, n)
-        Ac = complex(A)
-        F = schur(Ac)
+    # the reordered pair is whatever floating point produced; the tests check that the bounds
+    # returned are above the defects of that pair, evaluated at 512 bits
+    exact_norm(M) = opnorm(ComplexF64.(M))
+    big512(f) = setprecision(f, BigFloat, 512)
 
-        Q_ball = BallMatrix(F.Z)
-        T_ball = BallMatrix(F.T)
-        select = [true, true, false, false]
+    @testset "ordschur_ball — the reordered pair and its measured defects" begin
+        for n in (4, 9), trial in 1:3
+            Ac = randn(ComplexF64, n, n)
+            F = schur(Ac)
+            select = falses(n); select[[2, n]] .= true
+            r = ordschur_ball(BallMatrix(F.Z), BallMatrix(F.T), select; A = BallMatrix(Ac))
 
-        result = ordschur_ball(Q_ball, T_ball, select)
+            @test istriu(mid(r.T)) && all(iszero, rad(r.T))
+            @test r.values == diag(mid(r.T))
+            # the selected eigenvalues come first
+            @test sort(abs.(r.values[1:2] .- [F.T[2, 2], F.T[n, n]])) ≤ [1e-10, 1e-10] ||
+                  sort(abs.(r.values[1:2] .- [F.T[n, n], F.T[2, 2]])) ≤ [1e-10, 1e-10]
 
-        # Radii should be finite
-        @test all(isfinite, rad(result.T))
-        @test all(isfinite, rad(result.Q))
+            dG, ρ, δ, ε = big512() do
+                G, T̃, T, Q, A = big.(r.G), big.(mid(r.T)), big.(F.T), big.(mid(r.Q)), big.(Ac)
+                exact_norm(G' * G - I), exact_norm(T * G - G * T̃), exact_norm(Q' * Q - I),
+                exact_norm(A * Q - Q * T̃)
+            end
+            @test r.rotation_orth_defect ≥ dG * (1 - 1e-10)
+            @test r.rotation_residual ≥ ρ * (1 - 1e-10)
+            @test r.orth_defect ≥ δ * (1 - 1e-10)
+            @test r.fact_defect ≥ ε * (1 - 1e-10)
+            @test r.rotation_orth_defect < 1e-12 && r.rotation_residual < 1e-11
+            @test r.orth_defect < 1e-12 && r.fact_defect < 1e-11
 
-        # Radii should be small (defects tracked in radii, not separate fields)
-        @test maximum(rad(result.Q)) < 1e-10
-        @test maximum(rad(result.T)) < 1e-10
-
-        # Midpoint should reconstruct A
-        @test mid(result.Q) * mid(result.T) * mid(result.Q)' ≈ Ac atol = 1e-10
-
-        # T_ord midpoint should be upper triangular (regression: ordschur_ball
-        # used to produce non-triangular midpoints from G'*T*G arithmetic)
-        @test istriu(mid(result.T))
-    end
-
-    @testset "ordschur_ball — BallMatrix with non-zero radii" begin
-        n = 3
-        A_mid = [1.0+0im 2.0+0im 0.5+0im;
-                 0.0+0im 3.0+0im 1.0+0im;
-                 0.0+0im 0.0+0im 5.0+0im]
-        A_rad = fill(1e-10, n, n)
-        A_ball = BallMatrix(A_mid, A_rad)
-
-        F = schur(A_mid)
-        Q_ball = BallMatrix(F.Z, fill(1e-12, n, n))
-        T_ball = BallMatrix(F.T, fill(1e-12, n, n))
-        select = [false, false, true]  # move eigenvalue 5.0 to top
-
-        result = ordschur_ball(Q_ball, T_ball, select)
-
-        # Radii should be finite and positive
-        @test all(isfinite, rad(result.T))
-        @test all(r -> r >= 0, rad(result.T))
-        @test all(isfinite, rad(result.Q))
-
-        # Selected eigenvalue (≈5.0) should be at top-left
-        @test abs(mid(result.T)[1, 1] - 5.0) < 1e-8
-    end
-
-    @testset "ordschur_ball — BigFloat 256-bit" begin
-        old_prec = precision(BigFloat)
-        setprecision(BigFloat, 256)
-        try
-            n = 3
-            A_mid = Complex{BigFloat}[1 2 0; 0 3 1; 0 0 5]
-            F = schur(Matrix(A_mid))
-            Q_ball = BallMatrix(F.Z)
-            T_ball = BallMatrix(F.T)
-            select = [false, true, true]
-
-            result = ordschur_ball(Q_ball, T_ball, select)
-
-            # Radii should be ≈ machine epsilon for BigFloat
-            @test maximum(rad(result.Q)) < BigFloat(10)^(-60)
-            @test maximum(rad(result.T)) < BigFloat(10)^(-60)
-        finally
-            setprecision(BigFloat, old_prec)
+            # without A the two defects against A are not produced, and they follow from those
+            # of the pair that was given
+            r0 = ordschur_ball(BallMatrix(F.Z), BallMatrix(F.T), select)
+            @test r0.orth_defect === nothing && r0.fact_defect === nothing
+            @test r0.G == r.G && mid(r0.T) == mid(r.T)
+            δ0, ε0 = big512() do
+                Z, T, A = big.(F.Z), big.(F.T), big.(Ac)
+                exact_norm(Z' * Z - I) * (1 + 1e-10) + 1e-300, exact_norm(A * Z - Z * T) * (1 + 1e-10) + 1e-300
+            end
+            composed = ε0 * sqrt(1 + r0.rotation_orth_defect) + sqrt(1 + δ0) * r0.rotation_residual
+            @test composed ≥ ε * (1 - 1e-10)
         end
     end
 
-    @testset "ordschur_ball — rigorous_schur_bigfloat pipeline" begin
-        n = 4
-        A_mid = randn(n, n)
-        A_ball = BallMatrix(A_mid, fill(1e-10, n, n))
-
-        Q_ball, T_ball, result = rigorous_schur_bigfloat(A_ball; target_precision=256)
-        @test result.converged
-
-        select = [true, false, false, true]
-        ord_result = ordschur_ball(Q_ball, T_ball, select)
-
-        # Check all radii are finite
-        @test all(isfinite, rad(ord_result.T))
-        @test all(isfinite, rad(ord_result.Q))
-
-        # T midpoint must be upper triangular
-        @test istriu(mid(ord_result.T))
+    @testset "ordschur_ball — input radii are in the bounds" begin
+        n = 5
+        Ac = randn(ComplexF64, n, n)
+        F = schur(Ac)
+        select = falses(n); select[4] = true
+        rQ, rT, rA = 1e-9, 1e-8, 1e-7
+        r = ordschur_ball(BallMatrix(F.Z, fill(rQ, n, n)), BallMatrix(F.T, fill(rT, n, n)), select;
+            A = BallMatrix(Ac, fill(rA, n, n)))
+        for _ in 1:20
+            sgn() = rand((-1.0, 1.0), n, n)
+            Qm, Tm, Am = F.Z + rQ * sgn(), F.T + rT * sgn(), Ac + rA * sgn()
+            Q = Qm * r.G
+            @test all(abs.(Q - mid(r.Q)) .≤ rad(r.Q) .* (1 + 1e-12))
+            @test r.rotation_residual ≥ opnorm(Tm * r.G - r.G * mid(r.T)) * (1 - 1e-10)
+            @test r.orth_defect ≥ opnorm(Q' * Q - I) * (1 - 1e-10)
+            @test r.fact_defect ≥ opnorm(Am * Q - Q * mid(r.T)) * (1 - 1e-10)
+        end
     end
 
-    @testset "ordschur_ball → Sylvester pipeline (regression)" begin
-        n = 4
-        A_mid = randn(n, n)
-        A_ball = BallMatrix(A_mid, fill(1e-10, n, n))
+    @testset "ordschur_ball — BigFloat 256-bit" begin
+        setprecision(BigFloat, 256) do
+            A_mid = Complex{BigFloat}[1 2 0; 0 3 1; 0 0 5]
+            F = schur(Matrix(A_mid))
+            r = ordschur_ball(BallMatrix(F.Z), BallMatrix(F.T), [false, true, true];
+                A = BallMatrix(A_mid))
+            @test istriu(mid(r.T)) && all(iszero, rad(r.T))
+            @test r.orth_defect isa BigFloat && r.orth_defect < BigFloat(10)^(-60)
+            @test r.fact_defect < BigFloat(10)^(-60)
+            @test r.rotation_residual < BigFloat(10)^(-60)
+        end
+    end
 
+    @testset "ordschur_ball — rigorous_schur_bigfloat pipeline and the Sylvester enclosure" begin
+        n = 4
+        A_ball = BallMatrix(randn(n, n), fill(1e-10, n, n))
         Q_ball, T_ball, result = rigorous_schur_bigfloat(A_ball; target_precision=256)
         @test result.converged
-
-        select = [true, false, false, false]
-        ord = ordschur_ball(Q_ball, T_ball, select)
-
-        # This used to throw ArgumentError("T must be upper triangular")
+        ord = ordschur_ball(Q_ball, T_ball, [true, false, false, false])
+        @test istriu(mid(ord.T))
+        @test all(isfinite, rad(ord.Q))
         Y = triangular_sylvester_miyajima_enclosure(ord.T, 1)
-        @test all(isfinite, mid(Y))
-        @test all(isfinite, rad(Y))
+        @test all(isfinite, mid(Y)) && all(isfinite, rad(Y))
+        @test_throws DimensionMismatch ordschur_ball(Q_ball, T_ball, [true, false])
     end
 end
 
@@ -324,31 +304,48 @@ end
         @test bound < BigFloat(10)^(-60)
     end
 
-    @testset "End-to-end: ordschur_ball residuals → bound" begin
-        n = 4
-        A_mid = randn(n, n)
-        A_ball = BallMatrix(A_mid, fill(1e-10, n, n))
-
-        Q_ball, T_ball, result = rigorous_schur_bigfloat(A_ball; target_precision=256)
-        @test result.converged
-
-        select = [true, true, false, false]
-        ord = ordschur_ball(Q_ball, T_ball, select)
-
-        # Defects are now tracked in radii (fields are zero); use small
-        # hardcoded values to exercise spectral_projector_error_bound
-        orth_est = BigFloat(maximum(rad(ord.Q)))
-        fact_est = BigFloat(maximum(rad(ord.T)))
-
-        bound = spectral_projector_error_bound(
-            resolvent_bound_A = BigFloat(100),
-            contour_radius = BigFloat("0.5"),
-            orth_defect = orth_est,
-            fact_defect = fact_est
-        )
-        @test isfinite(bound)
-        @test bound > 0
-        @test bound < BigFloat(1)   # sanity: much smaller than O(1)
+    @testset "End to end: the bound is above the distance between the two projectors" begin
+        # The spectral projector of a triangular matrix for its p-th diagonal entry, v·u with
+        # (T − λ)v = 0, u(T − λ) = 0, by substitution.
+        function triangular_projector(T, p)
+            n = size(T, 1); λ = T[p, p]
+            v = zeros(eltype(T), n); v[p] = 1
+            for i in (p - 1):-1:1
+                v[i] = -sum(T[i, j] * v[j] for j in (i + 1):p) / (T[i, i] - λ)
+            end
+            u = zeros(eltype(T), n); u[p] = 1
+            for j in (p + 1):n
+                u[j] = -sum(u[i] * T[i, j] for i in p:(j - 1)) / (T[j, j] - λ)
+            end
+            return v * transpose(u)
+        end
+        CS = BallArithmetic.CertifScripts
+        n = 6
+        for trial in 1:3
+            Ac = Matrix(Diagonal(ComplexF64.([3.0, 0.5, -0.5, 1im, -1im, 0.2 + 0.3im]))) +
+                 0.2 * randn(ComplexF64, n, n)
+            F = schur(Ac)
+            p = argmax(real.(diag(F.T)))                       # the eigenvalue near 3
+            select = falses(n); select[p] = true
+            ord = ordschur_ball(BallMatrix(F.Z), BallMatrix(F.T), select; A = BallMatrix(Ac))
+            radius = 1.0
+            cert = CS.run_certification(Ac, CS.CertificationCircle(mid(ord.T)[1, 1], radius;
+                samples = 32); log_io = devnull)
+            bound = spectral_projector_error_bound(resolvent_bound_A = cert.resolvent_original,
+                contour_radius = radius, orth_defect = ord.orth_defect,
+                fact_defect = ord.fact_defect)
+            distance = setprecision(BigFloat, 512) do
+                Fb = schur(Complex{BigFloat}.(Ac))
+                pb = argmin(abs.(diag(Fb.T) .- mid(ord.T)[1, 1]))
+                P_A = Fb.Z * triangular_projector(Fb.T, pb) * Fb.Z'
+                Q = Complex{BigFloat}.(mid(ord.Q))
+                P_c = Q * triangular_projector(Complex{BigFloat}.(mid(ord.T)), 1) * Q'
+                opnorm(ComplexF64.(P_A - P_c)), opnorm(ComplexF64.(P_A))
+            end
+            @test isfinite(bound) && bound < 1e-9
+            @test bound ≥ distance[1]
+            @test distance[2] ≥ 1 - 1e-12                       # a projector, not zero
+        end
     end
 end
 
