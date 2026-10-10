@@ -233,4 +233,15 @@ did not return within 240 s before it and returns after it.
 `Σ*Σ` in the result and leaves the singular values as they are, so the evaluators never reached
 that function (an earlier line of this section said they did); its only caller was its own test.
 
-Not done: C6, C7; `ordschur_ball`, `compute_spectral_coefficient`, `rigorous_block_schur`.
+`ordschur_ball` (`20adf7e`): the reordering is the floating-point one and the defects of the
+reordered pair are measured afterwards in ball arithmetic: `‖G*G − I‖`, `‖TG − GT̃‖`, and with `A`
+given `‖Q*Q − I‖` and `‖AQ − QT̃‖`, the two numbers `spectral_projector_error_bound` takes. The
+radius bookkeeping through the Givens rotations and the zero defects are gone.
+
+`rigorous_block_schur` (`a0294c8`, `0eb0558`): returns `Q_inv` with upper bounds of
+`‖Q_inv(AQ − QT)‖` and `‖Q_inv Q − I‖`, and the bound `‖R₁‖/(1 − ‖R₂‖)` for `S` in
+`Q⁻¹AQ = T + S`. `refine_off_diagonal_block` and `compute_block_sylvester_rhs` are removed.
+
+Not done: C6, C7; `compute_spectral_projector_schur` and `compute_spectral_coefficient`, which call
+`ordschur_ball` and still present `Q P Q*` as an enclosure of the projector; the unfaithful
+`sylvester_miyajima_enclosure`.
