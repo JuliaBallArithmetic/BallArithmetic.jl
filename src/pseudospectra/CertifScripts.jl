@@ -589,6 +589,27 @@ function set_parametric_config!(precomp::SylvesterResolventResult, R::AbstractMa
     return nothing
 end
 
+# The record of one sample of the parametric certifier, in the format the refinement reads. The
+# refinement needs a lower bound of σ_min(T − zI) for the WHOLE matrix: the reciprocal, rounded
+# down, of the bound on ‖(zI − T)⁻¹‖. (Both copies of this conversion used 1/M_A, the bound for the
+# leading k×k block alone, which is not a bound for T: on diag(0, 0.3, p, −0.2) with p at distance
+# 1e-6 outside the unit circle it reported σ_min ≥ 0.7 everywhere and never refined.) The value
+# is stored as a ball of radius zero; the smallest singular value itself is not enclosed here. A
+# bound that failed, or is not a positive finite number, is recorded as not certified.
+function _parametric_sample(result, ::Type{RT}, idx, z, elapsed) where {RT}
+    if result.success && isfinite(result.resolvent_bound) && result.resolvent_bound > 0
+        hi_res = RT(result.resolvent_bound)
+        lo_val = div_down(one(RT), hi_res)
+        val, res = Ball(lo_val, zero(RT)), Ball(hi_res, zero(RT))
+    else
+        lo_val, hi_res = zero(RT), RT(Inf)
+        val, res = Ball(zero(RT), RT(Inf)), Ball(RT(Inf), zero(RT))
+    end
+    return (i = idx, val = val, lo_val = lo_val, res = res, hi_res = hi_res,
+        second_val = Ball(zero(RT), zero(RT)),            # not available from this certifier
+        z = z, t = elapsed, id = nothing)
+end
+
 """
     _evaluate_sample_parametric(T, z, idx; use_warm_start=true, distance_threshold=1e-4)
 
@@ -653,40 +674,7 @@ function _evaluate_sample_parametric(T::BallMatrix{ET}, z::Number, idx::Int;
         end
     end
 
-    # Convert to standard format
-    if result.success && isfinite(result.resolvent_bound) && result.resolvent_bound > 0
-        # The refinement needs a lower bound of σ_min(T − zI) for the WHOLE matrix: the reciprocal,
-        # rounded down, of the bound on ‖(zI − T)⁻¹‖. (It used 1/M_A, the bound for the leading
-        # k×k block alone, which is not a bound for T.) It is stored as a ball of radius zero whose
-        # value is that lower bound; the smallest singular value itself is not enclosed here.
-        hi_res = RT(result.resolvent_bound)
-        lo_val = div_down(one(RT), hi_res)
-
-        return (
-            i = idx,
-            val = Ball(lo_val, zero(RT)),
-            lo_val = lo_val,
-            res = Ball(hi_res, zero(RT)),
-            hi_res = hi_res,
-            second_val = Ball(zero(RT), zero(RT)),  # Not available from parametric
-            z = z_converted,
-            t = elapsed,
-            id = nothing
-        )
-    else
-        # Failure case
-        return (
-            i = idx,
-            val = Ball(zero(RT), RT(Inf)),
-            lo_val = zero(RT),
-            res = Ball(RT(Inf), zero(RT)),
-            hi_res = RT(Inf),
-            second_val = Ball(zero(RT), zero(RT)),
-            z = z_converted,
-            t = elapsed,
-            id = nothing
-        )
-    end
+    return _parametric_sample(result, RT, idx, z_converted, elapsed)
 end
 
 """
@@ -2144,43 +2132,7 @@ function run_certification_parametric(A::BallMatrix{T}, circle::CertificationCir
             end
         end
 
-        # Convert to standard format
-        if result.success
-            sigma_min = RT(1) / result.M_A
-            sigma_min_ball = Ball(sigma_min, zero(RT))
-
-            lo_val = setrounding(RT, RoundDown) do
-                sigma_min
-            end
-
-            hi_res = setrounding(RT, RoundUp) do
-                result.resolvent_bound
-            end
-
-            return (
-                i = idx,
-                val = sigma_min_ball,
-                lo_val = lo_val,
-                res = Ball(result.resolvent_bound, zero(RT)),
-                hi_res = hi_res,
-                second_val = Ball(zero(RT), zero(RT)),
-                z = z_typed,
-                t = elapsed,
-                id = nothing
-            )
-        else
-            return (
-                i = idx,
-                val = Ball(zero(RT), RT(Inf)),
-                lo_val = zero(RT),
-                res = Ball(RT(Inf), zero(RT)),
-                hi_res = RT(Inf),
-                second_val = Ball(zero(RT), zero(RT)),
-                z = z_typed,
-                t = elapsed,
-                id = nothing
-            )
-        end
+        return _parametric_sample(result, RT, idx, z_typed, elapsed)
     end
 
     _require_complete(adaptive_arcs!(arcs, cache, pending, η; check_interval = check_interval,
