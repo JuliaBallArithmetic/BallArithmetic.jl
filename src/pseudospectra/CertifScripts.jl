@@ -73,7 +73,6 @@ const _bf_center_cache_hits = Ref{Int}(0)
 
 # Parametric Sylvester-based certifier cache
 const _parametric_precomp = Ref{Union{Nothing, SylvesterResolventResult}}(nothing)
-const _parametric_residual = Ref{Union{Nothing, Matrix}}(nothing)
 const _parametric_config = Ref{Union{Nothing, ResolventBoundConfig}}(nothing)
 const _parametric_k = Ref{Int}(0)
 const _parametric_warm_U = Ref{Union{Nothing, Matrix}}(nothing)
@@ -475,7 +474,6 @@ Clear the worker-local parametric certifier cache.
 """
 function _clear_parametric_cache!()
     _parametric_precomp[] = nothing
-    _parametric_residual[] = nothing
     _parametric_config[] = nothing
     _parametric_k[] = 0
     return _clear_parametric_warm_start!()
@@ -505,20 +503,15 @@ function _parametric_cache_stats()
 end
 
 """
-    set_parametric_config!(precomp, R, config; k=0)
+    set_parametric_config!(precomp, config; k = 0)
 
-Set the parametric certifier configuration.
-
-# Arguments
-- `precomp`: Precomputed Sylvester quantities from `sylvester_resolvent_precompute`
-- `R`: Sylvester residual matrix
-- `config`: ResolventBoundConfig specifying estimators
-- `k`: Split index (for reference)
+Register in this process the data of the parametric certifier: `precomp` from
+`sylvester_resolvent_precompute` (it holds the similarity and the enclosure of its residual), the
+`ResolventBoundConfig`, and the split index `k` for reference.
 """
-function set_parametric_config!(precomp::SylvesterResolventResult, R::AbstractMatrix,
+function set_parametric_config!(precomp::SylvesterResolventResult,
         config::ResolventBoundConfig; k::Int = 0)
     _parametric_precomp[] = precomp
-    _parametric_residual[] = Matrix(R)
     _parametric_config[] = config
     _parametric_k[] = k
     return nothing
@@ -559,10 +552,9 @@ function _evaluate_sample_parametric(T::BallMatrix{ET}, z::Number, idx::Int;
     z_converted = CT(z)
 
     precomp = _parametric_precomp[]
-    R = _parametric_residual[]
     config = _parametric_config[]
 
-    if precomp === nothing || R === nothing || config === nothing
+    if precomp === nothing || config === nothing
         error("Parametric config not set. Call set_parametric_config! first.")
     end
 
@@ -588,9 +580,7 @@ function _evaluate_sample_parametric(T::BallMatrix{ET}, z::Number, idx::Int;
     all(iszero, T.r) ||
         throw(ArgumentError("the parametric certifier needs a Schur factor with zero radius"))
     elapsed = @elapsed result = parametric_resolvent_bound(
-        precomp, Matrix(T.c), z_converted, config;
-        R = R, svd_warm_start = warm_start
-    )
+        precomp, Matrix(T.c), z_converted, config; svd_warm_start = warm_start)
 
     # Update warm start cache for next call
     if result.success
@@ -1349,19 +1339,15 @@ end
 function _parametric_setup(schur_matrix::BallMatrix, k, config::ResolventBoundConfig)
     n = size(schur_matrix, 1)
     k_used = clamp(k === nothing ? max(2, n ÷ 4) : Int(k), 2, n - 2)
-    T_mat = Matrix(schur_matrix.c)
-    T11 = T_mat[1:k_used, 1:k_used]
-    T12 = T_mat[1:k_used, (k_used + 1):n]
-    T22 = T_mat[(k_used + 1):n, (k_used + 1):n]
-    X = solve_sylvester_oracle(T11, T12, T22)
-    R = T12 + T11 * X - X * T22
-    precomp = sylvester_resolvent_precompute(T_mat, k_used; X_oracle = X)
+    all(iszero, schur_matrix.r) ||
+        throw(ArgumentError("the parametric certifier needs a Schur factor with zero radius"))
+    precomp = sylvester_resolvent_precompute(Matrix(schur_matrix.c), k_used)
     precomp.precomputation_success ||
         error("Sylvester precomputation failed: $(precomp.failure_reason)")
     @info "Parametric certification with k=$k_used (n=$n)"
-    @info "Configuration: $(config.d_inv_estimator), $(config.coupling_estimator), $(config.combiner)"
+    @info "Configuration: $(config.d_inv_estimator), $(config.coupling_estimator)"
     @info "Sylvester diagnostics: reduction=$(precomp.reduction_factor), penalty=$(precomp.similarity_cond)"
-    return (; k = k_used, precomp, R)
+    return (; k = k_used, precomp)
 end
 
 # The refinement of the polygon run in this process with `evaluate(z, index)`; returns the log of
@@ -1828,7 +1814,7 @@ function run_certification_parametric(A::BallMatrix{T}, circle::CertificationCir
     # the same evaluator as the workers of the distributed driver, on the same registered
     # configuration
     _clear_parametric_cache!()
-    set_parametric_config!(par.precomp, convert.(Complex{real(T)}, par.R), config; k = par.k)
+    set_parametric_config!(par.precomp, config; k = par.k)
     certification_log = _run_serial(circle, η; check_interval, log_io) do z, i
         _evaluate_sample_parametric(setup.schur_matrix, z, i)
     end

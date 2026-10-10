@@ -4,10 +4,10 @@
 #
 # | Config | D⁻¹ Estimator | Coupling | Combiner |
 # |--------|---------------|----------|----------|
-# | V1 | TriBacksub | None (product) | CombinerV1 |
-# | V2 | TriBacksub | AR Solve | CombinerV2 |
-# | V2.5 | TriBacksub | Off-diag Direct | CombinerV2p5 |
-# | V3 | NeumannCollatz | AR Solve | CombinerV2 |
+# | V1 | TriBacksub | None (product) |
+# | V2 | TriBacksub | AR Solve |
+# | V2.5 | TriBacksub | Off-diag Direct |
+# | V3 | NeumannCollatz | AR Solve |
 #
 # The goal is to identify which combination provides the best trade-off
 # between bound tightness and computation time, and potentially discover
@@ -33,10 +33,10 @@ end
 
 function get_all_configs()
     return [
-        ConfigSpec("V1", config_v1(), "TriBacksub + Product + CombinerV1"),
-        ConfigSpec("V2", config_v2(), "TriBacksub + AR + CombinerV2"),
-        ConfigSpec("V2.5", config_v2p5(), "TriBacksub + OffDiag + CombinerV2p5"),
-        ConfigSpec("V3", config_v3(), "NeumannCollatz + AR + CombinerV2"),
+        ConfigSpec("V1", config_v1(), "TriBacksub + Product"),
+        ConfigSpec("V2", config_v2(), "TriBacksub + AR"),
+        ConfigSpec("V2.5", config_v2p5(), "TriBacksub + OffDiag"),
+        ConfigSpec("V3", config_v3(), "NeumannCollatz + AR"),
         # Additional experimental configs could be added here
     ]
 end

@@ -1,159 +1,116 @@
-# Triangular matrix inverse norm bounds and similarity conditioning
+# Upper bounds for the norm of the inverse of an upper triangular matrix, without forming the
+# inverse, and the norm of the unit block triangular similarity S(X) = [I X; 0 I].
 #
-# These utilities compute rigorous upper bounds on inverse norms
-# of triangular matrices without forming the inverse explicitly.
+# Every operation is rounded outward with the emulated directed operations; no rounding mode is
+# changed.
 
-"""
-    triangular_inverse_inf_norm_bound(U::AbstractMatrix{T}) where {T}
+# |x| is exact for a real float; for a complex one it is rounded in the direction asked
+_abs_lo(x::Real) = abs(x)
+_abs_lo(x::Complex) = abs_down(x)
+_abs_hi(x::Real) = abs(x)
+_abs_hi(x::Complex) = abs_up(x)
 
-Compute an upper bound on ‖U⁻¹‖_∞ for upper triangular U using backward recursion.
-
-For upper triangular U, define y ∈ ℝᵐ:
-- y[m] = 1/|u[m,m]|
-- for i = m-1:-1:1: y[i] = (1 + Σⱼ |u[i,j]| * y[j]) / |u[i,i]|
-
-Then ‖U⁻¹‖_∞ ≤ max(y).
-
-# Returns
-- Upper bound on ‖U⁻¹‖_∞, or Inf if U is singular (zero diagonal)
-"""
-function triangular_inverse_inf_norm_bound(U::AbstractMatrix{CT}) where {CT}
-    m = size(U, 1)
-    m == size(U, 2) || throw(DimensionMismatch("U must be square"))
-
-    T = real(CT)
+# The two recursions behind the bounds below. `dlo[i]` is a lower bound of |u_ii| and `absU[i, j]`,
+# j > i, an upper bound of |u_ij|; the entries of `absU` on and below the diagonal are not read.
+# Returns upper bounds of (‖U⁻¹‖_∞, ‖U⁻¹‖₁), or (Inf, Inf) when some `dlo[i]` is not positive.
+#
+# Proof. Let M be the matrix with m_ii = dlo[i], m_ij = −absU[i, j] for j > i, and zero below the
+# diagonal. Back substitution gives, by induction on the columns from the diagonal outward,
+# |U⁻¹| ≤ M⁻¹ entrywise, and M⁻¹ ≥ 0. Hence ‖U⁻¹‖_∞ ≤ ‖M⁻¹e‖_∞ with e the vector of ones, and
+# y = M⁻¹e is the solution of dlo[i]·y_i = 1 + Σ_{j>i} absU[i, j]·y_j, computed from the last row
+# upward. Each y_i is rounded up, which keeps it above the exact solution because the recursion is
+# increasing in the y_j already computed. The 1-norm is the ∞-norm of the transpose, a lower
+# triangular matrix, and the same argument runs from the first row downward.
+function _triangular_inverse_bounds(dlo::AbstractVector{T}, absU::AbstractMatrix{T}) where {T}
+    m = length(dlo)
+    all(d -> isfinite(d) && d > 0, dlo) || return T(Inf), T(Inf)
     y = zeros(T, m)
-
-    # Backward recursion
     for i in m:-1:1
-        diag_i = abs(U[i, i])
-        if diag_i ≤ eps(T) * norm(U, Inf)
-            return T(Inf)  # Singular or nearly singular
+        s = one(T)
+        for j in (i + 1):m
+            s = add_up(s, mul_up(absU[i, j], y[j]))
         end
-
-        # Compute sum of |u[i,j]| * y[j] for j > i
-        row_sum = zero(T)
-        for j in (i+1):m
-            row_sum += abs(U[i, j]) * y[j]
+        y[i] = div_up(s, dlo[i])
+    end
+    w = zeros(T, m)
+    for j in 1:m
+        s = one(T)
+        for i in 1:(j - 1)
+            s = add_up(s, mul_up(absU[i, j], w[i]))
         end
-
-        y[i] = (one(T) + row_sum) / diag_i
+        w[j] = div_up(s, dlo[j])
     end
+    return maximum(y; init = zero(T)), maximum(w; init = zero(T))
+end
 
-    return maximum(y)
+# the data of the recursion for a matrix whose entries are exact
+function _triangular_data(U::AbstractMatrix)
+    size(U, 1) == size(U, 2) || throw(DimensionMismatch("U must be square"))
+    istriu(U) || throw(ArgumentError("U must be upper triangular"))
+    return [_abs_lo(float(U[i, i])) for i in axes(U, 1)], _abs_hi.(float.(U))
 end
 
 """
-    triangular_inverse_one_norm_bound(U::AbstractMatrix{T}) where {T}
+    triangular_inverse_inf_norm_bound(U)
 
-Compute an upper bound on ‖U⁻¹‖₁ for upper triangular U.
+An upper bound of `‖U⁻¹‖_∞` for an upper triangular matrix `U` with exact entries, `Inf` when a
+diagonal entry is zero. With `y` the solution of
 
-Uses the identity ‖U⁻¹‖₁ = ‖(Uᵀ)⁻¹‖_∞ and applies forward recursion.
+    |u_ii| y_i = 1 + Σ_{j>i} |u_ij| y_j,    i = m, m−1, …, 1,
 
-# Returns
-- Upper bound on ‖U⁻¹‖₁, or Inf if U is singular
+the bound is `max_i y_i`: `y = M⁻¹e` for the matrix `M` with diagonal `|u_ii|` and off-diagonal
+entries `−|u_ij|`, and `|U⁻¹| ≤ M⁻¹` entrywise. The recursion is evaluated with every operation
+rounded up and the moduli on the diagonal rounded down.
 """
-function triangular_inverse_one_norm_bound(U::AbstractMatrix{CT}) where {CT}
-    m = size(U, 1)
-    m == size(U, 2) || throw(DimensionMismatch("U must be square"))
+triangular_inverse_inf_norm_bound(U::AbstractMatrix) =
+    _triangular_inverse_bounds(_triangular_data(U)...)[1]
 
-    T = real(CT)
-    y = zeros(T, m)
+"""
+    triangular_inverse_one_norm_bound(U)
 
-    # Forward recursion (equivalent to backward on Uᵀ)
-    for i in 1:m
-        diag_i = abs(U[i, i])
-        if diag_i ≤ eps(T) * norm(U, Inf)
-            return T(Inf)  # Singular or nearly singular
-        end
+An upper bound of `‖U⁻¹‖₁` for an upper triangular matrix `U` with exact entries: the bound of
+[`triangular_inverse_inf_norm_bound`](@ref) for the transpose.
+"""
+triangular_inverse_one_norm_bound(U::AbstractMatrix) =
+    _triangular_inverse_bounds(_triangular_data(U)...)[2]
 
-        # Compute sum of |u[j,i]| * y[j] for j < i
-        col_sum = zero(T)
-        for j in 1:(i-1)
-            col_sum += abs(U[j, i]) * y[j]
-        end
+"""
+    triangular_inverse_two_norm_bound(U)
 
-        y[i] = (one(T) + col_sum) / diag_i
-    end
+An upper bound of `‖U⁻¹‖₂` for an upper triangular matrix `U` with exact entries, by
+`‖M‖₂ ≤ √(‖M‖₁‖M‖_∞)` applied to the two bounds above.
+"""
+triangular_inverse_two_norm_bound(U::AbstractMatrix) =
+    _two_norm_from_one_inf(_triangular_inverse_bounds(_triangular_data(U)...)...)
 
-    return maximum(y)
+function _two_norm_from_one_inf(a::T, b::T) where {T}
+    (isfinite(a) && isfinite(b)) || return T(Inf)
+    return sqrt_up(mul_up(a, b))
 end
 
 """
-    triangular_inverse_two_norm_bound(U::AbstractMatrix{T}) where {T}
+    psi_squared(μ)
 
-Compute an upper bound on ‖U⁻¹‖₂ for upper triangular U.
+An upper bound of `ψ(μ)² = 1 + μ²/2 + (μ/2)√(μ² + 4)`, rounded up.
 
-Uses ‖U⁻¹‖₂ ≤ √(‖U⁻¹‖₁ · ‖U⁻¹‖_∞).
-
-# Returns
-- Upper bound on ‖U⁻¹‖₂, or Inf if U is singular
+For `S(X) = [I X; 0 I]` and `μ = ‖X‖₂`, `‖S(X)‖₂ = ‖S(X)⁻¹‖₂ = ψ(μ)`, so `ψ(μ)²` is the condition
+number of `S(X)` in the spectral norm: with the singular value decomposition of `X` the matrix
+`S(X)*S(X)` splits into blocks `[1 σ; σ 1 + σ²]`, whose largest eigenvalue is
+`1 + σ²/2 + (σ/2)√(σ² + 4)`, increasing in `σ`; and `S(X)⁻¹ = S(−X)`. Being increasing, the
+function may be evaluated at an upper bound of `‖X‖₂`.
 """
-function triangular_inverse_two_norm_bound(U::AbstractMatrix{CT}) where {CT}
-    T = real(CT)
-    norm_inf = triangular_inverse_inf_norm_bound(U)
-    if !isfinite(norm_inf)
-        return T(Inf)
-    end
-
-    norm_one = triangular_inverse_one_norm_bound(U)
-    if !isfinite(norm_one)
-        return T(Inf)
-    end
-
-    return sqrt(norm_one * norm_inf)
-end
-
-#==============================================================================#
-# Similarity transformation conditioning
-#==============================================================================#
-
-"""
-    psi_squared(μ::T) where {T}
-
-Compute ψ(μ)² where ψ(μ) is the 2-norm of the unit block triangular matrix S(X).
-
-For S(X) = [I, -X; 0, I], we have ‖S‖₂ = ‖S⁻¹‖₂ = ψ(‖X‖₂).
-
-The formula is:
-    ψ(μ)² = 1 + μ²/2 + (μ/2)·√(μ² + 4)
-
-This equals κ₂(S(X)) when ‖X‖₂ = μ.
-
-# Arguments
-- `μ::T`: Upper bound on ‖X‖₂
-
-# Returns
-- ψ(μ)² = κ₂(S(X))
-"""
-function psi_squared(μ::T) where {T<:AbstractFloat}
-    if μ ≤ zero(T)
-        return one(T)
-    end
-
-    μ_sq = μ * μ
-    sqrt_term = sqrt(μ_sq + T(4))
-
-    return one(T) + μ_sq / T(2) + (μ / T(2)) * sqrt_term
+function psi_squared(μ::T) where {T <: AbstractFloat}
+    μ ≤ zero(T) && return one(T)
+    μ2 = mul_up(μ, μ)
+    return add_up(add_up(one(T), div_up(μ2, T(2))),
+        mul_up(div_up(μ, T(2)), sqrt_up(add_up(μ2, T(4)))))
 end
 
 """
-    similarity_condition_number(X::AbstractMatrix{T}) where {T}
+    similarity_condition_number(X)
 
-Compute κ₂(S(X)) for the similarity transformation S(X) = [I, -X; 0, I].
-
-Uses the cheap bound ‖X‖₂ ≤ √(‖X‖₁ · ‖X‖_∞).
-
-# Returns
-- Upper bound on κ₂(S(X))
+An upper bound of `κ₂(S(X))` for `S(X) = [I X; 0 I]`: [`psi_squared`](@ref) at
+`upper_bound_L2_opnorm` of `X`. `X` may be a matrix with exact entries or a `BallMatrix`.
 """
-function similarity_condition_number(X::AbstractMatrix{CT}) where {CT}
-    T = real(CT)
-
-    # Cheap 2-norm bound
-    norm1 = opnorm(X, 1)
-    norminf = opnorm(X, Inf)
-    μ = sqrt(norm1 * norminf)
-
-    return psi_squared(T(μ))
-end
+similarity_condition_number(X::AbstractMatrix) = similarity_condition_number(BallMatrix(float.(X)))
+similarity_condition_number(X::BallMatrix) = psi_squared(upper_bound_L2_opnorm(X))

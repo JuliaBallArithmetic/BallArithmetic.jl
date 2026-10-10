@@ -1,914 +1,249 @@
 using Test
 using LinearAlgebra
+using Random
 using BallArithmetic
 
 @testset "Sylvester Resolvent Bound" begin
+    Random.seed!(20261010)
+    truth(T, z) = 1 / minimum(svdvals(ComplexF64.(z * I - T)))
+    tol = 1 - 1e-10
 
     @testset "Triangular inverse bounds" begin
-        # Test with a simple upper triangular matrix
-        n = 5
-        U = UpperTriangular(diagm(0 => 1.0:n) + 0.1 * UpperTriangular(randn(n, n)))
-
-        # Compute bounds
-        norm_inf = triangular_inverse_inf_norm_bound(U)
-        norm_one = triangular_inverse_one_norm_bound(U)
-        norm_two = triangular_inverse_two_norm_bound(U)
-
-        # True values
-        U_inv = inv(Matrix(U))
-        true_inf = opnorm(U_inv, Inf)
-        true_one = opnorm(U_inv, 1)
-        true_two = opnorm(U_inv, 2)
-
-        @test norm_inf ≥ true_inf * 0.999
-        @test norm_one ≥ true_one * 0.999
-        @test norm_two ≥ true_two * 0.999
-
-        println("Triangular inverse bounds:")
-        println("  ‖U⁻¹‖_∞: bound=$norm_inf, true=$true_inf, ratio=$(norm_inf/true_inf)")
-        println("  ‖U⁻¹‖_1: bound=$norm_one, true=$true_one, ratio=$(norm_one/true_one)")
-        println("  ‖U⁻¹‖_2: bound=$norm_two, true=$true_two, ratio=$(norm_two/true_two)")
+        for CT in (Float64, ComplexF64), n in (1, 2, 7)
+            U = Matrix(UpperTriangular(randn(CT, n, n))) + 3I
+            Ui = inv(U)
+            @test triangular_inverse_inf_norm_bound(U) ≥ opnorm(Ui, Inf) * tol
+            @test triangular_inverse_one_norm_bound(U) ≥ opnorm(Ui, 1) * tol
+            @test triangular_inverse_two_norm_bound(U) ≥ opnorm(Ui, 2) * tol
+        end
+        # a diagonal matrix: the three bounds are 1/min|u_ii| up to rounding
+        D = Matrix(Diagonal([2.0, -4.0, 0.5]))
+        @test 2.0 ≤ triangular_inverse_two_norm_bound(D) ≤ 2.0 * (1 + 1e-14)
+        @test triangular_inverse_two_norm_bound([1.0 2.0; 0.0 0.0]) == Inf
+        @test_throws ArgumentError triangular_inverse_inf_norm_bound([1.0 0.0; 1e-300 1.0])
+        @test_throws DimensionMismatch triangular_inverse_inf_norm_bound(ones(2, 3))
+        # BigFloat
+        Ub = BigFloat.([2 1 -1; 0 3 1; 0 0 1]) ./ 3
+        @test triangular_inverse_two_norm_bound(Ub) ≥ opnorm(Float64.(inv(Ub)), 2) * tol
     end
 
-    @testset "Triangular inverse with complex matrix" begin
-        n = 5
-        U = UpperTriangular(diagm(0 => complex.(1.0:n, 0.1:0.1:0.5)) +
-                            0.1 * UpperTriangular(randn(ComplexF64, n, n)))
-
-        norm_two = triangular_inverse_two_norm_bound(U)
-        true_two = opnorm(inv(Matrix(U)), 2)
-
-        @test norm_two ≥ true_two * 0.999
-        @test isfinite(norm_two)
-    end
-
-    @testset "Similarity condition number" begin
-        # Test psi_squared function
-        @test psi_squared(0.0) ≈ 1.0
-
-        # For small μ, κ₂(S) should be close to 1
-        # psi²(0.1) = 1 + 0.01/2 + 0.05*√4.01 ≈ 1.105
-        @test psi_squared(0.1) < 1.2
-
-        # For larger μ, it grows
-        @test psi_squared(1.0) > 1.5
-        @test psi_squared(2.0) > 3.0
-
-        # Test with matrix
-        X = 0.1 * randn(5, 3)
-        K_S = similarity_condition_number(X)
-        @test K_S ≥ 1.0
-        @test isfinite(K_S)
+    @testset "The similarity S(X)" begin
+        @test psi_squared(0.0) == 1.0
+        for (k, m) in ((1, 1), (2, 5), (4, 3))
+            X = randn(ComplexF64, k, m)
+            S = [Matrix{ComplexF64}(I, k, k) X; zeros(ComplexF64, m, k) Matrix{ComplexF64}(I, m, m)]
+            κ = cond(S)
+            @test psi_squared(opnorm(X) * (1 + 1e-12)) ≥ κ * tol
+            @test psi_squared(opnorm(X) * (1 + 1e-12)) ≤ κ * (1 + 1e-9)
+            @test similarity_condition_number(X) ≥ κ * tol
+            @test similarity_condition_number(BallMatrix(X)) == similarity_condition_number(X)
+        end
+        # increasing, and rounded up: ψ(1)² = (3 + √5)/2
+        @test psi_squared(1.0) ≥ (3 + sqrt(big(5))) / 2
+        @test psi_squared(1.0) ≤ Float64((3 + sqrt(big(5))) / 2) * (1 + 1e-15)
+        @test psi_squared(big(1.0)) ≥ (3 + sqrt(big(5))) / 2
     end
 
     @testset "Sylvester oracle" begin
-        # Create a simple Schur matrix
-        n = 10
-        T = UpperTriangular(diagm(0 => complex.(1.0:n, 0.1:0.1:1.0)) +
-                            0.1 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
-
-        k = 3
-        T11 = T[1:k, 1:k]
-        T12 = T[1:k, (k+1):n]
-        T22 = T[(k+1):n, (k+1):n]
-
-        # Solve Sylvester equation
-        X = solve_sylvester_oracle(T11, T12, T22)
-
-        # Check residual is small
-        R = T12 + T11 * X - X * T22
-        @test norm(R) < 1e-10 * norm(T12)
-
-        println("Sylvester oracle residual: $(norm(R))")
-    end
-
-    @testset "V1 precomputation" begin
-        n = 20
-        T = UpperTriangular(diagm(0 => complex.(1.0:n, 0.5:0.5:10.0)) +
-                            0.1 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
-
-        k = 5
-        precomp = sylvester_resolvent_precompute(T, k)
-
-        @test precomp.precomputation_success
-        @test precomp.k == k
-        @test precomp.n == n
-        @test isfinite(precomp.residual_norm)
-        @test isfinite(precomp.similarity_cond)
-        @test precomp.similarity_cond ≥ 1.0
-
-        println("\nPrecomputation results:")
-        print_sylvester_diagnostics(precomp)
-    end
-
-    @testset "V1 resolvent bound" begin
-        n = 15
-        # Create Schur matrix with known eigenvalues
-        λ = complex.(1.0:n, 0.5:0.5:7.5)
-        T = UpperTriangular(diagm(0 => λ) + 0.1 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
-
-        k = 4
-        z = 3.5 + 1.0im  # Away from eigenvalues
-
-        precomp, result = sylvester_resolvent_bound(T, k, z)
-
-        @test result.success
-        @test isfinite(result.resolvent_bound)
-        @test result.resolvent_bound > 0
-
-        # Compare with true resolvent norm
-        true_resolvent = opnorm(inv(z * I - T), 2)
-        @test result.resolvent_bound ≥ true_resolvent * 0.99
-
-        println("\nV1 resolvent bound at z=$z:")
-        println("  Certified bound: $(result.resolvent_bound)")
-        println("  True value: $true_resolvent")
-        println("  Overestimation: $(result.resolvent_bound / true_resolvent)x")
-        print_point_result(result)
-    end
-
-    @testset "V2 resolvent bound" begin
-        n = 15
-        λ = complex.(1.0:n, 0.5:0.5:7.5)
-        T = UpperTriangular(diagm(0 => λ) + 0.1 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
-
-        k = 4
-        z = 3.5 + 1.0im
-
-        precomp, R, result = sylvester_resolvent_bound_v2(T, k, z)
-
-        @test result.success
-        @test isfinite(result.resolvent_bound)
-        @test result.resolvent_bound > 0
-
-        # V2 should be at least as tight as V1
-        @test result.resolvent_bound ≤ result.resolvent_bound_v1 * 1.001
-
-        # Compare with true resolvent norm
-        true_resolvent = opnorm(inv(z * I - T), 2)
-        @test result.resolvent_bound ≥ true_resolvent * 0.99
-
-        println("\nV2 resolvent bound at z=$z:")
-        print_point_result_v2(result)
-        println("  True value: $true_resolvent")
-    end
-
-    @testset "V1 vs V2 comparison" begin
-        n = 20
-        λ = complex.(1.0:n, 0.2:0.2:4.0)
-        T = UpperTriangular(diagm(0 => λ) + 0.05 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
-
-        k = 6
-        z_list = [5.0 + 1.0im, 10.0 + 2.0im, 15.0 + 0.5im]
-
-        println("\nV1 vs V2 comparison:")
-        for z in z_list
-            _, result_v1 = sylvester_resolvent_bound(T, k, z)
-            _, _, result_v2 = sylvester_resolvent_bound_v2(T, k, z)
-
-            true_resolvent = opnorm(inv(z * I - T), 2)
-
-            @test result_v1.success
-            @test result_v2.success
-
-            improvement = (result_v1.resolvent_bound - result_v2.resolvent_bound) /
-                          result_v1.resolvent_bound * 100
-            @test result_v2.resolvent_bound ≤ result_v1.resolvent_bound * 1.001
-
-            println("  z=$z:")
-            println("    V1: $(result_v1.resolvent_bound) ($(result_v1.resolvent_bound/true_resolvent)x)")
-            println("    V2: $(result_v2.resolvent_bound) ($(result_v2.resolvent_bound/true_resolvent)x)")
-            println("    Improvement: $(round(improvement, digits=1))%")
-            println("    Tightening ratio: $(result_v2.tightening_ratio)")
+        for CT in (Float64, ComplexF64, BigFloat, Complex{BigFloat}), (n, k) in ((6, 2), (5, 1), (5, 4))
+            T = Matrix(UpperTriangular(CT.(0.2 * randn(real(CT) === BigFloat ? Float64 : real(CT), n, n)))) +
+                Diagonal(CT.(1:n))
+            T11, T12, T22 = T[1:k, 1:k], T[1:k, (k + 1):n], T[(k + 1):n, (k + 1):n]
+            X = solve_sylvester_oracle(T11, T12, T22)
+            @test eltype(X) == CT
+            @test size(X) == (k, n - k)
+            @test opnorm(Float64.(abs.(T11 * X - X * T22 + T12)), 1) ≤ 1e-10
         end
     end
 
-    @testset "Multiple points" begin
-        n = 12
-        λ = complex.(1.0:n, 0.3:0.3:3.6)
-        T = UpperTriangular(diagm(0 => λ) + 0.1 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
+    @testset "Precomputation" begin
+        n, k = 8, 3
+        T = Matrix(UpperTriangular(0.3 * randn(ComplexF64, n, n))) + Diagonal(ComplexF64.(1:n))
+        p = sylvester_resolvent_precompute(T, k)
+        @test p.precomputation_success && p.k == k && p.n == n
+        @test p.residual_norm < 1e-12
+        @test p.similarity_cond ≥ 1
+        # R encloses T12 + T11 X − X T22 for the X stored, evaluated at 512 bits
+        Rexact = setprecision(BigFloat, 512) do
+            Tb, Xb = Complex{BigFloat}.(T), Complex{BigFloat}.(p.X)
+            Tb[1:k, (k + 1):n] + Tb[1:k, 1:k] * Xb - Xb * Tb[(k + 1):n, (k + 1):n]
+        end
+        @test all(abs.(Rexact - p.R.c) .≤ p.R.r)
+        @test p.residual_norm ≥ opnorm(ComplexF64.(Rexact)) * tol
+        @test p.coupling_norm ≥ opnorm(T[1:k, (k + 1):n]) * tol
+        @test p.similarity_cond ≥ psi_squared(opnorm(p.X)) * tol
 
-        k = 4
-        z_list = [2.0 + 0.5im, 6.0 + 1.0im, 9.0 + 1.5im]
+        # any X is admissible: with X = 0 the residual is T12 and the similarity is the identity
+        p0 = sylvester_resolvent_precompute(T, k; X_oracle = zeros(k, n - k))
+        @test p0.precomputation_success && p0.similarity_cond == 1
+        @test p0.residual_norm ≥ opnorm(T[1:k, (k + 1):n]) * tol
 
-        # V1
-        precomp, results_v1 = sylvester_resolvent_bound(T, k, z_list)
-
-        @test length(results_v1) == length(z_list)
-        @test all(r -> r.success, results_v1)
-
-        # V2
-        precomp, R, results_v2 = sylvester_resolvent_bound_v2(T, k, z_list)
-
-        @test length(results_v2) == length(z_list)
-        @test all(r -> r.success, results_v2)
+        # structure that the identity needs
+        Tbad = copy(T); Tbad[n, 1] = 1e-300
+        @test !sylvester_resolvent_precompute(Tbad, k).precomputation_success
+        Tbad = copy(T); Tbad[n, n - 1] = 1e-300
+        pbad = sylvester_resolvent_precompute(Tbad, k)
+        @test !pbad.precomputation_success && occursin("upper triangular", pbad.failure_reason)
+        @test !parametric_resolvent_bound(pbad, Tbad, 0.5 + 0im).success
+        @test !sylvester_resolvent_precompute(T, k; X_oracle = fill(NaN, k, n - k)).precomputation_success
+        @test_throws ArgumentError sylvester_resolvent_precompute(T, 0)
+        @test_throws ArgumentError sylvester_resolvent_precompute(T, n)
+        @test_throws ArgumentError sylvester_resolvent_precompute(ones(2, 3), 1)
+        @test_throws DimensionMismatch sylvester_resolvent_precompute(T, k; X_oracle = zeros(k, k))
     end
 
-    @testset "Failure modes" begin
-        # Create a matrix where we know exact eigenvalues
-        n = 10
-        # Use pure diagonal matrix so eigenvalues are exact
-        λ = complex.(1.0:n, 0.0)
-        T = diagm(0 => λ)  # Diagonal matrix - eigenvalues are exactly λ
+    configs = (("V1", config_v1()), ("V2", config_v2()), ("V2.5", config_v2p5()), ("V3", config_v3()))
 
-        k = 3
-
-        # z exactly at an eigenvalue of T11 should fail (σ_min = 0)
-        z_at_eigenvalue = λ[1]  # First eigenvalue is in T11
-        _, result = sylvester_resolvent_bound(T, k, z_at_eigenvalue)
-
-        # Should fail (σ_min = 0 means matrix is singular)
-        @test !result.success
-        println("z at T11 eigenvalue: success=$(result.success), reason=$(result.failure_reason)")
-
-        # z exactly at an eigenvalue of T22 should fail (triangular inverse bound blows up)
-        z_at_eigenvalue_T22 = λ[k+1]  # First eigenvalue of T22
-        _, result2 = sylvester_resolvent_bound(T, k, z_at_eigenvalue_T22)
-
-        # Should fail or give infinite bound
-        @test !result2.success || !isfinite(result2.resolvent_bound)
-        println("z at T22 eigenvalue: success=$(result2.success), bound=$(result2.resolvent_bound)")
-    end
-
-    @testset "Optimal split selection" begin
-        n = 20
-        λ = complex.(1.0:n, 0.2:0.2:4.0)
-        T = UpperTriangular(diagm(0 => λ) + 0.05 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
-
-        z = 10.0 + 1.5im
-
-        # V1
-        best_k_v1, best_precomp_v1, best_result_v1 = find_optimal_split(T, z; k_range=2:10, version=:V1)
-
-        @test best_result_v1.success
-        @test 2 ≤ best_k_v1 ≤ 10
-
-        # V2
-        best_k_v2, best_precomp_v2, best_R_v2, best_result_v2 = find_optimal_split(T, z; k_range=2:10, version=:V2)
-
-        @test best_result_v2.success
-        @test 2 ≤ best_k_v2 ≤ 10
-
-        println("\nOptimal split selection:")
-        println("  V1: best_k=$best_k_v1, bound=$(best_result_v1.resolvent_bound)")
-        println("  V2: best_k=$best_k_v2, bound=$(best_result_v2.resolvent_bound)")
-    end
-
-    @testset "V3 Collatz-Neumann bound" begin
-        n = 15
-        λ = complex.(1.0:n, 0.5:0.5:7.5)
-        T = UpperTriangular(diagm(0 => λ) + 0.1 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
-
-        k = 4
-        z = 3.5 + 1.0im
-
-        precomp, R, result = sylvester_resolvent_bound_v3(T, k, z)
-
-        @test result.success
-        @test isfinite(result.resolvent_bound)
-        @test result.resolvent_bound > 0
-
-        # Note: V3 Neumann bound is not always tighter than V1 triangular bound
-        # It depends on the matrix structure. Both are valid upper bounds.
-
-        # Compare with true resolvent norm
-        true_resolvent = opnorm(inv(z * I - T), 2)
-        @test result.resolvent_bound ≥ true_resolvent * 0.99
-
-        println("\nV3 resolvent bound at z=$z:")
-        print_point_result_v3(result)
-        println("  True value: $true_resolvent")
-
-        # Check if Neumann was certified
-        if result.neumann_success
-            println("  Neumann certified with α=$(result.alpha)")
-        else
-            println("  Neumann failed, using triangular fallback")
+    @testset "The bound is above the resolvent norm: $name" for (name, cfg) in configs
+        for CT in (Float64, ComplexF64), (n, k) in ((6, 2), (10, 3), (9, 1), (7, 6))
+            T = Matrix(UpperTriangular(0.3 * randn(CT, n, n))) + Diagonal(CT.(1:n))
+            p = sylvester_resolvent_precompute(T, k)
+            for z in (0.2 + 0.3im, 2.5 + 0.4im, -1.0 + 0im, n + 0.5 + 0.1im, 3.5 - 2im)
+                r = parametric_resolvent_bound(p, T, z, cfg)
+                @test r.success
+                @test r.resolvent_bound ≥ truth(T, z) * tol
+                @test r.M_A ≥ truth(T[1:k, 1:k], z) * tol
+                @test r.M_D ≥ truth(T[(k + 1):n, (k + 1):n], z) * tol
+                @test r.K_S == p.similarity_cond && r.r == p.residual_norm
+                @test r.z == ComplexF64(z)
+            end
         end
     end
 
-    @testset "V3 Collatz-Neumann internals" begin
-        # Test Collatz bound directly with diagonally dominant matrix
-        # (small off-diagonal ensures Neumann always succeeds here)
-        n = 10
-        T22 = UpperTriangular(diagm(0 => complex.(5.0:14.0, 0.5:0.5:5.0)) +
-                              0.1 * UpperTriangular(randn(ComplexF64, n, n)))
-        T22 = Matrix(T22)
-
-        z = 9.0 + 2.0im
-
-        alpha, Dd_inv_norm = collatz_norm_N_bound(T22, z; power_iterations=5)
-
-        @test isfinite(alpha)
-        @test isfinite(Dd_inv_norm)
-        @test alpha ≥ 0
-        @test Dd_inv_norm ≥ 0
-
-        # Test Neumann bound — should succeed for diagonally dominant T22
-        neumann_result = neumann_inverse_bound(T22, z; power_iterations=5)
-
-        println("\nCollatz-Neumann internals:")
-        println("  α = ‖N_z‖₂ ≤ $alpha")
-        println("  ‖(D_z)_d⁻¹‖₂ = $Dd_inv_norm")
-        println("  Neumann success: $(neumann_result.success)")
-
-        @test neumann_result.success
-
-        # Compare with true inverse norm
-        D_z = z * I - T22
-        true_D_inv = opnorm(inv(D_z), 2)
-        println("  M_D = $(neumann_result.M_D)")
-        println("  gap = $(neumann_result.neumann_gap)")
-        println("  True ‖D_z⁻¹‖₂ = $true_D_inv")
-        @test neumann_result.M_D ≥ true_D_inv * 0.99
-    end
-
-    @testset "V1 vs V2 vs V3 comparison" begin
-        n = 20
-        λ = complex.(1.0:n, 0.2:0.2:4.0)
-        T = UpperTriangular(diagm(0 => λ) + 0.05 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
-
-        k = 6
-        z = 10.0 + 2.0im
-
-        _, result_v1 = sylvester_resolvent_bound(T, k, z)
-        _, _, result_v2 = sylvester_resolvent_bound_v2(T, k, z)
-        _, _, result_v3 = sylvester_resolvent_bound_v3(T, k, z)
-
-        true_resolvent = opnorm(inv(z * I - T), 2)
-
-        @test result_v1.success
-        @test result_v2.success
-        @test result_v3.success
-
-        println("\nV1 vs V2 vs V3 comparison at z=$z:")
-        println("  True: $true_resolvent")
-        println("  V1: $(result_v1.resolvent_bound) ($(result_v1.resolvent_bound/true_resolvent)x)")
-        println("  V2: $(result_v2.resolvent_bound) ($(result_v2.resolvent_bound/true_resolvent)x)")
-        println("  V3: $(result_v3.resolvent_bound) ($(result_v3.resolvent_bound/true_resolvent)x)")
-        println("  V3 M_D: $(result_v3.M_D) vs V1 M_D: $(result_v3.M_D_v1)")
-        println("  V3 α: $(result_v3.alpha), gap: $(result_v3.neumann_gap)")
-
-        # All should be valid upper bounds
-        @test result_v1.resolvent_bound ≥ true_resolvent * 0.99
-        @test result_v2.resolvent_bound ≥ true_resolvent * 0.99
-        @test result_v3.resolvent_bound ≥ true_resolvent * 0.99
-    end
-
-    @testset "V3 Neumann failure mode" begin
-        # Deterministic test: large off-diagonal entries cause α ≥ 1
-        # (Neumann series diverges), so V3 must fall back to the triangular bound.
-        n = 8
-        λ = complex.(1.0:n, 0.0)
-        T22 = diagm(0 => λ) + 5.0 * UpperTriangular(ones(n, n) - I)
-        T22 = Matrix(T22)
-
-        z = 4.5 + 0.0im  # Between eigenvalues, but off-diagonal dominates
-
-        neumann_result = neumann_inverse_bound(T22, z; power_iterations=5)
-
-        println("\nNeumann failure test:")
-        println("  α = $(neumann_result.alpha)")
-        println("  success = $(neumann_result.success)")
-
-        @test neumann_result.alpha ≥ 1
-        @test !neumann_result.success
-
-        # Build a full Schur matrix with T11 eigenvalues well-separated
-        # from T22's (eigenvalue separation ≈ 92), avoiding the singular
-        # Sylvester equation that caused sporadic LAPACK failures.
-        k = 2
-        T11 = diagm(complex.([100.0, 200.0], 0.0))
-        T12 = 0.1 * ones(ComplexF64, k, n)
-        T_full = zeros(ComplexF64, k + n, k + n)
-        T_full[1:k, 1:k] .= T11
-        T_full[1:k, (k+1):end] .= T12
-        T_full[(k+1):end, (k+1):end] .= T22
-
-        precomp, R, result = sylvester_resolvent_bound_v3(T_full, k, z)
-
-        @test result.success
-        @test !result.neumann_success   # Neumann failed, used triangular fallback
-        @test isfinite(result.resolvent_bound)
-
-        true_resolvent = opnorm(inv(z * I - T_full), 2)
-        @test result.resolvent_bound ≥ true_resolvent * 0.99
-
-        println("  V3 overall success: $(result.success)")
-        println("  Neumann certified: $(result.neumann_success)")
-        println("  Bound: $(result.resolvent_bound), true: $true_resolvent")
-    end
-
-    @testset "BigFloat support" begin
-        n = 8
-        setprecision(256) do
-            λ = Complex{BigFloat}.(1.0:n, 0.2:0.2:1.6)
-            T_bf = Matrix(UpperTriangular(diagm(0 => λ) +
-                          BigFloat(0.1) * UpperTriangular(randn(Complex{BigFloat}, n, n))))
-
-            k = 3
-            z = Complex{BigFloat}(3.5, 1.0)
-
-            # Should work with BigFloat
-            precomp = sylvester_resolvent_precompute(T_bf, k)
-
-            @test precomp.precomputation_success
-            @test typeof(precomp.residual_norm) == BigFloat
+    @testset "A similarity that does not solve the equation" begin
+        n, k = 8, 3
+        T = Matrix(UpperTriangular(0.3 * randn(ComplexF64, n, n))) + Diagonal(ComplexF64.(1:n))
+        for X in (zeros(ComplexF64, k, n - k), randn(ComplexF64, k, n - k))
+            p = sylvester_resolvent_precompute(T, k; X_oracle = X)
+            for (_, cfg) in configs, z in (0.3 + 0.2im, 4.5 + 1im)
+                r = parametric_resolvent_bound(p, T, z, cfg)
+                @test r.success && r.resolvent_bound ≥ truth(T, z) * tol
+            end
         end
     end
 
-    # =====================================================
-    # Extended Parametric Framework Tests
-    # =====================================================
+    @testset "The bound against the one without similarity" begin
+        # a well separated leading block: the bound stays within the factor κ₂(S) and a constant
+        n, k = 12, 2
+        T = Matrix(UpperTriangular(0.05 * randn(ComplexF64, n, n))) +
+            Diagonal(ComplexF64.([0.0, 0.1, (5:(n + 2))...]))
+        p = sylvester_resolvent_precompute(T, k)
+        z = 0.05 + 0.3im
+        r = parametric_resolvent_bound(p, T, z, config_v2())
+        @test truth(T, z) * tol ≤ r.resolvent_bound ≤ 3 * p.similarity_cond * truth(T, z)
+    end
+
+    @testset "Points where no bound exists" begin
+        n, k = 6, 2
+        T = Matrix(UpperTriangular(0.3 * randn(ComplexF64, n, n))) + Diagonal(ComplexF64.(1:n))
+        p = sylvester_resolvent_precompute(T, k)
+        for (_, cfg) in configs
+            r1 = parametric_resolvent_bound(p, T, T[1, 1], cfg)      # an eigenvalue of T11
+            @test !r1.success && r1.resolvent_bound == Inf
+            r2 = parametric_resolvent_bound(p, T, T[n, n], cfg)      # an eigenvalue of T22
+            @test !r2.success && r2.resolvent_bound == Inf
+        end
+        @test_throws DimensionMismatch parametric_resolvent_bound(p, T[1:5, 1:5], 0.5im)
+    end
+
+    @testset "The estimators of the large block" begin
+        n, k = 9, 2
+        # strictly diagonally dominant T22: both Neumann bounds apply without the fallback
+        T = Matrix(UpperTriangular(0.02 * randn(ComplexF64, n, n))) + Diagonal(ComplexF64.(1:n))
+        p = sylvester_resolvent_precompute(T, k)
+        z = -1.0 + 0.5im
+        for est in (TriBacksub, NeumannOneInf, NeumannCollatz2)
+            cfg = ResolventBoundConfig(OneInfNorm, est, CouplingNone, :M1, 3, false)
+            r = parametric_resolvent_bound(p, T, z, cfg)
+            @test r.success
+            @test r.M_D ≥ truth(T[(k + 1):n, (k + 1):n], z) * tol
+            @test r.resolvent_bound ≥ truth(T, z) * tol
+        end
+        # far from dominant: the Neumann series does not apply; with the fallback the recursion does
+        T2 = Matrix(UpperTriangular(5 * ones(ComplexF64, n, n))) + Diagonal(ComplexF64.(1:n))
+        p2 = sylvester_resolvent_precompute(T2, k)
+        for est in (NeumannOneInf, NeumannCollatz2)
+            off = ResolventBoundConfig(OneInfNorm, est, CouplingNone, :M1, 3, false)
+            on = ResolventBoundConfig(OneInfNorm, est, CouplingNone, :M1, 3, true)
+            @test !parametric_resolvent_bound(p2, T2, z, off).success
+            r = parametric_resolvent_bound(p2, T2, z, on)
+            @test r.success && r.resolvent_bound ≥ truth(T2, z) * tol
+        end
+    end
 
     @testset "Norm estimators" begin
-        M = randn(ComplexF64, 10, 10)
-        true_norm = opnorm(M, 2)
-
-        # All estimators should give upper bounds
-        norm_oneinf = estimate_2norm(M, OneInfNorm)
-        norm_frob = estimate_2norm(M, FrobeniusNorm)
-        norm_rowcol = estimate_2norm(M, RowCol2Norm)
-
-        @test norm_oneinf ≥ true_norm * 0.99  # Upper bound
-        @test norm_frob ≥ true_norm * 0.99
-        @test norm_rowcol ≥ 0.0  # Non-negative
-
-        # Frobenius is always ≥ spectral norm
-        @test norm_frob ≥ true_norm * 0.99
-
-        println("\nNorm estimators test:")
-        println("  True ‖M‖₂:    $true_norm")
-        println("  OneInfNorm:   $norm_oneinf ($(norm_oneinf/true_norm)x)")
-        println("  FrobeniusNorm: $norm_frob ($(norm_frob/true_norm)x)")
-        println("  RowCol2Norm:  $norm_rowcol")
+        for M in (randn(4, 6), randn(ComplexF64, 5, 5), ones(2, 2))
+            for est in (OneInfNorm, FrobeniusNorm)
+                @test estimate_2norm(M, est) ≥ opnorm(M) * tol
+                @test estimate_2norm(BallMatrix(M), est) ≥ opnorm(M) * tol
+            end
+        end
+        # the larger of the row and column Euclidean norms is a LOWER bound of the spectral norm
+        # (√2 against 2 for ones(2, 2)); it was offered as an estimator and is gone
+        @test !isdefined(BallArithmetic, :RowCol2Norm)
+        cfg = ResolventBoundConfig(FrobeniusNorm, TriBacksub, CouplingARSolve, :M4, 3, true)
+        T = Matrix(UpperTriangular(0.3 * randn(ComplexF64, 7, 7))) + Diagonal(ComplexF64.(1:7))
+        r = parametric_resolvent_bound(sylvester_resolvent_precompute(T, 3), T, 0.4im, cfg)
+        @test r.success && r.resolvent_bound ≥ truth(T, 0.4im) * tol
     end
 
-    @testset "Neumann 1/∞ bound" begin
+    @testset "BigFloat" begin
+        setprecision(BigFloat, 256) do
+            n, k = 6, 2
+            T = Complex{BigFloat}.(Matrix(UpperTriangular(0.3 * randn(ComplexF64, n, n))) +
+                                   Diagonal(ComplexF64.(1:n)))
+            p = sylvester_resolvent_precompute(T, k)
+            @test p.precomputation_success && p.residual_norm isa BigFloat
+            for (_, cfg) in configs
+                r = parametric_resolvent_bound(p, T, 0.3 + 0.4im, cfg)
+                @test r.success && r.resolvent_bound isa BigFloat
+                @test r.resolvent_bound ≥ truth(T, 0.3 + 0.4im) * tol
+            end
+        end
+    end
+
+    @testset "Several points, the convenience form, the warm start" begin
+        n, k = 8, 3
+        T = Matrix(UpperTriangular(0.3 * randn(ComplexF64, n, n))) + Diagonal(ComplexF64.(1:n))
+        zs = [0.5im, 2.5 + 0.2im, -1.0 + 0im]
+        p, rs = parametric_resolvent_bound(T, k, zs, config_v2())
+        @test length(rs) == 3 && all(r -> r.success, rs)
+        @test all(rs[i].resolvent_bound ≥ truth(T, zs[i]) * tol for i in 1:3)
+        p1, r1 = parametric_resolvent_bound(T, k, zs[1])
+        @test r1.config == config_v1() && r1.resolvent_bound ≥ truth(T, zs[1]) * tol
+
+        F = svd(zs[1] * I - T[1:k, 1:k])
+        z_near = zs[1] + 1e-5
+        rw = parametric_resolvent_bound(p, T, z_near, config_v2();
+            svd_warm_start = SVDWarmStart(F.U, F.S, F.V))
+        @test rw.success && rw.resolvent_bound ≥ truth(T, z_near) * tol
+        # a useless warm start may fail to certify, and must not produce a wrong bound
+        Q = Matrix(qr(randn(ComplexF64, k, k)).Q)
+        rb = parametric_resolvent_bound(p, T, z_near, config_v2();
+            svd_warm_start = SVDWarmStart(Q, ones(k), Q))
+        @test !rb.success || rb.resolvent_bound ≥ truth(T, z_near) * tol
+    end
+
+    @testset "Split selection and comparison of the configurations" begin
         n = 10
-        # Diagonal dominant matrix - Neumann should succeed
-        # Diagonal entries: 5+0.5im, 6+1im, …, 14+5im.
-        # Choose z well-separated from all eigenvalues so the Neumann
-        # condition α < 1 holds robustly regardless of the random
-        # off-diagonal perturbation.
-        T22 = diagm(0 => complex.(5.0:14.0, 0.5:0.5:5.0)) +
-              0.1 * UpperTriangular(randn(ComplexF64, n, n))
-        T22 = Matrix(T22)
-
-        z = 3.0 + 2.0im
-
-        result = neumann_one_inf_bound(T22, z)
-
-        @test isfinite(result.alpha_inf)
-        @test isfinite(result.alpha_one)
-        @test result.alpha_inf ≥ 0
-        @test result.alpha_one ≥ 0
-        @test result.success
-
-        # Should be valid upper bound
-        D_z = z * I - T22
-        true_D_inv = opnorm(inv(D_z), 2)
-        @test result.M_D ≥ true_D_inv * 0.99
-
-        println("\nNeumann 1/∞ bound test:")
-        println("  α∞ = $(result.alpha_inf)")
-        println("  α₁ = $(result.alpha_one)")
-        println("  Success: $(result.success)")
-        println("  M_D = $(result.M_D) (true: $true_D_inv)")
-    end
-
-    @testset "Config presets" begin
-        # Test that all config presets are valid
-        cfg_v1 = config_v1()
-        cfg_v2 = config_v2()
-        cfg_v2p5 = config_v2p5()
-        cfg_v3 = config_v3()
-
-        @test cfg_v1.d_inv_estimator == TriBacksub
-        @test cfg_v1.coupling_estimator == CouplingNone
-        @test cfg_v1.combiner == CombinerV1
-
-        @test cfg_v2.coupling_estimator == CouplingARSolve
-        @test cfg_v2.combiner == CombinerV2
-
-        @test cfg_v2p5.coupling_estimator == CouplingOffDirect
-        @test cfg_v2p5.combiner == CombinerV2p5
-
-        @test cfg_v3.d_inv_estimator == NeumannCollatz2
-    end
-
-    @testset "Parametric resolvent bound - all configs" begin
-        n = 20
-        λ = complex.(1.0:n, 0.2:0.2:4.0)
-        T = UpperTriangular(diagm(0 => λ) + 0.05 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
-
-        k = 6
-        z = 10.0 + 2.0im
-
-        true_resolvent = opnorm(inv(z * I - T), 2)
-
-        # Test all configs
-        precomp, R, result_v1 = parametric_resolvent_bound(T, k, z, config_v1())
-        result_v2 = parametric_resolvent_bound(precomp, T, z, config_v2(); R=R)
-        result_v2p5 = parametric_resolvent_bound(precomp, T, z, config_v2p5(); R=R)
-        result_v3 = parametric_resolvent_bound(precomp, T, z, config_v3(); R=R)
-
-        println("\nParametric framework comparison at z=$z:")
-        println("  True: $true_resolvent")
-
-        @test result_v1.success
-        @test result_v1.resolvent_bound ≥ true_resolvent * 0.99
-        println("  V1: $(result_v1.resolvent_bound) ($(result_v1.resolvent_bound/true_resolvent)x)")
-
-        @test result_v2.success
-        @test result_v2.resolvent_bound ≥ true_resolvent * 0.99
-        println("  V2: $(result_v2.resolvent_bound) ($(result_v2.resolvent_bound/true_resolvent)x)")
-
-        @test result_v2p5.success
-        @test result_v2p5.resolvent_bound ≥ true_resolvent * 0.99
-        println("  V2.5: $(result_v2p5.resolvent_bound) ($(result_v2p5.resolvent_bound/true_resolvent)x)")
-
-        @test result_v3.success
-        @test result_v3.resolvent_bound ≥ true_resolvent * 0.99
-        println("  V3: $(result_v3.resolvent_bound) ($(result_v3.resolvent_bound/true_resolvent)x)")
-    end
-
-    @testset "compare_all_configs" begin
-        n = 15
-        λ = complex.(1.0:n, 0.2:0.2:3.0)
-        T = UpperTriangular(diagm(0 => λ) + 0.05 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
-
-        k = 5
-        z = 8.0 + 1.5im
-
-        cmp = compare_all_configs(T, k, z)
-
-        @test haskey(cmp.bounds, "V1")
-        @test haskey(cmp.bounds, "V2")
-        @test haskey(cmp.bounds, "V2.5")
-        @test haskey(cmp.bounds, "V3")
-
-        @test cmp.best ∈ ["V1", "V2", "V2.5", "V3"]
-
-        # All results should be valid
-        for (name, result) in cmp.results
-            @test result.success
-        end
-
-        println("\ncompare_all_configs test:")
-        println("  Best method: $(cmp.best)")
-        for (name, bound) in sort(collect(cmp.bounds), by=x->x[2])
-            println("  $name: $bound")
-        end
-    end
-
-    @testset "SVDWarmStart" begin
-        n = 20
-        λ = complex.(1.0:n, 0.2:0.2:4.0)
-        T = UpperTriangular(diagm(0 => λ) + 0.05 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
-
-        k = 5
-        z1 = 10.0 + 2.0im
-        z2 = 10.05 + 2.02im  # Close to z1
-
-        precomp, R, result1 = parametric_resolvent_bound(T, k, z1, config_v2())
-
-        # Create warm start from z1
-        T11 = T[1:k, 1:k]
-        A_z1 = z1 * I - T11
-        svd_Az1 = svd(A_z1)
-        warm_start = SVDWarmStart(svd_Az1.U, svd_Az1.S, svd_Az1.V)
-
-        # Compute at z2 with and without warm start
-        result2_cold = parametric_resolvent_bound(precomp, T, z2, config_v2(); R=R)
-        result2_warm = parametric_resolvent_bound(precomp, T, z2, config_v2(); R=R, svd_warm_start=warm_start)
-
-        true_resolvent = opnorm(inv(z2 * I - T), 2)
-
-        @test result2_cold.success
-        @test result2_warm.success
-
-        # Both should be valid upper bounds
-        @test result2_cold.resolvent_bound ≥ true_resolvent * 0.99
-        @test result2_warm.resolvent_bound ≥ true_resolvent * 0.99
-
-        # Should give similar results (both valid)
-        rel_diff = abs(result2_cold.resolvent_bound - result2_warm.resolvent_bound) / result2_cold.resolvent_bound
-        @test rel_diff < 0.01  # Less than 1% difference
-
-        println("\nSVDWarmStart test:")
-        println("  z1 = $z1, z2 = $z2")
-        println("  Cold start: $(result2_cold.resolvent_bound)")
-        println("  Warm start: $(result2_warm.resolvent_bound)")
-        println("  Relative difference: $rel_diff")
-    end
-
-    # ==========================================================
-    # Dedicated solve_sylvester_oracle tests
-    # ==========================================================
-
-    @testset "solve_sylvester_oracle — real Float64" begin
-        n = 10
-        T = UpperTriangular(diagm(0 => collect(1.0:n)) +
-                            0.1 * UpperTriangular(randn(n, n)))
-        T = Matrix(T)
-
-        k = 3
-        T11 = T[1:k, 1:k]; T12 = T[1:k, (k+1):n]; T22 = T[(k+1):n, (k+1):n]
-
-        X = solve_sylvester_oracle(T11, T12, T22)
-
-        # Verify: T11*X - X*T22 = -T12
-        R = T12 + T11 * X - X * T22
-        @test norm(R) < 1e-10 * norm(T12)
-        @test eltype(X) <: Real
-    end
-
-    @testset "solve_sylvester_oracle — BigFloat complex (downcast)" begin
-        setprecision(256) do
-            n = 8
-            T_bf = Matrix(UpperTriangular(
-                diagm(0 => Complex{BigFloat}.(1:n, BigFloat(0.2):BigFloat(0.2):BigFloat(1.6))) +
-                BigFloat(0.1) * UpperTriangular(randn(Complex{BigFloat}, n, n))))
-
-            k = 3
-            T11 = T_bf[1:k, 1:k]; T12 = T_bf[1:k, (k+1):n]; T22 = T_bf[(k+1):n, (k+1):n]
-
-            X = solve_sylvester_oracle(T11, T12, T22)
-
-            R = T12 + T11 * X - X * T22
-            @test norm(R) < BigFloat(1e-10) * norm(T12)
-            @test eltype(X) <: Complex{BigFloat}
-        end
-    end
-
-    @testset "solve_sylvester_oracle — BigFloat real (downcast)" begin
-        setprecision(256) do
-            n = 8
-            T_bf = Matrix(UpperTriangular(
-                diagm(0 => BigFloat.(1:n)) +
-                BigFloat(0.1) * UpperTriangular(randn(n, n) .|> BigFloat)))
-
-            k = 3
-            T11 = T_bf[1:k, 1:k]; T12 = T_bf[1:k, (k+1):n]; T22 = T_bf[(k+1):n, (k+1):n]
-
-            X = solve_sylvester_oracle(T11, T12, T22)
-
-            R = T12 + T11 * X - X * T22
-            @test norm(R) < BigFloat(1e-10) * norm(T12)
-            @test eltype(X) <: BigFloat
-        end
-    end
-
-    @testset "solve_sylvester_oracle — k = 1 scalar block" begin
-        n = 6
-        T = UpperTriangular(diagm(0 => complex.(1.0:n, 0.1:0.1:0.6)) +
-                            0.1 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
-
-        T11 = T[1:1, 1:1]; T12 = T[1:1, 2:n]; T22 = T[2:n, 2:n]
-        X = solve_sylvester_oracle(T11, T12, T22)
-
-        R = T12 + T11 * X - X * T22
-        @test norm(R) < 1e-12 * norm(T12)
-        @test size(X) == (1, n - 1)
-    end
-
-    @testset "solve_sylvester_oracle — k = n-1 scalar complement" begin
-        n = 6
-        T = UpperTriangular(diagm(0 => complex.(1.0:n, 0.1:0.1:0.6)) +
-                            0.1 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
-
-        k = n - 1
-        T11 = T[1:k, 1:k]; T12 = T[1:k, k+1:n]; T22 = T[k+1:n, k+1:n]
-        X = solve_sylvester_oracle(T11, T12, T22)
-
-        R = T12 + T11 * X - X * T22
-        @test norm(R) < 1e-12 * norm(T12)
-        @test size(X) == (k, 1)
-    end
-
-    # ==========================================================
-    # Dedicated sylvester_resolvent_bound_v3 tests
-    # ==========================================================
-
-    @testset "sylvester_resolvent_bound_v3 — precomp + T + R + z" begin
-        n = 15
-        λ = complex.(1.0:n, 0.5:0.5:7.5)
-        T = Matrix(UpperTriangular(diagm(0 => λ) +
-                   0.1 * UpperTriangular(randn(ComplexF64, n, n))))
-
-        k = 4
-        z = 3.5 + 1.0im
-
-        # Manually precompute and pass R
-        precomp = sylvester_resolvent_precompute(T, k)
-        T11 = T[1:k, 1:k]; T12 = T[1:k, (k+1):n]; T22 = T[(k+1):n, (k+1):n]
-        X = solve_sylvester_oracle(T11, T12, T22)
-        R = T12 + T11 * X - X * T22
-
-        result = sylvester_resolvent_bound_v3(precomp, T, R, z)
-
-        @test result.success
-        @test isfinite(result.resolvent_bound)
-
-        true_resolvent = opnorm(inv(z * I - T), 2)
-        @test result.resolvent_bound >= true_resolvent * 0.99
-    end
-
-    @testset "sylvester_resolvent_bound_v3 — multi-point (vector of z)" begin
-        n = 12
-        λ = complex.(1.0:n, 0.3:0.3:3.6)
-        T = Matrix(UpperTriangular(diagm(0 => λ) +
-                   0.1 * UpperTriangular(randn(ComplexF64, n, n))))
-        k = 4
-        z_list = [2.0 + 0.5im, 6.0 + 1.0im, 9.0 + 1.5im]
-
-        # Convenience multi-point
-        precomp, R, results = sylvester_resolvent_bound_v3(T, k, z_list)
-
-        @test length(results) == 3
-        for (i, result) in enumerate(results)
-            @test result.success
-            @test isfinite(result.resolvent_bound)
-            true_res = opnorm(inv(z_list[i] * I - T), 2)
-            @test result.resolvent_bound >= true_res * 0.99
-        end
-
-        # Also test precomp + R + z_list path
-        results2 = sylvester_resolvent_bound_v3(precomp, T, R, z_list)
-        @test length(results2) == 3
-        for (r1, r2) in zip(results, results2)
-            @test r1.resolvent_bound ≈ r2.resolvent_bound rtol = 1e-10
-        end
-    end
-
-    @testset "sylvester_resolvent_bound_v3 — use_v2_coupling=false" begin
-        n = 15
-        λ = complex.(1.0:n, 0.5:0.5:7.5)
-        T = Matrix(UpperTriangular(diagm(0 => λ) +
-                   0.1 * UpperTriangular(randn(ComplexF64, n, n))))
-        k = 4
-        z = 3.5 + 1.0im
-
-        precomp, R, result_v2on = sylvester_resolvent_bound_v3(T, k, z;
-                                       use_v2_coupling=true)
-        result_v2off = sylvester_resolvent_bound_v3(precomp, T, R, z;
-                                       use_v2_coupling=false)
-
-        @test result_v2on.success
-        @test result_v2off.success
-
-        true_resolvent = opnorm(inv(z * I - T), 2)
-        @test result_v2on.resolvent_bound  >= true_resolvent * 0.99
-        @test result_v2off.resolvent_bound >= true_resolvent * 0.99
-
-        # V2 coupling should be at least as tight as the product bound fallback
-        @test result_v2on.resolvent_bound <= result_v2off.resolvent_bound * 1.001
-    end
-
-    @testset "sylvester_resolvent_bound_v3 — real matrix" begin
-        n = 15
-        λ = collect(1.0:n)
-        T = Matrix(UpperTriangular(diagm(0 => λ) +
-                   0.05 * UpperTriangular(randn(n, n))))
-        k = 4
-        z = 3.5 + 1.0im  # z must be complex
-
-        precomp, R, result = sylvester_resolvent_bound_v3(T, k, z)
-
-        @test result.success
-        @test isfinite(result.resolvent_bound)
-
-        true_resolvent = opnorm(inv(z * I - T), 2)
-        @test result.resolvent_bound >= true_resolvent * 0.99
-    end
-
-    @testset "sylvester_resolvent_bound_v3 — X_oracle kwarg" begin
-        n = 12
-        λ = complex.(1.0:n, 0.3:0.3:3.6)
-        T = Matrix(UpperTriangular(diagm(0 => λ) +
-                   0.1 * UpperTriangular(randn(ComplexF64, n, n))))
-        k = 4
-        z = 6.0 + 1.0im
-
-        T11 = T[1:k, 1:k]; T12 = T[1:k, (k+1):n]; T22 = T[(k+1):n, (k+1):n]
-        X = solve_sylvester_oracle(T11, T12, T22)
-
-        # With and without oracle should give same result
-        _, _, result_auto   = sylvester_resolvent_bound_v3(T, k, z)
-        _, _, result_oracle = sylvester_resolvent_bound_v3(T, k, z; X_oracle=X)
-
-        @test result_auto.success
-        @test result_oracle.success
-        @test result_auto.resolvent_bound ≈ result_oracle.resolvent_bound rtol = 1e-10
-    end
-
-    @testset "sylvester_resolvent_bound_v3 — V3 vs V1 comparison" begin
-        # V3 and V1 are both valid upper bounds; V3 may or may not be tighter
-        # depending on whether Neumann improves M_D vs triangular backsubstitution.
-        n = 15
-        λ = complex.(1.0:n, 0.5:0.5:7.5)
-        T = Matrix(UpperTriangular(diagm(0 => λ) +
-                   0.1 * UpperTriangular(randn(ComplexF64, n, n))))
-        k = 4
-        z = 8.0 + 2.0im
-
-        precomp, R, result = sylvester_resolvent_bound_v3(T, k, z)
-
-        @test result.success
-
-        true_resolvent = opnorm(inv(z * I - T), 2)
-        @test result.resolvent_bound >= true_resolvent * 0.99
-        @test result.resolvent_bound_v1 >= true_resolvent * 0.99
-
-        if result.neumann_success
-            # When Neumann succeeds, M_D should be finite
-            @test isfinite(result.M_D)
-            @test result.M_D > 0
-        end
-    end
-
-    @testset "sylvester_resolvent_bound_v3 — miyajima_method :M4" begin
-        n = 12
-        λ = complex.(1.0:n, 0.3:0.3:3.6)
-        T = Matrix(UpperTriangular(diagm(0 => λ) +
-                   0.1 * UpperTriangular(randn(ComplexF64, n, n))))
-        k = 4
-        z = 6.0 + 1.0im
-
-        precomp, R, result_m1 = sylvester_resolvent_bound_v3(T, k, z;
-                                     miyajima_method=:M1)
-        result_m4 = sylvester_resolvent_bound_v3(precomp, T, R, z;
-                                     miyajima_method=:M4)
-
-        @test result_m1.success
-        @test result_m4.success
-
-        true_resolvent = opnorm(inv(z * I - T), 2)
-        @test result_m1.resolvent_bound >= true_resolvent * 0.99
-        @test result_m4.resolvent_bound >= true_resolvent * 0.99
-    end
-
-    @testset "Off-diagonal direct bound" begin
-        n = 10
-        k = 4
-        m = n - k
-
-        λ = complex.(1.0:n, 0.2:0.2:2.0)
-        T = UpperTriangular(diagm(0 => λ) + 0.05 * UpperTriangular(randn(ComplexF64, n, n)))
-        T = Matrix(T)
-
-        T11 = T[1:k, 1:k]
-        T12 = T[1:k, (k+1):n]
-        T22 = T[(k+1):n, (k+1):n]
-
-        z = 5.0 + 1.0im
-        A_z = z * I - T11
-        D_z = z * I - T22
-
-        # Compute precomp to get R
-        X = solve_sylvester_oracle(T11, T12, T22)
-        R = T12 + T11 * X - X * T22
-
-        # Get M_A and M_D from rigorous SVD
-        A_z_ball = BallMatrix(A_z, zeros(Float64, k, k))
-        svd_result = rigorous_svd(A_z_ball)
-        σ_min = mid(svd_result.singular_values[end]) - rad(svd_result.singular_values[end])
-        M_A = 1.0 / σ_min
-        M_D = triangular_inverse_two_norm_bound(D_z)
-
-        # Test off-diagonal bound
-        result = offdiag_direct_bound(A_z, D_z, R, M_A, M_D)
-
-        @test result.success
-        @test isfinite(result.M_off)
-        @test result.M_off ≥ 0
-
-        # Compare with product bound
-        r = sqrt(opnorm(R, 1) * opnorm(R, Inf))
-        product_bound = M_A * r * M_D
-
-        println("\nOff-diagonal direct bound test:")
-        println("  Product bound (M_A·r·M_D): $product_bound")
-        println("  Direct bound (M_off):       $(result.M_off)")
-        println("  Tightening ratio:           $(result.M_off / product_bound)")
-
-        # Direct should be ≤ product (V2.5 is tighter or equal)
-        @test result.M_off ≤ product_bound * 1.001  # Allow small numerical tolerance
+        T = Matrix(UpperTriangular(0.3 * randn(ComplexF64, n, n))) + Diagonal(ComplexF64.(1:n))
+        z = 0.5 + 0.5im
+        best = find_optimal_split(T, z; k_range = 2:5)
+        @test best !== nothing
+        kbest, pbest, rbest = best
+        @test kbest in 2:5 && pbest.k == kbest
+        @test rbest.resolvent_bound ≥ truth(T, z) * tol
+        @test all(rbest.resolvent_bound ≤ parametric_resolvent_bound(T, k, z)[2].resolvent_bound
+                  for k in 2:5)
+        @test find_optimal_split(T, T[1, 1]; k_range = 2:3) === nothing
+
+        cmp = compare_all_configs(T, 3, z)
+        @test Set(keys(cmp.bounds)) == Set(["V1", "V2", "V2.5", "V3"])
+        @test all(b ≥ truth(T, z) * tol for b in values(cmp.bounds))
+        @test cmp.bounds[cmp.best] == minimum(values(cmp.bounds))
+        # the solves can only improve on the product bound for the coupling
+        @test cmp.results["V2"].coupling_term ≤ cmp.results["V1"].coupling_term
+        @test cmp.results["V2.5"].coupling_term ≤ cmp.results["V1"].coupling_term
     end
 
     # ==========================================================

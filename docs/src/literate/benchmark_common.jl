@@ -113,13 +113,13 @@ end
 function certify_parametric(A::BallMatrix, z::Number, config::ResolventBoundConfig;
                            k::Union{Nothing,Int}=nothing, name::String="")
     t0 = time()
-    method_name = isempty(name) ? "Param-$(config.combiner)" : name
+    method_name = isempty(name) ? "Param-$(config.coupling_estimator)" : name
     try
         T = mid.(A)
         n = size(T, 1)
         k_use = isnothing(k) ? max(1, n ÷ 4) : k
         # Use convenience function that handles precomputation
-        _, _, result = parametric_resolvent_bound(T, k_use, Complex(z), config)
+        _, result = parametric_resolvent_bound(T, k_use, Complex(z), config)
         if result.success && isfinite(result.resolvent_bound)
             return BenchmarkResult(method_name, result.resolvent_bound, time() - t0, true, 53)
         else

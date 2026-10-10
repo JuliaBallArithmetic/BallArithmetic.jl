@@ -127,16 +127,15 @@ function certify_parametric(A::BallMatrix, z::Number, config::ResolventBoundConf
         n = size(T, 1)
         k_use = isnothing(k) ? max(1, n ÷ 4) : k
         precomp = sylvester_resolvent_precompute(T, k_use)
-        R = solve_sylvester_oracle(precomp)
-        result = parametric_resolvent_bound(precomp, T, z, config; R=R)
-        method_name = isempty(name) ? "Param-$(config.combiner)" : name
+        result = parametric_resolvent_bound(precomp, T, z, config)
+        method_name = isempty(name) ? "Param-$(config.coupling_estimator)" : name
         if result.success && isfinite(result.resolvent_bound)
             return BenchmarkResult(method_name, result.resolvent_bound, time() - t0, true, 53)
         else
             return BenchmarkResult(method_name, Inf, time() - t0, false, 53)
         end
     catch
-        method_name = isempty(name) ? "Param-$(config.combiner)" : name
+        method_name = isempty(name) ? "Param-$(config.coupling_estimator)" : name
         return BenchmarkResult(method_name, Inf, time() - t0, false, 53)
     end
 end

@@ -271,32 +271,16 @@ export sylvester_miyajima_enclosure, triangular_sylvester_miyajima_enclosure
 export verified_sylvester_enclosure, schur_sylvester_miyajima_enclosure,
        schur_sylvester_midpoint
 
-# Sylvester-based resolvent bounds
-export SylvesterResolventResult, SylvesterResolventPointResult
-export SylvesterResolventPointResultV2, SylvesterResolventPointResultV3
-export CollatzNeumannResult
-export sylvester_resolvent_precompute, sylvester_resolvent_bound
-export sylvester_resolvent_bound_v2, sylvester_resolvent_bound_v3
+# The resolvent of a block triangular matrix through the similarity S(X)
+export SylvesterResolventResult, sylvester_resolvent_precompute, solve_sylvester_oracle
 export triangular_inverse_inf_norm_bound, triangular_inverse_one_norm_bound,
        triangular_inverse_two_norm_bound
-export collatz_norm_N_bound, neumann_inverse_bound
-export psi_squared, similarity_condition_number, solve_sylvester_oracle
-export print_sylvester_diagnostics, print_point_result, print_point_result_v2,
-       print_point_result_v3
-export find_optimal_split
-# Unified parametric interface
-export LargeBlockMethod, TriangularBacksub, NeumannCollatz
-export CouplingMethod, ProductBound, DirectSolve
-export UnifiedResolventResult, sylvester_resolvent_bound_unified
-export print_unified_result, compare_methods, print_method_comparison
-# Extended parametric framework
-export NormEstimator, OneInfNorm, FrobeniusNorm, RowCol2Norm
+export psi_squared, similarity_condition_number
+export NormEstimator, OneInfNorm, FrobeniusNorm
 export DInverseEstimator, TriBacksub, NeumannOneInf, NeumannCollatz2
 export CouplingEstimator, CouplingNone, CouplingARSolve, CouplingOffDirect
-export Combiner, CombinerV1, CombinerV2, CombinerV2p5
 export ResolventBoundConfig, config_v1, config_v2, config_v3, config_v2p5
 export ParametricResolventResult, parametric_resolvent_bound, SVDWarmStart
-export neumann_one_inf_bound, offdiag_direct_bound, estimate_2norm
-export compare_all_configs, print_config_comparison
+export estimate_2norm, find_optimal_split, compare_all_configs
 
 end

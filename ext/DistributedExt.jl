@@ -29,11 +29,11 @@ function _set_schur_on_workers(pids, matrix)
     end
 end
 
-function _set_parametric_config_on_workers(pids, precomp, R, config, k)
+function _set_parametric_config_on_workers(pids, precomp, config, k)
     Distributed.@sync begin
         for pid in pids
             Distributed.@async Distributed.remotecall_wait(
-                CertifScripts.set_parametric_config!, pid, precomp, R, config; k = k
+                CertifScripts.set_parametric_config!, pid, precomp, config; k = k
             )
         end
     end
@@ -110,7 +110,7 @@ function _run_certification_distributed(
         # Set parametric config on workers if needed
         if use_parametric
             _set_parametric_config_on_workers(
-                worker_ids, par.precomp, par.R, parametric_config, par.k)
+                worker_ids, par.precomp, parametric_config, par.k)
         end
 
         job_channel = RemoteChannel(() -> Channel{_RemoteJob}(channel_capacity))
