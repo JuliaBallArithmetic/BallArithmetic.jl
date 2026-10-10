@@ -1054,40 +1054,63 @@ function circle_resolvent_bound(M::Real, circle::CertificationCircle)
 end
 
 """
-    schur_to_original_resolvent(resolvent_schur, ϵ; Cbound=1.0)
+    schur_to_original_resolvent(resolvent_schur, ϵ; zmax, Cbound = 1.0)
 
-Transform a Schur resolvent bound to the original matrix using the
-Schur perturbation theorem. Returns `Inf` when the bound is not
-computable (ε·resolvent too large for the perturbation estimate).
+The resolvent bound for the original matrix from the one for its approximate Schur factor, on a
+contour whose points satisfy `|z| ≤ zmax`. Returns `Inf` when the hypothesis below is not met.
+
+# Reference
+
+A. Blumenthal, I. Nisoli and T. Taylor-Crush, *A pseudospectral approach to rigorous numerical
+estimation of resonances of transfer operators*, Found. Comput. Math. (accepted; arXiv:2507.09021),
+Lemma 5.1. With `r_B(z) := ‖(z − B)⁻¹‖`:
+
+> Let `M = Z T Z* + E_M` (26) and `I = Z Z* + E_Z` (27), and assume
+> `‖E_M‖, ‖E_Z‖ ≤ ϵ` and `‖Z‖, ‖Z⁻¹‖ ≤ 1 + ϵ`. Suppose `z ∈ ℂ ∖ σ(T)` is such that
+>
+>     2ϵ(1 + ϵ)² r_T(z) · max{1, |z|} < 1/2.                                   (28)
+>
+> Then
+>
+>     r_M(z) ≤ 2(1 + ϵ)² r_T(z) / (1 − 2ϵ(1 + ϵ)² r_T(z)).                      (29)
+
+The factor `max{1, |z|}` is not decoration: `Z T Z*` is not similar to `T` unless `Z` is unitary,
+`z − Z T Z* = Z(z − T)Z* + z(I − Z Z*)`, and the hypothesis is what absorbs the second term. With
+`Z = √1.001·I`, `T = diag(1000, 0)` and `z = 1001` the matrix `z − Z T Z*` is singular while
+`r_T(z) = 1`; (28) fails there, and this function returns `Inf`.
+
+`resolvent_schur` must bound `r_T(z)` on the whole contour, `ϵ` the four defects, and `zmax` the
+moduli of its points. (28) is checked with `r_T` and `|z|` replaced by these upper bounds, which is
+stronger than the hypothesis at each point, and (29), which increases with `r_T`, is evaluated
+there with every operation rounded upward. `Cbound` multiplies the result, for a caller converting
+to another norm.
 """
-function schur_to_original_resolvent(resolvent_schur, ϵ; Cbound = 1.0)
-    ball_ϵ = Ball(ϵ)
-    ball_R = Ball(resolvent_schur)
-    ball_C = Ball(Cbound)
-    one = Ball(1.0)
-    two = Ball(2.0)
-
-    factor = one + ball_ϵ^2
-    numerator = two * factor * ball_R * ball_C
-    denominator = one - two * ball_ϵ * factor * ball_R
-
-    if inf(denominator) <= 0
-        return Inf
-    end
-
-    return _upper_bound(numerator / denominator)
+function schur_to_original_resolvent(resolvent_schur, ϵ; zmax, Cbound = 1.0)
+    R, e, zm, C = promote(float(_upper_bound(resolvent_schur)), float(_upper_bound(ϵ)),
+        float(_upper_bound(zmax)), float(_upper_bound(Cbound)))
+    (isfinite(R) && isfinite(e) && isfinite(zm) && isfinite(C)) || return Inf
+    one_ = one(R)
+    ope2 = mul_up(add_up(one_, e), add_up(one_, e))             # (1 + ϵ)²
+    a = mul_up(mul_up(2 * one_, e), mul_up(ope2, R))            # 2ϵ(1 + ϵ)² r_T
+    mul_up(a, max(one_, zm)) < one_ / 2 || return Inf           # hypothesis (28)
+    return div_up(mul_up(mul_up(2 * one_, ope2), mul_up(R, C)), sub_down(one_, a))
 end
 
 """
-    bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; Cbound=1.0)
+    bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; zmax, Cbound = 1.0)
 
-Return an upper bound on the ℓ₁ resolvent norm of the original matrix
-given the bounds obtained from the Schur form.
+An upper bound of `‖(zI − A)⁻¹‖₂` on the certified contour for the original matrix `A`, from the
+samples of its Schur factor `T`: [`bound_resolvent_schur`](@ref) gives the bound for `T` on the
+polygon, and [`schur_to_original_resolvent`](@ref) carries it to `A` by Lemma 5.1 of Blumenthal,
+Nisoli and Taylor-Crush with
 
-Thin wrapper that calls [`bound_resolvent_schur`](@ref) and
-[`schur_to_original_resolvent`](@ref).
+    ϵ = max(errF, errT, ‖Z‖ − 1, ‖Z⁻¹‖ − 1),
+
+`errF ≥ ‖Z*Z − I‖` (which equals `‖I − Z Z*‖` for a square `Z`) and `errT ≥ ‖Z T Z* − A‖`. `zmax`
+must bound `|z|` on the contour; for a circle it is `|centre| + radius`. `Inf` when the lemma's
+hypothesis fails. `N` is not used.
 """
-function bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; Cbound = 1.0)
+function bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; zmax, Cbound = 1.0)
     resolvent_schur = bound_resolvent_schur(l2pseudo, η)
 
     norm_Z_sup = max(_upper_bound_offset(norm_Z, 1), 0.0)
@@ -1097,14 +1120,16 @@ function bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; Cbo
     ϵ = max(max(errF_sup, errT_sup), max(norm_Z_sup, norm_Z_inv_sup))
     @info "The ϵ in the Schur theorems $ϵ"
 
-    result = schur_to_original_resolvent(resolvent_schur, ϵ; Cbound)
+    result = schur_to_original_resolvent(resolvent_schur, ϵ; zmax, Cbound)
     if isinf(result)
-        @warn "bound_res_original: Schur perturbation bound cannot certify " *
-              "(ε=$ϵ, resolvent_schur=$resolvent_schur, ε·R=$(ϵ * resolvent_schur)). " *
-              "Returning Inf." maxlog=1
+        @warn "bound_res_original: hypothesis (28) of the Schur lemma fails " *
+              "(ε=$ϵ, resolvent_schur=$resolvent_schur, zmax=$zmax). Returning Inf." maxlog=1
     end
     return result
 end
+
+# the largest modulus on a circle, rounded up
+_circle_zmax(circle::CertificationCircle) = add_up(abs_up(circle.center), circle.radius)
 
 """
     choose_snapshot_to_load(basepath)
@@ -1161,15 +1186,12 @@ function _zero_ballmatrix(n::Integer, ::BallMatrix{T, NT}) where {T, NT}
     return BallMatrix(zeros(NT, n, n))
 end
 
+# A number as a ball in its own precision: `Ball(value)` keeps a float as it is and encloses
+# anything else, where converting to Float64 rounded a BigFloat bound to nearest, possibly down.
 function _as_ball(value)
     value isa Ball && return value
-    if value isa Complex
-        return Ball(ComplexF64(value), 0.0)
-    elseif value isa Real
-        return Ball(Float64(value), 0.0)
-    else
-        throw(ArgumentError("unsupported value type $(typeof(value)) for ball conversion"))
-    end
+    value isa Number && return Ball(value)
+    throw(ArgumentError("unsupported value type $(typeof(value)) for ball conversion"))
 end
 
 function _as_ball(value, ::BallMatrix{T, NT}) where {T, NT}
@@ -1190,7 +1212,8 @@ function _lower_bound(value)
 end
 
 function _upper_bound_offset(value, offset::Real)
-    ball = _as_ball(value) - _as_ball(offset)
+    b = _as_ball(value)
+    ball = b - convert(typeof(b), _as_ball(offset))
     return add_up(abs_up(ball.c), ball.r)
 end
 
@@ -1496,7 +1519,8 @@ function run_certification(A::BallMatrix, circle::CertificationCircle;
     l2pseudo = maximum(log -> log.hi_res, certification_log)
     resolvent_schur_bound = bound_resolvent_schur(l2pseudo, η)
     resolvent_bound = bound_res_original(
-        l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1); Cbound = Cbound)
+        l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1);
+        zmax = _circle_zmax(circle), Cbound = Cbound)
 
     return (;
         schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
@@ -1911,7 +1935,8 @@ function run_certification_ogita(A::BallMatrix{T}, circle::CertificationCircle;
         l2pseudo = maximum(log -> log.hi_res, certification_log)
         resolvent_schur_bound = bound_resolvent_schur(l2pseudo, η)
         resolvent_bound = bound_res_original(
-            l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1); Cbound = Cbound)
+            l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1);
+        zmax = _circle_zmax(circle), Cbound = Cbound)
 
         # Get cache statistics
         cache_stats = _bf_ogita_cache_stats()
@@ -2127,7 +2152,8 @@ function run_certification_parametric(A::BallMatrix{T}, circle::CertificationCir
     l2pseudo = maximum(log -> log.hi_res, certification_log)
     resolvent_schur_bound = bound_resolvent_schur(l2pseudo, η)
     resolvent_bound = bound_res_original(
-        l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1); Cbound = Cbound)
+        l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1);
+        zmax = _circle_zmax(circle), Cbound = Cbound)
 
     return (;
         schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,

@@ -214,7 +214,8 @@ function _run_certification_distributed(
         l2pseudo = maximum(log -> log.hi_res, certification_log)
         resolvent_schur_bound = CertifScripts.bound_resolvent_schur(l2pseudo, η)
         resolvent_bound = CertifScripts.bound_res_original(
-            l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1); Cbound = Cbound)
+            l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1);
+            zmax = CertifScripts._circle_zmax(circle), Cbound = Cbound)
 
         # Include parametric info in result if used
         if use_parametric
