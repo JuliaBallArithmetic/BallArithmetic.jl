@@ -6,6 +6,7 @@ using Base: dirname, mod1
 
 using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm,
                         upper_bound_L2_opnorm, inf,
+                        add_up, sub_down, mul_up, div_up, abs_up, dist_up,
                         verified_cholesky,
                         backward_substitution, forward_substitution,
                         refine_schur_decomposition,
@@ -19,6 +20,7 @@ using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm,
                         solve_sylvester_oracle, estimate_2norm, OneInfNorm
 
 export dowork, dowork_ogita, dowork_ogita_bigfloat, adaptive_arcs!, bound_res_original,
+       polygon_sagitta, circle_resolvent_bound,
        bound_resolvent_schur, schur_to_original_resolvent,
        choose_snapshot_to_load, save_snapshot!, configure_certification!, set_schur_matrix!,
        compute_schur_and_error, CertificationCircle, points_on, run_certification,
@@ -111,6 +113,9 @@ end
 function _initial_arcs(circle::CertificationCircle)
     points = points_on(circle)
     n = length(points)
+    # the certified contour is the polygon through these points: fewer than three do not enclose
+    # anything, and a single point would give one side of length zero, accepted with nothing covered
+    n >= 3 || throw(ArgumentError("a certification contour needs at least 3 samples, got $n"))
     arcs = Vector{Tuple{ComplexF64, ComplexF64}}(undef, n)
     for i in 1:n
         arcs[i] = (points[i], points[mod1(i + 1, n)])
@@ -776,14 +781,7 @@ function _adaptive_arcs_serial!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
                 evaluations = length(cache), remaining = length(arcs) + 1)
         end
 
-        ℓ = abs(z_b - z_a)
-        ε = ℓ / σ_a
-
-        # Use type-appropriate rounding based on the Ball element type
-        RT = typeof(real(ε.c))
-        sup_ε = setrounding(RT, RoundUp) do
-            return RT(ε.c) + RT(ε.r)
-        end
+        sup_ε = _side_ratio_sup(z_a, z_b, lo_σ)
 
         if sup_ε > η
             if maxarcs > 0 && length(cache) >= maxarcs
@@ -792,6 +790,11 @@ function _adaptive_arcs_serial!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
                     evaluations = length(cache), remaining = length(arcs) + 1)
             end
             z_m = (z_a + z_b) / 2
+            if z_m == z_a || z_m == z_b
+                @info "Adaptive refinement stopped: a side cannot be split further" z=z_a
+                return (; ok = false, reason = :not_refinable, z = z_a, processed,
+                    evaluations = length(cache), remaining = length(arcs) + 1)
+            end
             push!(arcs, (z_m, z_b))
             push!(arcs, (z_a, z_m))
             new += 1
@@ -863,17 +866,22 @@ function _adaptive_arcs_distributed!(arcs::Vector{Tuple{ComplexF64, ComplexF64}}
                 continue
             end
 
-            ℓ = abs(z_b - z_a)
-            ε = ℓ / σ_a
-
-            # Use type-appropriate rounding based on the Ball element type
-            RT = typeof(real(ε.c))
-            sup_ε = setrounding(RT, RoundUp) do
-                return RT(ε.c) + RT(ε.r)
+            # as in the serial loop: a bound that is not positive cannot be refined away
+            lo_σ = _lower_bound(σ_a)
+            if !(isfinite(lo_σ) && lo_σ > 0)
+                @info "Adaptive refinement stopped: the bound is not positive" z=z_a σ=σ_a
+                return (; ok = false, reason = :nonpositive, z = z_a, processed,
+                    evaluations = length(cache), remaining = length(arcs) + 1)
             end
+            sup_ε = _side_ratio_sup(z_a, z_b, lo_σ)
 
             if sup_ε > η
                 z_m = (z_a + z_b) / 2
+                if z_m == z_a || z_m == z_b
+                    @info "Adaptive refinement stopped: a side cannot be split further" z=z_a
+                    return (; ok = false, reason = :not_refinable, z = z_a, processed,
+                        evaluations = length(cache), remaining = length(arcs) + 1)
+                end
                 push!(arcs, (z_m, z_b))
                 push!(arcs, (z_a, z_m))
                 new += 1
@@ -965,17 +973,84 @@ function adaptive_arcs!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
         result_channel, certification_log, snapshot, io, check_interval)
 end
 
+# A refinement that stopped has not covered the contour, and no bound follows from its samples.
+function _require_complete(outcome)
+    outcome.ok && return outcome
+    throw(ErrorException("the adaptive refinement did not cover the contour: " *
+                         "$(outcome.reason) at z = $(outcome.z) after $(outcome.evaluations) " *
+                         "evaluations, $(outcome.remaining) sides left"))
+end
+
 """
     bound_resolvent_schur(l2pseudo, η)
 
-Adjust the raw Schur pseudospectral resolvent for the trapezoid rule
-discretization error η. Returns a rigorous upper bound on the Schur resolvent.
+An upper bound of `‖(zI − T)⁻¹‖₂` over the whole certified contour, from its samples.
+
+The contour is the closed polygon through the samples: [`adaptive_arcs!`](@ref) starts from the
+vertices of the regular polygon inscribed in the circle and bisects SIDES, so every later sample is
+the midpoint of a side. A side `[z_a, z_b]` is accepted when `|z_b − z_a| / σ_a ≤ η`, with `σ_a` a
+certified lower bound of `σ_min(T − z_a I)`. Since `σ_min(T − zI)` is 1-Lipschitz in `z` (Weyl's
+inequality for singular values: `|σ_min(M + E) − σ_min(M)| ≤ ‖E‖₂`, here with `E = (z_a − z)I`),
+every `z` on the side has
+
+    σ_min(T − zI) ≥ σ_a − |z − z_a| ≥ σ_a − |z_b − z_a| ≥ σ_a (1 − η),
+
+so `‖(zI − T)⁻¹‖₂ ≤ (1/σ_a)/(1 − η)`. With `l2pseudo` the largest `1/σ_a` over the samples this is
+`l2pseudo/(1 − η)`, computed with the numerator rounded up and the denominator down. It is `Inf`
+for `η ≥ 1`.
+
+The bound is for the polygon, not for the circle it is inscribed in: between two vertices the
+circle lies outside the polygon, by up to `r(1 − cos(π/N))` for `N` initial samples, and a point
+of the spectrum in that sliver, or just outside the circle, can make the resolvent on the circle
+far larger than on the polygon. Any statement drawn from the bound (a Riesz projector, a count of
+eigenvalues, a region free of spectrum) is therefore one about the polygon and its interior.
 """
 function bound_resolvent_schur(l2pseudo, η)
-    if η >= 1
+    if !(η < 1)
         return Inf
     end
-    return _upper_bound(l2pseudo) / (1 - η)
+    return div_up(_upper_bound(l2pseudo), sub_down(1.0, Float64(η)))
+end
+
+"""
+    polygon_sagitta(circle::CertificationCircle)
+
+An upper bound of the largest distance from a point of the circle to the polygon the certification
+runs on, the regular polygon with `circle.samples` vertices inscribed in it: the sagitta
+`r(1 − cos(π/N))`, bounded by `r(π/N)²/2` since `1 − cos x ≤ x²/2`, evaluated with every operation
+rounded upward and `π` replaced by an upper bound. Bisection adds points on the sides only, so the
+refined polygon has the same distance to the circle.
+"""
+function polygon_sagitta(circle::CertificationCircle)
+    N = circle.samples
+    N >= 3 || throw(ArgumentError("a certification contour needs at least 3 samples, got $N"))
+    x = div_up(nextfloat(Float64(π)), Float64(N))          # nextfloat(Float64(π)) > π
+    return mul_up(Float64(circle.radius), div_up(mul_up(x, x), 2.0))
+end
+
+"""
+    circle_resolvent_bound(M, circle::CertificationCircle)
+
+Given `M ≥ ‖(zI − T)⁻¹‖₂` for every `z` on the certified polygon (the output of
+[`bound_resolvent_schur`](@ref)), an upper bound of `‖(zI − T)⁻¹‖₂` for every `z` on the CIRCLE
+`circle`, or `Inf` when the argument below does not apply.
+
+Every point `z` of the circle is within `h = `[`polygon_sagitta`](@ref)`(circle)` of a point `z'`
+of the polygon, and `σ_min(T − zI)` is 1-Lipschitz in `z` (Weyl's inequality for singular values,
+`|σ_min(M₁ + E) − σ_min(M₁)| ≤ ‖E‖₂`, with `E = (z' − z)I`). Hence
+
+    σ_min(T − zI) ≥ σ_min(T − z'I) − h ≥ 1/M − h,
+
+and for `M h < 1` the resolvent on the circle is at most `M/(1 − M h)`. The same holds for any
+matrix in place of `T`, so it applies equally to a bound for the original matrix. Nothing is
+assumed about where the spectrum is: when `M h ≥ 1` the polygon bound does not exclude a point of
+the spectrum between the polygon and the circle, and the result is `Inf`.
+"""
+function circle_resolvent_bound(M::Real, circle::CertificationCircle)
+    (isfinite(M) && M >= 0) || return Inf
+    Mh = mul_up(Float64(M), polygon_sagitta(circle))
+    Mh < 1 || return Inf
+    return div_up(Float64(M), sub_down(1.0, Mh))
 end
 
 """
@@ -1102,30 +1177,26 @@ function _as_ball(value, ::BallMatrix{T, NT}) where {T, NT}
     return Ball(convert(NT, value), zero(T))
 end
 
+"An upper bound of |x| over the ball: the modulus of the centre bounded above, plus the radius."
 function _upper_bound(value)
     ball = _as_ball(value)
-    T = typeof(real(ball.c))
-    return setrounding(T, RoundUp) do
-        T(abs(ball.c)) + T(ball.r)
-    end
+    return add_up(abs_up(ball.c), ball.r)
 end
 
-"The lower end of a ball, rounded down; negative when the ball straddles zero."
+"The lower end of a real ball, rounded down; negative when the ball straddles zero."
 function _lower_bound(value)
     ball = _as_ball(value)
-    T = typeof(real(ball.c))
-    return setrounding(T, RoundDown) do
-        T(real(ball.c)) - T(ball.r)
-    end
+    return sub_down(real(ball.c), ball.r)
 end
 
 function _upper_bound_offset(value, offset::Real)
     ball = _as_ball(value) - _as_ball(offset)
-    T = typeof(real(ball.c))
-    return setrounding(T, RoundUp) do
-        T(abs(ball.c)) + T(ball.r)
-    end
+    return add_up(abs_up(ball.c), ball.r)
 end
+
+# The test of one side [z_a, z_b] of the polygon: an upper bound of |z_b − z_a| / σ, with the
+# length rounded up (`dist_up`) and σ replaced by its certified lower end `lo_σ > 0`.
+_side_ratio_sup(z_a, z_b, lo_σ) = div_up(dist_up(z_a, z_b), lo_σ)
 
 function _is_identity_polynomial(coeffs)
     length(coeffs) == 2 || return false
@@ -1415,9 +1486,9 @@ function run_certification(A::BallMatrix, circle::CertificationCircle;
         return _evaluate_sample(schur_matrix, z, eval_index[])
     end
 
-    adaptive_arcs!(arcs, cache, pending, η; check_interval = check_interval,
+    _require_complete(adaptive_arcs!(arcs, cache, pending, η; check_interval = check_interval,
         certification_log = certification_log, io = log_io,
-        evaluator = serial_evaluator)
+        evaluator = serial_evaluator))
 
     isempty(certification_log) && throw(ErrorException("certification produced no samples"))
 
@@ -1829,9 +1900,9 @@ function run_certification_ogita(A::BallMatrix{T}, circle::CertificationCircle;
             )
         end
 
-        adaptive_arcs!(arcs, cache, pending, η; check_interval = check_interval,
+        _require_complete(adaptive_arcs!(arcs, cache, pending, η; check_interval = check_interval,
             certification_log = certification_log, io = log_io,
-            evaluator = ogita_evaluator)
+            evaluator = ogita_evaluator))
 
         isempty(certification_log) &&
             throw(ErrorException("certification produced no samples"))
@@ -2046,9 +2117,9 @@ function run_certification_parametric(A::BallMatrix{T}, circle::CertificationCir
         end
     end
 
-    adaptive_arcs!(arcs, cache, pending, η; check_interval = check_interval,
+    _require_complete(adaptive_arcs!(arcs, cache, pending, η; check_interval = check_interval,
         certification_log = certification_log, io = log_io,
-        evaluator = serial_evaluator)
+        evaluator = serial_evaluator))
 
     isempty(certification_log) && throw(ErrorException("certification produced no samples"))
 

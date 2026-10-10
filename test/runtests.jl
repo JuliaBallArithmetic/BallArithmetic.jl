@@ -94,6 +94,7 @@ using Test
 
     # Certification
     include("test_certification/test_certifscripts.jl")
+    include("test_certification/test_rigour_certifscripts.jl")
     include("test_numerical_test/test_numerical_test.jl")
 
     # Extensions

@@ -202,10 +202,10 @@ function _run_certification_distributed(
         cache = Dict{ComplexF64, Any}()
         pending = Dict{Int, Tuple{ComplexF64, ComplexF64}}()
 
-        CertifScripts.adaptive_arcs!(
+        CertifScripts._require_complete(CertifScripts.adaptive_arcs!(
             arcs, cache, pending, η; check_interval = check_interval,
             job_channel = job_channel, result_channel = result_channel,
-            certification_log = certification_log, snapshot = snapshot_base, io = log_io)
+            certification_log = certification_log, snapshot = snapshot_base, io = log_io))
 
         isempty(certification_log) &&
             throw(ErrorException("certification produced no samples"))
