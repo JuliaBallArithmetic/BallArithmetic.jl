@@ -91,6 +91,11 @@ Outcome of [`verifyeigall`](@ref).
   transformed ball matrix, which encloses `W⁻¹BW` and so carries the eigenvalues of `B`; those of
   `B` itself when the transformation failed; empty when the result comes from another method. Every eigenvalue lies in their
   union, and a union of discs disjoint from the others holds as many eigenvalues as it has discs.
+- `similarity::BallMatrix`, `transformed::BallMatrix`: a ball matrix containing the similarity `S`
+  the algorithm ended with (`W`, multiplied by the transformations of the recursion of step 6 when
+  it ran) and the ball matrix containing `S⁻¹BS` to which Theorem 2.2 was applied, for every matrix
+  `B` of the input. When the transformation failed they are the identity and `B`; when the result
+  comes from another method they are empty. [`block_resolvent_floor`](@ref) reads them.
 """
 struct VerifyEigAllResult{T, CT}
     clusters::Vector{Vector{Int}}
@@ -105,13 +110,15 @@ struct VerifyEigAllResult{T, CT}
     transform_defect::T
     gershgorin_centers::Vector{CT}
     gershgorin_radii::Vector{T}
+    similarity::BallMatrix{T, CT}
+    transformed::BallMatrix{T, CT}
 end
 
 # the methods that have no Gershgorin discs to report
 VerifyEigAllResult(clusters, certified, centers::Vector{CT}, radii::Vector{T}, subspaces, blocks,
     basis, covered, iterations, defect) where {T, CT} =
     VerifyEigAllResult(clusters, certified, centers, radii, subspaces, blocks, basis, covered,
-        iterations, defect, CT[], T[])
+        iterations, defect, CT[], T[], BallMatrix(zeros(CT, 0, 0)), BallMatrix(zeros(CT, 0, 0)))
 
 function Base.show(io::IO, r::VerifyEigAllResult)
     nc = count(r.certified)
@@ -721,7 +728,7 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
     end
     gc, gr = _gershgorin_rows(A)
     return VerifyEigAllResult(clusters, collect(certified), centers, radii, subsB, blocksB, W,
-        covered, total, defect, CT.(gc), gr)
+        covered, total, defect, CT.(gc), gr, S, A)
 end
 
 # Steps 2 to 6 on one transformed matrix A: the clustering, D constant on each cluster, and the
@@ -768,7 +775,7 @@ function _rump2022a_untransformed(B::BallMatrix{T}, W, defect) where {T}
     return VerifyEigAllResult(clusters, falses(n) |> collect, D, radii,
         BallMatrix{T, CT}[BallMatrix(zeros(CT, n, 1), fill(T(Inf), n, 1)) for _ in 1:n],
         BallMatrix{T, CT}[BallMatrix(zeros(CT, 1, 1), fill(T(Inf), 1, 1)) for _ in 1:n],
-        Matrix{CT}(W), false, 0, defect, CT.(gc), gr)
+        Matrix{CT}(W), false, 0, defect, CT.(gc), gr, BallMatrix(Matrix{CT}(I, n, n)), Bc)
 end
 
 """

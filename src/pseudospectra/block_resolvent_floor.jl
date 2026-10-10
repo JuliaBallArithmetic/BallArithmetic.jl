@@ -23,8 +23,8 @@ end
 
 Prepare, from a verified block diagonalisation `vbd` of `A` (the result of
 [`miyajima2014a_schurnewton`](@ref) or of [`schur_gershgorin_enclosure`](@ref), for the standard
-eigenvalue problem), a lower bound of `σ_min(A − zI)` that costs `O(number of blocks)` at each
-`z`. For a ball matrix `A` the bound holds for every matrix of the ball.
+eigenvalue problem; for a result of [`verifyeigall`](@ref) see the method below), a lower bound
+of `σ_min(A − zI)` that costs `O(number of blocks)` at each `z`. For a ball matrix `A` the bound holds for every matrix of the ball.
 
 # Setting
 
@@ -64,17 +64,71 @@ function block_resolvent_floor(vbd)
     hasproperty(vbd, :pencil) && vbd.pencil && throw(ArgumentError(
         "block_resolvent_floor: the block diagonalisation is of a pencil; the bound is for the " *
         "standard problem"))
-    W = Matrix(vbd.basis)
     T = eltype(vbd.block_coupling)
-    bW = BallMatrix(W)
-    bY = BallMatrix(inv(W))
-    ρ = upper_bound_L2_opnorm(bY * bW - I)
-    kappa = ρ < 1 ? mul_up(T(_frame_norm(bW)), div_up(T(_frame_norm(bY)), sub_down(one(T), T(ρ)))) :
-            T(Inf)
     blocks = BallMatrix[vbd.block_diagonal[cl, cl] for cl in vbd.clusters]
     return BlockResolventFloor{T}(Complex{T}.(vbd.block_centers),
         Vector{T}(vbd.block_nonnormality), Vector{T}(vbd.block_coupling), blocks,
-        T(vbd.block_residual_norm), T(kappa))
+        T(vbd.block_residual_norm), _frame_kappa(BallMatrix(Matrix(vbd.basis)), T))
+end
+
+"""
+    block_resolvent_floor(r::VerifyEigAllResult) -> BlockResolventFloor
+
+The same bound from a result of [`verifyeigall`](@ref) with one of the methods of Rump (2022),
+with the frame `W := S`, the similarity the algorithm ended with, and the blocks on its clusters.
+
+`S` is a product of floating-point matrices, contained in the ball matrix `r.similarity`, and
+`r.transformed` is a ball matrix containing `M = S⁻¹AS`, so the quantities of the bound are read from it and no residual is formed:
+`P_j` is its block on the cluster `C_j`, `c_j` the barycentre of the midpoints of the diagonal of
+that block, `n_j ≥ ‖P_j − c_j I‖₂`, `r_j ≥ ‖(M − Λ)[C_j, :]‖₂` the norm of the block row with the
+block itself set to zero, and `β_Λ ≥ ‖M − Λ‖₂` the norm of the ball matrix with every diagonal
+block set to zero. `κ₂(S)` is bounded over the ball `r.similarity` as above.
+
+The bound uses the enclosure of `S⁻¹AS` and a partition, and neither the self-mapping test (2.10)
+nor `r.spectrum_covered`: it holds whether or not the clusters are certified. When the
+transformation failed, `r.transformed` is `A` and the frame is the identity.
+
+S. M. Rump, *Verified error bounds for all eigenvalues and eigenvectors of a matrix*,
+SIAM J. Matrix Anal. Appl. **43**(4):1736-1754, 2022, doi 10.1137/21M1451440, for the enclosure of
+`S⁻¹AS`; the bound is the one of the method above.
+"""
+function block_resolvent_floor(r::VerifyEigAllResult{T, CT}) where {T, CT}
+    M = r.transformed
+    n = size(M, 1)
+    n > 0 || throw(ArgumentError(
+        "block_resolvent_floor: the result carries no transformed matrix; it comes from a " *
+        "method other than those of Rump (2022)"))
+    Mm, Mr = mid(M), rad(M)
+    Nm, Nr = copy(Mm), copy(Mr)
+    for cl in r.clusters
+        Nm[cl, cl] .= zero(CT)
+        Nr[cl, cl] .= zero(T)
+    end
+    N = BallMatrix(Nm, Nr)
+    p = length(r.clusters)
+    centres = Vector{CT}(undef, p)
+    nonnormality = Vector{T}(undef, p)
+    coupling = Vector{T}(undef, p)
+    blocks = Vector{BallMatrix}(undef, p)
+    for (j, cl) in enumerate(r.clusters)
+        P = BallMatrix(Mm[cl, cl], Mr[cl, cl])
+        centres[j] = sum(Mm[i, i] for i in cl) / length(cl)
+        nonnormality[j] = upper_bound_L2_opnorm(P - Ball(centres[j], zero(T)) * I)
+        coupling[j] = upper_bound_L2_opnorm(BallMatrix(Nm[cl, :], Nr[cl, :]))
+        blocks[j] = P
+    end
+    return BlockResolventFloor{T}(centres, nonnormality, coupling, blocks,
+        T(upper_bound_L2_opnorm(N)), _frame_kappa(r.similarity, T))
+end
+
+# Upper bound of κ₂(W) over a ball matrix W: with Y the floating-point inverse of its midpoint and
+# ρ ≥ ‖YW − I‖₂ < 1 over the ball, every W of it is invertible and ‖W⁻¹‖₂ ≤ ‖Y‖₂/(1 − ρ).
+# `Inf` when ρ ≥ 1.
+function _frame_kappa(bW::BallMatrix, ::Type{T}) where {T}
+    bY = BallMatrix(inv(mid(bW)))
+    ρ = upper_bound_L2_opnorm(bY * bW - I)
+    ρ < 1 || return T(Inf)
+    return mul_up(T(_frame_norm(bW)), div_up(T(_frame_norm(bY)), sub_down(one(T), T(ρ))))
 end
 
 # Upper bound of the spectral norm of a frame: the smaller of the bound from a verified singular

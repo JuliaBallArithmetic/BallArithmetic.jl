@@ -54,6 +54,47 @@ using Test
         @test positive_near > 0                      # the bound says something on this box
     end
 
+    @testset "from verifyeigall, $name, $method" for (name, A) in gallery,
+        method in (:rump2022a, :rump2022aneumann, :rump2022adiscclusters)
+
+        r = verifyeigall(BallMatrix(A); method)
+        f = block_resolvent_floor(r)
+        # the frame and the transformed matrix against a 512-bit computation
+        S = Complex{BigFloat}.(mid(r.similarity))
+        @test f.kappa ≥ cond(ComplexF64.(S)) * (1 - 1e-10)
+        if maximum(rad(r.similarity)) == 0
+            M = setprecision(() -> S \ (Complex{BigFloat}.(A) * S), BigFloat, 512)
+            @test all(abs.(M - mid(r.transformed)) .≤ rad(r.transformed) .* (1 + 1e-12))
+        end
+        @test length(f.centres) == length(r.clusters) == length(f.blocks)
+        positive = 0
+        for z in grid(sum(diag(A)) / size(A, 1) + 0im, 8.0, 13)
+            truth = σtrue(A, z)
+            far = sigma_min_floor(f, z)
+            near = sigma_min_floor(f, z; near = true)
+            @test 0 ≤ far ≤ near ≤ truth * (1 + 1e-12)
+            positive += near > 0
+        end
+        @test positive > 0
+    end
+
+    @testset "from verifyeigall: no transformation, and another method" begin
+        # a Jordan block has no invertible eigenvector matrix in floating point; the result then
+        # carries the input and the identity, and the bound is the one with singleton blocks
+        J = Matrix(Bidiagonal(fill(2.0, 6), fill(1.0, 5), :U))
+        r = verifyeigall(BallMatrix(J))
+        f = block_resolvent_floor(r)
+        if all(iszero, mid(r.similarity) - I)
+            @test f.kappa ≤ 1 + 1e-12
+            @test mid(r.transformed) == J
+        end
+        for z in grid(2.0 + 0im, 6.0, 9)
+            @test 0 ≤ sigma_min_floor(f, z) ≤ σtrue(J, z) * (1 + 1e-12)
+        end
+        m = verifyeigall(BallMatrix(randn(5, 5)); method = :miyajima2014a)
+        @test_throws ArgumentError block_resolvent_floor(m)
+    end
+
     @testset "one non-normal block: what the block singular values buy" begin
         # with the clustering separation 2 the Grcar matrix is kept as one block in the Schur
         # frame; inside the disc |z − c| ≤ ‖P − cI‖ only the singular value computation gives a
