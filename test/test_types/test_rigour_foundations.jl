@@ -93,8 +93,10 @@ end
         @test _rf_holds(b2, setprecision(() -> _rf_big(setprecision(() -> big(1) / 3, 256)), _RF_BITS))
         # widening is exact
         @test rad(convert(Ball{BigFloat, BigFloat}, Ball(0.1, 0.0))) == 0
-        # the two-argument constructor rounds the radius up
-        @test rad(Ball(1.0, big(1) / 3)) >= big(1) / 3
+        # the two-argument constructor rounds the radius up and encloses an inexact centre
+        @test rad(Ball(1, big(1) / 3)) >= big(1) / 3
+        @test rad(Ball(1 // 3, 0.5)) > 0.5
+        @test rad(Ball(2, 0.5)) == 0.5
     end
 
     @testset "abs of a complex ball contains the modulus" begin
