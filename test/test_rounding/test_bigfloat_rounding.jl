@@ -12,14 +12,15 @@ using BallArithmetic
         @test BallArithmetic.machine_epsilon(Float32) == Float32(2.0^-23)
         @test BallArithmetic.machine_epsilon(Float32) == eps(Float32)
 
-        # BigFloat epsilon depends on precision
+        # BigFloat epsilon depends on precision; it is eps(BigFloat) = 2^(1 - precision), twice the
+        # unit roundoff, as for Float64 and Float32
         old_prec = precision(BigFloat)
         try
             setprecision(BigFloat, 256)
-            @test BallArithmetic.machine_epsilon(BigFloat) == BigFloat(2)^(-256)
+            @test BallArithmetic.machine_epsilon(BigFloat) == eps(BigFloat) == BigFloat(2)^(-255)
 
             setprecision(BigFloat, 512)
-            @test BallArithmetic.machine_epsilon(BigFloat) == BigFloat(2)^(-512)
+            @test BallArithmetic.machine_epsilon(BigFloat) == eps(BigFloat) == BigFloat(2)^(-511)
         finally
             setprecision(BigFloat, old_prec)
         end

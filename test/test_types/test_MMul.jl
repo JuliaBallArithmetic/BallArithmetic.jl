@@ -135,24 +135,21 @@ import BallArithmetic: abs_preserving_structure
                 # low-level rectangular bounds + working type
                 Hrl, Hru, Hil, Hiu, T = BallArithmetic._oishi_MMul_up_lo(F, G)
 
-                # manual center/radius with directed rounding
-                half = T(0.5)
-                Rc, Ic = setrounding(T, RoundNearest) do
-                    (Hru .+ Hrl) .* half, (Hiu .+ Hil) .* half
-                end
-                Hr = setrounding(T, RoundUp) do
-                    Rr = (Hru .- Hrl) .* half
-                    Ir = (Hiu .- Hil) .* half
-                    sqrt.(Rr .^ 2 .+ Ir .^ 2)
-                end
-                Hc = complex.(Rc, Ic)
-
                 # wrapper
                 B = BallArithmetic.oishi_MMul(F, G)
 
-                # 1) mid/rad match our manual construction
-                @test mid(B) == Hc
-                @test rad(B) == Hr
+                # 1) each ball contains the rectangle [Hrl, Hru] x [Hil, Hiu] it was converted
+                # from: the four corners, compared at twice the precision. (The conversion is
+                # Algorithms 3 and 5 of Miyajima (2010); this test used to recompute it with the
+                # centre rounded to nearest and the half-width as radius, which does not contain
+                # the upper end when the centre rounds down.)
+                @test setprecision(BigFloat, 512) do
+                    all(CartesianIndices(mid(B))) do I
+                        all(((Hrl, Hil), (Hrl, Hiu), (Hru, Hil), (Hru, Hiu))) do (R, Im)
+                            abs(complex(big(R[I]), big(Im[I])) - mid(B)[I]) <= rad(B)[I]
+                        end
+                    end
+                end
 
                 # 2) containment of the exact product
                 P = Complex{T}.(F) * Complex{T}.(G)
