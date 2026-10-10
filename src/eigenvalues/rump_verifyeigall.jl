@@ -833,8 +833,8 @@ function _rump2022a_untransformed(B::BallMatrix{T}, W, defect) where {T}
 end
 
 """
-    verifyeigall(B::BallMatrix; method = :rump2022a, maxiter = 20, inflate = 0.1,
-                 maxlevels = 3) -> VerifyEigAllResult
+    verifyeigall(B::BallMatrix; method = :rump2022a, fallback = :rump2022aschurstep6,
+                 maxiter = 20, inflate = 0.1, maxlevels = 3) -> VerifyEigAllResult
 
 Verified inclusions of all eigenvalues and invariant subspaces of `B`. Returns a
 [`VerifyEigAllResult`](@ref), whose `spectrum_covered` says whether the union of the returned
@@ -849,7 +849,13 @@ applied to the result. The paper describes this step in one sentence and gives n
 implementation is the algorithm's own first step applied to those columns. `maxlevels = 0`
 switches it off.
 
-This function selects an algorithm and does nothing else. Each algorithm is a separate
+This function selects an algorithm and, where it leaves the spectrum uncovered, runs the one
+named by `fallback`: the result of `method` is returned when its `spectrum_covered` is true;
+otherwise `fallback` is run with the same keywords and its result is returned when it covers the
+spectrum or certifies more columns, the result of `method` when it does neither. Which of the two
+was returned can be read from `similarity`. `fallback = nothing` runs `method` alone, and no
+fallback is run after `:miyajima2014a`, whose `spectrum_covered` is another condition (below).
+Each algorithm is a separate
 unexported function named for the paper it implements, so that a deviation from a paper is
 visible in the name rather than buried in a docstring:
 
@@ -862,7 +868,7 @@ visible in the name rather than buried in a docstring:
 | `:rump2022aschurstep6` | [`_rump2022a_schur_step6`](@ref) | the Schur frame followed by the recursion of step 6 on the columns left uncertified; a deviation, named for it |
 | `:miyajima2014a` | [`_miyajima2014a_alg1`](@ref) | Algorithms 1 and 2 of Miyajima (2014): Gershgorin discs on the pencil transformed by an approximate generalised eigendecomposition, each cluster certified by Brouwer's theorem on a Newton operator |
 
-The default is `:rump2022a`. The Neumann variant is kept because it does not need the solve to
+The default is `:rump2022a`, the paper's algorithm, with `:rump2022aschurstep6` as fallback. The Neumann variant is kept because it does not need the solve to
 succeed, so it still returns a result where the solve declines; where both succeed, the
 faithful one is at least as tight. `:miyajima2014a` is the only method that takes a pencil, so
 `verifyeigall(A, B)` accepts it alone; called with one matrix it solves `A x = λ x`.
@@ -888,9 +894,18 @@ end
 S. M. Rump, *Verified error bounds for all eigenvalues and eigenvectors of a matrix*,
 SIAM J. Matrix Anal. Appl. **43**(4):1736-1754, 2022, doi 10.1137/21M1451440.
 """
-function verifyeigall(B::BallMatrix; method::Symbol = :rump2022a, kwargs...)
+function verifyeigall(B::BallMatrix; method::Symbol = :rump2022a,
+        fallback::Union{Nothing, Symbol} = :rump2022aschurstep6, kwargs...)
     size(B, 1) == size(B, 2) ||
         throw(ArgumentError("verifyeigall expects a square matrix"))
+    r = _verifyeigall_method(B, method; kwargs...)
+    (r.spectrum_covered || fallback === nothing || fallback === method ||
+     method === :miyajima2014a) && return r
+    q = _verifyeigall_method(B, fallback; kwargs...)
+    return (q.spectrum_covered || _rump2022a_columns(q) > _rump2022a_columns(r)) ? q : r
+end
+
+function _verifyeigall_method(B::BallMatrix, method::Symbol; kwargs...)
     method === :rump2022a && return _rump2022a(B; kwargs...)
     method === :rump2022aneumann && return _rump2022aneumann(B; kwargs...)
     method === :rump2022adiscclusters && return _rump2022a_discclusters(B; kwargs...)

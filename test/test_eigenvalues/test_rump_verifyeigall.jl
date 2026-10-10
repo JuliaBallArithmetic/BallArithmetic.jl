@@ -358,6 +358,62 @@ end
     end
 end
 
+@testset "the Schur variants, against the input's own eigenvalues" begin
+    # the matrices of the testsets above and four with Jordan blocks under a similarity, judged as
+    # there: every eigenvalue of the floating-point input in some disc, and an isolated certified
+    # disc holding as many as its cluster has members
+    rng = MersenneTwister(20261011)
+    jord(n, λ) = diagm(0 => fill(λ, n), 1 => ones(n - 1))
+    rot(A) = (Q = Matrix(qr(randn(rng, size(A)...)).Q); Q * A * Q')
+    blk(args...) = cat(args...; dims = (1, 2))
+    S = randn(rng, 12, 12)
+    cases = [_rump_cluster(30, 1, MersenneTwister(11)), _rump_cluster(30, 2, MersenneTwister(12)),
+        _rump_cluster(30, 3, MersenneTwister(13)), _rump_cluster(40, 5, MersenneTwister(5)),
+        rot(jord(24, 0.7)), rot(jord(6, 0.7)), jord(6, 0.7),
+        rot(blk(jord(3, 1.0), Diagonal([2.0, 3.0, 4.0, 5.0]))),
+        rot(blk(jord(4, 1.0), jord(4, -1.0))),
+        S * blk(jord(3, 1.0), Diagonal(collect(2.0:10.0))) / S]
+    for B in cases
+        λ = _reference_eigvals(B)
+        for method in (:rump2022aschur, :rump2022aschurstep6)
+            r = verifyeigall(BallMatrix(B); method)
+            @test all(isfinite, r.radii)
+            @test all(all(isfinite, rad(r.subspaces[i])) == r.certified[i]
+            for i in eachindex(r.clusters))
+            @test _sound(r, λ)
+            @test !r.spectrum_covered || all(r.certified)
+        end
+    end
+end
+
+@testset "verifyeigall: the fallback runs where the method leaves the spectrum uncovered" begin
+    cols(r) = sum((length(c) for (c, ok) in zip(r.clusters, r.certified) if ok); init = 0)
+    same(a, b) = a.clusters == b.clusters && a.certified == b.certified && a.radii == b.radii &&
+                 mid(a.similarity) == mid(b.similarity)
+    rng = MersenneTwister(20261011)
+    # a covered spectrum: the fallback is not run
+    B = BallMatrix(randn(rng, 10, 10))
+    @test same(verifyeigall(B), verifyeigall(B; fallback = nothing))
+    # the 24-fold Jordan block under an orthogonal similarity: the paper's algorithm certifies
+    # nothing, and the result is the one of whichever of the two does better
+    n = 24
+    Q = Matrix(qr(randn(MersenneTwister(20260928), n, n)).Q)
+    J = BallMatrix(Q * diagm(0 => fill(0.7, n), 1 => ones(n - 1)) * Q')
+    p = verifyeigall(J; fallback = nothing)
+    q = verifyeigall(J; method = :rump2022aschurstep6)
+    r = verifyeigall(J)
+    @test !p.spectrum_covered
+    @test same(r, (q.spectrum_covered || cols(q) > cols(p)) ? q : p)
+    @test cols(r) >= cols(p)
+    @test _sound(r, _reference_eigvals(mid(J)))
+    # the fallback is a keyword, and is not run after itself or after Miyajima's method
+    @test same(verifyeigall(J; fallback = :rump2022aschur),
+        (s = verifyeigall(J; method = :rump2022aschur); (s.spectrum_covered || cols(s) > cols(p)) ? s : p))
+    @test same(verifyeigall(J; method = :rump2022aschurstep6, fallback = :rump2022aschurstep6), q)
+    @test verifyeigall(J; method = :miyajima2014a) isa VerifyEigAllResult
+    @test_throws ArgumentError verifyeigall(J; fallback = :nonsense)
+end
+
 @testset "verifyeigall: an exactly singular eigenvector matrix declines the transformation" begin
     # for the 24-fold Jordan block in its own basis the computed eigenvector matrix is singular
     # and the floating-point solve of the Newton step throws; the result is then the one of a
