@@ -376,8 +376,9 @@ function gram_transform(gram;
     end
 
     RT = radius_type
-    return GramTransform(L, L_inv, RT(cond_factor), RT(cond_gram),
-        residual === nothing ? nothing : RT(residual), source)
+    # the three diagnostics are upper bounds: converted to the radius type without going below
+    return GramTransform(L, L_inv, _float_up(RT, cond_factor), _float_up(RT, cond_gram),
+        residual === nothing ? nothing : _float_up(RT, residual), source)
 end
 
 """
