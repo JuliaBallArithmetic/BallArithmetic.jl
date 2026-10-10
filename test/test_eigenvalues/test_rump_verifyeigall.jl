@@ -301,6 +301,38 @@ end
     @test maximum(q.radii) < 1e-12                     # nowhere near a Gershgorin radius
 end
 
+@testset ":rump2022aschur: Theorem 2.2 in the Schur frame" begin
+    rng = MersenneTwister(20261011)
+    # a matrix with a non-normal part: every certified disc holds an eigenvalue of the input, the
+    # similarity is the Schur factor, and the transformed matrix contains Q⁻¹BQ
+    for n in (6, 12)
+        B = Matrix(Diagonal(collect(1.0:n))) + 0.3 * triu(randn(rng, n, n), 1) + 1e-3 * randn(rng, n, n)
+        r = verifyeigall(BallMatrix(B); method = :rump2022aschur)
+        Q = mid(r.similarity)
+        @test r.basis == Q
+        @test opnorm(Q' * Q - I) < 1e-12
+        M, λ = setprecision(BigFloat, 512) do
+            Qb = Complex{BigFloat}.(Q)
+            Qb \ (Complex{BigFloat}.(B) * Qb), eigvals(Complex{BigFloat}.(B))
+        end
+        @test all(abs.(M - mid(r.transformed)) .<= rad(r.transformed) .* (1 + 1e-12))
+        @test any(r.certified)
+        for i in eachindex(r.clusters)
+            r.certified[i] || continue
+            @test count(l -> abs(l - r.centers[i]) <= r.radii[i], λ) >= length(r.clusters[i])
+        end
+        if r.spectrum_covered
+            @test all(l -> any(i -> abs(l - r.centers[i]) <= r.radii[i], eachindex(r.clusters)), λ)
+        end
+    end
+    # a Jordan block is its own Schur form: the frame is kept where the eigenvector matrix is not
+    J = diagm(0 => fill(0.7, 24), 1 => ones(23))
+    r = verifyeigall(BallMatrix(J); method = :rump2022aschur)
+    @test opnorm(mid(r.similarity)' * mid(r.similarity) - I) < 1e-12
+    @test all(i -> abs(0.7 - r.centers[i]) <= r.radii[i], eachindex(r.clusters))
+    @test_throws MethodError verifyeigall(BallMatrix(J); method = :rump2022aschur, maxlevels = 2)
+end
+
 @testset "verifyeigall: an exactly singular eigenvector matrix declines the transformation" begin
     # for the 24-fold Jordan block in its own basis the computed eigenvector matrix is singular
     # and the floating-point solve of the Newton step throws; the result is then the one of a

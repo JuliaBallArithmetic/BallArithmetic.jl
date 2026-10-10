@@ -55,7 +55,7 @@ using Test
     end
 
     @testset "from verifyeigall, $name, $method" for (name, A) in gallery,
-        method in (:rump2022a, :rump2022aneumann, :rump2022adiscclusters)
+        method in (:rump2022a, :rump2022aneumann, :rump2022adiscclusters, :rump2022aschur)
 
         r = verifyeigall(BallMatrix(A); method)
         f = block_resolvent_floor(r)
@@ -66,6 +66,7 @@ using Test
             M = setprecision(() -> S \ (Complex{BigFloat}.(A) * S), BigFloat, 512)
             @test all(abs.(M - mid(r.transformed)) .≤ rad(r.transformed) .* (1 + 1e-12))
         end
+        method === :rump2022aschur && @test f.kappa ≤ 1 + 1e-12
         @test length(f.centres) == length(r.clusters) == length(f.blocks)
         positive = 0
         for z in grid(sum(diag(A)) / size(A, 1) + 0im, 8.0, 13)
