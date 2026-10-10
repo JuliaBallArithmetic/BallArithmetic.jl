@@ -301,6 +301,21 @@ end
     @test maximum(q.radii) < 1e-12                     # nowhere near a Gershgorin radius
 end
 
+@testset "verifyeigall: an exactly singular eigenvector matrix declines the transformation" begin
+    # for the 24-fold Jordan block in its own basis the computed eigenvector matrix is singular
+    # and the floating-point solve of the Newton step throws; the result is then the one of a
+    # transformation that is not certified, Gershgorin discs of the input and nothing certified
+    J = diagm(0 => fill(0.7, 24), 1 => ones(23))
+    for method in (:rump2022a, :rump2022aneumann, :rump2022adiscclusters)
+        r = verifyeigall(BallMatrix(J); method)
+        @test count(r.certified) == 0
+        @test !r.spectrum_covered
+        @test mid(r.similarity) == I
+        @test mid(r.transformed) == J
+        @test all(i -> abs(0.7 - r.centers[i]) <= r.radii[i], eachindex(r.clusters))
+    end
+end
+
 @testset "orthonormal_invariant_basis: an orthonormal basis and its invariance defect" begin
     # Theorem 2.2's basis is the frozen-rows one, V' Y = I, so its columns are not orthonormal and
     # the enclosure can be badly conditioned. Orthonormalising does not change the eigenvalue

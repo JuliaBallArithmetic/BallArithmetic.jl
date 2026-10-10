@@ -656,7 +656,7 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
     F = eigen(Matrix{CT}(mid(B)))
     W = Matrix{CT}(F.vectors)
     X0 = Matrix{CT}(Diagonal(F.values))
-    A, defect = transform(B, W, X0)
+    A, defect = _rump2022a_try(transform, B, W, X0)
     A === nothing && return _rump2022a_untransformed(B, W, defect)
 
     lv = _rump2022a_level(A, cluster_rule, maxiter, inflate)
@@ -690,7 +690,7 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
         Tm[J, J] .= sub.vectors
         d = CT[mid(A)[i, i] for i in 1:n]
         d[J] .= sub.values
-        A2, _ = transform(A, Tm, Matrix{CT}(Diagonal(d)))
+        A2, _ = _rump2022a_try(transform, A, Tm, Matrix{CT}(Diagonal(d)))
         A2 === nothing && break
         lv2 = _rump2022a_level(A2, cluster_rule, maxiter, inflate)
         total += lv2.iters
@@ -729,6 +729,17 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
     gc, gr = _gershgorin_rows(A)
     return VerifyEigAllResult(clusters, collect(certified), centers, radii, subsB, blocksB, W,
         covered, total, defect, CT.(gc), gr, S, A)
+end
+
+# A transformation whose floating-point solve or inverse meets an exactly singular W declines, as
+# one whose verified solve fails does: there is no enclosure of W⁻¹BW either way.
+function _rump2022a_try(transform, B::BallMatrix{T}, W, X0) where {T}
+    try
+        return transform(B, W, X0)
+    catch err
+        err isa Union{SingularException, LAPACKException} || rethrow()
+        return nothing, T(Inf)
+    end
 end
 
 # Steps 2 to 6 on one transformed matrix A: the clustering, D constant on each cluster, and the

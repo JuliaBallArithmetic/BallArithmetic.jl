@@ -78,25 +78,30 @@ using Test
         @test positive > 0
     end
 
-    @testset "from verifyeigall: no transformation, and another method" begin
-        # a 24-fold Jordan block under a real orthogonal similarity, the matrix of
-        # test_rump_verifyeigall.jl whose transformation is not certified: the result carries the
-        # input and the identity, and the bound is the one with singleton blocks in that frame
+    @testset "from verifyeigall: no transformation, an unbounded frame, another method" begin
+        # the 24-fold Jordan block in its own basis: the transformation declines, the result
+        # carries the input and the identity, and the blocks are the diagonal entries
         n = 24
-        Q = Matrix(qr(randn(MersenneTwister(20260928), n, n)).Q)
-        B = Q * diagm(0 => fill(0.7, n), 1 => ones(n - 1)) * Q'
-        r = verifyeigall(BallMatrix(B))
+        J = diagm(0 => fill(0.7, n), 1 => ones(n - 1))
+        r = verifyeigall(BallMatrix(J))
         @test mid(r.similarity) == I
-        @test mid(r.transformed) == B
         f = block_resolvent_floor(r)
         @test f.kappa ≤ 1 + 1e-12
         positive = 0
         for z in grid(0.7 + 0im, 12.0, 9)
             fl = sigma_min_floor(f, z; near = true)
-            @test 0 ≤ fl ≤ σtrue(B, z) * (1 + 1e-12)
+            @test 0 ≤ fl ≤ σtrue(J, z) * (1 + 1e-12)
             positive += fl > 0
         end
         @test positive > 0
+        # the same block under an orthogonal similarity (test_rump_verifyeigall.jl): verifyeigall
+        # accepts an eigenvector matrix for which ‖YW − I‖₂ < 1 is not proved here, so the
+        # condition number of the frame is not bounded and the bound says nothing
+        Q = Matrix(qr(randn(MersenneTwister(20260928), n, n)).Q)
+        g = block_resolvent_floor(verifyeigall(BallMatrix(Q * J * Q')))
+        @test g.kappa == Inf
+        @test sigma_min_floor(g, 0.7 + 12im; near = true) == 0
+        @test resolvent_bound(g, 0.7 + 12im) == Inf
         m = verifyeigall(BallMatrix(randn(5, 5)); method = :miyajima2014a)
         @test_throws ArgumentError block_resolvent_floor(m)
     end
