@@ -366,11 +366,11 @@ result is not correctly rounded.
 """
 abs_up(x::Union{Float32, Float64}) = abs(x)
 abs_down(x::Union{Float32, Float64}) = abs(x)
-function abs_up(z::Complex{T}) where {T <: Union{Float32, Float64}}
+function abs_up(z::Complex{T}) where {T <: Union{Float32, Float64, BigFloat}}
     a, b = real(z), imag(z)
     return sqrt_up(add_up(mul_up(a, a), mul_up(b, b)))
 end
-function abs_down(z::Complex{T}) where {T <: Union{Float32, Float64}}
+function abs_down(z::Complex{T}) where {T <: Union{Float32, Float64, BigFloat}}
     a, b = real(z), imag(z)
     return sqrt_down(add_down(mul_down(a, a), mul_down(b, b)))
 end

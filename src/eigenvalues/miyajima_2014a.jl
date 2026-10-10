@@ -58,23 +58,26 @@
 # the block itself in <lambda I_k, V^T Pbar_eps>.
 #
 # Every bound below is computed with the rounding mode set upward, which is the paper's fl_(.).
+# Two exceptions use the package's emulated directed operations instead. The modulus of a complex
+# difference goes through `dist_up`/`dist_down`, since `abs(::Complex)` is `hypot`, which does not
+# honour the rounding mode: under RoundUp it fell below the exact modulus for 7.8% of 10^6 random
+# arguments. And the scalar recurrences of Steps 4 to 6 use `add_up` and the like, because there
+# the same expression is needed rounded both ways, and inside one function the compiler may
+# evaluate it once for both blocks, the rounding mode being invisible to it: in a probe, `a*b`
+# under RoundDown returned the RoundUp value in all of 200000 cases when both sat in one loop.
 
 using LinearAlgebra
 
 # <f>_t of Lemma 2.3: max_i |f_i| / (1 - t_i), rounded up. Requires t_i < 1, which the caller
 # has checked through ||t||_inf < 1.
 function _miyajima2014a_lem2_3(f::AbstractVector, t::AbstractVector{T}) where {T <: AbstractFloat}
-    return setrounding(T, RoundUp) do
-        m = zero(T)
-        for i in eachindex(f)
-            den = setrounding(T, RoundDown) do
-                one(T) - t[i]
-            end
-            den > 0 || return T(Inf)
-            m = max(m, abs(f[i]) / den)
-        end
-        return m
+    m = zero(T)
+    for i in eachindex(f)
+        den = sub_down(one(T), t[i])
+        den > 0 || return T(Inf)
+        m = max(m, div_up(abs(f[i]), den))
     end
+    return m
 end
 
 # Corollary 2.4: w_p = <F[:,p]>_t for the columns of F
@@ -167,11 +170,7 @@ function _miyajima2014a_rem3_3(lambdas::Vector{CT}, r::Vector{T}) where {T, CT}
     parent = collect(1:n)
     find(x) = (while parent[x] != x; x = parent[x]; end; x)
     for i in 1:n, j in (i + 1):n
-        overlap = setrounding(T, RoundDown) do
-            abs(lambdas[i] - lambdas[j])
-        end <= setrounding(T, RoundUp) do
-            r[i] + r[j]
-        end
+        overlap = dist_down(lambdas[i], lambdas[j]) <= add_up(r[i], r[j])
         if overlap
             a, b = find(i), find(j)
             a != b && (parent[a] = b)
@@ -188,9 +187,8 @@ end
 function _miyajima2014a_thm3_5(G::_Miyajima2014aDiscs{T, CT}, i::Int) where {T, CT}
     n = length(G.lambdas)
     keep = [j for j in 1:n if j != i]          # the action of I_i
-    f = setrounding(T, RoundDown) do           # f = |dt - lambda_i 1| - r_i 1, rounded DOWN
-        T[abs(G.lambdas[j] - G.lambdas[i]) - G.r[i] for j in 1:n]
-    end
+    # f = |dt - lambda_i 1| - r_i 1, rounded DOWN
+    f = T[sub_down(dist_down(G.lambdas[j], G.lambdas[i]), G.r[i]) for j in 1:n]
     all(>(0), view(f, keep)) || return nothing # Remark 3.6: isolation gives I_i f > 0
     w = G.absR[:, i]                           # |R| e_i
     v = setrounding(T, RoundUp) do             # |R| J_i 1 = row sums of |R| off column i
@@ -227,23 +225,22 @@ function _miyajima2014a_alg2(G::_Miyajima2014aDiscs{T, CT}, A::BallMatrix{T}, B:
     # Step 1: lambda as the mean of the cluster, and lambda != lambda_j for every j outside
     lam = sum(G.lambdas[p] for p in cl) / k
     for j in comp
-        setrounding(T, RoundDown) do
-            abs(G.lambdas[j] - lam)
-        end > 0 || return nothing
+        dist_down(G.lambdas[j], lam) > 0 || return nothing
     end
 
-    # R' = R + Y B Xt (Dt - Dt') by Remark 3.8; Dt - Dt' is zero off the cluster
+    # R' = R + Y B Xt (Dt - Dt') by Remark 3.8; Dt - Dt' is zero off the cluster, and on it the
+    # difference of two floats, which is enclosed as a ball rather than rounded to the nearest
     dd = zeros(CT, n)
+    ddr = zeros(T, n)
     for p in cl
-        dd[p] = G.lambdas[p] - lam
+        b = Ball(G.lambdas[p]) - Ball(lam)
+        dd[p], ddr[p] = mid(b), rad(b)
     end
-    Rp = G.R + G.YBXt * BallMatrix(Matrix{CT}(Diagonal(dd)))
+    Rp = G.R + G.YBXt * BallMatrix(Matrix{CT}(Diagonal(dd)), Matrix{T}(Diagonal(ddr)))
     absRp = upper_abs(Rp)
 
     # Step 2: phi, nu' and mu of Lemma 3.9
-    absphi = setrounding(T, RoundDown) do
-        [incl[j] ? one(T) : abs(G.lambdas[j] - lam) for j in 1:n]
-    end
+    absphi = T[incl[j] ? one(T) : dist_down(G.lambdas[j], lam) for j in 1:n]
     all(>(0), absphi) || return nothing
     nup = setrounding(T, RoundUp) do            # nu' = |R'| U U^T 1: columns outside the cluster
         isempty(comp) ? zeros(T, n) : vec(sum(view(absRp, :, comp), dims = 2))
@@ -278,29 +275,19 @@ function _miyajima2014a_alg2(G::_Miyajima2014aDiscs{T, CT}, A::BallMatrix{T}, B:
     sigma = setrounding(T, RoundUp) do
         maximum((UUtPe * VtPe) ./ Rw)
     end
-    c6 = setrounding(T, RoundUp) do
-        sigma * (one(T) + eps_T)^6
-    end
+    onepeps = add_up(one(T), eps_T)
+    c6 = mul_up(sigma, pow_up(onepeps, 6))
     c6 < one(T) / 4 || return nothing
 
-    # Step 5: eta, and the upper bound it must respect
-    disc = setrounding(T, RoundDown) do
-        sqrt(one(T) - 4 * c6)
-    end
-    eta = setrounding(T, RoundUp) do
-        2 * (one(T) + eps_T)^3 / (one(T) + disc)
-    end
-    etamax = setrounding(T, RoundDown) do
-        (one(T) + disc) / (2 * setrounding(T, RoundUp) do
-            sigma * (one(T) + eps_T)^4
-        end)
-    end
+    # Step 5: eta, and the upper bound it must respect; disc is sqrt(1 - 4 sigma (1+eps)^6)
+    # bounded below, which makes eta larger and its upper bound smaller
+    disc = sqrt_down(sub_down(one(T), mul_up(T(4), c6)))
+    eta = div_up(mul_up(T(2), pow_up(onepeps, 3)), add_down(one(T), disc))
+    etamax = div_down(add_down(one(T), disc), mul_up(T(2), mul_up(sigma, pow_up(onepeps, 4))))
     eta < etamax || return nothing
 
     # Step 6: Pbarbar_eps = (1 + sigma eta^2) Pbar_eps, then the eigenvalue disc and the subspace
-    fac = setrounding(T, RoundUp) do
-        one(T) + sigma * eta^2
-    end
+    fac = add_up(one(T), mul_up(sigma, mul_up(eta, eta)))
     Pee = setrounding(T, RoundUp) do
         fac .* Pe
     end
@@ -309,11 +296,7 @@ function _miyajima2014a_alg2(G::_Miyajima2014aDiscs{T, CT}, A::BallMatrix{T}, B:
     isfinite(rho) || return nothing
     # the disc must be disjoint from the discs of every eigenvalue outside the cluster
     for j in comp
-        setrounding(T, RoundDown) do
-            abs(G.lambdas[j] - lam)
-        end > setrounding(T, RoundUp) do
-            rho + G.r[j]
-        end || return nothing
+        dist_down(G.lambdas[j], lam) > add_up(rho, G.r[j]) || return nothing
     end
 
     UUtPee = copy(Pee)
@@ -394,9 +377,7 @@ function _miyajima2014a_alg1(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
             out = _miyajima2014a_alg2(G, A, B, cl)
             if out === nothing
                 # the union of the cluster's discs, as one disc about lambda: still rigorous
-                radii[idx] = setrounding(T, RoundUp) do
-                    maximum(abs(G.lambdas[p] - lam) + G.r[p] for p in cl)
-                end
+                radii[idx] = maximum(add_up(dist_up(G.lambdas[p], lam), G.r[p]) for p in cl)
                 subspaces[idx] = BallMatrix(zeros(CT, n, k), fill(T(Inf), n, k))
                 blocks[idx] = BallMatrix(zeros(CT, k, k), fill(T(Inf), k, k))
             else
