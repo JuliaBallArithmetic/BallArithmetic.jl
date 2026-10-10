@@ -21,7 +21,7 @@ using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm,
 
 export dowork, dowork_ogita, dowork_ogita_bigfloat, adaptive_arcs!, bound_res_original,
        polygon_sagitta, circle_resolvent_bound,
-       bound_resolvent_schur, schur_to_original_resolvent,
+       bound_resolvent_schur, schur_to_original_resolvent, schur_to_original_resolvent_defects,
        choose_snapshot_to_load, save_snapshot!, configure_certification!, set_schur_matrix!,
        compute_schur_and_error, CertificationCircle, points_on, run_certification,
        run_certification_ogita, poly_from_roots, polyconv,
@@ -1097,20 +1097,90 @@ function schur_to_original_resolvent(resolvent_schur, ϵ; zmax, Cbound = 1.0)
 end
 
 """
-    bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; zmax, Cbound = 1.0)
+    schur_to_original_resolvent_defects(resolvent_schur, δ, e; zmax, Cbound = 1.0)
+
+The resolvent bound for the original matrix `A` from the one for its approximate Schur factor
+`T`, in terms of the two defects separately: `δ ≥ ‖I − Q*Q‖` and `e ≥ ‖Q T Q* − A‖`, on a contour
+with `|z| ≤ zmax`. With `R ≥ ‖(zI − T)⁻¹‖` on the contour,
+
+    R₀ := R / (1 − δ − R·zmax·δ),        ‖(zI − A)⁻¹‖ ≤ R₀ / (1 − R₀ e),
+
+provided both denominators are positive; `Inf` otherwise. It is sharper than
+[`schur_to_original_resolvent`](@ref), which loses a factor 2: to first order this is
+`R(1 + δ + R·zmax·δ + R e)`.
+
+# Where it comes from, and what is corrected
+
+The route is that of Section 3.1 of
+
+I. Nisoli, *Certified spectral approximation of transfer operators and the Gauss map*,
+arXiv:2602.19435 (2026): with the proxy `S₀ := Q T Q*` and `E := A − S₀`, Lemma 3.2 there
+(a Neumann series) gives `‖(zI − A)⁻¹‖ ≤ ‖(zI − S₀)⁻¹‖/(1 − ‖(zI − S₀)⁻¹‖‖E‖)`, and Theorem 3.4
+combines it with a bound of `‖(zI − S₀)⁻¹‖` by `‖(zI − T)⁻¹‖`.
+
+That second bound is NOT taken from the paper. Its Lemma 3.3 states
+`‖(zI − S₀)⁻¹‖ ≤ κ(Q)²‖(zI − T)⁻¹‖` for every `z`, and the proof writes `S₀ = U(HTH)U*` for the
+polar decomposition `Q = UH` and then inverts `zI − HTH` as `H(zI − T)H`. These differ by
+`z(I − H²)`: `Q T Q*` is similar to `T` only when `Q` is unitary. For `Q = √1.001·I`,
+`T = diag(1000, 0)` and `z = 1001`, `κ(Q) = 1` and `‖(zI − T)⁻¹‖ = 1`, while `zI − S₀` is
+singular. The statement used here, with the term restored, is proved as follows.
+
+*Claim.* Let `δ = ‖I − Q*Q‖ < 1`, `P := Q*Q`, and `R ≥ ‖(zI − T)⁻¹‖`. If `R|z|δ < 1 − δ`, then
+`zI − S₀` is invertible and `‖(zI − S₀)⁻¹‖ ≤ R/(1 − δ − R|z|δ)`.
+
+*Proof.* `P` is Hermitian with spectrum in `[1 − δ, 1 + δ]`, so `Q` is invertible,
+`Q⁻¹Q⁻* = P⁻¹`, `‖Q⁻¹‖² = ‖P⁻¹‖ ≤ 1/(1 − δ)`, and `‖P⁻¹ − I‖ ≤ δ/(1 − δ)`. Then
+
+    zI − S₀ = Q (z Q⁻¹Q⁻* − T) Q* = Q ((zI − T) + z(P⁻¹ − I)) Q*,
+
+and `(zI − T) + z(P⁻¹ − I) = (zI − T)(I + (zI − T)⁻¹ z (P⁻¹ − I))`, whose second factor is
+invertible by a Neumann series when `R|z|δ/(1 − δ) < 1`, with inverse of norm at most
+`1/(1 − R|z|δ/(1 − δ))`. Hence
+
+    ‖(zI − S₀)⁻¹‖ ≤ ‖Q⁻¹‖² · R / (1 − R|z|δ/(1 − δ)) ≤ R / (1 − δ − R|z|δ).  ∎
+
+The corresponding result with the `|z|` dependence placed in a hypothesis, at the price of a
+factor 2, is Lemma 5.1 of Blumenthal, Nisoli and Taylor-Crush; see
+[`schur_to_original_resolvent`](@ref).
+
+The bound increases with `R`, `δ`, `e` and `|z|`, so it is evaluated at upper bounds of the four,
+every operation rounded outward. `Cbound` multiplies the result.
+"""
+function schur_to_original_resolvent_defects(resolvent_schur, δ, e; zmax, Cbound = 1.0)
+    R, d, ee, zm, C = promote(float(_upper_bound(resolvent_schur)), float(_upper_bound(δ)),
+        float(_upper_bound(e)), float(_upper_bound(zmax)), float(_upper_bound(Cbound)))
+    (isfinite(R) && isfinite(d) && isfinite(ee) && isfinite(zm) && isfinite(C)) || return Inf
+    one_ = one(R)
+    den0 = sub_down(sub_down(one_, d), mul_up(mul_up(R, zm), d))      # 1 − δ − R zmax δ
+    den0 > 0 || return Inf
+    R0 = div_up(R, den0)
+    den1 = sub_down(one_, mul_up(R0, ee))                             # 1 − R₀ e
+    den1 > 0 || return Inf
+    return div_up(mul_up(R0, C), den1)
+end
+
+"""
+    bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; zmax, Cbound = 1.0,
+                       method = :best)
 
 An upper bound of `‖(zI − A)⁻¹‖₂` on the certified contour for the original matrix `A`, from the
-samples of its Schur factor `T`: [`bound_resolvent_schur`](@ref) gives the bound for `T` on the
-polygon, and [`schur_to_original_resolvent`](@ref) carries it to `A` by Lemma 5.1 of Blumenthal,
-Nisoli and Taylor-Crush with
+samples of its Schur factor `T`. [`bound_resolvent_schur`](@ref) gives the bound for `T` on the
+polygon, and it is carried to `A` with `errF ≥ ‖Z*Z − I‖` (which equals `‖I − Z Z*‖` for a square
+`Z`) and `errT ≥ ‖Z T Z* − A‖`, by
 
-    ϵ = max(errF, errT, ‖Z‖ − 1, ‖Z⁻¹‖ − 1),
+* `method = :bntc`: [`schur_to_original_resolvent`](@ref), Lemma 5.1 of Blumenthal, Nisoli and
+  Taylor-Crush, with `ϵ = max(errF, errT, ‖Z‖ − 1, ‖Z⁻¹‖ − 1)`;
+* `method = :defects`: [`schur_to_original_resolvent_defects`](@ref), the two defects kept
+  separate, sharper by about a factor 2;
+* `method = :best` (default): the smaller of the two, both being valid bounds.
 
-`errF ≥ ‖Z*Z − I‖` (which equals `‖I − Z Z*‖` for a square `Z`) and `errT ≥ ‖Z T Z* − A‖`. `zmax`
-must bound `|z|` on the contour; for a circle it is `|centre| + radius`. `Inf` when the lemma's
-hypothesis fails. `N` is not used.
+`zmax` must bound `|z|` on the contour; for a circle it is `|centre| + radius`. `Inf` when no
+method applies. `N` is not used.
 """
-function bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; zmax, Cbound = 1.0)
+function bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; zmax, Cbound = 1.0,
+        method::Symbol = :best)
+    method in (:best, :bntc, :defects) ||
+        throw(ArgumentError("bound_res_original: method must be :best, :bntc or :defects"))
     resolvent_schur = bound_resolvent_schur(l2pseudo, η)
 
     norm_Z_sup = max(_upper_bound_offset(norm_Z, 1), 0.0)
@@ -1120,9 +1190,12 @@ function bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; zma
     ϵ = max(max(errF_sup, errT_sup), max(norm_Z_sup, norm_Z_inv_sup))
     @info "The ϵ in the Schur theorems $ϵ"
 
-    result = schur_to_original_resolvent(resolvent_schur, ϵ; zmax, Cbound)
+    bntc = method === :defects ? Inf : schur_to_original_resolvent(resolvent_schur, ϵ; zmax, Cbound)
+    defects = method === :bntc ? Inf :
+              schur_to_original_resolvent_defects(resolvent_schur, errF_sup, errT_sup; zmax, Cbound)
+    result = min(bntc, defects)
     if isinf(result)
-        @warn "bound_res_original: hypothesis (28) of the Schur lemma fails " *
+        @warn "bound_res_original: no Schur-to-original bound applies " *
               "(ε=$ϵ, resolvent_schur=$resolvent_schur, zmax=$zmax). Returning Inf." maxlog=1
     end
     return result

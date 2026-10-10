@@ -113,6 +113,50 @@ _rc_circle_max(d, c, r; n = 200_000) =
         @test res.resolvent_original >= worst * (1 - 1e-8)
     end
 
+    @testset "the sharper lift with the two defects separate" begin
+        # the counterexample to the uncorrected statement: no bound may come out
+        @test _RC.schur_to_original_resolvent_defects(1.0, 1e-3, 0.0; zmax = 1001.0) == Inf
+        @test_throws UndefKeywordError _RC.schur_to_original_resolvent_defects(1.0, 1e-8, 1e-8)
+        # exact check on Q = c I (so S₀ = c² T), T diagonal: ‖(zI − c²T)⁻¹‖ is explicit
+        for (c2, t, z) in ((1.001, [1000.0, 0.0], 950.0), (0.9995, [1.0, -0.3], 1.3 + 0.2im),
+            (1.0 + 1e-9, [1.0, 0.5, -0.2im], 0.8im))
+            δ = abs(1 - c2)
+            R = 1 / minimum(abs.(z .- t))
+            exact = 1 / minimum(abs.(z .- c2 .* t))
+            v = _RC.schur_to_original_resolvent_defects(R, δ, 0.0; zmax = abs(z))
+            @test v == Inf || v >= exact * (1 - 1e-12)
+        end
+        # sharper than the BNTC form where both apply, and never below the truth: A = Q T Q* + E
+        # with Q nearly unitary, checked against the resolvent norm of A itself
+        Tm = [0.5 2.0 0.3; 0.0 -0.4 1.0; 0.0 0.0 0.1]
+        Qm = Matrix(qr([1.0 2.0 0.5; 0.3 1.0 2.0; 2.0 0.1 1.0]).Q) * (1 + 1e-7)
+        Em = 1e-8 .* [1.0 -2.0 0.5; 0.3 1.0 -1.0; 0.2 0.4 1.0]
+        Am = Qm * Tm * Qm' + Em
+        δ = opnorm(I - Qm' * Qm) * (1 + 1e-6)
+        e = opnorm(Qm * Tm * Qm' - Am) * (1 + 1e-6) + 1e-15
+        for z in (1.5 + 0.0im, 0.9im, -1.2 + 0.4im)
+            R = 1 / minimum(svdvals(z * I - Tm)) * (1 + 1e-10)
+            truth = 1 / minimum(svdvals(z * I - Am))
+            sharp = _RC.schur_to_original_resolvent_defects(R, δ, e; zmax = abs(z))
+            ϵ = max(δ, e, opnorm(Qm) - 1, opnorm(inv(Qm)) - 1)
+            bntc = _RC.schur_to_original_resolvent(R, ϵ; zmax = abs(z))
+            @test isfinite(sharp) && sharp >= truth * (1 - 1e-9)
+            @test isfinite(bntc) && bntc >= truth * (1 - 1e-9)
+            @test sharp < bntc
+            @test sharp <= R * (1 + 1e-4)                       # close to the Schur bound itself
+        end
+        # bound_res_original takes the smaller
+        b_best = _RC.bound_res_original(10.0, 0.5, 1 + 1e-9, 1 + 1e-9, 1e-9, 1e-9, 3; zmax = 1.0)
+        b_bntc = _RC.bound_res_original(10.0, 0.5, 1 + 1e-9, 1 + 1e-9, 1e-9, 1e-9, 3; zmax = 1.0,
+            method = :bntc)
+        b_def = _RC.bound_res_original(10.0, 0.5, 1 + 1e-9, 1 + 1e-9, 1e-9, 1e-9, 3; zmax = 1.0,
+            method = :defects)
+        @test b_best == min(b_bntc, b_def) == b_def
+        @test b_def >= 20.0 && b_def <= 20.0 * (1 + 1e-6)       # R = 10/(1 − 0.5) = 20
+        @test_throws ArgumentError _RC.bound_res_original(10.0, 0.5, 1.0, 1.0, 0.0, 0.0, 3;
+            zmax = 1.0, method = :other)
+    end
+
     @testset "bound_resolvent_schur" begin
         @test _RC.bound_resolvent_schur(2.0, 0.5) >= 4.0
         @test _RC.bound_resolvent_schur(2.0, 1.0) == Inf
