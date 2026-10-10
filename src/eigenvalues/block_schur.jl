@@ -40,7 +40,7 @@ struct RigorousBlockSchurResult{QT, TT, IT, RT, VT}
     """Upper bound of ‖S‖₂ in Q⁻¹AQ = T + S; Inf when the inverse defect is not below 1."""
     perturbation_norm::RT
     """The floating-point approximate inverse of Q the residuals were computed with."""
-    Q_inv::QT
+    Q_inv::BallMatrix
     """Rigorous bound on ‖T‖₂ (norm of block triangular form)."""
     block_schur_norm::RT
     """Maximum norm of off-diagonal blocks."""
