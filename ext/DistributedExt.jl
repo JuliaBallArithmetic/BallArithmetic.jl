@@ -70,10 +70,7 @@ function _run_certification_distributed(
     isempty(worker_ids) &&
         throw(ArgumentError("no worker processes available for certification"))
     channel_capacity < 1 && throw(ArgumentError("channel_capacity must be positive"))
-    check_interval < 1 && throw(ArgumentError("check_interval must be positive"))
-
-    η = Float64(η)
-    (η <= 0 || η >= 1) && throw(ArgumentError("η must belong to (0, 1)"))
+    η = CertifScripts._check_driver_args(η, check_interval)
 
     # Change of variables Ã = L·A·L⁻¹ for the weighted norm, applied once on the
     # driver: the workers only ever see the transformed Schur factor, so no
@@ -81,41 +78,15 @@ function _run_certification_distributed(
     A, gram_info = CertifScripts._prepare_gram(A, gram, gram_factor, gram_factor_inv,
         schur_data; gram_kwargs...)
 
-    coeffs = polynomial === nothing ? nothing : collect(polynomial)
-
-    if schur_data === nothing
-        # For BigFloat Ogita mode, use BigFloat Schur computation
-        if use_bigfloat_ogita
-            old_prec = precision(BigFloat)
-            setprecision(BigFloat, target_precision)
-            try
-                # Convert A to BigFloat if needed
-                ET = eltype(A.c)
-                if real(ET) !== BigFloat
-                    A_big = BallArithmetic.BallMatrix(
-                        convert.(Complex{BigFloat}, A.c),
-                        convert.(BigFloat, A.r)
-                    )
-                else
-                    A_big = A
-                end
-
-                schur_data = coeffs === nothing ?
-                             CertifScripts.compute_schur_and_error(A_big) :
-                             CertifScripts.compute_schur_and_error(A_big; polynomial = coeffs)
-            finally
-                setprecision(BigFloat, old_prec)
-            end
-        else
-            schur_data = coeffs === nothing ?
-                         CertifScripts.compute_schur_and_error(A) :
-                         CertifScripts.compute_schur_and_error(A; polynomial = coeffs)
+    # for the BigFloat Ogita mode the Schur data are computed in BigFloat at the target precision
+    if schur_data === nothing && use_bigfloat_ogita
+        schur_data = setprecision(BigFloat, target_precision) do
+            CertifScripts.compute_schur_and_error(CertifScripts._to_bigfloat_ball(A);
+                polynomial = polynomial === nothing ? nothing : collect(polynomial))
         end
     end
-
-    S, errF, errT, norm_Z, norm_Z_inv = schur_data
-    bT = BallArithmetic.BallMatrix(S.T)
-    schur_matrix = coeffs === nothing ? bT : CertifScripts._polynomial_matrix(coeffs, bT)
+    setup = CertifScripts._schur_setup(A, schur_data, polynomial)
+    schur_matrix = setup.schur_matrix
 
     snapshot_base = snapshot_path === nothing ? tempname() : String(snapshot_path)
     mkpath(dirname(snapshot_base))
@@ -128,32 +99,9 @@ function _run_certification_distributed(
     cache = nothing
     pending = nothing
 
-    # For parametric mode, precompute Sylvester quantities
-    parametric_precomp = nothing
-    parametric_R = nothing
-    k_used = 0
-    if use_parametric
-        n = size(schur_matrix, 1)
-        k_used = parametric_k === nothing ? max(2, n ÷ 4) : Int(parametric_k)
-        k_used = clamp(k_used, 2, n - 2)
-
-        T_mat = Matrix(schur_matrix.c)
-        T11 = T_mat[1:k_used, 1:k_used]
-        T12 = T_mat[1:k_used, (k_used + 1):n]
-        T22 = T_mat[(k_used + 1):n, (k_used + 1):n]
-
-        X = BallArithmetic.solve_sylvester_oracle(T11, T12, T22)
-        parametric_R = T12 + T11 * X - X * T22
-        parametric_precomp = BallArithmetic.sylvester_resolvent_precompute(T_mat, k_used; X_oracle = X)
-
-        if !parametric_precomp.precomputation_success
-            error("Sylvester precomputation failed: $(parametric_precomp.failure_reason)")
-        end
-
-        @info "Parametric certification with k=$k_used (n=$n)"
-        @info "Configuration: $(parametric_config.d_inv_estimator), $(parametric_config.coupling_estimator)"
-        @info "Sylvester diagnostics: reduction=$(parametric_precomp.reduction_factor), penalty=$(parametric_precomp.similarity_cond)"
-    end
+    # for the parametric mode, the Sylvester precomputation
+    par = use_parametric ?
+          CertifScripts._parametric_setup(schur_matrix, parametric_k, parametric_config) : nothing
 
     try
         _load_certification_dependencies(worker_ids)
@@ -162,7 +110,7 @@ function _run_certification_distributed(
         # Set parametric config on workers if needed
         if use_parametric
             _set_parametric_config_on_workers(
-                worker_ids, parametric_precomp, parametric_R, parametric_config, k_used)
+                worker_ids, par.precomp, par.R, parametric_config, par.k)
         end
 
         job_channel = RemoteChannel(() -> Channel{_RemoteJob}(channel_capacity))
@@ -207,32 +155,9 @@ function _run_certification_distributed(
             job_channel = job_channel, result_channel = result_channel,
             certification_log = certification_log, snapshot = snapshot_base, io = log_io))
 
-        isempty(certification_log) &&
-            throw(ErrorException("certification produced no samples"))
-
-        min_sigma = minimum(log -> log.lo_val, certification_log)
-        l2pseudo = maximum(log -> log.hi_res, certification_log)
-        resolvent_schur_bound = CertifScripts.bound_resolvent_schur(l2pseudo, η)
-        resolvent_bound = CertifScripts.bound_res_original(
-            l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1);
-            zmax = CertifScripts._circle_zmax(circle), Cbound = Cbound)
-
-        # Include parametric info in result if used
-        if use_parametric
-            return (; schur = S, schur_matrix, certification_log,
-                minimum_singular_value = min_sigma,
-                resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
-                resolvent_original = resolvent_bound, Cbound,
-                errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
-                snapshot_base, gram = gram_info, k = k_used, parametric_precomp)
-        else
-            return (; schur = S, schur_matrix, certification_log,
-                minimum_singular_value = min_sigma,
-                resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
-                resolvent_original = resolvent_bound, Cbound,
-                errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
-                snapshot_base, gram = gram_info)
-        end
+        extra = use_parametric ? (; k = par.k, parametric_precomp = par.precomp) : (;)
+        return CertifScripts._certification_result(setup, certification_log, η, circle,
+            size(A, 1), Cbound, gram_info; snapshot_base, extra...)
     finally
         if result_channel !== nothing && pending isa Dict
             wait_start = time()

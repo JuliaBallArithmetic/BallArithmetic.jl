@@ -7,6 +7,7 @@ using Base: dirname, mod1
 using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm,
                         upper_bound_L2_opnorm, inf,
                         add_up, sub_down, mul_up, div_up, div_down, abs_up, dist_up,
+                        sqrt_up, sqrt_down,
                         verified_cholesky,
                         backward_substitution, forward_substitution,
                         refine_schur_decomposition,
@@ -170,6 +171,18 @@ function _sigma_fields(val::Ball)
     return lo, Ball(RT(Inf), zero(RT)), RT(Inf)
 end
 
+# One sample in the format the refinement and the drivers read. `val` and `res` are the balls for
+# σ_min(T − zI) and its reciprocal, `lo_val` and `hi_res` the bounds taken from them.
+_record(idx, val, lo_val, res, hi_res, second_val, z, t; extra...) =
+    (; i = idx, val, lo_val, res, hi_res, second_val, z, t, id = nothing, extra...)
+
+# The record of a sample from the certified singular values Σ of T − zI, largest first.
+function _sample_record(idx, Σ, z, t; extra...)
+    val = Σ[end]
+    lo_val, res, hi_res = _sigma_fields(val)
+    return _record(idx, val, lo_val, res, hi_res, Σ[end - 1], z, t; extra...)
+end
+
 function _evaluate_sample(T::BallMatrix{ET}, z::Number, idx::Int) where {ET}
     # Convert z to the precision of the matrix
     RT = real(ET)
@@ -179,20 +192,7 @@ function _evaluate_sample(T::BallMatrix{ET}, z::Number, idx::Int) where {ET}
 
     elapsed = @elapsed Σ = svdbox(T - bz * LinearAlgebra.I)
 
-    val = Σ[end]
-    lo_val, res, hi_res = _sigma_fields(val)
-
-    return (
-        i = idx,
-        val = val,
-        lo_val = lo_val,
-        res = res,
-        hi_res = hi_res,
-        second_val = Σ[end - 1],
-        z = z_converted,
-        t = elapsed,
-        id = nothing
-    )
+    return _sample_record(idx, Σ, z_converted, elapsed)
 end
 
 """
@@ -367,21 +367,7 @@ function _evaluate_sample_with_ogita_cache(T::BallMatrix{ET}, z::Number, idx::In
         end
     end
 
-    val = Σ[end]
-    lo_val, res, hi_res = _sigma_fields(val)
-
-    return (
-        i = idx,
-        val = val,
-        lo_val = lo_val,
-        res = res,
-        hi_res = hi_res,
-        second_val = Σ[end - 1],
-        z = z_converted,
-        t = elapsed,
-        id = nothing,
-        ogita_used = ogita_success
-    )
+    return _sample_record(idx, Σ, z_converted, elapsed; ogita_used = ogita_success)
 end
 
 """
@@ -402,36 +388,11 @@ function dowork_ogita(jobs, results;
         ogita_distance_threshold::Real = 1e-4,
         ogita_quality_threshold::Real = 1e-10,
         ogita_iterations::Int = 2)
-    T = _require_config(_schur_matrix, "Schur factor")
     _clear_ogita_cache!()
-
-    while true
-        job = try
-            take!(jobs)
-        catch e
-            if e isa InvalidStateException
-                # Log cache stats before exiting
-                stats = _ogita_cache_stats()
-                total = stats.hits + stats.misses + stats.fallbacks
-                if total > 0
-                    hit_rate = stats.hits / total * 100
-                    @debug "Ogita cache stats" hits=stats.hits misses=stats.misses fallbacks=stats.fallbacks hit_rate="$(round(hit_rate, digits=1))%"
-                end
-                break
-            else
-                rethrow(e)
-            end
-        end
-
-        i, z = job
-        @debug "Received and working on (Ogita)" z
-        result = _evaluate_sample_with_ogita_cache(T, z, i;
-            ogita_distance_threshold,
-            ogita_quality_threshold,
-            ogita_iterations)
-        put!(results, result)
+    return _worker_loop(jobs, results; on_close = () -> @debug "Ogita cache stats" _ogita_cache_stats()) do T, z, i
+        _evaluate_sample_with_ogita_cache(T, z, i;
+            ogita_distance_threshold, ogita_quality_threshold, ogita_iterations)
     end
-    return nothing
 end
 
 """
@@ -461,49 +422,16 @@ function dowork_ogita_bigfloat(jobs, results;
         distance_threshold::Real = 1e-4)
     T = _require_config(_schur_matrix, "Schur factor")
     _clear_bf_ogita_cache!()
-
-    # Verify T is BigFloat
-    ET = eltype(T.c)
-    if real(ET) !== BigFloat
-        @warn "dowork_ogita_bigfloat expects BigFloat Schur matrix, got $ET"
-    end
-
-    # Set precision for this worker
-    old_prec = precision(BigFloat)
-    setprecision(BigFloat, target_precision)
-
-    try
-        while true
-            job = try
-                take!(jobs)
-            catch e
-                if e isa InvalidStateException
-                    # Log cache stats before exiting
-                    stats = _bf_ogita_cache_stats()
-                    total = stats.local_hits + stats.center_hits + stats.misses +
-                            stats.fallbacks
-                    if total > 0
-                        hit_rate = (stats.local_hits + stats.center_hits) / total * 100
-                        @debug "BigFloat Ogita cache stats" local_hits=stats.local_hits center_hits=stats.center_hits misses=stats.misses fallbacks=stats.fallbacks hit_rate="$(round(hit_rate, digits=1))%"
-                    end
-                    break
-                else
-                    rethrow(e)
-                end
-            end
-
-            i, z = job
-            @debug "Received and working on (Ogita BigFloat)" z
-            result = _evaluate_sample_ogita_bigfloat(T, z, i;
-                max_iterations = max_ogita_iterations,
-                target_precision = target_precision,
-                distance_threshold = distance_threshold)
-            put!(results, result)
+    real(eltype(T.c)) === BigFloat ||
+        @warn "dowork_ogita_bigfloat expects BigFloat Schur matrix, got $(eltype(T.c))"
+    # the precision is set for the whole life of this worker's loop
+    return setprecision(BigFloat, target_precision) do
+        _worker_loop(jobs, results;
+            on_close = () -> @debug "BigFloat Ogita cache stats" _bf_ogita_cache_stats()) do T, z, i
+            _evaluate_sample_ogita_bigfloat(T, z, i;
+                max_iterations = max_ogita_iterations, target_precision, distance_threshold)
         end
-    finally
-        setprecision(BigFloat, old_prec)
     end
-    return nothing
 end
 
 """
@@ -514,22 +442,24 @@ Process tasks received on `jobs`, computing the SVD certification routine for
 [`set_schur_matrix!`](@ref).
 """
 function dowork(jobs, results)
+    return _worker_loop(_evaluate_sample, jobs, results)
+end
+
+# The loop every worker runs: take a job (an index and a point), evaluate it on the registered Schur
+# factor with `evaluate(T, z, i)`, and put the record back. A closed job channel ends the loop,
+# after `on_close()`.
+function _worker_loop(evaluate, jobs, results; on_close = () -> nothing)
     T = _require_config(_schur_matrix, "Schur factor")
     while true
         job = try
             take!(jobs)
         catch e
-            if e isa InvalidStateException
-                break
-            else
-                rethrow(e)
-            end
+            e isa InvalidStateException || rethrow(e)
+            on_close()
+            break
         end
-
         i, z = job
-        @debug "Received and working on" z
-        result = _evaluate_sample(T, z, i)
-        put!(results, result)
+        put!(results, evaluate(T, z, i))
     end
     return nothing
 end
@@ -548,6 +478,11 @@ function _clear_parametric_cache!()
     _parametric_residual[] = nothing
     _parametric_config[] = nothing
     _parametric_k[] = 0
+    return _clear_parametric_warm_start!()
+end
+
+# the warm start and its counters, without the configuration
+function _clear_parametric_warm_start!()
     _parametric_warm_U[] = nothing
     _parametric_warm_S[] = nothing
     _parametric_warm_V[] = nothing
@@ -605,9 +540,8 @@ function _parametric_sample(result, ::Type{RT}, idx, z, elapsed) where {RT}
         lo_val, hi_res = zero(RT), RT(Inf)
         val, res = Ball(zero(RT), RT(Inf)), Ball(RT(Inf), zero(RT))
     end
-    return (i = idx, val = val, lo_val = lo_val, res = res, hi_res = hi_res,
-        second_val = Ball(zero(RT), zero(RT)),            # not available from this certifier
-        z = z, t = elapsed, id = nothing)
+    # the second smallest singular value is not available from this certifier
+    return _record(idx, val, lo_val, res, hi_res, Ball(zero(RT), zero(RT)), z, elapsed)
 end
 
 """
@@ -686,33 +620,14 @@ The Schur factor and parametric config must have been registered in advance with
 [`set_schur_matrix!`](@ref) and [`set_parametric_config!`](@ref).
 """
 function dowork_parametric(jobs, results; distance_threshold::Real = 1e-4)
-    T = _require_config(_schur_matrix, "Schur factor")
-    _clear_parametric_cache!()
-
-    while true
-        job = try
-            take!(jobs)
-        catch e
-            if e isa InvalidStateException
-                # Log cache stats before exiting
-                stats = _parametric_cache_stats()
-                total = stats.hits + stats.misses
-                if total > 0
-                    hit_rate = stats.hits / total * 100
-                    @debug "Parametric cache stats" hits=stats.hits misses=stats.misses hit_rate="$(round(hit_rate, digits=1))%"
-                end
-                break
-            else
-                rethrow(e)
-            end
-        end
-
-        i, z = job
-        @debug "Received and working on (Parametric)" z
-        result = _evaluate_sample_parametric(T, z, i; distance_threshold = distance_threshold)
-        put!(results, result)
+    # only the warm start is reset: the configuration was installed by the driver before this
+    # worker started, and clearing it here (as `_clear_parametric_cache!` does) would leave the
+    # evaluator without it
+    _clear_parametric_warm_start!()
+    return _worker_loop(jobs, results;
+        on_close = () -> @debug "Parametric cache stats" _parametric_cache_stats()) do T, z, i
+        _evaluate_sample_parametric(T, z, i; distance_threshold)
     end
-    return nothing
 end
 
 function _resolve(value, ref::Base.RefValue)
@@ -736,6 +651,32 @@ function _push_result!(cache, certification_log, result)
     return nothing
 end
 
+# What to do with the side [z_a, z_b] of the polygon given σ_a, the certified ball for
+# σ_min(T − z_a I): `(:accept, z_a)` when |z_b − z_a|/σ_a ≤ η is proved, `(:split, z_m)` with z_m
+# the midpoint of the side, or a reason to stop with the point it stopped at:
+#   :nonpositive   the lower end of σ_a is zero, negative or not finite. Bisection cannot repair
+#                  that: the test would ask for ℓ/0 ≤ η at every depth, the side shrinking while
+#                  σ_a stays put, so the caller has to hear about it;
+#   :cap           `maxarcs > 0` evaluations have been made;
+#   :not_refinable the midpoint is one of the ends in floating point.
+# Both loops, serial and distributed, decide through this function.
+function _side_decision(z_a, z_b, σ_a, η, evaluations::Integer, maxarcs::Integer)
+    lo_σ = _lower_bound(σ_a)
+    (isfinite(lo_σ) && lo_σ > 0) || return (:nonpositive, z_a)
+    _side_ratio_sup(z_a, z_b, lo_σ) > η || return (:accept, z_a)
+    (maxarcs > 0 && evaluations >= maxarcs) && return (:cap, z_a)
+    z_m = (z_a + z_b) / 2
+    (z_m == z_a || z_m == z_b) && return (:not_refinable, z_a)
+    return (:split, z_m)
+end
+
+# the outcome of a refinement that stopped before covering the contour
+function _stopped(reason::Symbol, z_a, σ_a, processed, cache, arcs)
+    @info "Adaptive refinement stopped" reason z=z_a σ=σ_a
+    return (; ok = false, reason, z = z_a, processed,
+        evaluations = length(cache), remaining = length(arcs) + 1)
+end
+
 function _adaptive_arcs_serial!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
         cache::Dict{ComplexF64, Any}, pending, η::Float64, certification_log,
         snapshot, io, check_interval::Integer, evaluator; maxarcs::Integer = 0)
@@ -757,34 +698,13 @@ function _adaptive_arcs_serial!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
             σ_a = result.val
         end
 
-        # A bound that is zero, negative or not finite cannot be refined away: the test below
-        # would ask for ℓ/0 ≤ η at every depth, so the arc would be bisected for ever while ℓ
-        # shrinks and σ_a stays put. Refinement is the wrong answer there and the caller has to
-        # hear about it.
-        lo_σ = _lower_bound(σ_a)
-        if !(isfinite(lo_σ) && lo_σ > 0)
-            @info "Adaptive refinement stopped: the bound is not positive" z=z_a σ=σ_a
-            return (; ok = false, reason = :nonpositive, z = z_a, processed,
-                evaluations = length(cache), remaining = length(arcs) + 1)
-        end
-
-        sup_ε = _side_ratio_sup(z_a, z_b, lo_σ)
-
-        if sup_ε > η
-            if maxarcs > 0 && length(cache) >= maxarcs
-                @info "Adaptive refinement stopped: the evaluation cap was reached" maxarcs
-                return (; ok = false, reason = :cap, z = z_a, processed,
-                    evaluations = length(cache), remaining = length(arcs) + 1)
-            end
-            z_m = (z_a + z_b) / 2
-            if z_m == z_a || z_m == z_b
-                @info "Adaptive refinement stopped: a side cannot be split further" z=z_a
-                return (; ok = false, reason = :not_refinable, z = z_a, processed,
-                    evaluations = length(cache), remaining = length(arcs) + 1)
-            end
+        action, z_m = _side_decision(z_a, z_b, σ_a, η, length(cache), maxarcs)
+        if action === :split
             push!(arcs, (z_m, z_b))
             push!(arcs, (z_a, z_m))
             new += 1
+        elseif action !== :accept
+            return _stopped(action, z_a, σ_a, processed, cache, arcs)
         end
 
         processed += 1
@@ -806,7 +726,7 @@ end
 function _adaptive_arcs_distributed!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
         cache::Dict{ComplexF64, Any}, pending::Dict{Int, Tuple{ComplexF64, ComplexF64}},
         η::Float64, job_channel, result_channel, certification_log, snapshot, io,
-        check_interval::Integer)
+        check_interval::Integer; maxarcs::Integer = 0)
     certification_log === nothing &&
         throw(ArgumentError("distributed refinement requires a certification log"))
     io = io === nothing ? stdout : io
@@ -853,25 +773,13 @@ function _adaptive_arcs_distributed!(arcs::Vector{Tuple{ComplexF64, ComplexF64}}
                 continue
             end
 
-            # as in the serial loop: a bound that is not positive cannot be refined away
-            lo_σ = _lower_bound(σ_a)
-            if !(isfinite(lo_σ) && lo_σ > 0)
-                @info "Adaptive refinement stopped: the bound is not positive" z=z_a σ=σ_a
-                return (; ok = false, reason = :nonpositive, z = z_a, processed,
-                    evaluations = length(cache), remaining = length(arcs) + 1)
-            end
-            sup_ε = _side_ratio_sup(z_a, z_b, lo_σ)
-
-            if sup_ε > η
-                z_m = (z_a + z_b) / 2
-                if z_m == z_a || z_m == z_b
-                    @info "Adaptive refinement stopped: a side cannot be split further" z=z_a
-                    return (; ok = false, reason = :not_refinable, z = z_a, processed,
-                        evaluations = length(cache), remaining = length(arcs) + 1)
-                end
+            action, z_m = _side_decision(z_a, z_b, σ_a, η, length(cache), maxarcs)
+            if action === :split
                 push!(arcs, (z_m, z_b))
                 push!(arcs, (z_a, z_m))
                 new += 1
+            elseif action !== :accept
+                return _stopped(action, z_a, σ_a, processed, cache, arcs)
             end
 
             processed += 1
@@ -957,7 +865,7 @@ function adaptive_arcs!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
     end
 
     return _adaptive_arcs_distributed!(arcs, cache, pending, η, job_channel,
-        result_channel, certification_log, snapshot, io, check_interval)
+        result_channel, certification_log, snapshot, io, check_interval; maxarcs)
 end
 
 # A refinement that stopped has not covered the contour, and no bound follows from its samples.
@@ -1312,75 +1220,48 @@ end
 
 _polynomial_matrix(coeffs, M::AbstractMatrix) = _polynomial_matrix(coeffs, BallMatrix(M))
 
-"""
-    compute_schur_and_error(A; polynomial = nothing)
-
-Compute the Schur decomposition of `A` and certified bounds for the
-orthogonality defect, the reconstruction error, and the norms of `Z` and
-`Z⁻¹`.  When `polynomial` is provided (as coefficients in ascending order),
-additional bounds are computed for `p(A)` and `p(T)`.
-
-Supports both Float64 and BigFloat precision based on the element type of `A`.
-For BigFloat, the Schur decomposition is computed in Float64 and then refined
-to higher precision using iterative refinement.
-"""
-function compute_schur_and_error(A::BallMatrix{T}; polynomial = nothing) where {T}
-    RT = real(T)
-
-    # For BigFloat, use iterative refinement from Float64
-    if RT === BigFloat
-        return _compute_schur_and_error_bigfloat(A; polynomial)
+# The defects of an approximate Schur factorisation A ≈ Z T Z*, for ball matrices bZ ∋ Z and
+# bT ∋ T, with `opnorm_bound` an upper bound of the spectral norm of a ball matrix:
+#
+#   errF ≥ ‖Z*Z − I‖₂,     errT ≥ ‖Z p(T) Z* − p(A)‖₂   (p the identity without `polynomial`),
+#   norm_Z ≥ ‖Z‖₂,         norm_Z_inv ≥ ‖Z⁻¹‖₂.
+#
+# The last two come from errF, which must be below 1: Z*Z is Hermitian with spectrum in
+# [1 − errF, 1 + errF], so σ_max(Z) ≤ √(1 + errF) and σ_min(Z) ≥ √(1 − errF). The square roots and
+# the quotient are rounded outward (1/√(1 − errF) needs the root rounded DOWN).
+function _schur_defects(A::BallMatrix, bZ::BallMatrix, bT::BallMatrix, opnorm_bound;
+        polynomial = nothing)
+    errF = opnorm_bound(bZ' * bZ - I)
+    errF < 1 ||
+        throw(ArgumentError("Schur factor too far from unitary: ‖Z'Z - I‖ ≤ $errF"))
+    errT = if polynomial === nothing
+        opnorm_bound(bZ * bT * bZ' - A)
+    else
+        coeffs = collect(polynomial)
+        opnorm_bound(bZ * _polynomial_matrix(coeffs, bT) * bZ' - _polynomial_matrix(coeffs, A))
     end
-
-    # Standard Float64 path
-    CT = Complex{RT}
-    S = LinearAlgebra.schur(CT.(A.c))
-
-    bZ = BallMatrix(S.Z)
-    errF = svd_bound_L2_opnorm(bZ' * bZ - I)
-
-    bT = BallMatrix(S.T)
-    errT = svd_bound_L2_opnorm(bZ * bT * bZ' - A)
-
-    sigma_Z = svdbox(bZ)
-    max_sigma = sigma_Z[1]
-    min_sigma = sigma_Z[end]
-
-    # Use type-appropriate rounding
-    RT = real(T)
-    norm_Z = setrounding(RT, RoundUp) do
-        return RT(abs(max_sigma.c)) + RT(max_sigma.r)
-    end
-
-    min_sigma_lower = setrounding(RT, RoundDown) do
-        return max(RT(min_sigma.c) - RT(min_sigma.r), zero(RT))
-    end
-    min_sigma_lower <= 0 &&
-        throw(ArgumentError("Schur factor has non-positive smallest singular value bound"))
-    norm_Z_inv = setrounding(RT, RoundUp) do
-        return one(RT) / min_sigma_lower
-    end
-
-    if polynomial === nothing
-        return S, errF, errT, norm_Z, norm_Z_inv
-    end
-
-    coeffs = collect(polynomial)
-    pA = _polynomial_matrix(coeffs, A)
-    pT = _polynomial_matrix(coeffs, bT)
-    errT_poly = svd_bound_L2_opnorm(bZ * pT * bZ' - pA)
-
-    return S, errF, errT_poly, norm_Z, norm_Z_inv
+    one_ = one(errF)
+    norm_Z = sqrt_up(add_up(one_, errF))
+    norm_Z_inv = div_up(one_, sqrt_down(sub_down(one_, errF)))
+    return errF, errT, norm_Z, norm_Z_inv
 end
 
 """
-    _compute_schur_and_error_bigfloat(A; polynomial = nothing)
+    compute_schur_and_error(A; polynomial = nothing)
 
-BigFloat version of compute_schur_and_error.  Uses GenericSchur.jl's native
-BigFloat Schur decomposition for full-precision results.
+Compute a Schur decomposition of the midpoint of `A` and certified bounds for its defects:
+returns `(S, errF, errT, norm_Z, norm_Z_inv)` with `errF ≥ ‖Z*Z − I‖₂`, `errT ≥ ‖Z T Z* − A‖₂`
+for every matrix of the ball `A`, `norm_Z ≥ ‖Z‖₂` and `norm_Z_inv ≥ ‖Z⁻¹‖₂`. When `polynomial`
+is provided (coefficients in ascending order), `errT` bounds `‖Z p(T) Z* − p(A)‖₂` instead.
+
+The precision follows the element type of `A`. For `BigFloat` the decomposition is computed
+directly in that precision by GenericSchur (`_compute_schur_bigfloat_direct`).
 """
-function _compute_schur_and_error_bigfloat(A::BallMatrix{BigFloat}; polynomial = nothing)
-    return _compute_schur_bigfloat_direct(A; polynomial)
+function compute_schur_and_error(A::BallMatrix{T}; polynomial = nothing) where {T}
+    real(T) === BigFloat && return _compute_schur_bigfloat_direct(A; polynomial)
+    S = LinearAlgebra.schur(Complex{real(T)}.(A.c))
+    return (S, _schur_defects(A, BallMatrix(S.Z), BallMatrix(S.T), svd_bound_L2_opnorm;
+        polynomial)...)
 end
 
 """
@@ -1391,41 +1272,10 @@ seed).  Works for matrices whose eigenvalues span many orders of magnitude.
 """
 function _compute_schur_bigfloat_direct(A::BallMatrix{BigFloat}; polynomial = nothing)
     S = LinearAlgebra.schur(Complex{BigFloat}.(A.c))
-
-    bZ = BallMatrix(S.Z)
-    # Use upper_bound_L2_opnorm (Collatz + sqrt(‖·‖₁·‖·‖_∞)) instead of
-    # svd_bound_L2_opnorm which calls svdbox — broken for BigFloat matrices.
-    errF = upper_bound_L2_opnorm(bZ' * bZ - I)
-
-    bT = BallMatrix(S.T)
-    errT = upper_bound_L2_opnorm(bZ * bT * bZ' - A)
-
-    # Bound σ_max(Z) and 1/σ_min(Z) from the orthogonality defect errF = ‖Z'Z - I‖₂.
-    # Since Z'Z = I + E with ‖E‖₂ ≤ errF, the eigenvalues of Z'Z lie in [1-errF, 1+errF],
-    # so σ_max(Z) ≤ √(1 + errF) and σ_min(Z) ≥ √(1 - errF).
-    errF_val = BigFloat(errF)
-    errF_val >= 1 && throw(ArgumentError(
-        "Schur factor too far from unitary: ‖Z'Z - I‖ = $errF_val"))
-
-    norm_Z = setrounding(BigFloat, RoundUp) do
-        return sqrt(one(BigFloat) + errF_val)
-    end
-    norm_Z_inv = setrounding(BigFloat, RoundUp) do
-        return one(BigFloat) / sqrt(one(BigFloat) - errF_val)
-    end
-
-    S_nt = (T = S.T, Z = S.Z, values = S.values)
-
-    if polynomial === nothing
-        return S_nt, errF, errT, norm_Z, norm_Z_inv
-    end
-
-    coeffs = collect(polynomial)
-    pA = _polynomial_matrix(coeffs, A)
-    pT = _polynomial_matrix(coeffs, bT)
-    errT_poly = upper_bound_L2_opnorm(bZ * pT * bZ' - pA)
-
-    return S_nt, errF, errT_poly, norm_Z, norm_Z_inv
+    # the norms through upper_bound_L2_opnorm (Collatz, √(‖·‖₁‖·‖_∞), Frobenius): the SVD-based
+    # bound is not used for BigFloat matrices here
+    return ((T = S.T, Z = S.Z, values = S.values),
+        _schur_defects(A, BallMatrix(S.Z), BallMatrix(S.T), upper_bound_L2_opnorm; polynomial)...)
 end
 
 """
@@ -1462,35 +1312,88 @@ function _compute_schur_bigfloat_refined(A::BallMatrix{BigFloat}; polynomial = n
     T_error = BigFloat(result.residual_norm) * A_norm
 
     bZ = BallMatrix(Q_big, fill(Q_error, n, n))
-    errF = upper_bound_L2_opnorm(bZ' * bZ - I)
-
     bT = BallMatrix(T_big, fill(T_error, n, n))
-    errT = upper_bound_L2_opnorm(bZ * bT * bZ' - A)
+    return ((T = T_big, Z = Q_big, values = diag(T_big)),
+        _schur_defects(A, bZ, bT, upper_bound_L2_opnorm; polynomial)...)
+end
 
-    # Bound σ_max(Z) and 1/σ_min(Z) from orthogonality defect (see _compute_schur_bigfloat_direct)
-    errF_val = BigFloat(errF)
-    errF_val >= 1 && throw(ArgumentError(
-        "Schur factor too far from unitary: ‖Z'Z - I‖ = $errF_val"))
+# ---------------------------------------------------------------------------------------------
+# What every driver does, once: the serial, the Ogita, the parametric and the distributed one
+# (ext/DistributedExt.jl) differ only in how a sample is evaluated.
+# ---------------------------------------------------------------------------------------------
 
-    norm_Z = setrounding(BigFloat, RoundUp) do
-        return sqrt(one(BigFloat) + errF_val)
-    end
-    norm_Z_inv = setrounding(BigFloat, RoundUp) do
-        return one(BigFloat) / sqrt(one(BigFloat) - errF_val)
-    end
+# the common argument checks; returns η as a Float64
+function _check_driver_args(η, check_interval)
+    check_interval < 1 && throw(ArgumentError("check_interval must be positive"))
+    η = Float64(η)
+    (η <= 0 || η >= 1) && throw(ArgumentError("η must belong to (0, 1)"))
+    return η
+end
 
-    S = (T = T_big, Z = Q_big, values = diag(T_big))
+# `A` as a BigFloat ball matrix at the current precision; a widening, hence exact
+_to_bigfloat_ball(A::BallMatrix) = real(eltype(A.c)) === BigFloat ? A :
+                                   BallMatrix(convert.(Complex{BigFloat}, A.c), convert.(BigFloat, A.r))
 
-    if polynomial === nothing
-        return S, errF, errT, norm_Z, norm_Z_inv
-    end
+# The Schur data of a run and the matrix certified on the contour: T itself, or p(T).
+function _schur_setup(A::BallMatrix, schur_data, polynomial)
+    coeffs = polynomial === nothing ? nothing : collect(polynomial)
+    schur_data === nothing && (schur_data = compute_schur_and_error(A; polynomial = coeffs))
+    S, errF, errT, norm_Z, norm_Z_inv = schur_data
+    bT = BallMatrix(S.T)
+    schur_matrix = coeffs === nothing ? bT : _polynomial_matrix(coeffs, bT)
+    return (; S, errF, errT, norm_Z, norm_Z_inv, coeffs, schur_matrix)
+end
 
-    coeffs = collect(polynomial)
-    pA = _polynomial_matrix(coeffs, A)
-    pT = _polynomial_matrix(coeffs, bT)
-    errT_poly = upper_bound_L2_opnorm(bZ * pT * bZ' - pA)
+# The Sylvester precomputation of the parametric certifier for the split index k (chosen as n÷4,
+# kept in 2:n−2, when not given).
+function _parametric_setup(schur_matrix::BallMatrix, k, config::ResolventBoundConfig)
+    n = size(schur_matrix, 1)
+    k_used = clamp(k === nothing ? max(2, n ÷ 4) : Int(k), 2, n - 2)
+    T_mat = Matrix(schur_matrix.c)
+    T11 = T_mat[1:k_used, 1:k_used]
+    T12 = T_mat[1:k_used, (k_used + 1):n]
+    T22 = T_mat[(k_used + 1):n, (k_used + 1):n]
+    X = solve_sylvester_oracle(T11, T12, T22)
+    R = T12 + T11 * X - X * T22
+    precomp = sylvester_resolvent_precompute(T_mat, k_used; X_oracle = X)
+    precomp.precomputation_success ||
+        error("Sylvester precomputation failed: $(precomp.failure_reason)")
+    @info "Parametric certification with k=$k_used (n=$n)"
+    @info "Configuration: $(config.d_inv_estimator), $(config.coupling_estimator), $(config.combiner)"
+    @info "Sylvester diagnostics: reduction=$(precomp.reduction_factor), penalty=$(precomp.similarity_cond)"
+    return (; k = k_used, precomp, R)
+end
 
-    return S, errF, errT_poly, norm_Z, norm_Z_inv
+# The refinement of the polygon run in this process with `evaluate(z, index)`; returns the log of
+# samples, and throws if the contour was not covered.
+function _run_serial(evaluate, circle::CertificationCircle, η::Float64; check_interval, log_io)
+    arcs = _initial_arcs(circle)
+    cache = Dict{ComplexF64, Any}()
+    certification_log = Any[]
+    pending = Dict{Int, Tuple{ComplexF64, ComplexF64}}()
+    index = Ref(0)
+    evaluator = z -> (index[] += 1; evaluate(z, index[]))
+    _require_complete(adaptive_arcs!(arcs, cache, pending, η; check_interval,
+        certification_log, io = log_io, evaluator))
+    return certification_log
+end
+
+# The bounds of a run from its samples, and the named tuple every driver returns: the bound for
+# the Schur factor on the polygon, its lift to the original matrix, and the data they came from.
+# `extra` fields are appended.
+function _certification_result(setup, certification_log, η, circle::CertificationCircle,
+        n::Integer, Cbound, gram_info; snapshot_base = nothing, extra...)
+    isempty(certification_log) && throw(ErrorException("certification produced no samples"))
+    minimum_singular_value = minimum(log -> log.lo_val, certification_log)
+    resolvent_schur_raw = maximum(log -> log.hi_res, certification_log)
+    resolvent_schur = bound_resolvent_schur(resolvent_schur_raw, η)
+    resolvent_original = bound_res_original(resolvent_schur_raw, η, setup.norm_Z,
+        setup.norm_Z_inv, setup.errF, setup.errT, n; zmax = _circle_zmax(circle), Cbound)
+    return (; schur = setup.S, schur_matrix = setup.schur_matrix, certification_log,
+        minimum_singular_value, resolvent_schur_raw, resolvent_schur, resolvent_original, Cbound,
+        errF = setup.errF, errT = setup.errT, norm_Z = setup.norm_Z,
+        norm_Z_inv = setup.norm_Z_inv, circle, polynomial = setup.coeffs, snapshot_base,
+        gram = gram_info, extra...)
 end
 
 """
@@ -1540,54 +1443,15 @@ function run_certification(A::BallMatrix, circle::CertificationCircle;
         check_interval::Integer = 100, log_io::IO = stdout, Cbound = 1.0,
         gram = nothing, gram_factor = nothing, gram_factor_inv = nothing,
         gram_kwargs = (;))
-    check_interval < 1 && throw(ArgumentError("check_interval must be positive"))
-    η = Float64(η)
-    (η <= 0 || η >= 1) && throw(ArgumentError("η must belong to (0, 1)"))
-
+    η = _check_driver_args(η, check_interval)
     A, gram_info = _prepare_gram(A, gram, gram_factor, gram_factor_inv, schur_data;
         gram_kwargs...)
-
-    coeffs = polynomial === nothing ? nothing : collect(polynomial)
-    if schur_data === nothing
-        schur_data = coeffs === nothing ?
-                     compute_schur_and_error(A) :
-                     compute_schur_and_error(A; polynomial = coeffs)
+    setup = _schur_setup(A, schur_data, polynomial)
+    certification_log = _run_serial(circle, η; check_interval, log_io) do z, i
+        _evaluate_sample(setup.schur_matrix, z, i)
     end
-
-    S, errF, errT, norm_Z, norm_Z_inv = schur_data
-    bT = BallMatrix(S.T)
-    schur_matrix = coeffs === nothing ? bT : _polynomial_matrix(coeffs, bT)
-
-    arcs = _initial_arcs(circle)
-    cache = Dict{ComplexF64, Any}()
-    certification_log = Any[]
-    pending = Dict{Int, Tuple{ComplexF64, ComplexF64}}()
-    eval_index = Ref(0)
-
-    serial_evaluator = function (z::ComplexF64)
-        eval_index[] += 1
-        return _evaluate_sample(schur_matrix, z, eval_index[])
-    end
-
-    _require_complete(adaptive_arcs!(arcs, cache, pending, η; check_interval = check_interval,
-        certification_log = certification_log, io = log_io,
-        evaluator = serial_evaluator))
-
-    isempty(certification_log) && throw(ErrorException("certification produced no samples"))
-
-    min_sigma = minimum(log -> log.lo_val, certification_log)
-    l2pseudo = maximum(log -> log.hi_res, certification_log)
-    resolvent_schur_bound = bound_resolvent_schur(l2pseudo, η)
-    resolvent_bound = bound_res_original(
-        l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1);
-        zmax = _circle_zmax(circle), Cbound = Cbound)
-
-    return (;
-        schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
-        resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
-        resolvent_original = resolvent_bound, Cbound,
-        errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
-        snapshot_base = nothing, gram = gram_info)
+    return _certification_result(setup, certification_log, η, circle, size(A, 1), Cbound,
+        gram_info)
 end
 
 function run_certification(A::AbstractMatrix, circle::CertificationCircle; kwargs...)
@@ -1817,20 +1681,7 @@ function _evaluate_sample_ogita_bigfloat(T_matrix::BallMatrix{ET}, z::Number, id
     # A certified ball for σ_min that contains zero is reported as such: its radius was once
     # replaced here by 100·eps·|c| and its lower end by a positive number, which turned "not
     # certified" into a bound (at an exact eigenvalue it returned σ_min ≥ 1.7e-77).
-    val = Σ[end]
-    lo_val, res, hi_res = _sigma_fields(val)
-
-    return (
-        i = idx,
-        val = val,
-        lo_val = lo_val,
-        res = res,
-        hi_res = hi_res,
-        second_val = Σ[end - 1],
-        z = z_converted,
-        t = elapsed,
-        id = nothing
-    )
+    return _sample_record(idx, Σ, z_converted, elapsed)
 end
 
 """
@@ -1869,120 +1720,45 @@ function run_certification_ogita(A::BallMatrix{T}, circle::CertificationCircle;
         max_ogita_iterations::Int = 3,
         gram = nothing, gram_factor = nothing, gram_factor_inv = nothing,
         gram_kwargs = (;)) where {T}
-    check_interval < 1 && throw(ArgumentError("check_interval must be positive"))
-    η = Float64(η)
-    (η <= 0 || η >= 1) && throw(ArgumentError("η must belong to (0, 1)"))
-
-    # Convert to BigFloat if not already
-    RT = real(T)
-    if RT !== BigFloat
-        old_prec = precision(BigFloat)
-        setprecision(BigFloat, target_precision)
-        A_big = BallMatrix(
-            convert.(Complex{BigFloat}, A.c),
-            convert.(BigFloat, A.r)
-        )
-        setprecision(BigFloat, old_prec)
-    else
-        A_big = A
-    end
-
-    # Set precision for computation
-    old_prec = precision(BigFloat)
-    setprecision(BigFloat, target_precision)
-
-    try
-        A_big, gram_info = _prepare_gram(A_big, gram, gram_factor, gram_factor_inv,
-            schur_data; gram_kwargs...)
-
-        coeffs = polynomial === nothing ? nothing : collect(polynomial)
-        if schur_data === nothing
-            schur_data = coeffs === nothing ?
-                         compute_schur_and_error(A_big) :
-                         compute_schur_and_error(A_big; polynomial = coeffs)
-        end
-
-        S, errF, errT, norm_Z, norm_Z_inv = schur_data
-        bT = BallMatrix(S.T)
-        schur_matrix = coeffs === nothing ? bT : _polynomial_matrix(coeffs, bT)
+    η = _check_driver_args(η, check_interval)
+    return setprecision(BigFloat, target_precision) do
+        A_big, gram_info = _prepare_gram(_to_bigfloat_ball(A), gram, gram_factor,
+            gram_factor_inv, schur_data; gram_kwargs...)
+        setup = _schur_setup(A_big, schur_data, polynomial)
 
         @info "Using Ogita refinement optimization for BigFloat certification"
         @info "Target precision: $(target_precision) bits, Ogita iterations: $(max_ogita_iterations)"
+        _cache_center_svd!(setup.schur_matrix, circle, max_ogita_iterations, target_precision)
 
-        # Compute center SVD once and cache it for all workers
-        # This provides a good starting point for Ogita refinement at any point on the circle
-        @info "Computing center SVD at circle center..."
-        center_z = Complex{BigFloat}(circle.center)
-        T_center = schur_matrix.c - center_z * I
-        T_center_f64 = convert.(ComplexF64, T_center)
-        svd_center_f64 = LinearAlgebra.svd(T_center_f64)
-
-        # Refine center SVD to BigFloat precision
-        center_refined = ogita_svd_refine(
-            T_center,
-            svd_center_f64.U,
-            svd_center_f64.S,
-            svd_center_f64.V;
-            max_iterations = max_ogita_iterations,
-            precision_bits = target_precision,
-            check_convergence = false
-        )
-        center_S = isa(center_refined.Σ, Diagonal) ? diag(center_refined.Σ) :
-                   center_refined.Σ
-
-        # Set center cache for all workers
-        _set_center_svd_cache!(center_refined.U, center_S, center_refined.V, center_z)
-        @info "Center SVD cached (σ_min = $(Float64(minimum(center_S))))"
-
-        arcs = _initial_arcs(circle)
-        cache = Dict{ComplexF64, Any}()
-        certification_log = Any[]
-        pending = Dict{Int, Tuple{ComplexF64, ComplexF64}}()
-        eval_index = Ref(0)
-
-        # Create optimized evaluator using Ogita refinement with 3-tier caching:
-        # 1. Center SVD (computed above)
-        # 2. Local worker cache (recent computation)
-        # 3. Fresh Float64 SVD + Ogita refinement
-        ogita_evaluator = function (z::ComplexF64)
-            eval_index[] += 1
-            return _evaluate_sample_ogita_bigfloat(
-                schur_matrix, z, eval_index[];
-                max_iterations = max_ogita_iterations,
-                target_precision = target_precision
-            )
+        # the evaluator refines, in order of preference, the SVD cached at the centre, the one of
+        # the last nearby sample, or a fresh Float64 SVD
+        certification_log = _run_serial(circle, η; check_interval, log_io) do z, i
+            _evaluate_sample_ogita_bigfloat(setup.schur_matrix, z, i;
+                max_iterations = max_ogita_iterations, target_precision)
         end
 
-        _require_complete(adaptive_arcs!(arcs, cache, pending, η; check_interval = check_interval,
-            certification_log = certification_log, io = log_io,
-            evaluator = ogita_evaluator))
-
-        isempty(certification_log) &&
-            throw(ErrorException("certification produced no samples"))
-
-        min_sigma = minimum(log -> log.lo_val, certification_log)
-        l2pseudo = maximum(log -> log.hi_res, certification_log)
-        resolvent_schur_bound = bound_resolvent_schur(l2pseudo, η)
-        resolvent_bound = bound_res_original(
-            l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1);
-        zmax = _circle_zmax(circle), Cbound = Cbound)
-
-        # Get cache statistics
         cache_stats = _bf_ogita_cache_stats()
         @info "Cache statistics: $(cache_stats)"
-
-        return (;
-            schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
-            resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
-            resolvent_original = resolvent_bound, Cbound,
-            errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
-            snapshot_base = nothing, gram = gram_info,
-            optimization = :ogita_refinement,
-            target_precision = target_precision,
-            cache_stats = cache_stats)
-    finally
-        setprecision(BigFloat, old_prec)
+        return _certification_result(setup, certification_log, η, circle, size(A, 1), Cbound,
+            gram_info; optimization = :ogita_refinement, target_precision, cache_stats)
     end
+end
+
+# The SVD of T − cI at the centre c of the circle, refined to BigFloat and cached as a starting
+# point for the Ogita refinement at every sample.
+function _cache_center_svd!(schur_matrix::BallMatrix, circle::CertificationCircle,
+        max_ogita_iterations::Integer, target_precision::Integer)
+    @info "Computing center SVD at circle center..."
+    center_z = Complex{BigFloat}(circle.center)
+    T_center = schur_matrix.c - center_z * I
+    svd_center_f64 = LinearAlgebra.svd(convert.(ComplexF64, T_center))
+    center_refined = ogita_svd_refine(T_center, svd_center_f64.U, svd_center_f64.S,
+        svd_center_f64.V; max_iterations = max_ogita_iterations,
+        precision_bits = target_precision, check_convergence = false)
+    center_S = isa(center_refined.Σ, Diagonal) ? diag(center_refined.Σ) : center_refined.Σ
+    _set_center_svd_cache!(center_refined.U, center_S, center_refined.V, center_z)
+    @info "Center SVD cached (σ_min = $(Float64(minimum(center_S))))"
+    return nothing
 end
 
 function run_certification_ogita(A::AbstractMatrix, circle::CertificationCircle; kwargs...)
@@ -2043,118 +1819,21 @@ function run_certification_parametric(A::BallMatrix{T}, circle::CertificationCir
         log_io::IO = stdout, Cbound = 1.0,
         gram = nothing, gram_factor = nothing, gram_factor_inv = nothing,
         gram_kwargs = (;)) where {T}
-    check_interval < 1 && throw(ArgumentError("check_interval must be positive"))
-    η = Float64(η)
-    (η <= 0 || η >= 1) && throw(ArgumentError("η must belong to (0, 1)"))
-
+    η = _check_driver_args(η, check_interval)
     A, gram_info = _prepare_gram(A, gram, gram_factor, gram_factor_inv, schur_data;
         gram_kwargs...)
+    setup = _schur_setup(A, schur_data, polynomial)
+    par = _parametric_setup(setup.schur_matrix, k, config)
 
-    coeffs = polynomial === nothing ? nothing : collect(polynomial)
-    if schur_data === nothing
-        schur_data = coeffs === nothing ?
-                     compute_schur_and_error(A) :
-                     compute_schur_and_error(A; polynomial = coeffs)
+    # the same evaluator as the workers of the distributed driver, on the same registered
+    # configuration
+    _clear_parametric_cache!()
+    set_parametric_config!(par.precomp, convert.(Complex{real(T)}, par.R), config; k = par.k)
+    certification_log = _run_serial(circle, η; check_interval, log_io) do z, i
+        _evaluate_sample_parametric(setup.schur_matrix, z, i)
     end
-
-    S, errF, errT, norm_Z, norm_Z_inv = schur_data
-    bT = BallMatrix(S.T)
-    schur_matrix = coeffs === nothing ? bT : _polynomial_matrix(coeffs, bT)
-
-    n = size(schur_matrix, 1)
-
-    # Auto-select k if not provided
-    k_used = k === nothing ? max(2, n ÷ 4) : k
-    k_used = clamp(k_used, 2, n - 2)  # Ensure valid range
-
-    @info "Parametric certification with k=$k_used (n=$n)"
-    @info "Configuration: $(config.d_inv_estimator), $(config.coupling_estimator), $(config.combiner)"
-
-    # Precompute Sylvester quantities
-    T_mat = Matrix(schur_matrix.c)
-    T11 = T_mat[1:k_used, 1:k_used]
-    T12 = T_mat[1:k_used, (k_used + 1):n]
-    T22 = T_mat[(k_used + 1):n, (k_used + 1):n]
-
-    X = solve_sylvester_oracle(T11, T12, T22)
-    R = T12 + T11 * X - X * T22
-    precomp = sylvester_resolvent_precompute(T_mat, k_used; X_oracle = X)
-
-    if !precomp.precomputation_success
-        error("Sylvester precomputation failed: $(precomp.failure_reason)")
-    end
-
-    @info "Sylvester diagnostics: reduction=$(precomp.reduction_factor), penalty=$(precomp.similarity_cond)"
-
-    # Set up parametric config for the evaluator
-    RT = real(T)
-    R_typed = convert.(Complex{RT}, R)
-
-    arcs = _initial_arcs(circle)
-    cache = Dict{ComplexF64, Any}()
-    certification_log = Any[]
-    pending = Dict{Int, Tuple{ComplexF64, ComplexF64}}()
-    eval_index = Ref(0)
-
-    # Warm start cache for serial evaluation
-    warm_U = Ref{Union{Nothing, Matrix}}(nothing)
-    warm_S = Ref{Union{Nothing, Vector}}(nothing)
-    warm_V = Ref{Union{Nothing, Matrix}}(nothing)
-    warm_z = Ref{Union{Nothing, Number}}(nothing)
-
-    serial_evaluator = function (z::ComplexF64)
-        eval_index[] += 1
-        idx = eval_index[]
-
-        z_typed = Complex{RT}(z)
-
-        # Check for warm start
-        warm_start = nothing
-        if warm_z[] !== nothing && abs(z_typed - warm_z[]) < 1e-4 * (abs(warm_z[]) + 1)
-            warm_start = SVDWarmStart(warm_U[], warm_S[], warm_V[])
-        end
-
-        elapsed = @elapsed result = parametric_resolvent_bound(
-            precomp, T_mat, z_typed, config;
-            R = R_typed, svd_warm_start = warm_start
-        )
-
-        # Update warm start
-        if result.success
-            A_z = z_typed * I - T11
-            try
-                svd_Az = LinearAlgebra.svd(A_z)
-                warm_U[] = svd_Az.U
-                warm_S[] = svd_Az.S
-                warm_V[] = svd_Az.V
-                warm_z[] = z_typed
-            catch
-            end
-        end
-
-        return _parametric_sample(result, RT, idx, z_typed, elapsed)
-    end
-
-    _require_complete(adaptive_arcs!(arcs, cache, pending, η; check_interval = check_interval,
-        certification_log = certification_log, io = log_io,
-        evaluator = serial_evaluator))
-
-    isempty(certification_log) && throw(ErrorException("certification produced no samples"))
-
-    min_sigma = minimum(log -> log.lo_val, certification_log)
-    l2pseudo = maximum(log -> log.hi_res, certification_log)
-    resolvent_schur_bound = bound_resolvent_schur(l2pseudo, η)
-    resolvent_bound = bound_res_original(
-        l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, size(A, 1);
-        zmax = _circle_zmax(circle), Cbound = Cbound)
-
-    return (;
-        schur = S, schur_matrix, certification_log, minimum_singular_value = min_sigma,
-        resolvent_schur_raw = l2pseudo, resolvent_schur = resolvent_schur_bound,
-        resolvent_original = resolvent_bound, Cbound,
-        errF, errT, norm_Z, norm_Z_inv, circle, polynomial = coeffs,
-        snapshot_base = nothing, gram = gram_info,
-        k = k_used, parametric_precomp = precomp)
+    return _certification_result(setup, certification_log, η, circle, size(A, 1), Cbound,
+        gram_info; k = par.k, parametric_precomp = par.precomp)
 end
 
 function run_certification_parametric(A::AbstractMatrix, circle::CertificationCircle; kwargs...)
