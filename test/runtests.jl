@@ -10,6 +10,7 @@ using Test
     include("test_types/test_convert_promote.jl")
     include("test_types/test_promotion.jl")
     include("test_types/test_mmul5.jl")
+    include("test_types/test_ogita_rump_oishi.jl")
     include("test_types/test_vector.jl")
     include("test_types/test_matrix.jl")
     include("test_types/test_mixed_products.jl")
