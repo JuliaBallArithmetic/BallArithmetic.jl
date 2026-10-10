@@ -210,6 +210,7 @@ export verified_lu_gla, verified_qr_gla, verified_cholesky_gla, verified_svd_gla
        verified_polar_gla
 include("decompositions/iterative_refinement.jl")
 include("pseudospectra/rigorous_contour.jl")
+include("pseudospectra/block_resolvent_floor.jl")
 include("matrix_classifiers/is_M_matrix.jl")
 
 include("matrix_properties/regularity.jl")

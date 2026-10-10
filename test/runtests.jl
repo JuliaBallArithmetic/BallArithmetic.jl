@@ -71,6 +71,7 @@ using Test
 
     # Pseudospectra
     include("test_pseudospectra/test_pseudospectra.jl")
+    include("test_pseudospectra/test_block_resolvent_floor.jl")
     include("test_pseudospectra/test_sylvester_resolvent.jl")
     include("test_pseudospectra/test_gram_transform.jl")
 

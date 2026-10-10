@@ -88,6 +88,8 @@ struct Miyajima2014aSchurNewtonResult{MT, BT, IT, RT, ET}
     block_nonnormality::Vector{RT}
     """Block-residual slack `β_Λ = ‖R₁‖₂/(1−‖R₂‖₂)`, `R₁ = Y(AW − WΛ)` (certifies `Λ`)."""
     block_residual_norm::RT
+    """Whether the result is for a pencil `Ax = λBx` (the frame inverted is then `B·W`)."""
+    pencil::Bool
 end
 
 # block-orthonormal, NOT globally unitary ⇒ consumers must use inv(basis).
@@ -514,5 +516,5 @@ function _vbd_finish(Acx::BallMatrix{T}, Bcx, W, cl, n::Integer,
 
     return Miyajima2014aSchurNewtonResult(W, transformed, block, remainder, clusters,
         discs, remainder_norm, eigenvalues, nrmR2, beta, kappa, block_coupling,
-        block_centers, block_nonnormality, block_residual_norm)
+        block_centers, block_nonnormality, block_residual_norm, Bcx !== nothing)
 end
