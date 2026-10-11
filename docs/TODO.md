@@ -183,18 +183,22 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       and `apply_preconditioner` on balls. Tested against the solutions of the vertex systems in
       rational arithmetic. Not implemented: extended interval arithmetic for a diagonal entry
       containing zero (5.7.4).
-    - **`interval_shaving` (Section 5.9), to decide.** The method of the thesis guesses a Farkas
-      certificate by solving a linear programme (5.9.1), completes the system (5.12) to a square
-      one with a basis of a null space, encloses its solution, and widens the slice by Lemma
-      5.22 with the bounds (5.15) and (5.16), with the iterative improvement of 5.9.3. The
-      package has no linear programming solver among its dependencies, and what `shaving.jl`
-      does is unrelated to the thesis (the audit: it removed the exact solution). Options: a
-      solver as a weak dependency with the routine in an extension; or remove `interval_shaving`
-      until then. `sherman_morrison_inverse_update` is a floating-point formula and claims
-      nothing.
-    - **Still to implement from the thesis** (the thesis is in `references/`, dated 2019 where
-      some files say 2012): `interval_least_squares` and `subsquares_method` (Chapter 6). Each
-      is to be read against its chapter and implemented as stated there.
+    - **`interval_shaving` (Section 5.9), done on 2026-10-11** (`e001b1c`): in the package, with
+      the linear programme of 5.9.1 passed as a function and supplied by the extension
+      `LinearProgrammingExt` (JuMP and HiGHS, weak dependencies, decided by Isaia). A slice is
+      cut only after `verifylss` has enclosed the system built from the guess. In the suite on
+      nighthawk a slice was cut in 270 of 270 runs from the initial enclosure of Proposition
+      5.14, the largest radius after over before having median 0.075, and every shaved box
+      contained the solutions of the vertex systems. Not implemented: the Sherman-Morrison
+      update of the preconditioner in 5.9.3. The bound (5.16) was rederived, the printed one
+      being illegible in the extracted text; the case where the system does not depend on the
+      width is ours.
+    - **Chapter 6 of the thesis, done on 2026-10-11** (`9321a2d`): `interval_least_squares`
+      (the supersquare system of 6.2, and the interval normal equation), `subsquares_method`
+      (Algorithm 6.12, intersection, unsolvability), `select_subsquares` (Algorithm 6.14, new),
+      `multi_jacobi_method` (6.8.3; the preconditioning of each subsquare by its midpoint
+      inverse is ours). Not implemented: the preconditioners of 6.3, Gaussian elimination for
+      an overdetermined system (6.4), Rohn's method (6.6).
     - **`qi_intervals`, `qi_sqrt_intervals`, removed** (2026-10-11, at Isaia's word) with their
       rebalanced variants: Qi (1984) was tried and found not effective, and the audit found the
       interval `B_{n+1}` of its Theorem 2 missing for non-square input.
