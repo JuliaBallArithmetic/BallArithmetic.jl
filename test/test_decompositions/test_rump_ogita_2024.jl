@@ -268,7 +268,9 @@ end
             r = BallArithmetic._rumpogita2024_qr(BallMatrix(A))
             @test r !== nothing && size(r.Q) == (8, 8) && size(r.R) == (8, 13)
             @test _inside(Q, r.Q)
-            @test _inside(setprecision(() -> Q' * big.(A), BigFloat, 1024), r.R)
+            # the left block is the R-factor itself, with exact zeros below the diagonal
+            @test _inside(R1, r.R[:, 1:8])
+            @test _inside(setprecision(() -> Q' * big.(A[:, 9:13]), BigFloat, 1024), r.R[:, 9:13])
         end
     end
     @testset "a ball of matrices, and what is declined" begin
