@@ -146,9 +146,10 @@ function compute_preconditioner(A::BallMatrix{T};
     elseif method == :ldlt
         # LDLT factorization for symmetric matrices
         try
-            ldlt_fact = ldlt(Symmetric(A_mid))
-            # Reconstruct inverse from LDLT
-            C = inv(ldlt_fact)
+            # the LDLᵀ factorisation of a dense symmetric matrix, with the pivoting of Bunch and
+            # Kaufman; `ldlt` itself has methods for tridiagonal and sparse matrices only
+            ldlt_fact = bunchkaufman(Symmetric(A_mid))
+            C = Matrix{T}(inv(ldlt_fact))
             cond_est = check_conditioning ? cond(A_mid) : T(NaN)
             factorization = ldlt_fact
             prec_type = LDLTFactorization

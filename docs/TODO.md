@@ -421,3 +421,7 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     tests in rational arithmetic. The thesis says it selects the pivot "with the smallest
     mignitude"; the code takes the largest, which step 2 of Algorithm 5.9 allows.
 
+23. **`compute_preconditioner(method = :ldlt)`, 2026-10-12:** it called `ldlt` on a dense
+    symmetric matrix, which has no method, so the option failed on every input and fell back
+    to LU with a warning. It now uses `bunchkaufman`.
+

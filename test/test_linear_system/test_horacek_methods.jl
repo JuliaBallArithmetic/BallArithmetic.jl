@@ -263,8 +263,17 @@ end
         prec = compute_preconditioner(A, method=:ldlt)
 
         @test prec.success
-        # LDLT may fall back to LU if LDLT is not supported for the input type
-        @test prec.method ∈ (LDLTFactorization, LUFactorization)
+        @test prec.method == LDLTFactorization
+        @test prec.preconditioner ≈ inv(A_sym)
+        @test apply_preconditioner(prec, [1.0, 2.0]) ≈ A_sym \ [1.0, 2.0]
+        # an indefinite symmetric matrix
+        A_ind = [1.0 2.0; 2.0 1.0]
+        prec = compute_preconditioner(BallMatrix(A_ind), method=:ldlt)
+        @test prec.method == LDLTFactorization
+        @test prec.preconditioner ≈ inv(A_ind)
+        # not symmetric: LU is used, and the result says so
+        prec = compute_preconditioner(BallMatrix([3.0 1.0; 0.0 2.0]), method=:ldlt)
+        @test prec.method == LUFactorization
     end
 
     @testset "Preconditioner Quality Check" begin
