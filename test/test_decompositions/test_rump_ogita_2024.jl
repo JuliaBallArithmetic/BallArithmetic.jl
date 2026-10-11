@@ -318,7 +318,7 @@ end
         @test all(abs(λ[j] - mid(r.D)[j, j]) <= rad(r.D)[j, j] for j in 1:n)
         @test _inside(Q, r.Q)
         @test _inside(triu(Tt), r.T)
-        @test Float64(opnorm(Q * triu(Tt) * Q' - A, Inf)) < 1e-100       # the reference is a Schur decomposition
+        @test Float64(opnorm(Q * triu(Tt) * Q' - A, Inf)) < 1e-60        # the reference is a Schur decomposition (product at 256 bits)
         k <= 2 && @test med(_relerr(r.Q)) < 1e-9
     end
     @testset "what is declined" begin
