@@ -138,31 +138,23 @@ end
 # The accurate residual, in the place of INTLAB's `prodK`
 # ---------------------------------------------------------------------------------------------
 #
-# Built on the error-free transformations of `src/error_free_transformations.jl`, which carry the
-# reasoning for why a ball product will not serve here.
+# Built on the products in doubled precision of `src/types/MMul`;
+# `src/error_free_transformations.jl` carries the reasoning for why a ball product will not
+# serve here.
 
 """
-Enclosure of `B*W - W*X` with `B` a ball matrix and `W`, `X` floating point, by compensated
-accumulation with error-free transformations and the Ogita-Rump-Oishi bound.
+Enclosure of `B*W - W*X` with `B` a ball matrix and `W`, `X` floating point, the midpoints in
+doubled precision by `_accurate_product_sum`.
 
 It stands where Rump's Algorithm `transform` calls `prodK(B, W, -W, X)`, described there as
 computing "an accurate approximation of the residual `BW - WX` using error-free
 transformations", with a second output giving the radius. The paper attributes `prodK` to no
-numbered reference; it is a routine of INTLAB, whose algorithm (a splitting of the factors and
-level-3 BLAS products, M. Lange and S. M. Rump, "Accurate floating-point matrix residuals",
-manuscript) is not the one used here. The parts used here have their own provenance: `two_sum` is Knuth's, `two_product` and the splitting are Dekker's and Veltkamp's,
-and the error bound is
-
-    @Article{OgitaRumpOishi2005,
-      author  = {Ogita, Takeshi and Rump, Siegfried M. and Oishi, Shin'ichi},
-      title   = {Accurate Sum and Dot Product},
-      journal = {SIAM Journal on Scientific Computing},
-      year    = {2005},
-      volume  = {26},
-      number  = {6},
-      pages   = {1955--1988},
-      doi     = {10.1137/030601818},
-    }
+numbered reference; it is a routine of INTLAB, whose algorithm is the splitting scheme of
+M. Lange and S. M. Rump, "Accurate floating-point matrix residuals" (manuscript). For `Float64`
+data that scheme is used here, `_lange_rump_two_terms` in `src/types/MMul/lange_rump.jl`; for
+other types, and where it declines, the accumulation is Dot2 of T. Ogita, S. M. Rump and
+S. Oishi, *Accurate sum and dot product*, SIAM J. Sci. Comput. **26**(6) (2005) 1955-1988,
+doi 10.1137/030601818.
 """
 function _rump2022a_prodK(B::BallMatrix{T}, W::Matrix{CT}, X::Matrix{CT}) where {T, CT}
     # W may be n by k and X k by k, the residual then n by k; the transform of Theorem 2.2 uses the
@@ -172,38 +164,17 @@ function _rump2022a_prodK(B::BallMatrix{T}, W::Matrix{CT}, X::Matrix{CT}) where 
         throw(DimensionMismatch("prodK: W is $(size(W)) so X must be ($k, $k), got $(size(X))"))
     size(B, 2) == n ||
         throw(DimensionMismatch("prodK: B has $(size(B, 2)) columns and W has $n rows"))
-    Bm, Br = mid(B), rad(B)
-    # split into real components so the error-free transformations apply
-    Bre, Bim = real.(Bm), imag.(Bm)
-    Wre, Wim = real.(W), imag.(W)
-    Xre, Xim = real.(X), imag.(X)
-    M = Matrix{CT}(undef, n, k)
-    # the signs must carry the working type: Float64 literals here made the error-free
-    # transformations promote and fail on a BigFloat input
-    p1, m1 = one(T), -one(T)
-    for j in 1:k, i in 1:n
-        # Re(BW - WX) = Bre Wre - Bim Wim - (Wre Xre - Wim Xim)
-        re = compensated_terms(((Bre, Wre, p1), (Bim, Wim, m1),
-                (Wre, Xre, m1), (Wim, Xim, p1)), i, j)
-        # Im(BW - WX) = Bre Wim + Bim Wre - (Wre Xim + Wim Xre)
-        im_ = compensated_terms(((Bre, Wim, p1), (Bim, Wre, p1),
-                (Wre, Xim, m1), (Wim, Xre, m1)), i, j)
-        M[i, j] = CT(re, im_)
+    Bm, Br = Matrix{CT}(mid(B)), rad(B)
+    # the midpoints: B W − W X as a sum of two products in doubled precision, by the splitting
+    # scheme of Lange and Rump for Float64 and by the Dot2 accumulation otherwise, with the bound
+    # of `_accurate_product_sum` (src/types/MMul/ogita_rump_oishi.jl)
+    E = _accurate_product_sum(((Bm, W, one(T)), (W, X, -one(T))))
+    # the interval part rad(B)|W|, the moduli bounded above with `abs_up`
+    absW = abs_up.(W)
+    interval_part = setrounding(T, RoundUp) do
+        Br * absW
     end
-    # The radius. Each of the real and imaginary parts of an entry is a compensated dot product
-    # of N = 2n + 2k ≤ 4 max(n, k) terms, to which Proposition 5.5 of Ogita, Rump and Oishi (2005)
-    # applies with its underflow term (the reference and the two steps that are ours, the passage
-    # from |exact| to |computed| and the factor for a complex entry, are at `_accuracy_term` in
-    # src/types/MMul/ogita_rump_oishi.jl):
-    #     |M − (BW − WX)| ≤ (u|M| + (3/2)(γ_N² (|B||W| + |W||X|) + 5 N eta)) / (1 − u),
-    # to which the interval part rad(B)|W| is added. The moduli are bounded above with `abs_up`.
-    N = 4 * max(n, k)
-    absW, absX, absB = abs_up.(W), abs_up.(X), abs_up.(Bm)
-    absprod, interval_part = setrounding(T, RoundUp) do
-        (absB * absW) .+ (absW * absX), Br * absW
-    end
-    r = add_up.(_accuracy_term(abs_up.(M), absprod, N, T, true), interval_part)
-    return BallMatrix(M, r)
+    return BallMatrix(mid(E), add_up.(rad(E), interval_part))
 end
 
 # ---------------------------------------------------------------------------------------------
@@ -266,51 +237,24 @@ end
 
 # The residual A W − B W D of a pencil, D diagonal, enclosed as `_rump2022a_prodK` encloses
 # B W − W X. The product of three factors is brought to products of two by error-free
-# transformations of W D: with w = w_r + i w_i and d = d_r + i d_i,
-#
-#     Re(w d) = (P1 + E1) − (P2 + E2),      Im(w d) = (P3 + E3) + (P4 + E4),
-#
-# where (P1, E1), (P2, E2), (P3, E3), (P4, E4) are `two_product` of (w_r, d_r), (w_i, d_i),
-# (w_r, d_i), (w_i, d_r), exact unless a product underflows. Each of the real and imaginary parts
-# of an entry of the residual is then one compensated sum of N = 10n products, to which the bound
-# at `_accuracy_term` applies; the interval parts rad(A)|W| and rad(B)|W||D| are added, and
-# |B| times 8 eta for the underflow of the four `two_product` of an entry of W D.
+# transformations of W D: `_lr_diagonal_pieces!` returns four matrices whose sum is W D, exact
+# unless a product underflows (`two_product` of the real and imaginary parts). The residual is
+# then a sum of five products, enclosed by `_accurate_product_sum`; the interval parts rad(A)|W|
+# and rad(B)|W||D| are added, and |B| times 8 eta for the underflow of the four `two_product` of
+# an entry of W D.
 function _rump2022a_prodK_pencil(A::BallMatrix{T}, B::BallMatrix{T}, W::Matrix{CT},
         D::Vector{CT}) where {T, CT}
     n = size(W, 1)
     Am, Bm = Matrix{CT}(mid(A)), Matrix{CT}(mid(B))
-    Are, Aim, Bre, Bim = real.(Am), imag.(Am), real.(Bm), imag.(Bm)
-    Wre, Wim = real.(W), imag.(W)
-    P = ntuple(_ -> Matrix{T}(undef, n, n), 4)
-    E = ntuple(_ -> Matrix{T}(undef, n, n), 4)
-    for j in 1:n, i in 1:n
-        dr, di = real(D[j]), imag(D[j])
-        P[1][i, j], E[1][i, j] = two_product(Wre[i, j], dr)
-        P[2][i, j], E[2][i, j] = two_product(Wim[i, j], di)
-        P[3][i, j], E[3][i, j] = two_product(Wre[i, j], di)
-        P[4][i, j], E[4][i, j] = two_product(Wim[i, j], dr)
-    end
-    p1, m1 = one(T), -one(T)
-    re_terms = ((Are, Wre, p1), (Aim, Wim, m1),
-        (Bre, P[1], m1), (Bre, E[1], m1), (Bre, P[2], p1), (Bre, E[2], p1),
-        (Bim, P[3], p1), (Bim, E[3], p1), (Bim, P[4], p1), (Bim, E[4], p1))
-    im_terms = ((Are, Wim, p1), (Aim, Wre, p1),
-        (Bre, P[3], m1), (Bre, E[3], m1), (Bre, P[4], m1), (Bre, E[4], m1),
-        (Bim, P[1], m1), (Bim, E[1], m1), (Bim, P[2], p1), (Bim, E[2], p1))
-    M = Matrix{CT}(undef, n, n)
-    for j in 1:n, i in 1:n
-        M[i, j] = CT(compensated_terms(re_terms, i, j), compensated_terms(im_terms, i, j))
-    end
-    absA, absB, absW, absD = abs_up.(Am), abs_up.(Bm), abs_up.(W), abs_up.(D)
+    WD = Matrix{CT}[]
+    _lr_diagonal_pieces!(WD, Int[], W, D, true, one(CT))
+    E = _accurate_product_sum(((Am, W, one(T)), ((Bm, P, -one(T)) for P in WD)...))
+    absB, absW, absD = abs_up.(Bm), abs_up.(W), abs_up.(D)
     under = mul_up(T(8), subnormal_min(T))
-    absprod, extra = setrounding(T, RoundUp) do
-        Q = abs.(P[1]) .+ abs.(E[1]) .+ abs.(P[2]) .+ abs.(E[2]) .+
-            abs.(P[3]) .+ abs.(E[3]) .+ abs.(P[4]) .+ abs.(E[4])
-        absA * absW .+ absB * Q,
+    extra = setrounding(T, RoundUp) do
         rad(A) * absW .+ rad(B) * (absW .* transpose(absD)) .+ absB * fill(under, n, n)
     end
-    r = add_up.(_accuracy_term(abs_up.(M), absprod, 10 * n, T, true), extra)
-    return BallMatrix(M, r)
+    return BallMatrix(mid(E), add_up.(rad(E), extra))
 end
 
 # The transformation for a pencil A x = λ B x. With D the diagonal matrix of the approximate

@@ -123,13 +123,29 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       and the summation are not threaded). The Dot2 accumulation: ratio 117 on one thread at
       n = 1000, median error 1.5e-22, median bound 5.7e-16 (`probe_prodk_timing.jl`,
       `probe_prodk_accuracy.jl`).
-      **Left of the paper, to implement:** `λ < 1` with the bound (15); unbalanced splittings
-      (23), (26); the Karatsuba evaluation (Lemma 14, Algorithm 6; 5 products for 6 at `k = 2`);
-      the blocked summation of Section 8.1 (Lemma 15); unevaluated sums as one factor
-      (Algorithm 7) and more than two output terms with (35). **Proposed to leave out, to
-      decide:** Toom-Cook (the paper says `prodK` does not use it), sparse factors (Section 8.4,
-      `spProdK`), SYRK. The residual `_rump2022a_prodK` of `rump_verifyeigall.jl` still has its
-      own Dot2 loop.
+      **Left of the paper, to implement** (all of it, Isaia 2026-10-11):
+      - `λ < 1` in Corollary 5, with the second bound (15) of Theorem 7;
+      - unbalanced splittings, the points (23) and (26), and the call with `[k1, k2]`
+        (Section 5), meant for matrix-vector products;
+      - the Karatsuba evaluation (Lemma 14 and (28): 5 products for 6 at `k = 2`; Algorithm 6
+        for general `k`, with its Table 6 of product counts), and the automatic choice between
+        it and (27);
+      - Toom-Cook (the products `T1` to `T5` at the points −1, 0, 1, 2, ∞ and condition (31));
+        the paper says `prodK` does not use it;
+      - the blocked summation of Section 8.1 (conditions (32), (33), Lemma 15), which also
+        removes the limit on the dimension, and the reduced memory of its last paragraphs;
+      - omitting the products with split parts that are zero (the option `NoReduction` of
+        Table 9);
+      - unevaluated sums of several matrices as one factor (Algorithm 7) and output in more than
+        two terms with the normalisation (35) and its bound `8u|R_m|`;
+      - sparse factors (Section 8.4, `spProdK`, and the option `δ` of Table 10); Section 8.4 has
+        not been read yet;
+      - SYRK for `A'A`, and TRMM for triangular factors;
+      - the scaling of outliers of Section 8.2 beyond the separate summands already there;
+      - threading of the splitting and of the final summation, which are `O(n²)` and single
+        threaded (ours, not the paper's);
+      - the paper's own tables (1 to 14) have not been reproduced beyond the one comparison
+        above.
     - **Fixed:** `krawczyk_linear_system` is `verifylss` (`6751cf7`); RigorousInvariantMeasures
       calls it. `is_M_matrix` follows Definition 5.4 of Varga (2004) with its sign conditions,
       and `is_H_matrix` is the test on the comparison matrix (`2383207`). Sections 3.1 and 3.2
