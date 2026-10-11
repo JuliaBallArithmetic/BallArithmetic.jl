@@ -93,7 +93,7 @@ function _lr_split_k(A::Matrix{S}, byrow::Bool, k::Integer, q::T,
     under = mul_up(T(M), subnormal_min(T))
     μ = similar(s)
     @inbounds for i in eachindex(s)
-        if iszero(s[i])
+        if iszero(s[i]) && all(iszero, byrow ? view(A, i, :) : view(A, :, i))
             μ[i] = one(T)           # a zero vector splits into zeros at any point
         else
             su = mul_up(c, add_up(s[i], under))

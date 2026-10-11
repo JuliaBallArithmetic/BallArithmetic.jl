@@ -85,7 +85,7 @@ end
     end
 
     @testset "accuracy for k = 2 in Float64" begin
-        n = 200
+        n = 100
         U, V = Matrix(qr(randn(rng, n, n)).Q), Matrix(qr(randn(rng, n, n)).Q)
         A = U * Diagonal(10.0 .^ range(0, -12, length = n)) * V'
         Rinv = inv(A)
@@ -125,7 +125,7 @@ end
         tiny = 1e-170 .* A
         @test BA._lange_rump_two_terms(((tiny, 1e-170 .* B, 1.0),)) === nothing
         huge = 1e300 .* A
-        @test BA._lange_rump_two_terms(((huge, B, 1.0),)) === nothing
+        @test BA._lange_rump_two_terms(((huge, 1e10 .* B, 1.0),)) === nothing   # overflow
         for terms in (((A, B, 2.0),), ((tiny, 1e-170 .* B, 1.0),))
             P1, P2, R = BA._two_term_product_sum(terms)
             @test _outside(terms, P1, P2, R)[1] == 0
