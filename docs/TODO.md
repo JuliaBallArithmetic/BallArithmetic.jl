@@ -216,16 +216,19 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       are measured by `ordschur_ball` and `compute_spectral_projector_schur`.
       `rigorous_symmetric_eigen_bigfloat` is removed (`fc6c817`, at Isaia's word);
       `verifyeigall(A; method = :rumplange2023)` is the verified routine.
-    - **The eight `refine_*` routines of `iterative_refinement.jl`, to check against their
-      sources.** `probe_refine_routines.jl` on nighthawk (n = 8): started from an exact
-      factorisation perturbed by 1e-8, every one returns a residual between 1e-9 and 4e-8, five
-      with `converged = true`; from the unperturbed factors all return about 1e-16. Nothing in
-      `src` calls them. Sources now in the library: Higham (1986), Nakatsukasa,
-      Bai and Gygi (2010), Yamamoto, Nakatsukasa, Yanagisawa and Fukaya (2015), Carson and
-      Higham (2017), Ogita and Aishima (2020), Terao, Ozaki and Ogita (2020, the accepted
-      manuscript) and Martin, Peters and Wilkinson (1966), the last two supplied by Isaia. Not
-      obtained: the books of Higham and of Wilkinson. To do: read each routine against its source and implement it as
-      stated there, or remove it; the Double64 and MultiFloat variants in `ext/` follow.
+    - **The eight `refine_*` routines, read against their sources and replaced on 2026-10-11**
+      (`0237069`, `2ea0e74`, as Isaia decided). Four had a source whose algorithm starts from
+      the matrix, while the code ran it from an approximate factor (and `refine_polar_qdwh` had
+      two wrong formulas besides); they are now `polar_newton` (Algorithm Polar of Higham
+      1986), `polar_newton_schulz` ((8.20) of Higham 2008), `polar_qdwh` (the QDWH algorithm of
+      Nakatsukasa, Bai and Gygi 2010) and `cholesky_qr2` (Yamamoto et al. 2015), in
+      `src/decompositions/polar_iterations.jl`; they are floating-point algorithms with no
+      error bound and say so. Four had no source for what they did (`refine_lu`,
+      `refine_cholesky`, `refine_qr_mgs`, `refine_takagi`) and are removed, with the result
+      types and the Double64 and MultiFloat variants of all eight in `ext/`; the verified
+      routines of Rump and Ogita cover those decompositions. The citations of the old file had
+      a wrong journal, a wrong year and two DOIs of other papers. Not obtained: Wilkinson,
+      *Rounding Errors in Algebraic Processes*, which nothing cites any more.
     - **No source found yet:** `verified_linear_solve_hmatrix` (cites Minamihata 2015, not in
       the library), `krawczyk_sylvester` (a stub; the Sylvester enclosures are now those of Miyajima 2013),
       `gev_invariant_subspaces`.
