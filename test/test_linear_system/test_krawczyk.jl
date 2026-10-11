@@ -1,5 +1,6 @@
 using Test
 using LinearAlgebra
+using Random
 using BallArithmetic
 
 @testset "Krawczyk Linear System" begin
@@ -60,21 +61,28 @@ using BallArithmetic
         end
     end
 
-    @testset "Custom preconditioner" begin
-        A_mid = [3.0 1.0; 1.0 2.0]
-        b_mid = [5.0, 4.0]
-
-        A = BallMatrix(A_mid, fill(1e-15, 2, 2))
-        b = BallVector(b_mid, fill(1e-15, 2))
-
-        # Use exact inverse as preconditioner
-        R = inv(A_mid)
-        x_approx = R * b_mid
-
-        result = krawczyk_linear_system(A, b; R=R, x_approx=x_approx)
-
-        @test result.verified
-        @test result.iterations <= 2  # Should converge quickly with good preconditioner
+    @testset "the enclosure holds for members of the two balls" begin
+        # 3x = 1 with exact data: the solution 1/3 is not a float, so the radius is positive
+        r = krawczyk_linear_system(BallMatrix(fill(3.0, 1, 1)), BallVector([1.0]))
+        @test r.verified
+        @test rad(r.solution)[1] > 0
+        @test abs(big(1) / 3 - mid(r.solution)[1]) <= rad(r.solution)[1]
+        rng = MersenneTwister(20261011)
+        for n in (3, 8), ρ in (0.0, 1e-8, 1e-4)
+            Am, bm = randn(rng, n, n) + n * I, randn(rng, n)
+            r = krawczyk_linear_system(BallMatrix(Am, fill(ρ, n, n)), BallVector(bm, fill(ρ, n)))
+            @test r.verified
+            for _ in 1:10
+                Ap = Am + ρ * (2 * rand(rng, n, n) .- 1)
+                bp = bm + ρ * (2 * rand(rng, n) .- 1)
+                x = setprecision(() -> big.(Ap) \ big.(bp), BigFloat, 512)
+                @test all(abs.(x - mid(r.solution)) .<= rad(r.solution))
+                @test r.residual_norm >= norm(Ap * mid(r.solution) - bp) * (1 - 1e-10)
+            end
+        end
+        # a singular midpoint: not verified
+        s = krawczyk_linear_system(BallMatrix([1.0 1.0; 1.0 1.0]), BallVector([1.0, 2.0]))
+        @test !s.verified
     end
 
     @testset "Moderately ill-conditioned" begin
@@ -166,7 +174,7 @@ end
         A = BallMatrix(A_mid, fill(1e-15, 2, 2))
         b = BallVector(b_mid, fill(1e-15, 2))
 
-        result = krawczyk_linear_system(A, b; expansion_factor=1.5, max_iterations=20)
+        result = krawczyk_linear_system(A, b; max_iterations=20)
 
         @test result.verified
         @test result.iterations >= 1

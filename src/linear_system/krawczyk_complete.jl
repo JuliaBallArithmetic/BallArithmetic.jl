@@ -33,149 +33,46 @@ struct KrawczykResult{T, VT}
 end
 
 """
-    krawczyk_linear_system(A::BallMatrix{T}, b::BallVector{T};
-                           R=nothing,
-                           x_approx=nothing,
-                           max_iterations=10,
-                           expansion_factor=2.0) where {T}
+    krawczyk_linear_system(A::BallMatrix, b::BallVector; max_iterations = 20) -> KrawczykResult
 
-Compute verified enclosure of solution to Ax = b using Krawczyk operator.
+A verified enclosure of the solution of `A x = b`, for every matrix of the ball `A` and every
+vector of the ball `b`: [`verifylss`](@ref), which is Algorithm 10.7 of Rump (2010), with its
+result in the fields of a [`KrawczykResult`](@ref).
 
-# Krawczyk Operator
-For linear system Ax = b with approximate solution x̃ and preconditioner R ≈ A^(-1):
+With `R` a floating-point inverse of the midpoint of `A` and `x̃ = R mid(b)`, the algorithm
+iterates `X ← Z + C·Y`, `Z ∋ R(b − Ax̃)`, `C ∋ I − RA`, `Y` an inflation of `X`, all in ball
+arithmetic, and stops when `X` is in the interior of `Y`; then `A` and `R` are nonsingular and
+the solution is in `x̃ + X` (Theorem 10.8 there). This is the iteration of Krawczyk (1969) for a
+linear system with the inflation of Rump.
 
-    K(X) = x̃ - R(Ax̃ - b) + (I - RA)*(X - x̃)
+`verified` is the success of that test. `iterations` is the number of iterations,
+`contraction_factor` an upper bound of `‖I − RA‖₂` (a diagnostic: the test may succeed when it
+is not below one), `residual_norm` an upper bound of `‖A x̂ − b‖₂` over the two balls for `x̂` the
+midpoint of the returned enclosure. When `verified` is false the enclosure proves nothing.
 
-If K(X) ⊆ X (interior inclusion), then:
-- There exists a unique solution x* ∈ X
-- The solution is verified rigorously
+The preconditioner and the approximate solution are those of the algorithm; the keywords `R`,
+`x_approx` and `expansion_factor` of earlier versions are gone with the code that used them,
+which formed `I − RA` in floating point and left the residual out of the inclusion test.
 
-# Algorithm
-1. Compute approximate solution x̃ = R*b
-2. Compute midpoint of Krawczyk operator: m = x̃ - R(Ax̃ - b)
-3. Compute interval matrix E = I - RA
-4. Evaluate K([m-δ, m+δ]) for suitable radius δ
-5. Check if K(X) ⊆ X (verification condition)
-6. If not, expand δ and retry
+# References
 
-# Arguments
-- `A`: Coefficient ball matrix
-- `b`: Right-hand side ball vector
-- `R`: Preconditioner (approximate inverse), computed if not provided
-- `x_approx`: Approximate solution, computed if not provided
-- `max_iterations`: Maximum refinement iterations
-- `expansion_factor`: Factor to expand search interval if needed
+S. M. Rump, *Verification methods: rigorous results using floating-point arithmetic*, Acta
+Numerica **19** (2010), 287-449, doi 10.1017/S096249291000005X, Algorithm 10.7 and Theorem 10.8.
 
-# Returns
-`KrawczykResult` containing verified solution enclosure
-
-# Example
-```julia
-A = BallMatrix([3.0 1.0; 1.0 2.0], fill(1e-10, 2, 2))
-b = BallVector([5.0, 4.0], fill(1e-10, 2))
-
-result = krawczyk_linear_system(A, b)
-
-if result.verified
-    println("Solution verified: ", result.solution)
-    println("Contraction: ", result.contraction_factor)
-end
-```
-
-# Notes
-- Krawczyk provides tighter bounds than many other methods
-- Requires well-conditioned preconditioner R
-- Quadratic convergence near solution
-- Fails gracefully if verification not possible
+R. Krawczyk, *Newton-Algorithmen zur Bestimmung von Nullstellen mit Fehlerschranken*, Computing
+**4** (1969), 187-201, doi 10.1007/BF02234767.
 """
 function krawczyk_linear_system(A::BallMatrix{T}, b::BallVector{T};
-                                R::Union{Nothing, Matrix{T}}=nothing,
-                                x_approx::Union{Nothing, Vector{T}}=nothing,
-                                max_iterations::Int=10,
-                                expansion_factor::T=T(2.0)) where {T}
-    n = size(A, 1)
-
-    # Compute preconditioner if not provided
-    if R === nothing
-        R = inv(mid(A))
+        max_iterations::Integer = 20) where {T}
+    sol = verifylss(A, b; iter_max = max_iterations)
+    x = sol.solution
+    res = A * BallMatrix(reshape(mid(x), :, 1)) - BallMatrix(reshape(mid(b), :, 1), reshape(rad(b), :, 1))
+    acc = zero(T)
+    for (m, ρ) in zip(mid(res), rad(res))
+        a = add_up(abs_up(m), ρ)
+        acc = add_up(acc, mul_up(a, a))
     end
-
-    # Compute approximate solution if not provided
-    if x_approx === nothing
-        x_approx = R * mid(b)
-    end
-
-    # Step 1: Compute midpoint of Krawczyk operator
-    # m = x̃ - R(Ax̃ - b)
-    residual_vec = mid(A) * x_approx - mid(b)
-    m = x_approx - R * residual_vec
-
-    residual_norm = norm(residual_vec)
-
-    # Step 2: Compute interval matrix E = I - RA
-    # This requires interval arithmetic
-    RA_mid = R * mid(A)
-    RA_rad = abs.(R) * rad(A)
-    E_mid = I - RA_mid
-    E_rad = RA_rad
-
-    # Compute rigorous upper bound on ‖E‖∞
-    # Use upper_bound_L_inf_opnorm for the interval matrix
-    E_ball = BallMatrix(E_mid, E_rad)
-    E_norm = upper_bound_L_inf_opnorm(E_ball)
-
-    # Check if contraction condition holds
-    if E_norm >= 1
-        @warn "Krawczyk: E norm >= 1, may not converge (‖E‖ = $E_norm)"
-        return KrawczykResult(
-            BallVector(x_approx, fill(T(Inf), n)),
-            false, 0, residual_norm, E_norm
-        )
-    end
-
-    # Step 3: Iteratively find verified enclosure
-    # Start with initial radius based on residual
-    δ = abs.(R * (residual_vec + rad(A) * abs.(x_approx) + rad(b)))
-
-    for iter in 1:max_iterations
-        # Evaluate K([m-δ, m+δ])
-        # K(X) = m + E*(X - m) where X = [m-δ, m+δ]
-        # K(X) = m + E*[-δ, +δ]
-
-        # Compute E * [-δ, +δ] with interval arithmetic
-        # Result: [-(|E_mid| + E_rad)*δ, +(|E_mid| + E_rad)*δ]
-        E_total = abs.(E_mid) + E_rad
-        K_rad = E_total * δ
-
-        # K(X) = [m - K_rad, m + K_rad]
-        # Check if K(X) ⊆ [m - δ, m + δ]
-        # This means: K_rad ≤ δ (componentwise)
-
-        if all(K_rad .<= δ)
-            # Verification successful!
-            # The solution is in [m - δ, m + δ]
-            solution = BallVector(m, δ)
-
-            return KrawczykResult(
-                solution, true, iter, residual_norm, E_norm
-            )
-        end
-
-        # Expand search interval
-        δ = δ * expansion_factor
-
-        # Check if we're diverging
-        if any(δ .> 1e10 * abs.(m))
-            @warn "Krawczyk: Search interval too large, stopping"
-            break
-        end
-    end
-
-    # Verification failed
-    return KrawczykResult(
-        BallVector(m, δ),
-        false, max_iterations, residual_norm, E_norm
-    )
+    return KrawczykResult(x, sol.certified, sol.iterations, sqrt_up(acc), sol.spectral_radius_bound)
 end
 
 """
