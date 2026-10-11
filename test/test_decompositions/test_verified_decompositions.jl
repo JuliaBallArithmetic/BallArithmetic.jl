@@ -492,7 +492,7 @@ end
             D = Diagonal(ComplexF64.([2.0, 3.0im, -1.0+1.0im]))
             A = Matrix(D)
 
-            result = verified_takagi(A; method=:real_compound)
+            result = verified_takagi(A)
 
             @test result.success
 
