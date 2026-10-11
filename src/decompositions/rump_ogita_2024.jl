@@ -85,98 +85,227 @@ function _rumpogita2024_alg3_2(E::BallMatrix{T}) where {T}
     return (; LE, UE, LinvE, UinvE)
 end
 
-"""
-    _rumpogita2024_sec3_2(A::BallMatrix) -> (; L, U, p) or nothing
+# I + F ∋ X Y − I restricted to the triangle the product of two triangular matrices has, enclosed
+# in two-fold precision, and Algorithm 3.2 on it: for X ≈ Y⁻¹ both triangular of the same kind,
+# X Y = I + F proves X and Y nonsingular and gives X⁻¹ = Y (I + F)⁻¹, Y⁻¹ = (I + F)⁻¹ X.
+function _rumpogita2024_triangular_defect(X::Matrix{S}, Y::Matrix{S}, uplo::Symbol) where {S}
+    T = real(S)
+    n = size(X, 1)
+    Id = Matrix{T}(I, n, n)
+    Fb = _accurate_product_sum(((X, Y, one(T)), (Id, Id, -one(T))))
+    Fm, Fr = copy(mid(Fb)), copy(rad(Fb))
+    for j in 1:n, i in 1:n
+        if (uplo === :U && i > j) || (uplo === :L && i < j)
+            Fm[i, j] = zero(S)
+            Fr[i, j] = zero(T)
+        end
+    end
+    return _rumpogita2024_alg3_2(BallMatrix(Fm, Fr))
+end
 
-Section 3.2 of Rump and Ogita (2024): inclusions of the factors of the LU decomposition of a
-square matrix. For every matrix `Ã` of the ball `A`, the row permutation `Ã[p, :]` has a unique
-decomposition `LU`, `L` unit lower triangular and `U` upper triangular, with `L` in the ball
-matrix `L` and `U` in the ball matrix `U` returned. `p` is the permutation of a floating-point
-decomposition with partial pivoting of the midpoint. Returns `nothing` when the verification
-fails; nothing is then proved.
+# exact zeros and ones where the factor has them
+function _triangular_ball(B::BallMatrix{T}, uplo::Symbol; unit::Bool = false) where {T}
+    Bm, Br = copy(mid(B)), copy(rad(B))
+    for j in axes(Bm, 2), i in axes(Bm, 1)
+        if (uplo === :U && i > j) || (uplo === :L && i < j)
+            Bm[i, j] = zero(eltype(Bm))
+            Br[i, j] = zero(T)
+        elseif unit && i == j
+            Bm[i, j] = one(eltype(Bm))
+            Br[i, j] = zero(T)
+        end
+    end
+    return BallMatrix(Bm, Br)
+end
+
+"""
+    _rumpogita2024_lu(A::BallMatrix) -> (; L, U, p, q) or nothing
+
+Section 3 of Rump and Ogita (2024): inclusions of the factors of the LU decomposition of an
+`m × n` matrix. For every matrix `Ã` of the ball `A`, the permuted matrix `Ã[p, q]` has a unique
+decomposition `LU` with `L` of size `m × min(m, n)` unit lower triangular (trapezoidal) and `U`
+of size `min(m, n) × n` upper triangular (trapezoidal), `L` and `U` in the ball matrices
+returned. Returns `nothing` when the verification fails; nothing is then proved.
+
+`p` is the row permutation of a floating-point decomposition with partial pivoting. `q` is the
+identity for `m ≥ n`; for `m < n` it is the column permutation of a decomposition with partial
+pivoting of the transpose, as in Section 3.4, after which the left square block has a
+decomposition.
 
 # The method
 
-`L̃`, `Ũ` are the floating-point factors of `mid(A)[p, :]`, `X_L ≈ L̃⁻¹` unit lower triangular and
-`X_U ≈ Ũ⁻¹` upper triangular (a right inverse, `I/Ũ`). The matrix
+With `p = min(m, n)`, `B` the leading `p × p` block of `Ã[p, q]`, `L̃`, `Ũ` its floating-point
+factors, `X_L ≈ L̃⁻¹` unit lower and `X_U ≈ Ũ⁻¹` upper triangular,
 
-    I_E := X_L Ã[p, :] X_U
+    I_E := X_L B X_U = L_E U_E
 
-is a perturbed identity; it is enclosed with both products in two-fold precision, the first one
-kept as an unevaluated sum of two terms. Algorithm 3.2 gives its factors, `I_E = L_E U_E`, and by
-uniqueness of the decomposition, (3.8) of the paper,
+is a perturbed identity, enclosed with the product `B X_U` kept as an unevaluated sum of two
+terms and the second product in two-fold precision; Algorithm 3.2 encloses `L_E`, `U_E` and their
+inverses. Then, by uniqueness of the decomposition,
 
-    L = Ã[p, :] X_U U_E⁻¹,        U = U_E X_U⁻¹.
+- for `m ≥ n`, (3.8) and (3.9): `U = U_E X_U⁻¹` and `L = Ã[p, :] X_U U_E⁻¹`, the latter from the
+  two-term product of the whole matrix with `X_U`;
+- for `m < n`, (3.10): `L = X_L⁻¹ L_E` and `U = L_E⁻¹ X_L Ã[p, q]`, with `X_L Ã[p, q]` kept in
+  two terms.
 
-`L` is computed from the two-term product `Ã[p, :] X_U` and the inclusion of `U_E⁻¹`. For
-`X_U⁻¹`, which the paper leaves to the implementation, `X_U Ũ = I + F` is enclosed in two-fold
-precision, `F` upper triangular, so that `X_U⁻¹ = Ũ(I + F)⁻¹` with `(I + F)⁻¹` enclosed by
-Algorithm 3.2 again; this also proves `X_U` nonsingular. The entries of `L` above the diagonal
-and of `U` below it are exact zeros and the diagonal of `L` exact ones, as for the factors.
+These are the methods the paper finds best in each case (the blue curves of its Figures 3, 5
+and 7), at `O(max(m, n) min(m, n)²)` operations. The inverses `X_U⁻¹` and `X_L⁻¹`, which the
+paper leaves to the implementation, are enclosed through `X_U Ũ = I + F`, respectively
+`X_L L̃ = I + F`, in two-fold precision and Algorithm 3.2 for `(I + F)⁻¹`, which also proves
+`X_U` and `X_L` nonsingular. The entries that are zero or one in the factors are exact.
 
 # Reference
 
 S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
-Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 3.2.
+Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Sections 3.2, 3.3 and 3.4.
 """
-function _rumpogita2024_sec3_2(A::BallMatrix{T}) where {T}
-    n = size(A, 1)
-    n == size(A, 2) || throw(ArgumentError("_rumpogita2024_sec3_2: A must be square"))
-    Am = Matrix(mid(A))
-    S = eltype(Am)
-    F = try
-        lu(Am)
+function _rumpogita2024_lu(A::BallMatrix{T}) where {T}
+    m, n = size(A)
+    k = min(m, n)
+    Am0 = Matrix(mid(A))
+    S = eltype(Am0)
+    # the permutations, from floating-point decompositions with partial pivoting
+    q = collect(1:n)
+    Fl = try
+        if m < n
+            q = Vector{Int}(lu(permutedims(Am0)).p)
+        end
+        lu(Am0[:, q])
     catch err
         err isa SingularException || rethrow()
         return nothing
     end
-    p = Vector{Int}(F.p)
-    Lt, Ut = Matrix{S}(F.L), Matrix{S}(F.U)
-    all(!iszero, diag(Ut)) || return nothing
+    p = Vector{Int}(Fl.p)
+    Am, Ar = Am0[p, q], rad(A)[p, q]
+    # the floating-point factors of the leading square block
+    Fs = try
+        lu(Am[1:k, 1:k], NoPivot())
+    catch err
+        err isa Union{SingularException, ZeroPivotException} || rethrow()
+        return nothing
+    end
+    Lt, Ut = Matrix{S}(Fs.L), Matrix{S}(Fs.U)
+    (all(isfinite, Lt) && all(isfinite, Ut) && all(!iszero, diag(Ut))) || return nothing
     XL = Matrix{S}(inv(UnitLowerTriangular(Lt)))
     XU = Matrix{S}(I / UpperTriangular(Ut))
     (all(isfinite, XL) && all(isfinite, XU)) || return nothing
-    Id = Matrix{T}(I, n, n)
+    Id = Matrix{T}(I, k, k)
     absXL, absXU = _modulus_up(XL), _modulus_up(XU)
+    up(f) = setrounding(f, T, RoundUp)
 
-    # P1 + P2 ± RP ∋ Ã[p, :] X_U
-    P1, P2, RP = _two_term_product_sum(((Am[p, :], XU, one(T)),))
-    RP = setrounding(T, RoundUp) do
-        RP .+ rad(A)[p, :] * absXU
+    if m >= n
+        # P1 + P2 ± RP ∋ Ã[p, :] X_U, m × n; its leading block enters I_E
+        P1, P2, RP = _two_term_product_sum(((Am, XU, one(T)),))
+        RP = up(() -> RP .+ Ar * absXU)
+        Eb = _accurate_product_sum(((XL, P1[1:k, :], one(T)), (XL, P2[1:k, :], one(T)),
+            (Id, Id, -one(T))))
+        E = BallMatrix(mid(Eb), up(() -> rad(Eb) .+ absXL * RP[1:k, :]))
+        fE = _rumpogita2024_alg3_2(E)
+        fE === nothing && return nothing
+        # L = (Ã[p, :] X_U)(I + UinvE)
+        Pb = BallMatrix(P1) + BallMatrix(P2, RP)
+        L = _triangular_ball(Pb + Pb * fE.UinvE, :L; unit = true)
+        # U = (I + UE) Ũ (I + F)⁻¹, with X_U Ũ = I + F
+        fF = _rumpogita2024_triangular_defect(XU, Ut, :U)
+        fF === nothing && return nothing
+        Utb = BallMatrix(Ut)
+        W = Utb + fE.UE * Utb
+        U = _triangular_ball(W + W * fF.UinvE, :U)
+        return (; L, U, p, q)
+    else
+        # Q1 + Q2 ± RQ ∋ X_L Ã[p, q], m × n; C1 + C2 ± RC ∋ B X_U for I_E
+        C1, C2, RC = _two_term_product_sum(((Am[:, 1:k], XU, one(T)),))
+        RC = up(() -> RC .+ Ar[:, 1:k] * absXU)
+        Eb = _accurate_product_sum(((XL, C1, one(T)), (XL, C2, one(T)), (Id, Id, -one(T))))
+        E = BallMatrix(mid(Eb), up(() -> rad(Eb) .+ absXL * RC))
+        fE = _rumpogita2024_alg3_2(E)
+        fE === nothing && return nothing
+        # L = L̃ (I + F)⁻¹ (I + LE), with X_L L̃ = I + F
+        fF = _rumpogita2024_triangular_defect(XL, Lt, :L)
+        fF === nothing && return nothing
+        Ltb = BallMatrix(Lt)
+        W = Ltb + Ltb * fF.LinvE
+        L = _triangular_ball(W + W * fE.LE, :L; unit = true)
+        # U = (I + LinvE)(X_L Ã[p, q])
+        Q1, Q2, RQ = _two_term_product_sum(((XL, Am, one(T)),))
+        RQ = up(() -> RQ .+ absXL * Ar)
+        Qb = BallMatrix(Q1) + BallMatrix(Q2, RQ)
+        U = _triangular_ball(Qb + fE.LinvE * Qb, :U)
+        return (; L, U, p, q)
     end
-    # E ∋ X_L (Ã[p, :] X_U) − I
-    Eb = _accurate_product_sum(((XL, P1, one(T)), (XL, P2, one(T)), (Id, Id, -one(T))))
+end
+
+"""
+    _rumpogita2024_cholesky(A::BallMatrix) -> (; G) or nothing
+
+Section 4 of Rump and Ogita (2024): an inclusion of the Cholesky factor. For every Hermitian
+matrix `Ã` of the ball `A`, `Ã` is proved positive definite and its Cholesky factor, the upper
+triangular `G` with positive diagonal and `G*G = Ã`, lies in the ball matrix `G` returned.
+Positive definiteness is a conclusion and not an assumption. Returns `nothing` when the
+verification fails. The midpoint of `A` must be Hermitian and its radii symmetric.
+
+# The method
+
+`G̃` is a floating-point Cholesky factor of the midpoint and `X_G ≈ G̃⁻¹`, upper triangular.
+`I_E := X_G* Ã X_G` is a perturbed identity, enclosed with `Ã X_G` kept as an unevaluated sum of
+two terms; Algorithm 3.2 encloses its factors, `I_E = L_E U_E`. `I_E` being Hermitian,
+`U_E = D L_E*` with `D` the diagonal of `U_E`, which is real; when `D > 0` is proved,
+`G_E = D^{1/2} L_E*` is the Cholesky factor of `I_E`, and by uniqueness, (4.1) of the paper,
+
+    G = G_E X_G⁻¹ = D^{1/2} L_E* X_G⁻¹.
+
+`X_G⁻¹` is enclosed through `G̃ X_G = I + F` in two-fold precision and Algorithm 3.2 for
+`(I + F)⁻¹`, as in [`_rumpogita2024_lu`](@ref).
+
+# Reference
+
+S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
+Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 4.
+"""
+function _rumpogita2024_cholesky(A::BallMatrix{T}) where {T}
+    n = size(A, 1)
+    n == size(A, 2) || throw(ArgumentError("_rumpogita2024_cholesky: A must be square"))
+    Am, Ar = Matrix(mid(A)), rad(A)
+    (Am == Am' && Ar == transpose(Ar)) || throw(ArgumentError(
+        "_rumpogita2024_cholesky: the midpoint must be Hermitian and the radii symmetric"))
+    S = eltype(Am)
+    C = cholesky(Hermitian(Am); check = false)
+    issuccess(C) || return nothing
+    Gt = Matrix{S}(C.U)
+    XG = Matrix{S}(I / UpperTriangular(Gt))
+    all(isfinite, XG) || return nothing
+    Id = Matrix{T}(I, n, n)
+    absXG = _modulus_up(XG)
+    XGa = Matrix{S}(XG')
+    # C1 + C2 ± RC ∋ Ã X_G, then E ∋ X_G* (Ã X_G) − I
+    C1, C2, RC = _two_term_product_sum(((Am, XG, one(T)),))
+    RC = setrounding(T, RoundUp) do
+        RC .+ Ar * absXG
+    end
+    Eb = _accurate_product_sum(((XGa, C1, one(T)), (XGa, C2, one(T)), (Id, Id, -one(T))))
     E = BallMatrix(mid(Eb), setrounding(T, RoundUp) do
-        rad(Eb) .+ absXL * RP
+        rad(Eb) .+ transpose(absXG) * RC
     end)
     fE = _rumpogita2024_alg3_2(E)
     fE === nothing && return nothing
-
-    # L = (Ã[p, :] X_U)(I + UinvE)
-    Pb = BallMatrix(P1) + BallMatrix(P2, RP)
-    Lb = Pb + Pb * fE.UinvE
-    Lm, Lr = copy(mid(Lb)), copy(rad(Lb))
-    for j in 1:n, i in 1:j
-        Lm[i, j] = i == j ? one(S) : zero(S)
-        Lr[i, j] = zero(T)
+    # D = diag(U_E) = 1 + diag(UE), real; its square root as a ball, or failure
+    dm, dr = Vector{S}(undef, n), Vector{T}(undef, n)
+    for i in 1:n
+        b = Ball(one(T), zero(T)) + Ball(real(mid(fE.UE)[i, i]), rad(fE.UE)[i, i])
+        lo, hi = sub_down(mid(b), rad(b)), add_up(mid(b), rad(b))
+        lo > 0 || return nothing
+        slo, shi = sqrt_down(lo), sqrt_up(hi)
+        c = (slo + shi) / 2
+        dm[i] = c
+        dr[i] = max(sub_up(c, slo), sub_up(shi, c))
     end
-
-    # U = (I + UE) Ũ (I + F)⁻¹, with X_U Ũ = I + F
-    Fb = _accurate_product_sum(((XU, Ut, one(T)), (Id, Id, -one(T))))
-    Fm, Fr = copy(mid(Fb)), copy(rad(Fb))
-    for j in 1:n, i in (j + 1):n            # a product of upper triangular matrices
-        Fm[i, j] = zero(S)
-        Fr[i, j] = zero(T)
-    end
-    fF = _rumpogita2024_alg3_2(BallMatrix(Fm, Fr))
+    Dh = BallMatrix(Matrix{S}(Diagonal(dm)), Matrix{T}(Diagonal(dr)))
+    # G = D^{1/2} (I + LE)* (I + F)⁻¹ G̃, with G̃ X_G = I + F
+    fF = _rumpogita2024_triangular_defect(Gt, XG, :U)
     fF === nothing && return nothing
-    Utb = BallMatrix(Ut)
-    W = Utb + fE.UE * Utb
-    Ub = W + W * fF.UinvE
-    Um, Ur = copy(mid(Ub)), copy(rad(Ub))
-    for j in 1:n, i in (j + 1):n
-        Um[i, j] = zero(S)
-        Ur[i, j] = zero(T)
-    end
-    return (; L = BallMatrix(Lm, Lr), U = BallMatrix(Um, Ur), p)
+    Gtb = BallMatrix(Gt)
+    W = Gtb + fF.UinvE * Gtb
+    LEa = BallMatrix(Matrix{S}(mid(fE.LE)'), Matrix{T}(transpose(rad(fE.LE))))
+    G = _triangular_ball(Dh * (W + LEa * W), :U)
+    return (; G)
 end
