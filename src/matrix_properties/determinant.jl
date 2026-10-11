@@ -44,16 +44,17 @@ function det_hadamard(A::BallMatrix{T}) where {T}
     n == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
     mag = upper_abs(A)
     function norms_product(byrow::Bool)
-        d = one(T)
+        # not named d: the closure would share the variable of the enclosing function
+        p = one(T)
         for i in 1:n
             s = zero(T)
             for j in 1:n
                 m = byrow ? mag[i, j] : mag[j, i]
                 s = add_up(s, mul_up(m, m))
             end
-            d = mul_up(d, sqrt_up(s))
+            p = mul_up(p, sqrt_up(s))
         end
-        return d
+        return p
     end
     d = min(norms_product(false), norms_product(true))
     return DeterminantResult(Ball(zero(T), d), :hadamard)

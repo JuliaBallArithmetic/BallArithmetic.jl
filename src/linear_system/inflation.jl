@@ -282,12 +282,16 @@ S. M. Rump, *Verification methods: rigorous results using floating-point arithme
 Acta Numerica **19** (2010) 287-449, doi 10.1017/S096249291000005X. Algorithm 10.7 and
 Theorem 10.8; Rump attributes the algorithm to Rump (1980).
 """
-function verifylss(A::BallMatrix, b; method::Symbol = :rump2010, kwargs...)
+function verifylss(A::BallMatrix{T}, b::BallArray{T, N}; method::Symbol = :rump2010,
+        kwargs...) where {T, N}
     size(A, 1) == size(A, 2) ||
         throw(ArgumentError("verifylss expects a square matrix"))
     size(A, 2) == size(b, 1) ||
         throw(DimensionMismatch("verifylss: A has $(size(A, 2)) columns, b has $(size(b, 1)) rows"))
-    method === :rump2010 && return _rump2010_alg10_7(A, b; kwargs...)
+    # the type of the result, which the keyword arguments hide from the compiler
+    NT = promote_type(eltype(mid(A)), eltype(mid(b)))
+    VT = BallArray{T, N, NT, Ball{T, NT}, Array{NT, N}, Array{T, N}}
+    method === :rump2010 && return _rump2010_alg10_7(A, b; kwargs...)::VerifyLssResult{T, VT}
     throw(ArgumentError("verifylss: unknown method $(repr(method)); " *
                         "the implemented methods are :rump2010"))
 end

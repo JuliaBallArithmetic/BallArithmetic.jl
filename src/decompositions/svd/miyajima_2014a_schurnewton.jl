@@ -367,7 +367,9 @@ O(n³)) or `:svdbox` (one verified SVD of `W`).
 """
 function miyajima2014a_schurnewton(A::BallMatrix{T, NT}; sep::Real = -1,
         maxsteps::Integer = 6, kappa_mode::Symbol = :cheap,
-        refine::Symbol = :auto) where {T, NT}
+        refine::Symbol = :auto)::Miyajima2014aSchurNewtonResult{
+        Matrix{Complex{T}}, DenseBallMatrix{T, Complex{T}}, Ball{T, Complex{T}}, T,
+        Complex{T}} where {T, NT}
     return _miyajima2014a_schurnewton(A, nothing; sep, maxsteps, kappa_mode, refine)
 end
 
@@ -400,7 +402,9 @@ final certification.
 """
 function miyajima2014a_schurnewton(A::BallMatrix{T, NT}, B::BallMatrix; sep::Real = -1,
         maxsteps::Integer = 6, kappa_mode::Symbol = :cheap,
-        refine::Symbol = :auto) where {T, NT}
+        refine::Symbol = :auto)::Miyajima2014aSchurNewtonResult{
+        Matrix{Complex{T}}, DenseBallMatrix{T, Complex{T}}, Ball{T, Complex{T}}, T,
+        Complex{T}} where {T, NT}
     size(A) == size(B) ||
         throw(DimensionMismatch("A and B must have the same size"))
     return _miyajima2014a_schurnewton(A, B; sep, maxsteps, kappa_mode, refine)
