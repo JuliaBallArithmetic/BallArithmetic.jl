@@ -147,3 +147,115 @@ end
         end
     end
 end
+
+# The deflating subspace of a set of eigenvalues, from a 512-bit eigendecomposition of B⁻¹A,
+# with the normalisation of Theorems 3.5 and 3.11: Vᵀ X̃⁻¹ X = I_k. `sel` are the positions of
+# the eigenvalues in the reference, `cl` the indices of the cluster.
+function _gev_reference_basis(F, Xt, sel, cl)
+    Z = F.vectors[:, sel]
+    C = Complex{BigFloat}.(Xt) \ Z
+    return Z / C[cl, :]
+end
+
+@testset "the pencil: discs, deflating subspaces and blocks against a 512-bit reference" begin
+    setprecision(BigFloat, 512) do
+        rng = MersenneTwister(707)
+        inside(s, λ) = abs(λ - Complex{BigFloat}(s.center)) <= BigFloat(s.radius)
+        # the result of verifyeigall read cluster by cluster; empty when the method fails
+        function clusters_of(A, B)
+            r = verifyeigall(A, B)
+            r.spectrum_covered || return NamedTuple[]
+            return [(indices = r.clusters[i], certified = r.certified[i], center = r.centers[i],
+                        radius = r.radii[i], basis = r.subspaces[i], block = r.blocks[i])
+                    for i in eachindex(r.clusters)]
+        end
+
+        # checks one result against the reference; returns the number of certified clusters
+        function check(Ac, Bc, subs)
+            n = size(Ac, 1)
+            F = eigen(Complex{BigFloat}.(Bc) \ Complex{BigFloat}.(Ac))
+            Xt = mid(verifyeigall(BallMatrix(Ac), BallMatrix(Bc)).similarity)
+            @test sort(reduce(vcat, [s.indices for s in subs])) == collect(1:n)
+            ncert = 0
+            for s in subs
+                k = length(s.indices)
+                @test size(s.basis) == (n, k)
+                @test size(s.block) == (k, k)
+                # the disc holds exactly k eigenvalues
+                sel = findall(λ -> inside(s, λ), F.values)
+                @test length(sel) == k
+                s.certified || continue
+                length(sel) == k || continue
+                ncert += 1
+                @test all(isfinite, rad(s.basis))
+                # the basis of the reference, in the normalisation of the theorems, is inside
+                Xref = _gev_reference_basis(F, Xt, sel, s.indices)
+                @test all(abs.(Xref .- Complex{BigFloat}.(mid(s.basis))) .<=
+                          BigFloat.(rad(s.basis)))
+                # and so is its block Λ, from A X = B X Λ
+                Λref = Xref \ (Complex{BigFloat}.(Bc) \ (Complex{BigFloat}.(Ac) * Xref))
+                @test all(abs.(Λref .- Complex{BigFloat}.(mid(s.block))) .<=
+                          BigFloat.(rad(s.block)))
+            end
+            return ncert
+        end
+
+        @testset "isolated eigenvalues (Theorem 3.5)" begin
+            for _ in 1:6
+                n = rand(rng, 3:8)
+                Ac = randn(rng, n, n)
+                Bc = randn(rng, n, n) + n * I
+                subs = clusters_of(BallMatrix(Ac), BallMatrix(Bc))
+                @test !isempty(subs)
+                @test check(Ac, Bc, subs) > 0
+            end
+        end
+
+        @testset "clusters (Theorem 3.11, Algorithm 2)" begin
+            nclustered = 0
+            for k in (2, 3), _ in 1:3
+                n = 9
+                d = repeat(randn(rng, 3), inner = k)
+                d = vcat(d, randn(rng, n - length(d)))
+                M = triu(randn(rng, n, n) .* 1e-6, 1) + Diagonal(d)
+                Q = Matrix(qr(randn(rng, n, n)).Q)
+                Bc = randn(rng, n, n) + n * I
+                Ac = Bc * (Q * M * Q')
+                subs = clusters_of(BallMatrix(Ac), BallMatrix(Bc))
+                @test !isempty(subs)
+                check(Ac, Bc, subs)
+                nclustered += count(s -> s.certified && length(s.indices) > 1, subs)
+            end
+            @test nclustered > 0          # Algorithm 2 enclosed at least one subspace
+        end
+
+        @testset "B neither symmetric nor definite" begin
+            Ac = [4.0 1.0 0.0; -2.0 3.0 1.0; 0.0 1.0 5.0]
+            Bc = [2.0 0.5 0.0; -0.3 2.0 0.4; 0.0 0.1 3.0]
+            subs = clusters_of(BallMatrix(Ac), BallMatrix(Bc))
+            @test check(Ac, Bc, subs) == 3
+        end
+
+        @testset "data with radii" begin
+            Ac = [4.0 1.0 0.0; -2.0 3.0 1.0; 0.0 1.0 5.0]
+            Bc = [2.0 0.5 0.0; -0.3 2.0 0.4; 0.0 0.1 3.0]
+            ρ = 1e-9
+            subs = clusters_of(BallMatrix(Ac, fill(ρ, 3, 3)),
+                BallMatrix(Bc, fill(ρ, 3, 3)))
+            @test length(subs) == 3
+            # every vertex pencil tried has its eigenvalues in the discs
+            for _ in 1:8
+                Av = Ac .+ ρ .* rand(rng, (-1, 1), 3, 3)
+                Bv = Bc .+ ρ .* rand(rng, (-1, 1), 3, 3)
+                for λ in eigvals(Complex{BigFloat}.(Bv) \ Complex{BigFloat}.(Av))
+                    @test count(s -> inside(s, λ), subs) == 1
+                end
+            end
+        end
+
+        @testset "failure and errors" begin
+            @test isempty(clusters_of(BallMatrix(Matrix(1.0I, 4, 4)),
+                BallMatrix(zeros(4, 4))))
+        end
+    end
+end

@@ -119,9 +119,9 @@ export SchurGershgorinResult, RigorousSVDResult, schur_gershgorin_enclosure, rig
 export PrecisionCascadeSVDResult, ogita_svd_cascade
 export svd_bigfloat, ogita_svd_cascade_gla
 export ogita_svd_refine_fast, ogita_svd_refine_hybrid
-include("eigenvalues/gev_invariant_subspaces.jl")
+# `gev_invariant_subspaces` was removed on 2026-10-12: the eigenvalues and deflating subspaces of a
+# pencil are enclosed by `verifyeigall(A, B)` (Algorithms 1 and 2 of Miyajima 2014).
 include("eigenvalues/block_schur.jl")
-export GEVInvariantSubspace, gev_invariant_subspaces
 export RigorousBlockSchurResult, rigorous_block_schur, extract_cluster_block,
        verify_block_schur_properties, estimate_block_separation
 include("eigenvalues/verified_gev.jl")

@@ -239,13 +239,11 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       Lange and Rump) is left to do.
     - **Removed on 2026-10-11:** `krawczyk_sylvester`, a stub that verified nothing; the
       verified routine is `sylvester_miyajima_enclosure`.
-    - **`gev_invariant_subspaces`, 2026-10-12.** Algorithms 1 and 2 of Miyajima (2014, SIAM
-      J. Matrix Anal. Appl. 35; `Miyajima2014a` in the library) were already in the package,
-      in `miyajima_2014a.jl` behind `verifyeigall(A, B)`; the routine now returns their result
-      cluster by cluster (disc, enclosure of a basis of the deflating subspace, enclosure of
-      its block) in place of columns of the Schur-Newton basis with a residual. What was
-      missing was a test that the enclosed basis contains the true one for a pencil; it is in
-      `test_miyajima_gev_enclosure.jl`, against a 512-bit eigendecomposition.
+    - **`gev_invariant_subspaces`, removed on 2026-10-12.** Algorithms 1 and 2 of Miyajima
+      (2014, SIAM J. Matrix Anal. Appl. 35; `Miyajima2014a` in the library) were already in
+      the package, in `miyajima_2014a.jl` behind `verifyeigall(A, B)`, which is the one entry
+      point. Added: a test that the enclosed basis and block contain those of a 512-bit
+      eigendecomposition of a pencil, in `test_miyajima_2014a.jl`.
 13. Step 5: citations and `docs/src/refs.bib`.
 14. `setrounding` blocks that remain: BigFloat `upper_bound_L1_opnorm` and
     `upper_bound_L_inf_opnorm`, `block_enclosure`, `_vbd_block_data`, and those inside
