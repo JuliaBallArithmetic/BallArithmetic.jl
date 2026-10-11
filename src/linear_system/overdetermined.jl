@@ -1,449 +1,282 @@
-"""
-    overdetermined.jl
+# Enclosures of the solution set of an overdetermined interval linear system A x = b, A of size
+# m × n with m > n, after
+#
+#   J. Horáček, Interval linear and nonlinear systems, doctoral thesis, Charles University,
+#   Prague, 2019, Chapter 6: the least squares approach (Section 6.2), the simple subsquares
+#   algorithm (Algorithm 6.12), the selection of subsquares (Algorithm 6.14) and the multi-Jacobi
+#   method (Section 6.8.3).
+#
+# Not implemented from that chapter: the preconditioners of Section 6.3, Gaussian elimination
+# for an overdetermined system (6.4), Rohn's method (6.6).
+#
+# The solution set is Σ = {x : A x = b for some A ∈ A, b ∈ b}; it may be empty. The systems are
+# real.
 
-Methods for overdetermined interval linear systems (m > n).
-Implements subsquares, multi-Jacobi, and least squares approaches.
-
-# References
-- Horáček, J. (2012), "Interval linear and nonlinear systems", PhD thesis, Chapters 6
-- Neumaier, A. (1990), "Interval Methods for Systems of Equations"
-- Rohn, J. (2006), "Solvability of systems of interval linear equations and inequalities"
-"""
-
-using LinearAlgebra
 using Combinatorics
 
 """
-    OverdeterminedResult{T, VT}
+    OverdeterminedResult{VT}
 
-Result from overdetermined interval linear system solver.
+Result of the routines for overdetermined interval systems.
 
 # Fields
-- `solution::VT`: Solution enclosure (or empty if unsolvable)
-- `solvable::Bool`: Whether system is proven solvable
-- `method::Symbol`: Method used
-- `subsystems_checked::Int`: Number of subsystems examined
-- `residual::T`: Maximum residual norm
+- `solution`: a box containing the solution set (for [`interval_least_squares`](@ref), the set
+  of least squares solutions) when `success` is `true`; infinite radii otherwise
+- `success`: whether a finite enclosure was obtained
+- `unsolvable`: `true` when the solution set is proved empty, by an empty intersection of
+  enclosures; `solution` is then meaningless
+- `method`: the method used
+- `subsystems_checked`: number of square subsystems for which an enclosure was obtained
 """
-struct OverdeterminedResult{T, VT}
-    """Solution enclosure."""
+struct OverdeterminedResult{VT}
     solution::VT
-    """Whether system is solvable."""
-    solvable::Bool
-    """Method used."""
+    success::Bool
+    unsolvable::Bool
     method::Symbol
-    """Subsystems checked."""
     subsystems_checked::Int
-    """Maximum residual."""
-    residual::T
 end
 
-"""
-    subsquares_method(A::BallMatrix{T}, b::BallVector{T};
-                     max_subsystems::Int=1000,
-                     solver::Symbol=:gaussian_elimination) where {T}
-
-Solve overdetermined system Ax = b using subsquares approach.
-
-# Algorithm
-For m×n system with m > n:
-1. Consider all (m choose n) square subsystems
-2. Solve each n×n subsystem
-3. Check if solution satisfies all m equations (Oettli-Prager)
-4. Take hull of all valid solutions
-
-# Mathematical Background
-A solution exists if at least one n×n subsystem has a solution
-that satisfies all m equations.
-
-# Arguments
-- `A`: Coefficient ball matrix (m×n, m > n)
-- `b`: Right-hand side ball vector (m)
-- `max_subsystems`: Maximum number of subsystems to check
-- `solver`: Solver for square subsystems (`:gaussian_elimination`, `:krawczyk`)
-
-# Returns
-`OverdeterminedResult` with solution enclosure.
-
-# Example
-```julia
-A = BallMatrix([2.0 1.0; 1.0 2.0; 3.0 1.0], fill(0.1, 3, 2))
-b = BallVector([3.0, 3.0, 4.0], fill(0.1, 3))
-
-result = subsquares_method(A, b)
-
-if result.solvable
-    println("Solution: ", result.solution)
-    println("Checked ", result.subsystems_checked, " subsystems")
-end
-```
-
-# Notes
-- Combinatorial complexity: O(C(m,n) × n³)
-- Only practical for small m and n
-- Guaranteed to find solution if one exists (complete method)
-- May be very slow for large m or n
-- Recommended: m ≤ 20, n ≤ 10
-"""
-function subsquares_method(A::BallMatrix{T}, b::BallVector{T};
-                          max_subsystems::Int=1000,
-                          solver::Symbol=:gaussian_elimination) where {T}
+function _require_overdetermined(A::BallMatrix, b::BallVector, name)
     m, n = size(A)
+    m > n || throw(DimensionMismatch("$name needs more equations than unknowns, got $m × $n"))
+    length(b) == m || throw(DimensionMismatch("$name: b must have length $m"))
+    (eltype(mid(A)) <: Real && eltype(mid(b)) <: Real) ||
+        throw(ArgumentError("$name is for real interval systems"))
+    return m, n
+end
 
-    if m <= n
-        error("Subsquares method requires m > n (overdetermined system)")
-    end
+_no_enclosure(::Type{T}, n, method, checked) where {T} = OverdeterminedResult(
+    BallVector(zeros(T, n), fill(T(Inf), n)), false, false, method, checked)
 
-    # Number of possible subsystems
-    num_subsystems = binomial(m, n)
-
-    if num_subsystems > max_subsystems
-        @warn "System has $num_subsystems subsystems, limiting to $max_subsystems"
-    end
-
-    # Generate all combinations of n rows from m
-    row_combinations = collect(combinations(1:m, n))
-
-    if length(row_combinations) > max_subsystems
-        # Sample randomly
-        row_combinations = row_combinations[1:max_subsystems]
-    end
-
-    # Track solutions
-    valid_solutions = BallVector{T}[]
-    subsystems_checked = 0
-
-    for rows in row_combinations
-        subsystems_checked += 1
-
-        # Extract subsystem
-        A_sub = A[rows, :]
-        b_sub = b[rows]
-
-        # Solve subsystem
-        x_sub = try
-            if solver == :gaussian_elimination
-                result_ge = interval_gaussian_elimination(A_sub, b_sub)
-                if result_ge.success
-                    result_ge.solution
-                else
-                    nothing
-                end
-            elseif solver == :krawczyk
-                result_k = krawczyk_linear_system(A_sub, b_sub)
-                if result_k.verified
-                    result_k.solution
-                else
-                    nothing
-                end
-            else
-                error("Unknown solver: $solver")
-            end
-        catch e
-            # Subsystem failed to solve
-            nothing
+# an enclosure of the solution set of a square interval system by a method of Chapter 5, or
+# nothing where the method gives none
+function _square_enclosure(A::BallMatrix{T}, b::BallVector{T}, solver::Symbol) where {T}
+    x = try
+        if solver == :hbr
+            r = hbr_method(A, b)
+            r.success ? r.solution : nothing
+        elseif solver == :verifylss
+            r = verifylss(A, b)
+            r.certified ? r.solution : nothing
+        elseif solver == :gaussian_elimination
+            r = interval_gaussian_elimination(A, b)
+            r.success ? r.solution : nothing
+        else
+            throw(ArgumentError("unknown solver $solver"))
         end
-
-        if x_sub === nothing
-            continue
-        end
-
-        # Check if solution satisfies ALL m equations (Oettli-Prager condition)
-        # |A_c x - b_c| ≤ A_Δ|x| + b_Δ
-        A_c = mid(A)
-        A_Δ = rad(A)
-        b_c = mid(b)
-        b_Δ = rad(b)
-
-        x_c = mid(x_sub)
-        x_rad = rad(x_sub)
-
-        residual = A_c * x_c - b_c
-        bound = A_Δ * (abs.(x_c) .+ x_rad) .+ b_Δ
-
-        if all(abs.(residual) .<= bound)
-            # Valid solution!
-            push!(valid_solutions, x_sub)
-        end
+    catch e
+        e isa ArgumentError && rethrow()
+        nothing
     end
+    return (x !== nothing && all(isfinite, mid(x)) && all(isfinite, rad(x))) ? x : nothing
+end
 
-    if isempty(valid_solutions)
-        # No solution found
-        return OverdeterminedResult(
-            BallVector(fill(Ball(T(0), T(Inf)), n)),
-            false, :subsquares, subsystems_checked, T(Inf)
-        )
+# x ∩ y componentwise for vectors of real balls, or nothing when a component is empty
+function _intersect_boxes(x::Vector{<:Ball}, y::Vector{<:Ball})
+    z = similar(x)
+    for i in eachindex(x)
+        w = intersect_ball(x[i], y[i])
+        w === nothing && return nothing
+        z[i] = w
     end
+    return z
+end
 
-    # Compute hull of all valid solutions
-    solution_hull = valid_solutions[1]
-    for i in 2:length(valid_solutions)
-        solution_hull = ball_hull(solution_hull, valid_solutions[i])
+# `k` distinct elements of `S`, chosen at random: the procedure randsel of Algorithm 6.14
+function _randsel(k::Int, S::Vector{Int}, rng)
+    pool = copy(S)
+    for i in 1:k
+        j = rng === nothing ? rand(i:length(pool)) : rand(rng, i:length(pool))
+        pool[i], pool[j] = pool[j], pool[i]
     end
-
-    # Compute max residual
-    A_c = mid(A)
-    b_c = mid(b)
-    x_c = mid(solution_hull)
-    max_residual = norm(A_c * x_c - b_c, Inf)
-
-    return OverdeterminedResult(
-        solution_hull, true, :subsquares, subsystems_checked, max_residual
-    )
+    return sort!(pool[1:k])
 end
 
 """
-    multi_jacobi_method(A::BallMatrix{T}, b::BallVector{T};
-                       x0::Union{Nothing, BallVector{T}}=nothing,
-                       max_iterations::Int=100,
-                       tol::T=T(1e-10)) where {T}
+    select_subsquares(m, n; overlap = round(Int, n/3), rng = nothing) -> Vector{Vector{Int}}
 
-Solve overdetermined system using Multi-Jacobi iteration.
-
-# Algorithm
-For each variable x_j, compute intersection of bounds from all equations:
-
-    x_j^(k+1) = ⋂_{i=1}^m [(b_i - ∑_{l≠j} a_{il}x_l^(k)) / a_{ij}]
-
-where the intersection is over all rows i where a_{ij} ≠ 0.
-
-# Arguments
-- `A`: Coefficient ball matrix (m×n, m > n)
-- `b`: Right-hand side ball vector (m)
-- `x0`: Initial enclosure (computed if not provided)
-- `max_iterations`: Maximum iterations
-- `tol`: Convergence tolerance
-
-# Returns
-`OverdeterminedResult` with solution enclosure.
-
-# Example
-```julia
-A = BallMatrix([3.0 1.0; 1.0 2.0; 2.0 3.0], fill(0.1, 3, 2))
-b = BallVector([4.0, 3.0, 5.0], fill(0.1, 3))
-
-result = multi_jacobi_method(A, b)
-
-if result.solvable
-    println("Solution: ", result.solution)
-    println("Iterations: ", result.subsystems_checked)
-end
-```
-
-# Notes
-- O(mn²) per iteration - faster than subsquares
-- May not converge for all systems
-- Empty intersection indicates unsolvability
-- Works well when system is "nearly square" or well-conditioned
+Algorithm 6.14 of Horáček (2019): row index sets of square subsystems covering the `m`
+equations of an `m × n` system. The first is chosen at random; each following one takes
+`overlap` equations already covered and `n − overlap` not yet covered; the last takes the
+remaining ones and completes with covered ones. Their number is (6.5),
+`1 + ⌈(m − n)/(n − overlap)⌉`. The thesis reports `overlap ≈ n/3` as a reasonable choice.
 """
-function multi_jacobi_method(A::BallMatrix{T}, b::BallVector{T};
-                             x0::Union{Nothing, BallVector{T}}=nothing,
-                             max_iterations::Int=100,
-                             tol::T=T(1e-10)) where {T}
-    m, n = size(A)
-
-    if m <= n
-        @warn "Multi-Jacobi typically used for overdetermined systems (m > n)"
-    end
-
-    # Initialize with wide enclosure if not provided
-    if x0 === nothing
-        # Use least squares solution as starting point
-        A_mid = mid(A)
-        b_mid = mid(b)
-        x_approx = A_mid \ b_mid  # Least squares
-        x0 = BallVector(x_approx, abs.(x_approx) .+ T(1.0))
-    end
-
-    x = copy(x0)
-
-    for iter in 1:max_iterations
-        x_new = similar(x)
-
-        for j in 1:n
-            # Collect bounds from all equations
-            bounds = Ball{T}[]
-
-            for i in 1:m
-                a_ij = A[i, j]
-
-                # Skip if coefficient is zero
-                if 0.0 ∈ a_ij && rad(a_ij) < eps(T) * 10
-                    continue
-                end
-
-                # Compute rhs for this equation
-                rhs = b[i]
-                for l in 1:n
-                    if l != j
-                        rhs = rhs - A[i, l] * x[l]
-                    end
-                end
-
-                # Compute bound from this equation
-                bound_from_i = rhs / a_ij
-
-                push!(bounds, bound_from_i)
-            end
-
-            if isempty(bounds)
-                @warn "Multi-Jacobi: Variable $j has no constraints"
-                x_new[j] = x[j]
-                continue
-            end
-
-            # Intersect all bounds
-            x_new_j = bounds[1]
-            for k in 2:length(bounds)
-                x_new_j = intersect_ball(x_new_j, bounds[k])
-
-                # Check for empty intersection
-                if rad(x_new_j) < 0
-                    # Empty intersection - system unsolvable
-                    return OverdeterminedResult(
-                        BallVector(fill(Ball(T(0), T(Inf)), n)),
-                        false, :multi_jacobi, iter, T(Inf)
-                    )
-                end
-            end
-
-            x_new[j] = x_new_j
+function select_subsquares(m::Int, n::Int; overlap::Int = round(Int, n / 3), rng = nothing)
+    m > n || throw(DimensionMismatch("select_subsquares needs m > n"))
+    0 <= overlap < n || throw(ArgumentError("overlap must satisfy 0 ≤ overlap < n"))
+    subsquares = Vector{Int}[]
+    covered, waiting = Int[], collect(1:m)
+    while !isempty(waiting)
+        indices = if isempty(covered)
+            _randsel(n, waiting, rng)
+        elseif length(waiting) <= n - overlap
+            sort!(vcat(waiting, _randsel(n - length(waiting), covered, rng)))
+        else
+            sort!(vcat(_randsel(overlap, covered, rng), _randsel(n - overlap, waiting, rng)))
         end
-
-        # Check convergence
-        current_width = maximum(rad(x_new))
-
-        if current_width < tol
-            # Converged
-            A_c = mid(A)
-            b_c = mid(b)
-            x_c = mid(x_new)
-            max_residual = norm(A_c * x_c - b_c, Inf)
-
-            return OverdeterminedResult(
-                x_new, true, :multi_jacobi, iter, max_residual
-            )
-        end
-
-        x = x_new
+        push!(subsquares, indices)
+        covered = sort!(union(covered, indices))
+        waiting = setdiff(waiting, indices)
     end
+    return subsquares
+end
 
-    # Max iterations reached
-    A_c = mid(A)
-    b_c = mid(b)
-    x_c = mid(x)
-    max_residual = norm(A_c * x_c - b_c, Inf)
-
-    return OverdeterminedResult(
-        x, false, :multi_jacobi, max_iterations, max_residual
-    )
+function _subsquare_rows(m, n, selection, k, overlap, rng)
+    if selection == :all
+        return collect(combinations(1:m, n))
+    elseif selection == :random
+        return [_randsel(n, collect(1:m), rng) for _ in 1:k]
+    elseif selection == :covering
+        return select_subsquares(m, n; overlap, rng)
+    end
+    throw(ArgumentError("selection must be :all, :random or :covering"))
 end
 
 """
-    interval_least_squares(A::BallMatrix{T}, b::BallVector{T};
-                          method::Symbol=:normal_equations) where {T}
+    subsquares_method(A::BallMatrix, b::BallVector; selection = :covering, k = 10,
+        overlap = round(Int, n/3), solver = :hbr, rng = nothing) -> OverdeterminedResult
 
-Compute interval least squares solution to overdetermined system.
+Algorithm 6.12 of Horáček (2019), the simple subsquares algorithm, for a real overdetermined
+interval system. The solution set lies in the solution set of every square subsystem
+(Proposition 6.5), so:
 
-Minimizes ||Ax - b||² over the interval matrix/vector.
+1. select square subsystems: `selection = :random`, `k` random ones, as in the algorithm;
+   `:covering`, those of [`select_subsquares`](@ref) (Algorithm 6.14); `:all`, all `binomial(m, n)`;
+2. enclose the solution set of each by a method for square systems, `solver = :hbr`
+   ([`hbr_method`](@ref)), `:verifylss` or `:gaussian_elimination`;
+3. return the intersection of the enclosures;
+4. if the intersection is empty, the system has no solution: `unsolvable = true`.
 
-# Arguments
-- `A`: Coefficient ball matrix (m×n, m ≥ n)
-- `b`: Right-hand side ball vector (m)
-- `method`: Solution method (`:normal_equations` or `:qr`)
+A subsquare for which the solver gives no enclosure is skipped. `success` is `false` when none
+gives one.
+"""
+function subsquares_method(A::BallMatrix{T}, b::BallVector{T}; selection::Symbol = :covering,
+        k::Int = 10, overlap = nothing, solver::Symbol = :hbr, rng = nothing) where {T}
+    m, n = _require_overdetermined(A, b, "subsquares_method")
+    overlap === nothing && (overlap = round(Int, n / 3))
+    box = nothing
+    checked = 0
+    for rows in _subsquare_rows(m, n, selection, k, overlap, rng)
+        x = _square_enclosure(A[rows, :], b[rows], solver)
+        x === nothing && continue
+        checked += 1
+        y = [x[i] for i in 1:n]
+        box = box === nothing ? y : _intersect_boxes(box, y)
+        box === nothing && return OverdeterminedResult(
+            BallVector(zeros(T, n), fill(T(Inf), n)), false, true, :subsquares, checked)
+    end
+    box === nothing && return _no_enclosure(T, n, :subsquares, 0)
+    return OverdeterminedResult(BallVector(mid.(box), rad.(box)), true, false, :subsquares,
+        checked)
+end
 
-# Returns
-`OverdeterminedResult` with least squares solution enclosure.
+"""
+    multi_jacobi_method(A::BallMatrix, b::BallVector; x0 = nothing, overlap = round(Int, n/3),
+        max_iterations = 20, tol = nothing, rng = nothing) -> OverdeterminedResult
 
-# Example
-```julia
-A = BallMatrix([2.0 1.0; 1.0 2.0; 3.0 1.0], fill(0.1, 3, 2))
-b = BallVector([3.1, 2.9, 4.2], fill(0.05, 3))
+Section 6.8.3 of Horáček (2019), the multi-Jacobi method: subsquares are selected by
+Algorithm 6.14 ([`select_subsquares`](@ref)); then, instead of solving each, one iteration of
+the Jacobi method (Algorithm 5.15) is applied to every subsquare from the current global box,
+the global box is intersected with all the results, and this is repeated until the stopping
+criterion of Section 5.7.2 or `max_iterations`.
 
-result = interval_least_squares(A, b)
-println("LS solution: ", result.solution)
-```
+- `x0`: a box containing the solution set. `nothing` takes the HBR enclosure of a subsquare, as
+  in Example 6.15 of the thesis (the first selected subsquare for which it exists).
+- Each subsquare is preconditioned by the floating-point inverse of its midpoint, the products
+  formed in ball arithmetic. The thesis does not say how the diagonal of a subsquare is kept
+  free of zero; this is the preconditioning of Section 5.4 applied to each subsquare.
 
-# Notes
-- Solves normal equations: A^T A x = A^T b
-- O(mn² + n³) complexity
-- May not satisfy all equations exactly
-- Useful when exact solution doesn't exist
-- Returns minimum norm solution in interval sense
+An empty intersection proves that the system has no solution (`unsolvable = true`). `success`
+is `false` when no initial box is found.
+"""
+function multi_jacobi_method(A::BallMatrix{T}, b::BallVector{T}; x0 = nothing,
+        overlap = nothing, max_iterations::Int = 20, tol = nothing, rng = nothing) where {T}
+    m, n = _require_overdetermined(A, b, "multi_jacobi_method")
+    overlap === nothing && (overlap = round(Int, n / 3))
+    systems = Tuple{BallMatrix{T, T}, BallVector{T, T}}[]
+    for rows in select_subsquares(m, n; overlap, rng)
+        As, bs = A[rows, :], b[rows]
+        C = _midpoint_inverse(As)
+        C === nothing && continue
+        bC = BallMatrix(C)
+        push!(systems, (bC * As, bC * bs))
+        if x0 === nothing
+            x0 = _square_enclosure(As, bs, :hbr)
+        end
+    end
+    (x0 === nothing || isempty(systems)) && return _no_enclosure(T, n, :multi_jacobi, 0)
+    length(x0) == n || throw(DimensionMismatch("multi_jacobi_method: x0 must have length $n"))
+    if tol === nothing
+        w = minimum(rad(A))
+        tol = w > 0 ? 2 * w * T(1e-5) : sqrt(eps(T)) * max(one(T), maximum(abs, mid(x0)))
+    end
+    x = [x0[i] for i in 1:n]
+    unsolvable(k) = OverdeterminedResult(BallVector(zeros(T, n), fill(T(Inf), n)), false, true,
+        :multi_jacobi, k)
+    for _ in 1:max_iterations
+        old = x
+        for (As, bs) in systems
+            y = [_jacobi_component(As, bs, old, i) for i in 1:n]
+            x = _intersect_boxes(x, y)
+            x === nothing && return unsolvable(length(systems))
+        end
+        all(abs(inf(old[i]) - inf(x[i])) < tol && abs(sup(old[i]) - sup(x[i])) < tol
+            for i in 1:n) && break
+    end
+    return OverdeterminedResult(BallVector(mid.(x), rad.(x)), true, false, :multi_jacobi,
+        length(systems))
+end
+
+"""
+    interval_least_squares(A::BallMatrix, b::BallVector; method = :supersquare,
+        solver = :verifylss) -> OverdeterminedResult
+
+Section 6.2 of Horáček (2019): an enclosure of the set of least squares solutions
+(Definition 6.3)
+
+    Σ_lsq = {x : AᵀA x = Aᵀb for some A ∈ A, b ∈ b},
+
+whose hull contains that of the solution set of `A x = b`; the result is nonempty also when
+the system has no solution.
+
+- `method = :supersquare`: the square system of order `m + n`
+
+      [I A; Aᵀ 0] [y; x] = [b; 0],
+
+  enclosed by `solver`, a method for square systems (`:verifylss`, `:hbr` or
+  `:gaussian_elimination`); the part `x` is returned. The two occurrences of each entry of `A`
+  are treated as independent, which the thesis notes as a source of overestimation.
+- `method = :normal_equations`: the interval normal equation `AᵀA x = Aᵀb`, with the products
+  formed in ball arithmetic. The thesis warns that the overestimation of the product may be
+  huge.
+
+`success` is `false` when the solver gives no enclosure.
 """
 function interval_least_squares(A::BallMatrix{T}, b::BallVector{T};
-                               method::Symbol=:normal_equations) where {T}
-    m, n = size(A)
-
-    if method == :normal_equations
-        # Form normal equations: A^T A x = A^T b
-        # Use adjoint for BallMatrix (same as transpose for real matrices)
-        At = adjoint(A)
-        AtA_raw = At * A
-        Atb_raw = At * b
-
-        # Ensure proper BallMatrix/BallVector types
-        AtA = AtA_raw isa BallMatrix ? AtA_raw : BallMatrix(Matrix(mid(AtA_raw)), Matrix(rad(AtA_raw)))
-        Atb = Atb_raw isa BallVector ? Atb_raw : BallVector(Vector(mid(Atb_raw)), Vector(rad(Atb_raw)))
-
-        # Solve square system
-        result = interval_gaussian_elimination(AtA, Atb)
-
-        if !result.success
-            return OverdeterminedResult(
-                BallVector(fill(Ball(T(0), T(Inf)), n)),
-                false, :least_squares, 0, T(Inf)
-            )
+        method::Symbol = :supersquare, solver::Symbol = :verifylss) where {T}
+    m, n = _require_overdetermined(A, b, "interval_least_squares")
+    if method == :supersquare
+        Mc, Mr = zeros(T, m + n, m + n), zeros(T, m + n, m + n)
+        for i in 1:m
+            Mc[i, i] = one(T)
         end
-
-        # Compute residual
-        A_c = mid(A)
-        b_c = mid(b)
-        x_c = mid(result.solution)
-        residual_norm = norm(A_c * x_c - b_c, 2)
-
-        return OverdeterminedResult(
-            result.solution, true, :least_squares, 1, residual_norm
-        )
-
-    elseif method == :qr
-        # QR factorization approach
-        # Currently not implemented for interval matrices
-        @warn "QR method not yet implemented, falling back to normal equations"
-        return interval_least_squares(A, b, method=:normal_equations)
-    else
-        error("Unknown least squares method: $method")
+        Mc[1:m, (m + 1):(m + n)] .= mid(A)
+        Mr[1:m, (m + 1):(m + n)] .= rad(A)
+        Mc[(m + 1):(m + n), 1:m] .= transpose(mid(A))
+        Mr[(m + 1):(m + n), 1:m] .= transpose(rad(A))
+        rhs = BallVector(vcat(mid(b), zeros(T, n)), vcat(rad(b), zeros(T, n)))
+        z = _square_enclosure(BallMatrix(Mc, Mr), rhs, solver)
+        z === nothing && return _no_enclosure(T, n, :supersquare, 0)
+        return OverdeterminedResult(BallVector(mid(z)[(m + 1):end], rad(z)[(m + 1):end]), true,
+            false, :supersquare, 1)
+    elseif method == :normal_equations
+        At = BallMatrix(Matrix(transpose(mid(A))), Matrix(transpose(rad(A))))
+        x = _square_enclosure(At * A, At * b, solver)
+        x === nothing && return _no_enclosure(T, n, :normal_equations, 0)
+        return OverdeterminedResult(x, true, false, :normal_equations, 1)
     end
+    throw(ArgumentError("method must be :supersquare or :normal_equations"))
 end
 
-# Forward declarations for methods from other files
-if !@isdefined(interval_gaussian_elimination)
-    function interval_gaussian_elimination(_A::BallMatrix{T}, _b::BallVector{T}) where {T}
-        error("interval_gaussian_elimination not available. Include gaussian_elimination.jl first.")
-    end
-end
-
-if !@isdefined(krawczyk_linear_system)
-    function krawczyk_linear_system(_A::BallMatrix{T}, _b::BallVector{T}) where {T}
-        error("krawczyk_linear_system not available. Include krawczyk_complete.jl first.")
-    end
-end
-
-# BallVector hull implementation
-function ball_hull(x::BallVector{T}, y::BallVector{T}) where {T}
-    # Simple hull implementation
-    n = length(x)
-    c = Vector{eltype(mid(x))}(undef, n)
-    r = Vector{T}(undef, n)
-    for i in 1:n
-        inf_i = min(inf(x[i]), inf(y[i]))
-        sup_i = max(sup(x[i]), sup(y[i]))
-        c[i] = (inf_i + sup_i) / 2
-        r[i] = (sup_i - inf_i) / 2
-    end
-    return BallVector(c, r)
-end
-
-# Export functions
 export OverdeterminedResult
-export subsquares_method, multi_jacobi_method, interval_least_squares
+export select_subsquares, subsquares_method, multi_jacobi_method, interval_least_squares

@@ -57,6 +57,7 @@ Preconditioner types (see [`PreconditionerType`](@ref)):
 
 Least squares solutions for overdetermined systems.
 
+- [`select_subsquares`](@ref) - Selection of square subsystems
 - [`subsquares_method`](@ref) - Subsquares method
 - [`multi_jacobi_method`](@ref) - Multi-Jacobi method
 - [`interval_least_squares`](@ref) - Interval least squares

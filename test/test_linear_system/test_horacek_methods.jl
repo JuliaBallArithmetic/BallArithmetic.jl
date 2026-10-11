@@ -456,46 +456,80 @@ end
 end
 
 @testset "Overdetermined Systems" begin
-    @testset "Subsquares Method" begin
-        # 3×2 system with solution
-        A = BallMatrix([2.0 1.0; 1.0 2.0; 3.0 1.0], fill(0.05, 3, 2))
-        b = BallVector([3.0, 3.0, 4.0], fill(0.05, 3))
+    rng = MersenneTwister(20261014)
+    inbox(x, p) = all(big(mid(x)[i]) - big(rad(x)[i]) <= p[i] <= big(mid(x)[i]) + big(rad(x)[i])
+                      for i in eachindex(p))
 
-        result = subsquares_method(A, b, max_subsystems=10)
+    @testset "Algorithm 6.14 covers the equations" begin
+        for (m, n) in ((5, 3), (9, 5), (30, 4), (7, 6)), overlap in 0:(n - 1)
+            subs = select_subsquares(m, n; overlap, rng)
+            @test all(length(s) == n && allunique(s) for s in subs)
+            @test sort!(union(subs...)) == collect(1:m)
+            @test length(subs) == 1 + cld(m - n, n - overlap)          # (6.5)
+        end
+        @test_throws DimensionMismatch select_subsquares(3, 3)
+    end
 
-        @test result.solvable || result.subsystems_checked > 0
-        if result.solvable
-            @test length(result.solution) == 2
-            @test result.residual < 1.0
+    @testset "a known point of the solution set lies in every enclosure" begin
+        found = Dict{Symbol, Int}()
+        for (m, n) in ((3, 2), (5, 3), (9, 4)), _ in 1:40
+            Ac = randn(rng, m, n) + [i == j ? 4.0 : 0.0 for i in 1:m, j in 1:n]
+            AΔ = rand(rng, m, n) .* 10.0^rand(rng, -5:-2)
+            A0 = Ac .+ AΔ .* (2 .* rand(rng, m, n) .- 1) .* 0.999     # a member of the ball
+            xstar = randn(rng, n)
+            b0 = Rational{BigInt}.(A0) * Rational{BigInt}.(xstar)     # A0 x* exactly
+            bΔ = rand(rng, m) .* 10.0^rand(rng, -5:-2) .+ 1e-12
+            bc = Float64.(b0)                                         # within 1e-12 of b0
+            A, b = BallMatrix(Ac, AΔ), BallVector(bc, bΔ)
+            p = Rational{BigInt}.(xstar)
+            runs = (:subsq_cover => subsquares_method(A, b; rng),
+                :subsq_all => subsquares_method(A, b; selection = :all),
+                :subsq_random => subsquares_method(A, b; selection = :random, k = 4, rng),
+                :subsq_lss => subsquares_method(A, b; solver = :verifylss, rng),
+                :subsq_ge => subsquares_method(A, b; solver = :gaussian_elimination, rng),
+                :multi_jacobi => multi_jacobi_method(A, b; rng),
+                :lsq_super => interval_least_squares(A, b),
+                :lsq_super_hbr => interval_least_squares(A, b; solver = :hbr),
+                :lsq_normal => interval_least_squares(A, b; method = :normal_equations))
+            for (key, r) in runs
+                @test !r.unsolvable
+                r.success || continue
+                found[key] = get(found, key, 0) + 1
+                @test inbox(r.solution, p)
+            end
+        end
+        @test length(found) == 9 && all(>(0), values(found))
+    end
+
+    @testset "the least squares enclosure contains the least squares solutions of members" begin
+        for _ in 1:30
+            m, n = 5, 2
+            Ac, AΔ = randn(rng, m, n) + [i == j ? 3.0 : 0.0 for i in 1:m, j in 1:n],
+            fill(1e-3, m, n)
+            bc, bΔ = randn(rng, m), fill(1e-3, m)
+            for method in (:supersquare, :normal_equations)
+                r = interval_least_squares(BallMatrix(Ac, AΔ), BallVector(bc, bΔ); method)
+                r.success || continue
+                for _ in 1:8
+                    A1 = Rational{BigInt}.(Ac .+ AΔ .* rand(rng, (-1, 1), m, n))
+                    b1 = Rational{BigInt}.(bc .+ bΔ .* rand(rng, (-1, 1), m))
+                    @test inbox(r.solution, (A1' * A1) \ (A1' * b1))
+                end
+            end
         end
     end
 
-    @testset "Multi-Jacobi Method" begin
-        # Overdetermined system
-        A = BallMatrix([3.0 1.0; 1.0 2.0; 2.0 3.0], fill(0.05, 3, 2))
-        b = BallVector([4.0, 3.0, 5.0], fill(0.05, 3))
-
-        result = multi_jacobi_method(A, b, max_iterations=50)
-
-        # May or may not converge depending on system properties
-        if result.solvable
-            @test length(result.solution) == 2
-        end
-    end
-
-    @testset "Interval Least Squares" begin
-        # Overdetermined system without exact solution
-        # Use smaller radii for tighter bounds
-        A = BallMatrix([2.0 1.0; 1.0 2.0; 3.0 1.0], fill(0.01, 3, 2))
-        b = BallVector([3.1, 2.9, 4.2], fill(0.01, 3))
-
-        result = interval_least_squares(A, b)
-
-        @test result.solvable
-        @test length(result.solution) == 2
-        @test result.method == :least_squares
-        # Residual should be reasonable (depends on system conditioning)
-        @test result.residual < 2.0
+    @testset "an unsolvable system is recognised" begin
+        A = BallMatrix(reshape([1.0, 1.0], 2, 1), fill(0.01, 2, 1))
+        b = BallVector([0.0, 5.0], [0.1, 0.1])
+        @test subsquares_method(A, b; selection = :all).unsolvable
+        @test multi_jacobi_method(A, b).unsolvable
+        r = interval_least_squares(A, b)                 # nonempty all the same
+        @test r.success && !r.unsolvable
+        @test_throws DimensionMismatch subsquares_method(BallMatrix(randn(2, 2)),
+            BallVector(randn(2)))
+        @test_throws ArgumentError subsquares_method(A, b; solver = :nonsense)
+        @test_throws ArgumentError interval_least_squares(A, b; method = :qr)
     end
 end
 

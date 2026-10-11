@@ -15,6 +15,7 @@ is_regular_gaussian_elimination
 
 ```@docs
 IterativeResult
+interval_initial_enclosure
 interval_gauss_seidel
 interval_jacobi
 ```
@@ -49,6 +50,7 @@ is_well_preconditioned
 
 ```@docs
 OverdeterminedResult
+select_subsquares
 subsquares_method
 multi_jacobi_method
 interval_least_squares

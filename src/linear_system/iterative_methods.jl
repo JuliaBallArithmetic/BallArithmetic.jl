@@ -113,6 +113,16 @@ struct IterativeResult{T, VT}
     empty::Bool
 end
 
+# (b_i − Σ_{j≠i} a_ij x_j)/a_ii, the formula (5.6); x_i itself where a_ii contains zero
+function _jacobi_component(A::BallMatrix{T}, b::BallVector{T}, x::Vector{<:Ball}, i::Int) where {T}
+    sub_down(abs(mid(A)[i, i]), rad(A)[i, i]) > 0 || return x[i]
+    s = b[i]
+    for j in eachindex(x)
+        j == i || (s = s - A[i, j] * x[j])
+    end
+    return s / A[i, i]
+end
+
 # The common iteration: y_i = (b_i − Σ_{j≠i} a_ij x_j)/a_ii, then x_i ∩ y_i; Gauss-Seidel uses the
 # components already updated in the sweep.
 function _interval_splitting_iteration(A::BallMatrix{T}, b::BallVector{T}, x0, C,
@@ -141,12 +151,7 @@ function _interval_splitting_iteration(A::BallMatrix{T}, b::BallVector{T}, x0, C
         old = copy(x)
         for i in 1:n
             divisible[i] || continue
-            s = b[i]
-            for j in 1:n
-                j == i && continue
-                s = s - A[i, j] * (gauss_seidel ? x[j] : old[j])
-            end
-            y = intersect_ball(s / A[i, i], old[i])
+            y = intersect_ball(_jacobi_component(A, b, gauss_seidel ? x : old, i), old[i])
             if y === nothing
                 return IterativeResult(BallVector(mid.(old), rad.(old)), false, iter, width,
                     rate, true)

@@ -254,7 +254,7 @@ export KrawczykResult, krawczyk_linear_system, krawczyk_sylvester
 
 include("linear_system/overdetermined.jl")
 export OverdeterminedResult
-export subsquares_method, multi_jacobi_method, interval_least_squares
+export select_subsquares, subsquares_method, multi_jacobi_method, interval_least_squares
 
 include("linear_system/verified_linear_system_hmatrix.jl")
 export VerifiedLinearSystemResult, verified_linear_solve_hmatrix
