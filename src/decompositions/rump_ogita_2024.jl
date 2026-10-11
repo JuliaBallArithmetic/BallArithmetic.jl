@@ -235,6 +235,27 @@ function _rumpogita2024_lu(A::BallMatrix{T}) where {T}
     end
 end
 
+# D = diag(U_E) = 1 + diag(UE) is real for a Hermitian I + E. Returns ball matrices containing
+# D^{1/2} and D^{-1/2}, diagonal, or `nothing` when D > 0 is not proved.
+function _rumpogita2024_sqrt_diagonal(UE::BallMatrix{T}, ::Type{S}) where {T, S}
+    n = size(UE, 1)
+    interval_ball(lo, hi) = (c = (lo + hi) / 2; (c, max(sub_up(c, lo), sub_up(hi, c))))
+    dm, dr, im_, ir = Vector{S}(undef, n), Vector{T}(undef, n), Vector{S}(undef, n), Vector{T}(undef, n)
+    for i in 1:n
+        b = Ball(one(T), zero(T)) + Ball(real(mid(UE)[i, i]), rad(UE)[i, i])
+        lo, hi = sub_down(mid(b), rad(b)), add_up(mid(b), rad(b))
+        lo > 0 || return nothing
+        slo, shi = sqrt_down(lo), sqrt_up(hi)
+        dm[i], dr[i] = interval_ball(slo, shi)
+        im_[i], ir[i] = interval_ball(div_down(one(T), shi), div_up(one(T), slo))
+    end
+    return BallMatrix(Matrix{S}(Diagonal(dm)), Matrix{T}(Diagonal(dr))),
+    BallMatrix(Matrix{S}(Diagonal(im_)), Matrix{T}(Diagonal(ir)))
+end
+
+_ball_adjoint(B::BallMatrix{T}) where {T} =
+    BallMatrix(Matrix(adjoint(mid(B))), Matrix{T}(transpose(rad(B))))
+
 """
     _rumpogita2024_cholesky(A::BallMatrix) -> (; G) or nothing
 
@@ -288,24 +309,132 @@ function _rumpogita2024_cholesky(A::BallMatrix{T}) where {T}
     end)
     fE = _rumpogita2024_alg3_2(E)
     fE === nothing && return nothing
-    # D = diag(U_E) = 1 + diag(UE), real; its square root as a ball, or failure
-    dm, dr = Vector{S}(undef, n), Vector{T}(undef, n)
-    for i in 1:n
-        b = Ball(one(T), zero(T)) + Ball(real(mid(fE.UE)[i, i]), rad(fE.UE)[i, i])
-        lo, hi = sub_down(mid(b), rad(b)), add_up(mid(b), rad(b))
-        lo > 0 || return nothing
-        slo, shi = sqrt_down(lo), sqrt_up(hi)
-        c = (slo + shi) / 2
-        dm[i] = c
-        dr[i] = max(sub_up(c, slo), sub_up(shi, c))
-    end
-    Dh = BallMatrix(Matrix{S}(Diagonal(dm)), Matrix{T}(Diagonal(dr)))
+    Dh = _rumpogita2024_sqrt_diagonal(fE.UE, S)
+    Dh === nothing && return nothing
+    Dh = Dh[1]
     # G = D^{1/2} (I + LE)* (I + F)⁻¹ G̃, with G̃ X_G = I + F
     fF = _rumpogita2024_triangular_defect(Gt, XG, :U)
     fF === nothing && return nothing
     Gtb = BallMatrix(Gt)
     W = Gtb + fF.UinvE * Gtb
-    LEa = BallMatrix(Matrix{S}(mid(fE.LE)'), Matrix{T}(transpose(rad(fE.LE))))
-    G = _triangular_ball(Dh * (W + LEa * W), :U)
+    G = _triangular_ball(Dh * (W + _ball_adjoint(fE.LE) * W), :U)
     return (; G)
+end
+
+"""
+    _rumpogita2024_qr(A::BallMatrix; full = false) -> (; Q, R) or nothing
+
+Section 5 of Rump and Ogita (2024): inclusions of the factors of the QR decomposition. For every
+matrix `Ã` of the `m × n` ball `A`, `Ã` is proved to have full rank and `Ã = QR` with `R` upper
+triangular with positive diagonal entries, `Q` and `R` in the ball matrices returned. Returns
+`nothing` when the verification fails.
+
+For `m ≥ n` and `full = false` the decomposition is the economy-size one, `Q` of size `m × n`
+with orthonormal columns and `R` of size `n × n`, which is unique. With `full = true`, `Q` is
+`m × m` unitary and `R` is `m × n`; its last `m − n` columns are an orthonormal basis of the
+orthogonal complement of the range, which is not unique, and the statement is that some such
+basis lies in the ball. For `m < n` the decomposition is the full one of the leading square
+block, `Q` of size `m × m`, and `R = Q*Ã` of size `m × n`.
+
+# The method
+
+`Q̃R̃` is a floating-point decomposition of the midpoint, `R̃` made to have a real positive
+diagonal, and `X_R ≈ R̃⁻¹`. `C := Ã X_R`, kept as an unevaluated sum of two terms, is close to a
+matrix with orthonormal columns, and `C*C = I + E` is enclosed in two-fold precision without
+forming `Ã*Ã`. The Cholesky factor of `I + E` is `G_E = D^{1/2} L_E*` by Algorithm 3.2 as in
+Section 4, and
+
+    R = G_E X_R⁻¹,        Q₁ = Ã X_R G_E⁻¹,
+
+the second being the possibility the paper finds better for `Q₁`. `R` is the Cholesky factor of
+`Ã*Ã`, upper triangular with positive diagonal since those of `G_E` and of `X_R` are.
+
+For the orthogonal complement, with `Q̃₂` its floating-point approximation, the square system
+(5.1), `[Ã*; N] Y = [0; αI]` with `N = fl(α Q̃₂*)`, has a solution whose columns span the
+orthogonal complement of the range of `Ã`. An inclusion `Q̃₂ + Δ` of it comes from a verified
+solve for the correction, with the residual in two-fold precision, and Lemma 5.1 gives an
+orthonormal basis `Q₂` of that complement with
+
+    ‖Q₂ − Q̃₂‖₂ ≤ ‖I − Q̃₂*Q̃₂‖₂ + √2 ‖Δ‖₂,
+
+which bounds every entry of `Q₂ − Q̃₂`.
+
+# Reference
+
+S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
+Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 5 and Lemma 5.1.
+"""
+function _rumpogita2024_qr(A::BallMatrix{T}; full::Bool = false) where {T}
+    m, n = size(A)
+    if m < n
+        Am, Ar = mid(A), rad(A)
+        r = _rumpogita2024_qr(BallMatrix(Am[:, 1:m], Ar[:, 1:m]); full = true)
+        r === nothing && return nothing
+        rest = _ball_adjoint(r.Q) * BallMatrix(Am[:, (m + 1):n], Ar[:, (m + 1):n])
+        return (; Q = r.Q, R = BallMatrix(hcat(mid(r.R), mid(rest)), hcat(rad(r.R), rad(rest))))
+    end
+    Am, Ar = Matrix(mid(A)), rad(A)
+    S = eltype(Am)
+    Fq = qr(Am)
+    Rt = Matrix{S}(Fq.R)
+    for i in 1:n                      # a real positive diagonal for the approximate factor
+        d = Rt[i, i]
+        (isfinite(d) && !iszero(d)) || return nothing
+        Rt[i, :] .*= conj(d / abs(d))
+        Rt[i, i] = abs(d)
+    end
+    XR = Matrix{S}(I / UpperTriangular(Rt))
+    all(isfinite, XR) || return nothing
+    Id = Matrix{T}(I, n, n)
+    absXR = _modulus_up(XR)
+    up(f) = setrounding(f, T, RoundUp)
+    # C1 + C2 ± RC ∋ Ã X_R
+    C1, C2, RC = _two_term_product_sum(((Am, XR, one(T)),))
+    RC = up(() -> RC .+ Ar * absXR)
+    # E ∋ C*C − I
+    C1a, C2a = Matrix{S}(C1'), Matrix{S}(C2')
+    Eb = _accurate_product_sum(((C1a, C1, one(T)), (C1a, C2, one(T)), (C2a, C1, one(T)),
+        (C2a, C2, one(T)), (Id, Id, -one(T))))
+    absC = up(() -> _modulus_up(C1) .+ _modulus_up(C2))
+    E = BallMatrix(mid(Eb), up(() -> rad(Eb) .+ transpose(RC) * absC .+ transpose(absC) * RC .+
+                                     transpose(RC) * RC))
+    fE = _rumpogita2024_alg3_2(E)
+    fE === nothing && return nothing
+    D = _rumpogita2024_sqrt_diagonal(fE.UE, S)
+    D === nothing && return nothing
+    Dh, Dhinv = D
+    # R = D^{1/2} (I + LE)* (I + F)⁻¹ R̃, with R̃ X_R = I + F
+    fF = _rumpogita2024_triangular_defect(Rt, XR, :U)
+    fF === nothing && return nothing
+    Rtb = BallMatrix(Rt)
+    W = Rtb + fF.UinvE * Rtb
+    R = _triangular_ball(Dh * (W + _ball_adjoint(fE.LE) * W), :U)
+    # Q₁ = C (I + LinvE)* D^{-1/2}
+    Cb = BallMatrix(C1) + BallMatrix(C2, RC)
+    Q1 = (Cb + Cb * _ball_adjoint(fE.LinvE)) * Dhinv
+    (full && m > n) || return (; Q = Q1, R)
+
+    # the orthogonal complement: system (5.1) and Lemma 5.1
+    k = m - n
+    Q2t = Matrix{S}((Fq.Q * Matrix{S}(I, m, m))[:, (n + 1):m])
+    sv = svdvals(Rt)
+    α = T(sqrt(sv[1] * sv[end]))
+    (isfinite(α) && α > 0) || return nothing
+    N = Matrix{S}(α * Q2t')
+    M = BallMatrix(vcat(Matrix{S}(Am'), N), vcat(Matrix{T}(transpose(Ar)), zeros(T, k, m)))
+    # the residual of Q̃₂: [−Ã*Q̃₂; αI − N Q̃₂]
+    top = _accurate_product_sum(((Matrix{S}(Am'), Q2t, -one(T)),))
+    top = BallMatrix(mid(top), up(() -> rad(top) .+ transpose(Ar) * _modulus_up(Q2t)))
+    Ik = Matrix{T}(I, k, k)
+    bot = _accurate_product_sum(((N, Q2t, -one(T)), (α * Ik, Ik, one(T))))
+    sol = verifylss(M, BallMatrix(vcat(mid(top), mid(bot)), vcat(rad(top), rad(bot))))
+    sol.certified || return nothing
+    δ = upper_bound_L2_opnorm(sol.solution)
+    Q2b = BallMatrix(Q2t)
+    αo = upper_bound_L2_opnorm(_ball_adjoint(Q2b) * Q2b - I)
+    ρ = add_up(T(αo), mul_up(sqrt_up(T(2)), T(δ)))
+    isfinite(ρ) || return nothing
+    Q = BallMatrix(hcat(mid(Q1), Q2t), hcat(rad(Q1), fill(ρ, m, k)))
+    Rfull = BallMatrix(vcat(mid(R), zeros(S, k, n)), vcat(rad(R), zeros(T, k, n)))
+    return (; Q, R = Rfull)
 end

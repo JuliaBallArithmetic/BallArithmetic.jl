@@ -219,3 +219,68 @@ end
         @test_throws ArgumentError BallArithmetic._rumpogita2024_cholesky(BallMatrix([1.0 2.0; 0.0 1.0]))
     end
 end
+
+@testset "Rump-Ogita 2024, Section 5: the QR decomposition" begin
+    rng = MersenneTwister(20261014)
+    med(v) = sort(v)[(length(v) + 1) ÷ 2]
+    # the factors with a positive diagonal of R, at 1024 bits, through the Cholesky factor of A*A
+    function refqr(A)
+        setprecision(BigFloat, 1024) do
+            B = eltype(A) <: Complex ? Complex{BigFloat} : BigFloat
+            Ab = B.(A)
+            R = Matrix(cholesky(Hermitian(Ab' * Ab)).U)
+            Ab / UpperTriangular(R), R
+        end
+    end
+    @testset "$m × $n, cond = 1e$k, $S" for (m, n) in ((20, 20), (30, 12), (7, 1)), k in (2, 8, 12),
+        S in (Float64, ComplexF64)
+
+        A = m == n ? _randsvd(rng, n, k; S) : _randsvd(rng, m, n, k; S)
+        Q1, R = refqr(A)
+        r = BallArithmetic._rumpogita2024_qr(BallMatrix(A))
+        @test r !== nothing
+        @test size(r.Q) == (m, n) && size(r.R) == (n, n)
+        @test _inside(Q1, r.Q) && _inside(R, r.R)
+        @test iszero(tril(rad(r.R), -1)) && all(real(mid(r.R)[i, i]) - rad(r.R)[i, i] > 0 for i in 1:n)
+        # the paper's Figures 9 and 10
+        @test med(_relerr(r.R)) < 1e-12
+        @test med(_relerr(r.Q)) < 1e-11
+        # the full decomposition: an orthonormal basis of the complement lies in the last columns
+        f = BallArithmetic._rumpogita2024_qr(BallMatrix(A); full = true)
+        @test f !== nothing
+        @test size(f.Q) == (m, m) && size(f.R) == (m, n)
+        @test _inside(Q1, f.Q[:, 1:n]) && _inside(R, f.R[1:n, :])
+        if m > n
+            @test iszero(mid(f.R)[(n + 1):m, :]) && iszero(rad(f.R)[(n + 1):m, :])
+            U = setprecision(BigFloat, 1024) do
+                Z = (I - Q1 * Q1') * big.(mid(f.Q)[:, (n + 1):m])
+                H = Hermitian(Z' * Z)
+                E = eigen(H)
+                Z * (E.vectors * Diagonal(1 ./ sqrt.(E.values)) * E.vectors')
+            end
+            @test _inside(U, f.Q[:, (n + 1):m])
+        end
+    end
+    @testset "more columns than rows" begin
+        for S in (Float64, ComplexF64)
+            A = _randsvd(rng, 8, 13, 3; S)
+            Q, R1 = refqr(A[:, 1:8])
+            r = BallArithmetic._rumpogita2024_qr(BallMatrix(A))
+            @test r !== nothing && size(r.Q) == (8, 8) && size(r.R) == (8, 13)
+            @test _inside(Q, r.Q)
+            @test _inside(setprecision(() -> Q' * big.(A), BigFloat, 1024), r.R)
+        end
+    end
+    @testset "a ball of matrices, and what is declined" begin
+        A = _randsvd(rng, 9, 5, 2)
+        ρ = 1e-11
+        r = BallArithmetic._rumpogita2024_qr(BallMatrix(A, fill(ρ, 9, 5)))
+        @test r !== nothing
+        for _ in 1:8
+            Q1, R = refqr(A + ρ * (2 * rand(rng, 9, 5) .- 1))
+            @test _inside(Q1, r.Q) && _inside(R, r.R)
+        end
+        @test BallArithmetic._rumpogita2024_qr(BallMatrix([1.0 2.0; 2.0 4.0; 3.0 6.0])) === nothing
+        @test BallArithmetic._rumpogita2024_qr(BallMatrix([1.0 0.0; 0.0 1e-3; 0.0 0.0], fill(1e-2, 3, 2))) === nothing
+    end
+end
