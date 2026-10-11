@@ -133,7 +133,7 @@ end
 # an m × n matrix with singular values from 1 to 10^-k
 function _randsvd(rng, m, n, k; S = Float64)
     r = min(m, n)
-    σ = exp10.(range(0, -k; length = r))[randperm(rng, r)]
+    σ = r == 1 ? [1.0] : exp10.(range(0, -k; length = r))[randperm(rng, r)]
     return Matrix(qr(randn(rng, S, m, m)).Q)[:, 1:r] * Diagonal(σ) * Matrix(qr(randn(rng, S, n, n)).Q)[1:r, :]
 end
 
