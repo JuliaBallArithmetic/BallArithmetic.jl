@@ -202,11 +202,26 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     - **`qi_intervals`, `qi_sqrt_intervals`, removed** (2026-10-11, at Isaia's word) with their
       rebalanced variants: Qi (1984) was tried and found not effective, and the audit found the
       interval `B_{n+1}` of its Theorem 2 missing for non-square input.
-    - **Sources to check before deciding:** the `:backward`, `:hybrid` and `:psi` methods of
-      `rump_oishi_2024_triangular_bound` against Rump and Oishi (2024), in the library;
-      `refine_polar_qdwh`, `refine_cholesky`, `refine_lu`, `refine_takagi`,
-      `rigorous_symmetric_eigen_bigfloat` against Ogita and Aishima and Bujanović, Kressner and
-      Schröder (2022), in `references/`.
+    - **Checked against Rump and Oishi's note, done on 2026-10-11** (`27cf3fa`):
+      `rump_oishi_2024_triangular_bound` is Theorem 1.3 with a zero lower left block; its
+      `:backward` and `:hybrid` methods, `backward_singular_value_bound` (a recursion and a
+      "Theorem 3.2" that the note does not have), its `:psi` method, the copy
+      `rump_oishi_triangular` and the commented-out `oishi_rump_bound` are removed.
+    - **The Schur pair** (`c821268`): `certify_schur_decomposition` and `rigorous_schur_bigfloat`
+      return the refined pair with radius zero and say that it is not an enclosure; its defects
+      are measured by `ordschur_ball` and `compute_spectral_projector_schur`.
+      `rigorous_symmetric_eigen_bigfloat` is removed (`fc6c817`, at Isaia's word);
+      `verifyeigall(A; method = :rumplange2023)` is the verified routine.
+    - **The eight `refine_*` routines of `iterative_refinement.jl`, to check against their
+      sources.** `probe_refine_routines.jl` on nighthawk (n = 8): started from an exact
+      factorisation perturbed by 1e-8, every one returns a residual between 1e-9 and 4e-8, five
+      with `converged = true`; from the unperturbed factors all return about 1e-16. Nothing in
+      `src` calls them. Sources now in `references/` (`ab1b9f8`): Higham (1986), Nakatsukasa,
+      Bai and Gygi (2010), Yamamoto, Nakatsukasa, Yanagisawa and Fukaya (2015), Carson and
+      Higham (2017), Ogita and Aishima (2020). Not obtained: Martin, Peters and Wilkinson
+      (1966, Springer), Terao, Ozaki and Ogita (2020, Elsevier; not on arXiv), and the books of
+      Higham and of Wilkinson. To do: read each routine against its source and implement it as
+      stated there, or remove it; the Double64 and MultiFloat variants in `ext/` follow.
     - **No source found yet:** `verified_linear_solve_hmatrix` (cites Minamihata 2015, not in
       the library), `krawczyk_sylvester` (a stub; the Sylvester enclosures are now those of Miyajima 2013),
       `gev_invariant_subspaces`.
@@ -215,3 +230,25 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     `upper_bound_L_inf_opnorm`, `block_enclosure`, `_vbd_block_data`, and those inside
     `rump_verifyeigall.jl` that predate the rule. `_vbd_kappa` is unrounded (a diagnostic).
 15. A distributed certification run waits for ever if its workers fail.
+
+## Further research
+
+16. **Singular values under Gram conjugation without a verified Cholesky factor.** T. Terao,
+    Y. Watanabe and K. Ozaki, "Verified error bounds for the singular values of structured
+    matrices with applications to computer-assisted proofs for differential equations",
+    arXiv:2502.09984 (2025), in `~/Library/ToBeProcessed`. Read: the abstract, Section 3 and
+    the statements of the four theorems; not the proofs nor the numerical section. Its object
+    is `σ_i(R⁻ᴴ A R⁻¹)` for `B = RᴴR` Hermitian positive definite. Theorem 1: from approximate
+    factors `Û`, `Σ̂`, `V̂` of the decomposition `A V_B = B U_B Σ`, `U_Bᴴ B U_B = V_Bᴴ B V_B = I`,
+    with `δ = ‖Ûᴴ A V̂ − Σ̂‖`, `‖Ûᴴ B Û − I‖ ≤ α < 1`, `‖V̂ᴴ B V̂ − I‖ ≤ β < 1`,
+    `(σ̂_i − δ)/√((1+α)(1+β)) ≤ σ_i ≤ (σ̂_i + δ)/√((1−α)(1−β))`. Theorems 2 to 4 bound `σ_min`
+    without a singular value decomposition, by positive definiteness of `AᴴA − θB²` and
+    `AAᴴ − θB²`, or by the inertia of `[θB Aᴴ; A θB]` through an approximate `LDLᵀ`
+    factorisation; they are aimed at sparse matrices.
+    How it would meet `gram_transform` (algebra, not tested): with `G = LᴴL`, `R = L` and their
+    `A` taken as `G(zI − A)`, `R⁻ᴴ[G(zI − A)]R⁻¹ = L(zI − A)L⁻¹`, so Theorem 1 would bound the
+    singular values of the Gram-conjugated shifted matrix, hence the resolvent norm in the
+    `G`-norm, from residuals formed with `G` and `G(zI − A)` alone, where `gram_transform`
+    needs a verified Cholesky factor and a verified inverse of it. The experiment: Theorem 1
+    against the present route on one Gram-weighted matrix of the paper, for the radius and
+    the time.
