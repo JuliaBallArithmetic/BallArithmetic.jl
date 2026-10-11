@@ -229,10 +229,17 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       routines of Rump and Ogita cover those decompositions. The citations of the old file had
       a wrong journal, a wrong year and two DOIs of other papers. Not obtained: Wilkinson,
       *Rounding Errors in Algebraic Processes*, which nothing cites any more.
-    - **No source found yet:** `verified_linear_solve_hmatrix` (cites Minamihata 2015, not in
-      the library), `krawczyk_sylvester` (a stub that verified nothing; removed on 2026-10-11, the verified
-      routine being `sylvester_miyajima_enclosure`),
-      `gev_invariant_subspaces`.
+    - **`verified_linear_solve_hmatrix`, rewritten on 2026-10-11** after Minamihata, Ogita,
+      Rump and Oishi (2020), which is in the library. The old code formed the residual, `RA`
+      and every bound in plain floating point, and `:minamihata_2015` returned the bound of
+      Theorem 3.1. Now: Theorems 3.1, 3.2, 3.3 and Corollary 3.2 (`method = :theorem_3_1`,
+      `:theorem_3_2`, `:theorem_3_3`, `:corollary_3_2`, with `m` terms). Not reproduced: the
+      two enclosures of `RA` of the paper (Methods (a) and (b)); there is one, the ball
+      product. The residual is formed in working precision; an accurate residual (`Dot2` or
+      Lange and Rump) is left to do.
+    - **Removed on 2026-10-11:** `krawczyk_sylvester`, a stub that verified nothing; the
+      verified routine is `sylvester_miyajima_enclosure`.
+    - **No source found yet:** `gev_invariant_subspaces`.
 13. Step 5: citations and `docs/src/refs.bib`.
 14. `setrounding` blocks that remain: BigFloat `upper_bound_L1_opnorm` and
     `upper_bound_L_inf_opnorm`, `block_enclosure`, `_vbd_block_data`, and those inside

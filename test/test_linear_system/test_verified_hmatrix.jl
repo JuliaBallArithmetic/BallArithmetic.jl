@@ -1,180 +1,145 @@
-"""
-Test suite for verified linear system solution using H-matrices.
-
-Tests the methods from:
-Minamihata, A., Ogita, T., Rump, S.M. & Oishi, S. (2020),
-"Modified error bounds for approximate solutions of dense linear systems",
-J. Comput. Appl. Math. 369, 112546.
-"""
+# Tests of verified_linear_solve_hmatrix against A. Minamihata, T. Ogita, S. M. Rump and
+# S. Oishi, "Modified error bounds for approximate solutions of dense linear systems",
+# J. Comput. Appl. Math. 369 (2020), 112546. Ground truth: systems solved in rational
+# arithmetic at the midpoint and at vertices of the data.
 
 using Test
 using BallArithmetic
 using LinearAlgebra
+using Random
+
+const HMATRIX_METHODS = (:theorem_3_1, :theorem_3_2, :theorem_3_3, :corollary_3_2)
+
+# the solutions of the midpoint system and of `nvert` vertex systems, in Rational{BigInt}
+function _hmatrix_exact_solutions(A, b, rng; nvert = 6)
+    Am, Ar, bm, br = mid(A), rad(A), mid(b), rad(b)
+    sols = Vector{Vector{Rational{BigInt}}}()
+    for t in 0:nvert
+        SA = t == 0 ? zeros(Int, size(Am)) : rand(rng, (-1, 1), size(Am))
+        sb = t == 0 ? zeros(Int, length(bm)) : rand(rng, (-1, 1), length(bm))
+        Aq = Rational{BigInt}.(Am) .+ SA .* Rational{BigInt}.(Ar)
+        bq = Rational{BigInt}.(bm) .+ sb .* Rational{BigInt}.(br)
+        push!(sols, Aq \ bq)
+    end
+    return sols
+end
+
+_hmatrix_contains(res, x) = all(abs.(x .- Rational{BigInt}.(res.x_approx)) .<=
+                                Rational{BigInt}.(res.error_bound))
 
 @testset "Verified Linear System with H-matrices" begin
+    @testset "mig, mag and the comparison matrix" begin
+        @test mig(Ball(2.0, 0.5)) == 1.5
+        @test mag(Ball(2.0, 0.5)) == 2.5
+        @test mig(Ball(-2.0, 0.5)) == 1.5
+        @test mag(Ball(-2.0, 0.5)) == 2.5
+        @test mig(Ball(0.5, 1.0)) == 0.0
+        @test mag(Ball(0.5, 1.0)) == 1.5
+        # rounding: mig from below, mag from above
+        x = Ball(1.0, 1e-17)
+        @test mig(x) < 1.0 < mag(x)
+        C = BallMatrix([3.0 -1.0; 2.0 4.0], fill(0.25, 2, 2))
+        @test comparison_matrix(C) == [2.75 -1.25; -2.25 3.75]
+        @test_throws DimensionMismatch comparison_matrix(BallMatrix(zeros(2, 3)))
+    end
 
-    @testset "Simple 2×2 System" begin
-        # Well-conditioned system
-        A = BallMatrix([3.0 1.0; 1.0 2.0], fill(1e-14, 2, 2))
-        b = BallVector([5.0, 4.0], fill(1e-14, 2))
-
-        # Test all methods
-        for method in [:rump_original, :improved_method_a, :improved_method_b]
-            result = verified_linear_solve_hmatrix(A, b; method=method)
-
-            @test result.verified
-            @test length(result.error_bound) == 2
-            @test all(isfinite.(result.error_bound))
-
-            # Check that solution is approximately correct
-            x_true = [1.2, 1.4]  # (3*1.2 + 1*1.4 = 5, 1*1.2 + 2*1.4 = 4)
-            @test norm(result.x_approx - x_true) < 1e-10
+    @testset "containment, random systems with radii" begin
+        rng = MersenneTwister(20261011)
+        for n in (2, 5, 12), ρ in (0.0, 1e-13, 1e-8), trial in 1:4
+            Am = randn(rng, n, n) + n * I
+            A = BallMatrix(Am, ρ .* abs.(Am))
+            bm = randn(rng, n)
+            b = BallVector(bm, ρ .* abs.(bm))
+            sols = _hmatrix_exact_solutions(A, b, rng)
+            for method in HMATRIX_METHODS, m in (1, 3)
+                res = verified_linear_solve_hmatrix(A, b; method = method, m = m)
+                @test res.verified
+                res.verified || continue
+                @test res.method === method
+                @test all(isfinite, res.error_bound)
+                @test mid(res.solution) == res.x_approx
+                @test rad(res.solution) == res.error_bound
+                for x in sols
+                    @test _hmatrix_contains(res, x)
+                end
+            end
         end
     end
 
-    @testset "Diagonal System" begin
-        # Simple diagonal system
-        A = BallMatrix(Diagonal([2.0, 3.0, 4.0]), zeros(3, 3))
-        b = BallVector([2.0, 6.0, 8.0], zeros(3))
-
-        result = verified_linear_solve_hmatrix(A, b; method=:improved_method_a)
-
-        @test result.verified
-        @test result.x_approx ≈ [1.0, 2.0, 2.0]
-        @test maximum(result.error_bound) < 1e-10
+    @testset "containment, ill-conditioned" begin
+        rng = MersenneTwister(7)
+        for n in (4, 6, 8)
+            Am = [1.0 / (i + j - 1) for i in 1:n, j in 1:n]
+            A = BallMatrix(Am)
+            b = BallVector(Am * ones(n))
+            sols = _hmatrix_exact_solutions(A, b, rng; nvert = 0)
+            for method in HMATRIX_METHODS
+                res = verified_linear_solve_hmatrix(A, b; method = method)
+                res.verified || continue
+                @test _hmatrix_contains(res, sols[1])
+            end
+        end
     end
 
-    @testset "Method Comparison" begin
-        # Moderately ill-conditioned system
-        A_mid = [10.0 9.0; 9.0 8.0]
-        A = BallMatrix(A_mid, fill(1e-12, 2, 2))
-        b = BallVector([1.0, 1.0], fill(1e-12, 2))
-
-        result_rump = verified_linear_solve_hmatrix(A, b; method=:rump_original)
-        result_improved_a = verified_linear_solve_hmatrix(A, b; method=:improved_method_a)
-        result_improved_b = verified_linear_solve_hmatrix(A, b; method=:improved_method_b)
-
-        # All should verify
-        @test result_rump.verified
-        @test result_improved_a.verified
-        @test result_improved_b.verified
-
-        # Improved methods should have tighter or equal bounds
-        @test maximum(result_improved_a.error_bound) <= maximum(result_rump.error_bound) * 1.1
+    @testset "the bounds compared" begin
+        rng = MersenneTwister(3)
+        for trial in 1:10
+            n = 8
+            Am = randn(rng, n, n) + 3 * I
+            A = BallMatrix(Am, fill(1e-12, n, n))
+            b = BallVector(randn(rng, n), fill(1e-12, n))
+            r1 = verified_linear_solve_hmatrix(A, b; method = :theorem_3_1)
+            r1.verified || continue
+            r3 = verified_linear_solve_hmatrix(A, b; method = :theorem_3_3)
+            r3m = verified_linear_solve_hmatrix(A, b; method = :theorem_3_3, m = 4)
+            # Corollary 3.1: Theorem 3.3 with m = 1 is never above Theorem 3.1
+            @test all(r3.error_bound .<= r1.error_bound .* (1 + 1e-10))
+            # the minimum over more terms is never larger
+            @test all(r3m.error_bound .<= r3.error_bound)
+        end
     end
 
-    @testset "Iterative Refinement" begin
-        A = BallMatrix([4.0 1.0; 1.0 3.0], fill(1e-13, 2, 2))
-        b = BallVector([5.0, 4.0], fill(1e-13, 2))
-
-        # Test with different iteration counts
-        result_1 = verified_linear_solve_hmatrix(A, b; method=:improved_method_a, max_iterations=1)
-        result_3 = verified_linear_solve_hmatrix(A, b; method=:improved_method_a, max_iterations=3)
-
-        @test result_1.verified
-        @test result_3.verified
-
-        # More iterations should not hurt (bounds should be tighter or equal)
-        @test maximum(result_3.error_bound) <= maximum(result_1.error_bound) * 1.01
-    end
-
-    @testset "Perron Vector Computation" begin
-        A = BallMatrix(Diagonal([5.0, 3.0, 1.0]), zeros(3, 3))
-        b = BallVector([5.0, 3.0, 1.0], zeros(3))
-
-        # With Perron vector
-        result_perron = verified_linear_solve_hmatrix(A, b; compute_perron_vector=true)
-
-        # Without Perron vector (uses e=(1,1,1)^T)
-        result_no_perron = verified_linear_solve_hmatrix(A, b; compute_perron_vector=false)
-
-        @test result_perron.verified
-        @test result_no_perron.verified
-        @test result_perron.v !== nothing
-    end
-
-    @testset "Provided Approximate Inverse" begin
+    @testset "given R and x̃" begin
         A = BallMatrix([2.0 1.0; 0.0 3.0], fill(1e-14, 2, 2))
         b = BallVector([3.0, 3.0], fill(1e-14, 2))
-
-        # Provide approximate inverse
         R = inv(mid(A))
-
-        result = verified_linear_solve_hmatrix(A, b; R=R, method=:improved_method_a)
-
-        @test result.verified
-        @test result.R == R
+        res = verified_linear_solve_hmatrix(A, b; R = R, x_approx = [1.0, 1.0])
+        @test res.verified
+        @test res.R == R
+        @test res.x_approx == [1.0, 1.0]
+        @test all(res.error_bound .< 1e-12)
+        # a poor x̃ is still enclosed, with a bound of its size
+        res = verified_linear_solve_hmatrix(A, b; x_approx = [1.5, 0.5])
+        @test res.verified
+        @test all(abs.([1.0, 1.0] .- res.x_approx) .<= res.error_bound)
+        # a poor R that leaves RA an H-matrix
+        res = verified_linear_solve_hmatrix(A, b; R = [0.5 0.0; 0.0 0.3])
+        @test res.verified
+        @test all(abs.([1.0, 1.0] .- res.x_approx) .<= res.error_bound)
     end
 
-    @testset "Comparison Matrix Functions" begin
-        # Test mig and mag
-        x1 = Ball(2.0, 0.5)  # [1.5, 2.5]
-        @test mig(x1) == 1.5
-        @test mag(x1) == 2.5
-
-        x2 = Ball(-2.0, 0.5)  # [-2.5, -1.5]
-        @test mig(x2) == 1.5
-        @test mag(x2) == 2.5
-
-        x3 = Ball(0.0, 1.0)  # [-1.0, 1.0]
-        @test mig(x3) == 0.0
-        @test mag(x3) == 1.0
-
-        # Test comparison matrix
-        C = BallMatrix([Ball(2.0, 0.1) Ball(0.5, 0.1);
-                       Ball(0.3, 0.1) Ball(3.0, 0.1)])
-        comp = comparison_matrix(C)
-
-        @test comp[1,1] == mig(C[1,1])  # Diagonal: mignitude
-        @test comp[2,2] == mig(C[2,2])
-        @test comp[1,2] ≈ -mag(C[1,2])  # Off-diagonal: -magnitude
-        @test comp[2,1] ≈ -mag(C[2,1])
-    end
-
-    @testset "Residual Computation" begin
-        A = BallMatrix([2.0 0.0; 0.0 3.0], fill(1e-14, 2, 2))
-        b = BallVector([4.0, 6.0], fill(1e-14, 2))
-        x = [2.0, 2.0]
-        R = Matrix{Float64}(I, 2, 2)
-
-        residual = BallArithmetic.compute_residual_rigorous(A, b, x, R)
-
-        @test length(residual) == 2
-        @test abs(mid(residual[1])) < 1e-10
-        @test abs(mid(residual[2])) < 1e-10
-    end
-
-    @testset "Method (a) vs Method (b)" begin
-        A = BallMatrix([5.0 2.0; 2.0 3.0], fill(1e-12, 2, 2))
-        b = BallVector([7.0, 5.0], fill(1e-12, 2))
-
-        result_a = verified_linear_solve_hmatrix(A, b; method=:improved_method_a)
-        result_b = verified_linear_solve_hmatrix(A, b; method=:improved_method_b)
-
-        @test result_a.verified
-        @test result_b.verified
-
-        # Both should give reasonable bounds
-        @test maximum(result_a.error_bound) < 1e-8
-        @test maximum(result_b.error_bound) < 1e-8
-    end
-
-    @testset "Ill-Conditioned System" begin
-        # Hilbert-like matrix (ill-conditioned)
-        n = 5
-        A_mid = [1.0/(i+j-1) for i in 1:n, j in 1:n]
-        A = BallMatrix(A_mid, fill(1e-14, n, n))
-        b = BallVector(ones(n), fill(1e-14, n))
-
-        result = verified_linear_solve_hmatrix(A, b; method=:improved_method_a, max_iterations=3)
-
-        # May or may not verify depending on condition number
-        if result.verified
-            @test all(isfinite.(result.error_bound))
-            @test result.spectral_radius_ED_inv < 1.0
+    @testset "failure is reported" begin
+        # a singular matrix in the ball: no proof is possible
+        A = BallMatrix([1.0 1.0; 1.0 1.0 + 1e-10], fill(1e-6, 2, 2))
+        b = BallVector([1.0, 2.0])
+        for method in HMATRIX_METHODS
+            res = verified_linear_solve_hmatrix(A, b; method = method)
+            @test !res.verified
+            @test all(isinf, res.error_bound)
         end
+        res = verified_linear_solve_hmatrix(BallMatrix([1.0 2.0; 2.0 4.0]), b)
+        @test !res.verified
+        # R far from an inverse
+        res = verified_linear_solve_hmatrix(BallMatrix([1.0 2.0; 3.0 4.0]), b;
+            R = [1.0 0.0; 0.0 1.0])
+        @test !res.verified
+        @test_throws ArgumentError verified_linear_solve_hmatrix(
+            BallMatrix([2.0 0.0; 0.0 2.0]), b; method = :improved_method_a)
+        @test_throws ArgumentError verified_linear_solve_hmatrix(
+            BallMatrix([2.0 0.0; 0.0 2.0]), b; m = 0)
+        @test_throws DimensionMismatch verified_linear_solve_hmatrix(
+            BallMatrix(zeros(2, 3)), b)
     end
-
 end
 
 println("All verified H-matrix linear system tests passed!")

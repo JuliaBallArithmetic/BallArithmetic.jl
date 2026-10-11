@@ -1,503 +1,300 @@
-"""
-    verified_linear_system_hmatrix.jl
-
-Modified error bounds for approximate solutions of dense linear systems using H-matrices.
-
-Based on:
-Minamihata, A., Ogita, T., Rump, S.M. & Oishi, S. (2020),
-"Modified error bounds for approximate solutions of dense linear systems",
-J. Comput. Appl. Math. 369, 112546.
-
-This provides tighter error bounds than conventional methods, especially for
-ill-conditioned cases where the preconditioned matrix RA is an H-matrix.
-"""
-
-using LinearAlgebra
+# Error bounds for an approximate solution of a dense linear system, through an H-matrix.
+#
+# A. Minamihata, T. Ogita, S. M. Rump and S. Oishi, "Modified error bounds for approximate
+# solutions of dense linear systems", Journal of Computational and Applied Mathematics 369
+# (2020), 112546, doi 10.1016/j.cam.2019.112546. Theorem and equation numbers below are those of
+# this paper.
 
 """
     VerifiedLinearSystemResult
 
-Result structure for verified linear system solution.
+The result of [`verified_linear_solve_hmatrix`](@ref).
+
+  - `solution`: the ball vector with midpoint `x_approx` and radius `error_bound`; when
+    `verified` it contains the solution of every system with data in the given balls;
+  - `x_approx`: the approximate solution `x̃`;
+  - `error_bound`: `ε` with `|Â⁻¹ b̂ − x̃| ≤ ε` entrywise, infinite when not `verified`;
+  - `verified`: whether the hypothesis of the theorems was proved;
+  - `method`: the bound that was computed;
+  - `R`: the approximate inverse used;
+  - `v`: the positive vector with `⟨C⟩ v > 0`, empty when none was found.
 """
-struct VerifiedLinearSystemResult{T, VT, RT<:Union{Nothing, AbstractMatrix{T}}}
-    """Approximate solution."""
-    x_approx::VT
-    """Error bound on |x_true - x_approx|."""
-    error_bound::VT
-    """Verification succeeded."""
+struct VerifiedLinearSystemResult{T}
+    solution::BallVector{T}
+    x_approx::Vector{T}
+    error_bound::Vector{T}
     verified::Bool
-    """Method used for verification."""
     method::Symbol
-    """Approximate inverse used as preconditioner."""
-    R::RT
-    """Perron vector used in verification."""
-    v::Union{Nothing, Vector{T}}
-    """Condition-related metrics."""
-    spectral_radius_ED_inv::T
-end
-
-"""
-    verified_linear_solve_hmatrix(A::BallMatrix, b::BallVector;
-                                   method=:improved_method_a,
-                                   R=nothing,
-                                   x_approx=nothing,
-                                   max_iterations=1,
-                                   compute_perron_vector=true)
-
-Compute verified error bounds for the solution of Ax = b using H-matrix properties.
-
-# Arguments
-- `A`: Coefficient ball matrix
-- `b`: Right-hand side ball vector
-- `method`: Verification method to use
-  - `:rump_original` - Original Rump (2013) bound (Theorem 3.1)
-  - `:minamihata_2015` - Minamihata et al. (2015) bound (Theorem 3.2, m=1)
-  - `:improved_method_a` - Improved bound for Method (a) (Theorem 3.3, default)
-  - `:improved_method_b` - Improved bound for Method (b) (Corollary 3.2)
-- `R`: Approximate inverse of A (computed if not provided)
-- `x_approx`: Approximate solution (computed if not provided)
-- `max_iterations`: Number of refinement iterations for improved bounds
-- `compute_perron_vector`: Whether to compute Perron vector (more accurate)
-
-# Returns
-- `VerifiedLinearSystemResult` containing verified error bounds
-
-# Method Comparison
-- **Method (a)**: Uses C = [▽(RA), △(RA)] - more expensive but tighter
-- **Method (b)**: Uses C = [▽(RA), ▽(RA) + 2nu|R||A|] - half cost, weaker bounds
-
-The improved methods (Theorem 3.3 and Corollary 3.2) provide tighter bounds
-than conventional approaches, especially for ill-conditioned systems.
-
-# Example
-```julia
-A = BallMatrix([3.0 1.0; 1.0 2.0], fill(1e-10, 2, 2))
-b = BallVector([5.0, 4.0], fill(1e-10, 2))
-
-result = verified_linear_solve_hmatrix(A, b; method=:improved_method_a)
-
-println("Verified: ", result.verified)
-println("Solution: ", result.x_approx)
-println("Error bound: ", result.error_bound)
-```
-"""
-function verified_linear_solve_hmatrix(A::BallMatrix{T}, b::BallVector{T};
-                                       method::Symbol=:improved_method_a,
-                                       R::Union{Nothing, Matrix{T}}=nothing,
-                                       x_approx::Union{Nothing, Vector{T}}=nothing,
-                                       max_iterations::Int=1,
-                                       compute_perron_vector::Bool=true) where {T}
-    n = size(A, 1)
-
-    # Compute approximate inverse if not provided
-    if R === nothing
-        R = inv(mid(A))
-    end
-
-    # Compute approximate solution if not provided
-    if x_approx === nothing
-        x_approx = R * mid(b)
-    end
-
-    # Compute residual with directed rounding
-    residual = compute_residual_rigorous(A, b, x_approx, R)
-
-    # Compute interval enclosure of RA based on method
-    if method in [:improved_method_a, :rump_original, :minamihata_2015]
-        C = compute_RA_interval_method_a(R, A)
-    else
-        C = compute_RA_interval_method_b(R, A)
-    end
-
-    # Compute comparison matrix and check H-matrix property
-    comp_matrix = comparison_matrix(C)
-
-    # Find Perron vector v such that ⟨RA⟩v > 0
-    v, u = if compute_perron_vector
-        compute_perron_vector_power_iteration(comp_matrix, max_iter=100)
-    else
-        # Use e = (1,1,...,1)^T
-        e = ones(T, n)
-        u = comp_matrix * e
-        if !all(u .> 0)
-            return VerifiedLinearSystemResult(
-                x_approx, fill(T(Inf), n), false, method,
-                R, nothing, T(Inf)
-            )
-        end
-        e, u
-    end
-
-    # Verify H-matrix property
-    if !all(u .> 0)
-        @warn "Failed to verify H-matrix property"
-        return VerifiedLinearSystemResult(
-            x_approx, fill(T(Inf), n), false, method,
-            R, v, T(Inf)
-        )
-    end
-
-    # Compute error bound based on selected method
-    error_bound, spectral_radius = if method == :rump_original
-        compute_rump_original_bound(comp_matrix, residual, v, u)
-    elseif method == :minamihata_2015
-        compute_minamihata_2015_bound(comp_matrix, residual, v, u)
-    elseif method == :improved_method_a
-        compute_improved_method_a_bound(comp_matrix, residual, v, u, max_iterations)
-    else # :improved_method_b
-        compute_improved_method_b_bound(C, residual, v, u, R, A)
-    end
-
-    verified = all(isfinite.(error_bound))
-
-    return VerifiedLinearSystemResult(
-        x_approx, error_bound, verified, method,
-        R, v, spectral_radius
-    )
-end
-
-"""
-    compute_residual_rigorous(A, b, x, R)
-
-Compute rigorous interval enclosure of R(b - Ax) with directed rounding.
-"""
-function compute_residual_rigorous(A::BallMatrix{T}, b::BallVector{T},
-                                   x::Vector{T}, R::AbstractMatrix{T}) where {T}
-    # Compute b - Ax rigorously
-    Ax = mid(A) * x
-    res_mid = mid(b) - Ax
-
-    # Account for uncertainties
-    res_rad = rad(b) + rad(A) * abs.(x)
-
-    # Apply R with directed rounding
-    R_matrix = Matrix(R)  # Convert Diagonal etc. to Matrix for uniform handling
-    residual_mid = R_matrix * res_mid
-    residual_rad = abs.(R_matrix) * res_rad
-
-    return BallVector(residual_mid, residual_rad)
-end
-
-"""
-    compute_RA_interval_method_a(R, A)
-
-Compute interval enclosure C = [▽(RA), △(RA)] using Method (a).
-Uses directed rounding for matrix multiplication.
-"""
-function compute_RA_interval_method_a(R::AbstractMatrix{T}, A::BallMatrix{T}) where {T}
-    A_mid = mid(A)
-    A_rad = rad(A)
-    R_matrix = Matrix(R)
-
-    # Compute RA with directed rounding
-    RA_mid = R_matrix * A_mid
-    RA_rad = abs.(R_matrix) * A_rad
-
-    # Create interval matrix
-    return BallMatrix(RA_mid, RA_rad)
-end
-
-"""
-    compute_RA_interval_method_b(R, A)
-
-Compute interval enclosure C' = [▽(RA), |▽(RA)| + 2nu|R||A|] using Method (b).
-This is cheaper (half the cost) but provides weaker bounds.
-"""
-function compute_RA_interval_method_b(R::AbstractMatrix{T}, A::BallMatrix{T}) where {T}
-    n = size(R, 1)
-    u = eps(T) / 2  # unit roundoff
-    R_matrix = Matrix(R)
-
-    A_mid = mid(A)
-
-    # Compute RA
-    RA_mid = R_matrix * A_mid
-
-    # Add rounding error bound: 2nu|R||A|
-    rounding_bound = 2 * n * u * abs.(R_matrix) * abs.(A_mid)
-
-    # Total radius includes input uncertainties
-    total_rad = rad(A) .+ rounding_bound
-
-    return BallMatrix(RA_mid, abs.(R_matrix) * total_rad)
-end
-
-"""
-    comparison_matrix(C::BallMatrix)
-
-Compute comparison matrix ⟨C⟩ for interval matrix C.
-⟨C⟩_ij = mig(C_ij) if i=j, -mag(C_ij) if i≠j
-"""
-function comparison_matrix(C::BallMatrix{T}) where {T}
-    n = size(C, 1)
-    comp = zeros(T, n, n)
-
-    for i in 1:n
-        for j in 1:n
-            if i == j
-                # Diagonal: use mignitude (minimum absolute value)
-                comp[i,j] = mig(C[i,j])
-            else
-                # Off-diagonal: negative magnitude (maximum absolute value)
-                comp[i,j] = -mag(C[i,j])
-            end
-        end
-    end
-
-    return comp
+    R::Matrix{T}
+    v::Vector{T}
 end
 
 """
     mig(x::Ball)
 
-Mignitude (minimum absolute value) of a ball.
+A lower bound of the smallest absolute value of the points of `x`, zero when `x` contains zero.
 """
-function mig(x::Ball{T}) where {T}
-    lower = setrounding(T, RoundDown) do
-        mid(x) - rad(x)
-    end
-    upper = setrounding(T, RoundUp) do
-        mid(x) + rad(x)
-    end
-    if lower > zero(T)
-        return lower
-    elseif upper < zero(T)
-        return setrounding(T, RoundDown) do
-            abs(upper)
-        end
-    else
-        return zero(T)
-    end
-end
+mig(x::Ball) = max(sub_down(abs_down(mid(x)), rad(x)), zero(rad(x)))
 
 """
     mag(x::Ball)
 
-Magnitude (maximum absolute value) of a ball.
+An upper bound of the largest absolute value of the points of `x`.
 """
-function mag(x::Ball{T}) where {T}
-    setrounding(T, RoundUp) do
-        max(abs(mid(x) - rad(x)), abs(mid(x) + rad(x)))
-    end
+mag(x::Ball) = add_up(abs_up(mid(x)), rad(x))
+
+"""
+    comparison_matrix(C::BallMatrix)
+
+The comparison matrix `⟨C⟩` of Definition 2.7 of Minamihata, Ogita, Rump and Oishi (2020), in
+floating point: [`mig`](@ref) of the entry on the diagonal, minus [`mag`](@ref) of the entry off
+it. Both are rounded so that the matrix returned is entrywise below the comparison matrix of
+`C`; a positive vector that it maps to a positive vector therefore proves that `C` is an
+H-matrix (Remark 1 there).
+"""
+function comparison_matrix(C::BallMatrix)
+    n = size(C, 1)
+    n == size(C, 2) || throw(DimensionMismatch("the comparison matrix needs a square matrix"))
+    return [i == j ? mig(C[i, i]) : -mag(C[i, j]) for i in 1:n, j in 1:n]
 end
 
 """
-    compute_perron_vector_power_iteration(M, max_iter=100)
+    verified_linear_solve_hmatrix(A::BallMatrix, b::BallVector;
+        method = :theorem_3_3, m = 1, R = nothing, x_approx = nothing)
 
-Compute approximate Perron vector of ED^(-1) using power iteration.
-Returns (v, u) where u = ⟨RA⟩v > 0.
+An entrywise bound `ε` of the error of an approximate solution `x̃` of a real linear system:
+`|Â⁻¹ b̂ − x̃| ≤ ε` for every matrix `Â` in `A` and every vector `b̂` in `b`, together with the
+proof that every such `Â` is nonsingular. Returns a [`VerifiedLinearSystemResult`](@ref);
+`verified` is `false`, and the bound infinite, when the hypothesis could not be proved.
+
+The hypothesis, common to all four bounds: with `R` an approximate inverse and `C` a ball matrix
+containing `R Â` for every `Â` in `A`, there is a vector `v > 0` with `u := ⟨C⟩ v > 0`, where
+`⟨C⟩` is the comparison matrix (see [`comparison_matrix`](@ref)). Then `C` is an H-matrix, `Â`
+and `R` are nonsingular, and `|(R Â)⁻¹| ≤ ⟨C⟩⁻¹` (Theorems 2.1 and 2.3, Remark 1). Write
+`⟨C⟩ = D − E` with `D` the diagonal part, `G := E D⁻¹`, and `c` for an upper bound of
+`|R (b̂ − Â x̃)|`.
+
+`method` selects the bound:
+
+  - `:theorem_3_1` (Rump): `ε = (D⁻¹ + v wᵀ) c` with `w_k := max_i G_ik / u_i`, equation (3);
+  - `:theorem_3_2` (Minamihata, Sekine, Ogita, Rump and Oishi 2015):
+    `ε = (D⁻¹ + v wᵀ) (I − Σ_{k=1}^m (Δ^{2k−1} − Δ^{2k})) c` with `Δ := u wᵀ − G`,
+    equation (4);
+  - `:theorem_3_3` (the default): `ε = min_{1 ≤ k ≤ m} ε^(k)`,
+    `ε^(k) := D⁻¹ (c^(0) + … + c^(k−1)) + max_i (c^(k)_i / u_i) v`, with `c^(0) := c` and
+    `c^(k) := G c^(k−1)`, equations (5) and (6);
+  - `:corollary_3_2`: `ε = D⁻¹ r + α v` with
+    `r := ⟨mid C⟩ |ỹ| + |mid(C) ỹ − R (b̂ − Â x̃)|`, `α := max_i (G r)_i / u_i` and `ỹ` an
+    approximate solution of `mid(C) y = R (b − A x̃)`, equation (17).
+
+`m` is the number of terms in Theorems 3.2 and 3.3. `R` defaults to the floating-point inverse
+of `mid(A)` and `x_approx` to `R mid(b)`.
+
+How it is computed. `C` and the residual `R (b − A x̃)` are products and sums of balls, so they
+contain what they should for every point of `A` and `b`; the residual is formed in working
+precision. `v` is the floating-point solution of `⟨C⟩ v = (1, …, 1)ᵀ`, the first of the two
+choices named in Section 3 of the paper, and `u` is then enclosed, its lower end being the one
+that has to be positive. The bounds of Theorems 3.1, 3.3 and of Corollary 3.2 are sums and
+products of nonnegative numbers, rounded upwards, with `u` replaced by its lower end where it
+divides. The bound of Theorem 3.2 has terms of both signs and is evaluated in balls, `w` being
+any vector with `G ≤ u wᵀ`, which is all its proof uses; the upper end is returned.
+
+What is not reproduced. The paper distinguishes two enclosures of `R A`, Method (a) from two
+products with directed rounding and Method (b) from one product and the a priori bound
+`2 n u |R| |A|`, and proposes Corollary 3.2 for the second. Here there is one enclosure, the
+ball product of the package, and each of the four bounds is applied to it (Remark 5 of the paper
+allows Corollary 3.2 on any enclosure); the comparison of costs between the two methods does not
+carry over.
+
+# Reference
+
+A. Minamihata, T. Ogita, S. M. Rump and S. Oishi, "Modified error bounds for approximate
+solutions of dense linear systems", Journal of Computational and Applied Mathematics 369
+(2020), 112546, doi 10.1016/j.cam.2019.112546.
 """
-function compute_perron_vector_power_iteration(comp_matrix::Matrix{T};
-                                               max_iter::Int=100,
-                                               tol::T=sqrt(eps(T))) where {T}
-    n = size(comp_matrix, 1)
+function verified_linear_solve_hmatrix(A::BallMatrix{T}, b::BallVector{T};
+        method::Symbol = :theorem_3_3, m::Int = 1,
+        R::Union{Nothing, AbstractMatrix} = nothing,
+        x_approx::Union{Nothing, AbstractVector} = nothing) where {T <: AbstractFloat}
+    n = size(A, 1)
+    n == size(A, 2) || throw(DimensionMismatch("A must be square"))
+    n == length(b) || throw(DimensionMismatch("A and b have different sizes"))
+    eltype(mid(A)) <: Real && eltype(mid(b)) <: Real ||
+        throw(ArgumentError("verified_linear_solve_hmatrix is for real systems"))
+    method in (:theorem_3_1, :theorem_3_2, :theorem_3_3, :corollary_3_2) ||
+        throw(ArgumentError("unknown method $method: use :theorem_3_1, :theorem_3_2, " *
+                            ":theorem_3_3 or :corollary_3_2"))
+    m >= 1 || throw(ArgumentError("m must be at least 1"))
 
-    # Extract D and E
-    D = Diagonal([comp_matrix[i,i] for i in 1:n])
-    E = -comp_matrix + D
-
-    # Handle edge case: if E ≈ 0 (e.g., pure diagonal matrix), any positive v works
-    if norm(E) < tol
-        v = ones(T, n)
-        u = comp_matrix * v
-        return v, u
-    end
-
-    # ED^(-1)
-    ED_inv = E * inv(D)
-
-    # Power iteration to find Perron vector
-    v = ones(T, n)
-    v = v / norm(v)
-
-    for iter in 1:max_iter
-        v_new = ED_inv * v
-
-        # Handle case where v_new is very small (near-diagonal matrix)
-        v_norm = norm(v_new)
-        if v_norm < tol
-            v = ones(T, n)
-            break
+    Rm = if R === nothing
+        try
+            inv(mid(A))
+        catch
+            return _hmatrix_failure(mid(b), method, zeros(T, n, n))
         end
-
-        # Normalize
-        v_new = v_new / v_norm
-
-        if norm(v_new - v) < tol
-            v = v_new
-            break
-        end
-
-        v = v_new
+    else
+        Matrix{T}(R)
     end
+    size(Rm) == (n, n) || throw(DimensionMismatch("R must have the size of A"))
+    x̃ = x_approx === nothing ? Rm * mid(b) : Vector{T}(x_approx)
+    length(x̃) == n || throw(DimensionMismatch("x_approx must have the length of b"))
+    (all(isfinite, Rm) && all(isfinite, x̃)) || return _hmatrix_failure(x̃, method, Rm)
 
-    # Make v positive and compute u = ⟨RA⟩v
-    v = abs.(v)
-    u = comp_matrix * v
+    RB = BallMatrix(Rm)
+    C = RB * A
+    ρ = RB * (b - A * BallVector(x̃))
+    (all(isfinite, mid(C)) && all(isfinite, rad(C)) && all(isfinite, mid(ρ)) &&
+     all(isfinite, rad(ρ))) || return _hmatrix_failure(x̃, method, Rm)
 
-    return v, u
+    # ⟨C⟩ = D − E, the positive vector v and the two ends of u = ⟨C⟩ v
+    M = comparison_matrix(C)
+    d = diag(M)
+    all(>(0), d) || return _hmatrix_failure(x̃, method, Rm)
+    v = try
+        M \ ones(T, n)
+    catch
+        return _hmatrix_failure(x̃, method, Rm)
+    end
+    (all(isfinite, v) && all(>(0), v)) || return _hmatrix_failure(x̃, method, Rm)
+    u = BallMatrix(M) * BallVector(v)
+    ulo = [inf(u[i]) for i in 1:n]
+    all(>(0), ulo) || return _hmatrix_failure(x̃, method, Rm, v)
+
+    c = [mag(ρ[i]) for i in 1:n]
+    ε = if method === :theorem_3_1
+        _hmatrix_theorem_3_1(M, d, v, ulo, c)
+    elseif method === :theorem_3_2
+        _hmatrix_theorem_3_2(M, d, v, u, ulo, c, m)
+    elseif method === :theorem_3_3
+        _hmatrix_theorem_3_3(M, d, v, ulo, c, m)
+    else
+        _hmatrix_corollary_3_2(C, ρ, M, d, v, ulo)
+    end
+    all(isfinite, ε) || return _hmatrix_failure(x̃, method, Rm, v)
+    return VerifiedLinearSystemResult(BallVector(x̃, ε), x̃, ε, true, method, Rm, v)
 end
 
-"""
-    compute_rump_original_bound(comp_matrix, residual, v, u)
+function _hmatrix_failure(x̃::AbstractVector{T}, method::Symbol, Rm::Matrix{T},
+        v::Vector{T} = T[]) where {T}
+    ε = fill(T(Inf), length(x̃))
+    return VerifiedLinearSystemResult(BallVector(Vector{T}(x̃), ε), Vector{T}(x̃), ε, false,
+        method, Rm, v)
+end
 
-Compute error bound using Rump (2013) Theorem 3.1.
-|A^(-1)b - x̃| ≤ (D^(-1) + vw^T)|R(b - Ax̃)|
-"""
-function compute_rump_original_bound(comp_matrix::Matrix{T}, residual::BallVector{T},
-                                     v::Vector{T}, u::Vector{T}) where {T}
-    n = length(v)
+# an upper bound of G y for y ≥ 0, with G = E D⁻¹, E the off-diagonal part of −M and d its diagonal
+function _hmatrix_G_times(M::Matrix{T}, d::Vector{T}, y::Vector{T}) where {T}
+    n = length(y)
+    q = [div_up(y[k], d[k]) for k in 1:n]
+    g = zeros(T, n)
+    @inbounds for k in 1:n, i in 1:n
+        i == k && continue
+        g[i] = add_up(g[i], mul_up(-M[i, k], q[k]))
+    end
+    return g
+end
 
-    # Extract D and E
-    D_diag = [comp_matrix[i,i] for i in 1:n]
-    D_inv = Diagonal(1 ./ D_diag)
-
-    E = -comp_matrix + Diagonal(D_diag)
-    ED_inv = E * inv(Diagonal(D_diag))
-
-    # Compute w
-    G = ED_inv
+# w_k ≥ max_i G_ik / u_i, so that G ≤ u wᵀ
+function _hmatrix_w(M::Matrix{T}, d::Vector{T}, ulo::Vector{T}) where {T}
+    n = length(d)
     w = zeros(T, n)
+    @inbounds for k in 1:n, i in 1:n
+        i == k && continue
+        w[k] = max(w[k], div_up(div_up(-M[i, k], d[k]), ulo[i]))
+    end
+    return w
+end
+
+# Theorem 3.1, equation (3): (D⁻¹ + v wᵀ) c
+function _hmatrix_theorem_3_1(M::Matrix{T}, d::Vector{T}, v::Vector{T}, ulo::Vector{T},
+        c::Vector{T}) where {T}
+    n = length(c)
+    w = _hmatrix_w(M, d, ulo)
+    s = zero(T)
     for k in 1:n
-        w[k] = maximum(G[i,k] / u[i] for i in 1:n)
+        s = add_up(s, mul_up(w[k], c[k]))
     end
-
-    # Compute bound
-    residual_abs = upper_abs(residual)
-    bound = D_inv * residual_abs + v * dot(w, residual_abs)
-
-    # Rigorous upper bound on spectral radius using L2 opnorm bound
-    # Convert to BallMatrix for rigorous computation
-    spectral_radius = upper_bound_L2_opnorm(BallMatrix(ED_inv))
-
-    return bound, spectral_radius
+    return [add_up(div_up(c[i], d[i]), mul_up(v[i], s)) for i in 1:n]
 end
 
-"""
-    compute_minamihata_2015_bound(comp_matrix, residual, v, u)
-
-Compute error bound using Minamihata et al. (2015) Theorem 3.2 with m=1.
-"""
-function compute_minamihata_2015_bound(comp_matrix::Matrix{T}, residual::BallVector{T},
-                                       v::Vector{T}, u::Vector{T}) where {T}
-    # Similar to Rump but with one iteration of refinement
-    # For simplicity, using the same as Rump for now
-    return compute_rump_original_bound(comp_matrix, residual, v, u)
-end
-
-"""
-    compute_improved_method_a_bound(comp_matrix, residual, v, u, max_iterations)
-
-Compute improved error bound using Theorem 3.3 (Method a).
-
-Equation (5): |A^(-1)b - x̃| ≤ D^(-1)|R(b - Ax̃)| + max_{1≤i≤n} (ED^(-1)|R(b - Ax̃)|)_i/u_i * v
-
-Equation (6) with iterations: ϵ^(k) = D^(-1)(c^(0) + ... + c^(k-1)) + max_{i} c^(k)_i/u_i * v
-where c^(k) = ED^(-1)c^(k-1)
-"""
-function compute_improved_method_a_bound(comp_matrix::Matrix{T}, residual::BallVector{T},
-                                         v::Vector{T}, u::Vector{T},
-                                         max_iterations::Int) where {T}
-    n = length(v)
-
-    # Extract D and E
-    D_diag = [comp_matrix[i,i] for i in 1:n]
-    D_inv = Diagonal(1 ./ D_diag)
-
-    E = -comp_matrix + Diagonal(D_diag)
-    ED_inv = E * D_inv
-
-    # c^(0) = |R(b - Ax̃)|
-    c = [upper_abs(residual)]
-
-    # Compute iterative bounds
-    best_bound = fill(T(Inf), n)
-
-    for k in 1:max_iterations
-        # Compute next c^(k) = ED^(-1)c^(k-1)
-        push!(c, ED_inv * c[end])
-
-        # Compute ϵ^(k)
-        sum_c = sum(c[1:end-1])  # c^(0) + ... + c^(k-1)
-
-        # max_{i} c^(k)_i / u_i
-        α = maximum(c[end][i] / u[i] for i in 1:n)
-
-        # ϵ^(k) = D^(-1)(sum_c) + α*v
-        epsilon_k = D_inv * sum_c + α * v
-
-        # Keep minimum
-        best_bound = min.(best_bound, epsilon_k)
+# Theorem 3.3, equations (5) and (6)
+function _hmatrix_theorem_3_3(M::Matrix{T}, d::Vector{T}, v::Vector{T}, ulo::Vector{T},
+        c::Vector{T}, m::Int) where {T}
+    n = length(c)
+    best = fill(T(Inf), n)
+    partial = copy(c)          # c^(0) + … + c^(k−1)
+    ck = c
+    for k in 1:m
+        ck = _hmatrix_G_times(M, d, ck)
+        α = maximum(div_up(ck[i], ulo[i]) for i in 1:n)
+        for i in 1:n
+            best[i] = min(best[i], add_up(div_up(partial[i], d[i]), mul_up(α, v[i])))
+        end
+        k == m && break
+        for i in 1:n
+            partial[i] = add_up(partial[i], ck[i])
+        end
     end
-
-    # Rigorous upper bound on spectral radius using L2 opnorm bound
-    spectral_radius = upper_bound_L2_opnorm(BallMatrix(ED_inv))
-
-    return best_bound, spectral_radius
+    return best
 end
 
-"""
-    compute_improved_method_b_bound(C, residual, v, u, R, A)
-
-Compute improved error bound using Corollary 3.2 (Method b).
-
-Equation (17): |A^(-1)b - x̃| ≤ D^(-1)r + αv
-where r = ⟨mid(C')⟩|ỹ| + |mid(C')ỹ - R(b - Ax̃)|
-and α = max_{i} {ED^(-1)r}_i / u_i
-"""
-function compute_improved_method_b_bound(C::BallMatrix{T}, residual::BallVector{T},
-                                         v::Vector{T}, u::Vector{T},
-                                         R::Matrix{T}, A::BallMatrix{T}) where {T}
-    n = length(v)
-
-    # mid(C')
-    mid_C = mid(C)
-
-    # Comparison matrix of mid(C')
-    comp_mid_C = comparison_matrix(BallMatrix(mid_C, zeros(T, size(mid_C))))
-
-    # Solve mid(C')ỹ ≈ R(b - Ax̃) with one step of iterative refinement
-    res_mid = mid(residual)
-    y_tilde = mid_C \ res_mid
-    res_y = res_mid - mid_C * y_tilde
-    y_tilde += mid_C \ res_y
-
-    # Compute r = ⟨mid(C')⟩|ỹ| + |mid(C')ỹ - R(b - Ax̃)|
-    term1 = comp_mid_C * abs.(y_tilde)
-    term2 = abs.(mid_C * y_tilde - res_mid)
-    r = term1 + term2
-
-    # Extract D and E from comparison matrix of C'
-    comp_C = comparison_matrix(C)
-    D_diag = [comp_C[i,i] for i in 1:n]
-    D_inv = Diagonal(1 ./ D_diag)
-
-    E = -comp_C + Diagonal(D_diag)
-    ED_inv = E * D_inv
-
-    # Compute α = max_{i} {ED^(-1)r}_i / u_i
-    ED_inv_r = ED_inv * r
-    α = maximum(ED_inv_r[i] / u[i] for i in 1:n)
-
-    # Final bound: D^(-1)r + αv
-    bound = D_inv * r + α * v
-
-    # Rigorous upper bound on spectral radius using L2 opnorm bound
-    spectral_radius = upper_bound_L2_opnorm(BallMatrix(ED_inv))
-
-    return bound, spectral_radius
+# Theorem 3.2, equation (4), in balls: the terms have both signs. `u` is the enclosure of ⟨C⟩ v
+# and `w` any vector with G ≤ u wᵀ; the matrix applied to c is entrywise above ⟨C⟩⁻¹ ≥ 0, so an
+# upper bound of c may stand for it.
+function _hmatrix_theorem_3_2(M::Matrix{T}, d::Vector{T}, v::Vector{T}, u::BallVector{T},
+        ulo::Vector{T}, c::Vector{T}, m::Int) where {T}
+    n = length(c)
+    w = _hmatrix_w(M, d, ulo)
+    wdot(y) = sum(Ball(w[k]) * y[k] for k in 1:n)
+    # Δ y = u (wᵀ y) − G y
+    function Δ(y)
+        s = wdot(y)
+        q = [y[k] / Ball(d[k]) for k in 1:n]
+        z = [u[i] * s for i in 1:n]
+        for k in 1:n, i in 1:n
+            i == k && continue
+            z[i] = z[i] - Ball(-M[i, k]) * q[k]
+        end
+        return z
+    end
+    p = [Ball(c[i]) for i in 1:n]
+    t = copy(p)
+    for j in 1:(2m)
+        p = Δ(p)
+        t = isodd(j) ? [t[i] - p[i] for i in 1:n] : [t[i] + p[i] for i in 1:n]
+    end
+    s = wdot(t)
+    return [sup(t[i] / Ball(d[i]) + Ball(v[i]) * s) for i in 1:n]
 end
 
-"""
-    upper_abs(x::BallVector)
-
-Compute upper bound on |x| for ball vector (componentwise).
-"""
-function upper_abs(x::BallVector{T}) where {T}
-    return abs.(mid(x)) + rad(x)
+# Corollary 3.2, equation (17): D⁻¹ r + α v
+function _hmatrix_corollary_3_2(C::BallMatrix{T}, ρ::BallVector{T}, M::Matrix{T},
+        d::Vector{T}, v::Vector{T}, ulo::Vector{T}) where {T}
+    n = length(d)
+    Cm = mid(C)
+    ρm = mid(ρ)
+    ỹ = try
+        y = Cm \ ρm
+        y + Cm \ (ρm - Cm * y)
+    catch
+        return fill(T(Inf), n)
+    end
+    all(isfinite, ỹ) || return fill(T(Inf), n)
+    # r = ⟨mid C⟩ |ỹ| + |mid(C) ỹ − R (b − A x̃)|, an upper bound of it, not below zero
+    defect = BallMatrix(Cm) * BallVector(ỹ) - ρ
+    r = Vector{T}(undef, n)
+    for i in 1:n
+        s = Ball(abs(Cm[i, i])) * Ball(abs(ỹ[i]))
+        for k in 1:n
+            k == i && continue
+            s = s - Ball(abs(Cm[i, k])) * Ball(abs(ỹ[k]))
+        end
+        r[i] = max(add_up(sup(s), mag(defect[i])), zero(T))
+    end
+    g = _hmatrix_G_times(M, d, r)
+    α = maximum(div_up(g[i], ulo[i]) for i in 1:n)
+    return [add_up(div_up(r[i], d[i]), mul_up(α, v[i])) for i in 1:n]
 end
 
-# Export main functions
 export VerifiedLinearSystemResult
 export verified_linear_solve_hmatrix
 export comparison_matrix, mig, mag
