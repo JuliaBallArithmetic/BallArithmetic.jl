@@ -113,42 +113,85 @@ _hull_radius(sols) = maximum(
 end
 
 @testset "Gaussian Elimination" begin
-    @testset "Regular 3×3 System" begin
-        A = BallMatrix([2.0 1.0 1.0; 4.0 3.0 3.0; 8.0 7.0 9.0],
-                      fill(0.01, 3, 3))
-        b = BallVector([4.0, 10.0, 24.0], fill(0.01, 3))
+    # the factors of the rows A[p, :] in rational arithmetic, with no further row exchange
+    function exact_lu(Aq)
+        n = size(Aq, 1)
+        U = copy(Aq)
+        L = Matrix{Rational{BigInt}}(I, n, n)
+        for k in 1:n, i in (k + 1):n
+            L[i, k] = U[i, k] // U[k, k]
+            U[i, :] .-= L[i, k] .* U[k, :]
+        end
+        return L, U
+    end
+    inside(x, B) = abs(x - Rational{BigInt}(mid(B))) <= Rational{BigInt}(rad(B))
 
-        result = interval_gaussian_elimination(A, b)
-
-        @test result.certified
-        @test !result.singular
-        @test length(result.solution) == 3
-
-        # Verify solution
-        x_c = mid(result.solution)
-        A_c = mid(A)
-        b_c = mid(b)
-        @test norm(A_c * x_c - b_c) < 0.1
+    @testset "solution, factors and determinant at the midpoint and at vertices" begin
+        rng = MersenneTwister(5609)
+        for n in (2, 4, 7), ρ in (0.0, 1e-12, 1e-6), trial in 1:3
+            Am = randn(rng, n, n) + n * I
+            bm = randn(rng, n)
+            A = BallMatrix(Am, fill(ρ, n, n))
+            b = BallVector(bm, fill(ρ, n))
+            res = interval_gaussian_elimination(A, b)
+            @test res.certified
+            res.certified || continue
+            @test res.solution isa BallVector
+            @test sort(res.p) == collect(1:n)
+            d = interval_gaussian_elimination_det(A)
+            @test is_regular_gaussian_elimination(A)
+            for t in 0:5
+                SA = t == 0 ? zeros(Int, n, n) : rand(rng, (-1, 1), n, n)
+                sb = t == 0 ? zeros(Int, n) : rand(rng, (-1, 1), n)
+                Aq = Rational{BigInt}.(Am) .+ SA .* Rational{BigInt}(ρ)
+                bq = Rational{BigInt}.(bm) .+ sb .* Rational{BigInt}(ρ)
+                xq = Aq \ bq
+                @test all(inside(xq[i], res.solution[i]) for i in 1:n)
+                Lq, Uq = exact_lu(Aq[res.p, :])
+                @test all(inside(Lq[i, j], res.L[i, j]) for i in 1:n, j in 1:n)
+                @test all(inside(Uq[i, j], res.U[i, j]) for i in 1:n, j in 1:n)
+                @test inside(det(Aq), d)
+            end
+        end
     end
 
-    @testset "Determinant Computation" begin
-        A = BallMatrix([2.0 1.0; 1.0 2.0], fill(0.01, 2, 2))
-
-        det_result = interval_gaussian_elimination_det(A)
-
-        # True determinant should be near 3.0
-        @test 3.0 ∈ det_result
-        @test mid(det_result) ≈ 3.0 atol=0.2
+    @testset "row exchanges" begin
+        A = BallMatrix([0.0 1.0; 1.0 0.0])
+        b = BallVector([2.0, 3.0])
+        res = interval_gaussian_elimination(A, b)
+        @test res.certified
+        @test res.p == [2, 1]
+        @test mid(res.solution) == [3.0, 2.0]
+        @test mid(interval_gaussian_elimination_det(A)) == -1.0
+        # without row exchanges the first pivot is zero: the elimination stops
+        res = interval_gaussian_elimination(A, b; pivoting = :none)
+        @test !res.certified
+        @test all(isinf, rad(res.solution))
+        # three rows, an odd and an even permutation
+        P = [0.0 0.0 1.0; 1.0 0.0 0.0; 0.0 1.0 0.0]
+        @test mid(interval_gaussian_elimination_det(BallMatrix(P))) == 1.0
+        Q = [0.0 1.0 0.0; 1.0 0.0 0.0; 0.0 0.0 1.0]
+        @test mid(interval_gaussian_elimination_det(BallMatrix(Q))) == -1.0
+        D = [2.0 1.0 0.0; 1.0 3.0 1.0; 0.0 1.0 4.0]
+        @test 18.0 ∈ interval_gaussian_elimination_det(BallMatrix(D, fill(1e-12, 3, 3)))
     end
 
-    @testset "Singularity Detection" begin
-        # Nearly singular matrix
+    @testset "what is not certified, and what is refused" begin
+        # a ball that contains a singular matrix
         A = BallMatrix([1.0 1.0; 1.0 1.0], fill(0.001, 2, 2))
-
-        is_reg = is_regular_gaussian_elimination(A)
-
-        # Should detect singularity
-        @test !is_reg
+        res = interval_gaussian_elimination(A, BallVector([1.0, 2.0]))
+        @test !res.certified
+        @test all(isinf, rad(res.solution))
+        @test !is_regular_gaussian_elimination(A)
+        @test isinf(rad(interval_gaussian_elimination_det(A)))
+        Ac = BallMatrix(ComplexF64[1 2; 3 4])
+        @test_throws ArgumentError interval_gaussian_elimination(Ac,
+            BallVector(ComplexF64[1, 2]))
+        @test_throws ArgumentError interval_gaussian_elimination_det(Ac)
+        @test_throws DimensionMismatch interval_gaussian_elimination(BallMatrix(zeros(2, 3)),
+            BallVector([1.0, 2.0]))
+        @test_throws ArgumentError interval_gaussian_elimination(BallMatrix([1.0 0.0; 0.0 1.0]),
+            BallVector([1.0, 2.0]); pivoting = :complete)
     end
 end
 

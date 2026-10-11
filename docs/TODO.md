@@ -410,3 +410,14 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     (Corollary 1) and Algorithms 2 to 7 of the paper are not what this routine runs; it
     encloses the residuals by ball products.
 
+22. **`interval_gaussian_elimination`, rewritten on 2026-10-12** after Algorithms 5.9 and 5.10
+    and Section 8.4.1 of Horáček (2019). Found: the field `singular`, documented as "provably
+    singular", was set whenever a pivot contained zero, which proves nothing; the pivot was
+    chosen by the absolute value of the lower end of the ball; the solution was a
+    `Vector{Ball}` on success and a `BallVector` on failure; `L` held midpoints of the
+    multipliers; failures were announced by `@warn`; the citation gave the thesis the year
+    2012. Now: `certified` only, the pivot farthest from zero among those that do not contain
+    it, `L` and `U` as ball matrices that contain the factors of every matrix of the ball,
+    tests in rational arithmetic. The thesis says it selects the pivot "with the smallest
+    mignitude"; the code takes the largest, which step 2 of Algorithm 5.9 allows.
+
