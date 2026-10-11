@@ -85,7 +85,9 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       (Takagi); each checked against the paper's tables. `rump_lange_2023` likewise from its
       paper, which is in the library and in `references/`.
     - **Fixed:** `krawczyk_linear_system` is `verifylss` (`6751cf7`); RigorousInvariantMeasures
-      calls it.
+      calls it. `is_M_matrix` follows Definition 5.4 of Varga (2004) with its sign conditions,
+      and `is_H_matrix` is the test on the comparison matrix (`2383207`). Sections 3.1 and 3.2
+      of Rump and Ogita (2024) are in (`b698f68`, `5dcdfc0`).
     - **To fix, having users or callers:** `miyajima_spectral_projectors` (StatisticalPeriodicity),
       `evbox` and `gevbox` (SelfConsistentExperiments), `sep_clusters`, the two `σ_min` bounds of
       `oishi_2023_schur.jl`, `adaptive_ogita_svd`.
@@ -98,16 +100,17 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       `det_gershgorin` and `det_hadamard` (Chapters 7 and 8), `is_regular*` and
       `is_singular_sufficient_condition` (Chapter 11, Theorems 11.12 and 11.13). Each is to be
       read against its chapter and implemented as stated there.
-    - **Sources to check before deciding:** `qi_intervals` and `qi_sqrt_intervals` against Qi
-      (1984), which is in the library, the audit having found the interval `B_{n+1}` of its
-      Theorem 2 missing; the `:backward`, `:hybrid` and `:psi` methods of
+    - **`qi_intervals`, `qi_sqrt_intervals`:** Qi (1984) is a singular value enclosure theorem
+      that was tried and found not effective (Isaia, 2026-10-11), and the audit found the
+      interval `B_{n+1}` of its Theorem 2 missing for non-square input. Candidate for removal;
+      not removed.
+    - **Sources to check before deciding:** the `:backward`, `:hybrid` and `:psi` methods of
       `rump_oishi_2024_triangular_bound` against Rump and Oishi (2024), in the library;
       `refine_polar_qdwh`, `refine_cholesky`, `refine_lu`, `refine_takagi`,
       `rigorous_symmetric_eigen_bigfloat` against Ogita and Aishima and Bujanović, Kressner and
       Schröder (2022), in `references/`.
     - **No source found yet:** `verified_linear_solve_hmatrix` (cites Minamihata 2015, not in
-      the library), `is_M_matrix` (the audit: it tests an H-matrix condition),
-      `krawczyk_sylvester` (a stub; the Sylvester enclosures are now those of Miyajima 2013),
+      the library), `krawczyk_sylvester` (a stub; the Sylvester enclosures are now those of Miyajima 2013),
       `gev_invariant_subspaces`.
 13. Step 5: citations and `docs/src/refs.bib`.
 14. `setrounding` blocks that remain: BigFloat `upper_bound_L1_opnorm` and
