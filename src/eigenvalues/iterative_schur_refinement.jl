@@ -636,62 +636,30 @@ function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
 end
 
 """
-    certify_schur_decomposition(A::BallMatrix, result::SchurRefinementResult)
+    certify_schur_decomposition(A::BallMatrix, result::SchurRefinementResult) -> (Q_ball, T_ball)
 
-Wrap a [`SchurRefinementResult`](@ref) in `BallMatrix` form with rigorous error bounds.
+The refined pair `Q`, `T` of a [`SchurRefinementResult`](@ref) as ball matrices of radius zero,
+`T` with its part below the diagonal set to zero.
 
-Given an input ball matrix `A` and a `SchurRefinementResult` from
-[`refine_schur_decomposition`](@ref), construct `BallMatrix` enclosures of the
-Schur factors `Q` and `T`.  The radii are derived from:
+**They are not enclosures of a Schur decomposition of `A`.** `Q` is an approximately unitary
+matrix and `T` an upper triangular one with `A Q ≈ Q T`; what can be proved about them is the
+size of the two defects `‖Q*Q − I‖₂` and `‖AQ − QT‖₂` over the ball `A`, and those are measured
+in ball arithmetic by [`ordschur_ball`](@ref) (with `A` given) and by
+[`compute_spectral_projector_schur`](@ref), which take this pair. The fields `residual_norm`
+and `orthogonality_defect` of `result` are floating-point diagnostics of the refinement.
 
-- The **orthogonality defect** `‖Q^H Q - I‖₂` (contributes to `Q` radius)
-- The **residual norm** `‖stril(Q^H A Q)‖₂ / ‖A‖_F` (contributes to `T` radius)
-- The **input uncertainty** `rad(A)` (propagated to both)
-
-The BigFloat precision is automatically matched to the precision of `result.Q`.
-
-# Arguments
-- `A::BallMatrix`: The original input matrix (provides `rad(A)` for uncertainty propagation)
-- `result::SchurRefinementResult`: Refinement output with `Q`, `T`, and diagnostics
-
-# Returns
-`(Q_ball, T_ball)` — `BallMatrix` enclosures of the Schur factors.
-
-# Example
-```julia
-A = BallMatrix(randn(ComplexF64, 5, 5), fill(1e-10, 5, 5))
-F = schur(mid(A))
-result = refine_schur_decomposition(mid(A), F.Z, F.T; target_precision=256)
-Q_ball, T_ball = certify_schur_decomposition(A, result)
-```
+Until 2026-10-11 the radii were the two diagnostics plus the norm of `rad(A)`, added uniformly
+to every entry, and the result was described as an enclosure of the Schur factors; the audit
+found an eigenvalue at distance 1.65e-71 from a diagonal entry given the radius 6.4e-77. For
+inclusions of the factors of a Schur decomposition, see `_rumpogita2024_schur` (Rump and Ogita
+(2024), Section 8, for simple eigenvalues).
 """
 function certify_schur_decomposition(A::BallMatrix, result::SchurRefinementResult)
     n = size(A, 1)
     n == size(A, 2) || throw(DimensionMismatch("A must be square"))
     size(result.Q) == (n, n) || throw(DimensionMismatch(
         "result.Q size $(size(result.Q)) does not match A size ($n, $n)"))
-
-    # Match the precision of the refined factors
-    hp_prec = precision(real(result.Q[1,1]))
-    old_prec = precision(BigFloat)
-    setprecision(BigFloat, hp_prec)
-
-    try
-        A_rad_big = convert.(BigFloat, rad(A))
-        input_rad_norm = upper_bound_L2_opnorm(BallMatrix(A_rad_big))
-
-        # Q radius: orthogonality defect + propagated input uncertainty
-        Q_rad = fill(result.orthogonality_defect + input_rad_norm, n, n)
-        Q_ball = BallMatrix(result.Q, Q_rad)
-
-        # T radius: backward error · ‖T‖ + propagated input uncertainty
-        T_rad = fill(result.residual_norm * upper_bound_L2_opnorm(BallMatrix(result.T)) + input_rad_norm, n, n)
-        T_ball = BallMatrix(result.T, T_rad)
-
-        return Q_ball, T_ball
-    finally
-        setprecision(BigFloat, old_prec)
-    end
+    return BallMatrix(Matrix(result.Q)), BallMatrix(Matrix(UpperTriangular(Matrix(result.T))))
 end
 
 """
@@ -699,12 +667,15 @@ end
                             max_iterations::Int=20,
                             schur_seed=nothing) where T
 
-Compute rigorous Schur decomposition with BigFloat precision using iterative refinement.
+An approximate Schur pair of the midpoint of `A` at BigFloat precision, as ball matrices of
+radius zero:
+1. approximate Schur decomposition in Float64 (or `schur_seed`);
+2. iterative refinement to BigFloat precision ([`refine_schur_decomposition`](@ref));
+3. the pair wrapped by [`certify_schur_decomposition`](@ref).
 
-This combines:
-1. Fast approximate Schur decomposition in Float64 (or use `schur_seed`)
-2. Iterative refinement to BigFloat precision
-3. Rigorous error certification via [`certify_schur_decomposition`](@ref)
+The name is historical: the pair is not an enclosure of a Schur decomposition of `A`, and the
+rigorous statements about it are the defects measured by [`ordschur_ball`](@ref) and
+[`compute_spectral_projector_schur`](@ref). See [`certify_schur_decomposition`](@ref).
 
 # Arguments
 - `A::BallMatrix`: Input ball matrix
@@ -716,9 +687,9 @@ This combines:
 
 # Returns
 A tuple `(Q_ball, T_ball, result)` where:
-- `Q_ball::BallMatrix{BigFloat}`: Rigorous enclosure of Schur basis
-- `T_ball::BallMatrix{BigFloat}`: Rigorous enclosure of Schur form
-- `result::SchurRefinementResult`: Refinement diagnostics
+- `Q_ball::BallMatrix{BigFloat}`: the refined, approximately unitary factor, radius zero
+- `T_ball::BallMatrix{BigFloat}`: the refined upper triangular factor, radius zero
+- `result::SchurRefinementResult`: floating-point diagnostics of the refinement
 
 # Example
 ```julia
@@ -733,7 +704,6 @@ Q2, T2, r2 = rigorous_schur_bigfloat(A; schur_seed=(F.Z, F.T))
 
 # References
 - [BujanovicKressnerSchroder2022](@cite) for the iterative refinement algorithm
-- [Rump2010](@cite) for rigorous error certification
 """
 function rigorous_schur_bigfloat(A::BallMatrix{T, NT};
                                   target_precision::Int=256,

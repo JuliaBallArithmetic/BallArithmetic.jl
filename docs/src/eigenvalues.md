@@ -68,7 +68,7 @@ Rigorous block Schur decomposition for eigenvalue clustering.
 - [`extract_cluster_block`](@ref) - Extract diagonal block for cluster
 - [`refine_schur_decomposition`](@ref) - Newton-based iterative refinement
 - [`rigorous_schur_bigfloat`](@ref) - BigFloat precision variant
-- [`certify_schur_decomposition`](@ref) - Wrap a `SchurRefinementResult` in `BallMatrix` form
+- [`certify_schur_decomposition`](@ref) - The refined pair as ball matrices of radius zero (not an enclosure)
 
 ### Auxiliary Functions
 
@@ -129,7 +129,8 @@ For matrices where the eigenvalue separation is below Float64 resolution:
 1. **Direct BigFloat Schur** via `GenericSchur.jl`: compute the Schur decomposition
    directly at the target precision, bypassing iterative refinement entirely.
    Pass the result via the `schur_seed` keyword argument of
-   [`rigorous_schur_bigfloat`](@ref) to certify it.
+   [`rigorous_schur_bigfloat`](@ref); the defects of the pair are then measured by
+   [`ordschur_ball`](@ref) or [`compute_spectral_projector_schur`](@ref).
 
 2. **Block Schur refinement**: group nearly-degenerate eigenvalue clusters into
    blocks and refine the block structure, avoiding division by small eigenvalue
