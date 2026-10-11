@@ -58,8 +58,14 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
 
 ## Salvage from the companion's `main`
 
-10. The `σ_min` surface from one verified singular value decomposition
-    (`pseudospectra/svd_frame.jl`) and the cell sweep with quadrisection (`sweep.jl`). Not moved.
+10. Moved on 2026-10-11 (`e310415`, `7e828ce`): `svd_frame_floor` (the `σ_min` surface from one
+    singular value decomposition) and `pseudospectrum_cells` with `sigma_min_upper` (the cell
+    sweep). Left behind: the use of the maximum principle on cells free of eigenvalues, the
+    escalation to a cluster bound, and the record of which bound settled each cell. On the
+    gallery (`probe_svd_frame_floor.jl`) the undecided cells at ε = 0.1 and `min_halfdiag = 0.05`
+    covered 0.15% of the box for the normal matrix and 95% for Grcar 32, where neither floor is
+    positive near the spectrum; a lower bound that is positive there at `O(n²)` for each `z` is
+    the missing piece.
 11. From the note on Miyajima's enclosure: the real Schur form with 2×2 blocks, individual radii
     and recentring by the diagonal of `S̃`. Not implemented.
 
