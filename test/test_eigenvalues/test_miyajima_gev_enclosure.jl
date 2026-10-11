@@ -177,6 +177,6 @@ end
         res = miyajima_gev_enclosure(BallMatrix(Ac), BallMatrix(Bc),
             complex([1.0 1.0; 1.0 1.0]), [1.0, 2.0])
         @test res.certified == false || res.nrmR2 < 1
-        res.certified || @test isempty(res.radii)
+        res.certified || @test all(isinf, res.radii)
     end
 end

@@ -401,3 +401,12 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     `test_newton_kantorovich_eigenpair.jl`, against 256-bit eigendecompositions.
     GKWExperiments calls these routines in six scripts and one source file.
 
+21. **`miyajima_gev_enclosure`, read on 2026-10-12** against Theorem 1 of Miyajima (2010),
+    J. Comput. Appl. Math. 233, 2994-3004 (in the library): the statement and the code agree,
+    and the individual radii are those of Corollary 3.2 of Miyajima (2014). Changed: the
+    scalar steps use the directed operations and `_miyajima2014a_lem2_3` in place of six
+    rounding-mode blocks, and the radii of a failed result are infinite, not an empty vector.
+    The docstring claims Theorem 1, not Algorithm 1: the a priori bound of `‖R₂‖_∞`
+    (Corollary 1) and Algorithms 2 to 7 of the paper are not what this routine runs; it
+    encloses the residuals by ball products.
+
