@@ -102,49 +102,6 @@ using BallArithmetic
     end
 end
 
-# Note: The Sylvester Krawczyk method currently has algorithmic limitations
-# with the contraction estimate - marked as broken until improved
-@testset "Krawczyk Sylvester (Schur-based)" begin
-    @testset "Basic Sylvester structure" begin
-        # Just test that the function runs without error
-        A = [5.0 0.1; 0.0 6.0]
-        B = [-2.0 0.0; 0.0 -3.0]
-        C = [1.0 1.0; 1.0 1.0]
-
-        result = krawczyk_sylvester(A, B, C)
-
-        # Should return a KrawczykResult
-        @test result isa KrawczykResult
-        @test result.solution isa BallMatrix
-    end
-
-    @testset "Complex Sylvester structure" begin
-        # Well-separated complex spectra
-        A = ComplexF64[5.0+1.0im 0.0; 0.0 6.0-0.5im]
-        B = ComplexF64[-2.0 0.0; 0.0 -3.0+0.3im]
-        C = ComplexF64[1.0 1.0; 1.0 1.0]
-
-        # Note: Currently has issues with complex Sylvester, mark as broken
-        @test_broken begin
-            result = krawczyk_sylvester(A, B, C)
-            result isa KrawczykResult
-        end
-    end
-
-    @testset "Sylvester verification (broken)" begin
-        # The current Schur-based algorithm has contraction estimate issues
-        # This test documents the expected behavior when fixed
-        A = [5.0 0.1; 0.0 6.0]
-        B = [-2.0 0.0; 0.0 -3.0]
-        C = [1.0 1.0; 1.0 1.0]
-
-        result = krawczyk_sylvester(A, B, C)
-
-        # Should verify when algorithm is improved
-        @test_broken result.verified
-    end
-end
-
 @testset "Krawczyk edge cases" begin
     @testset "Nearly singular matrix warning" begin
         # Nearly singular matrix

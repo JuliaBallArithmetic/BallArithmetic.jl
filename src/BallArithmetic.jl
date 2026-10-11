@@ -247,7 +247,7 @@ export compute_preconditioner, apply_preconditioner, is_well_preconditioned
 
 # Krawczyk must come before overdetermined (overdetermined uses krawczyk_linear_system)
 include("linear_system/krawczyk_complete.jl")
-export KrawczykResult, krawczyk_linear_system, krawczyk_sylvester
+export KrawczykResult, krawczyk_linear_system
 
 include("linear_system/overdetermined.jl")
 export OverdeterminedResult

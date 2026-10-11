@@ -230,7 +230,8 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       a wrong journal, a wrong year and two DOIs of other papers. Not obtained: Wilkinson,
       *Rounding Errors in Algebraic Processes*, which nothing cites any more.
     - **No source found yet:** `verified_linear_solve_hmatrix` (cites Minamihata 2015, not in
-      the library), `krawczyk_sylvester` (a stub; the Sylvester enclosures are now those of Miyajima 2013),
+      the library), `krawczyk_sylvester` (a stub that verified nothing; removed on 2026-10-11, the verified
+      routine being `sylvester_miyajima_enclosure`),
       `gev_invariant_subspaces`.
 13. Step 5: citations and `docs/src/refs.bib`.
 14. `setrounding` blocks that remain: BigFloat `upper_bound_L1_opnorm` and
