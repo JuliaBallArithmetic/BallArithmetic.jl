@@ -181,70 +181,108 @@ end
     end
 end
 
-@testset "gev_invariant_subspaces (Miyajima 2014 §3.3 via Schur–Newton)" begin
-    setprecision(BigFloat, 512)
-    Random.seed!(707)
+# The deflating subspace of a set of eigenvalues, from a 512-bit eigendecomposition of B⁻¹A,
+# with the normalisation of Theorems 3.5 and 3.11: Vᵀ X̃⁻¹ X = I_k. `sel` are the positions of
+# the eigenvalues in the reference, `cl` the indices of the cluster.
+function _gev_reference_basis(F, Xt, sel, cl)
+    Z = F.vectors[:, sel]
+    C = Complex{BigFloat}.(Xt) \ Z
+    return Z / C[cl, :]
+end
 
-    @testset "subspaces are spanned by W and carry their eigenvalues" begin
-        for _ in 1:8
-            n = rand(3:6)
-            Ac = randn(n, n)
-            Bc = randn(n, n)
-            Bc = Matrix(Bc'Bc + n * I)
+@testset "gev_invariant_subspaces: Algorithms 1 and 2 of Miyajima (2014)" begin
+    setprecision(BigFloat, 512) do
+        rng = MersenneTwister(707)
+        inside(s, λ) = abs(λ - Complex{BigFloat}(s.center)) <= BigFloat(s.radius)
 
+        # checks one result against the reference; returns the number of certified clusters
+        function check(Ac, Bc, subs)
+            n = size(Ac, 1)
+            F = eigen(Complex{BigFloat}.(Bc) \ Complex{BigFloat}.(Ac))
+            Xt = mid(verifyeigall(BallMatrix(Ac), BallMatrix(Bc)).similarity)
+            @test sort(reduce(vcat, [s.indices for s in subs])) == collect(1:n)
+            ncert = 0
+            for s in subs
+                k = length(s.indices)
+                @test size(s.basis) == (n, k)
+                @test size(s.block) == (k, k)
+                # the disc holds exactly k eigenvalues
+                sel = findall(λ -> inside(s, λ), F.values)
+                @test length(sel) == k
+                s.certified || continue
+                length(sel) == k || continue
+                ncert += 1
+                @test all(isfinite, rad(s.basis))
+                # the basis of the reference, in the normalisation of the theorems, is inside
+                Xref = _gev_reference_basis(F, Xt, sel, s.indices)
+                @test all(abs.(Xref .- Complex{BigFloat}.(mid(s.basis))) .<=
+                          BigFloat.(rad(s.basis)))
+                # and so is its block Λ, from A X = B X Λ
+                Λref = Xref \ (Complex{BigFloat}.(Bc) \ (Complex{BigFloat}.(Ac) * Xref))
+                @test all(abs.(Λref .- Complex{BigFloat}.(mid(s.block))) .<=
+                          BigFloat.(rad(s.block)))
+            end
+            return ncert
+        end
+
+        @testset "isolated eigenvalues (Theorem 3.5)" begin
+            for _ in 1:6
+                n = rand(rng, 3:8)
+                Ac = randn(rng, n, n)
+                Bc = randn(rng, n, n) + n * I
+                subs = gev_invariant_subspaces(BallMatrix(Ac), BallMatrix(Bc))
+                @test !isempty(subs)
+                @test check(Ac, Bc, subs) > 0
+            end
+        end
+
+        @testset "clusters (Theorem 3.11, Algorithm 2)" begin
+            nclustered = 0
+            for k in (2, 3), _ in 1:3
+                n = 9
+                d = repeat(randn(rng, 3), inner = k)
+                d = vcat(d, randn(rng, n - length(d)))
+                M = triu(randn(rng, n, n) .* 1e-6, 1) + Diagonal(d)
+                Q = Matrix(qr(randn(rng, n, n)).Q)
+                Bc = randn(rng, n, n) + n * I
+                Ac = Bc * (Q * M * Q')
+                subs = gev_invariant_subspaces(BallMatrix(Ac), BallMatrix(Bc))
+                @test !isempty(subs)
+                check(Ac, Bc, subs)
+                nclustered += count(s -> s.certified && length(s.indices) > 1, subs)
+            end
+            @test nclustered > 0          # Algorithm 2 enclosed at least one subspace
+        end
+
+        @testset "B neither symmetric nor definite" begin
+            Ac = [4.0 1.0 0.0; -2.0 3.0 1.0; 0.0 1.0 5.0]
+            Bc = [2.0 0.5 0.0; -0.3 2.0 0.4; 0.0 0.1 3.0]
             subs = gev_invariant_subspaces(BallMatrix(Ac), BallMatrix(Bc))
+            @test check(Ac, Bc, subs) == 3
+        end
 
-            # the cluster dimensions partition n
-            @test sum(length(s.indices) for s in subs) == n
-            # each basis is W[:, C]: n rows, |C| columns
-            for s in subs
-                @test size(s.basis) == (n, length(s.indices))
-                @test size(s.block) == (length(s.indices), length(s.indices))
-                @test s.residual >= 0
-                # the certified residual really bounds the midpoint residual
-                rmid = opnorm(
-                    ComplexF64.(Ac * mid(s.basis) -
-                                Bc * mid(s.basis) * mid(s.block)), 2)
-                @test rmid <= s.residual * (1 + 1e-8)
-            end
-
-            # the union of the block spectra is the pencil spectrum
-            tr = sort(eigvals(Complex{BigFloat}.(BigFloat.(Bc) \ BigFloat.(Ac))),
-                by = x -> (real(x), imag(x)))
-            blk = ComplexF64[]
-            for s in subs
-                append!(blk, eigvals(ComplexF64.(mid(s.block))))
-            end
-            # Compare as sets: a conjugate pair's real parts can differ in the
-            # last ulp between the two lists, so index-wise pairing after a
-            # (real, imag) sort would swap the pair and report a false miss.
-            @test length(blk) == n
-            @test all(λ -> minimum(abs(ComplexF64(λ) - b) for b in blk) < 1e-8, tr)
-
-            # every eigenvalue is enclosed by some cluster's discs
-            for λ in tr
-                @test any(subs) do s
-                    any(
-                        d -> abs(Complex{BigFloat}(λ) - Complex{BigFloat}(mid(d))) <=
-                             BigFloat(rad(d)), s.discs)
+        @testset "data with radii" begin
+            Ac = [4.0 1.0 0.0; -2.0 3.0 1.0; 0.0 1.0 5.0]
+            Bc = [2.0 0.5 0.0; -0.3 2.0 0.4; 0.0 0.1 3.0]
+            ρ = 1e-9
+            subs = gev_invariant_subspaces(BallMatrix(Ac, fill(ρ, 3, 3)),
+                BallMatrix(Bc, fill(ρ, 3, 3)))
+            @test length(subs) == 3
+            # every vertex pencil tried has its eigenvalues in the discs
+            for _ in 1:8
+                Av = Ac .+ ρ .* rand(rng, (-1, 1), 3, 3)
+                Bv = Bc .+ ρ .* rand(rng, (-1, 1), 3, 3)
+                for λ in eigvals(Complex{BigFloat}.(Bv) \ Complex{BigFloat}.(Av))
+                    @test count(s -> inside(s, λ), subs) == 1
                 end
             end
         end
-    end
 
-    @testset "B neither symmetric nor definite" begin
-        Ac = [4.0 1.0 0.0; -2.0 3.0 1.0; 0.0 1.0 5.0]
-        Bc = [2.0 0.5 0.0; -0.3 2.0 0.4; 0.0 0.1 3.0]
-        @test !(Bc ≈ Bc')
-        subs = gev_invariant_subspaces(BallMatrix(Ac), BallMatrix(Bc))
-        @test sum(length(s.indices) for s in subs) == 3
-        tr = eigvals(Complex{BigFloat}.(BigFloat.(Bc) \ BigFloat.(Ac)))
-        for λ in tr
-            @test any(subs) do s
-                any(
-                    d -> abs(Complex{BigFloat}(λ) - Complex{BigFloat}(mid(d))) <=
-                         BigFloat(rad(d)), s.discs)
-            end
+        @testset "failure and errors" begin
+            @test isempty(gev_invariant_subspaces(BallMatrix(Matrix(1.0I, 4, 4)),
+                BallMatrix(zeros(4, 4))))
+            @test_throws DimensionMismatch gev_invariant_subspaces(BallMatrix(randn(3, 3)),
+                BallMatrix(randn(4, 4)))
         end
     end
 end

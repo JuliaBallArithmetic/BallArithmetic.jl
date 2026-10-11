@@ -1,34 +1,41 @@
-# Deflating subspaces of a pencil A x = λ B x from the Schur-Newton block diagonalisation,
-# after S. Miyajima, "Fast enclosure for all eigenvalues and invariant subspaces in generalized
-# eigenvalue problems", SIAM J. Matrix Anal. Appl. 35 (2014) 1205-1225.
+# The eigenvalues and deflating subspaces of a pencil A x = λ B x, cluster by cluster: a view of
+# the result of Algorithms 1 and 2 of
 #
-# The spectral projectors that this file used to return (`miyajima_spectral_projectors`, and the
-# field `projector` here) were products with a floating-point inverse and enclosed nothing; they
-# were removed on 2026-10-11. For the spectral projector of a matrix see
-# `compute_spectral_projector_schur`, which bounds the distance to the projector through the
-# resolvent on a contour.
+#   S. Miyajima, "Fast enclosure for all eigenvalues and invariant subspaces in generalized
+#   eigenvalue problems", SIAM Journal on Matrix Analysis and Applications 35 (2014), 1205-1225,
+#   doi 10.1137/140953150,
+#
+# which are implemented in `miyajima_2014a.jl` and reached through `verifyeigall(A, B)`.
+#
+# Until 2026-10-12 this file returned columns of the Schur-Newton basis with a bound of their
+# residual, which is not an enclosure of the subspace; and, before 2026-10-11, spectral projectors
+# formed with a floating-point inverse (`miyajima_spectral_projectors`), which enclosed nothing.
+# For the spectral projector of a matrix see `compute_spectral_projector_schur`.
 
 """
     GEVInvariantSubspace
 
-One cluster of the block diagonalisation of the pencil `A x = λ B x`, returned by
+One cluster of eigenvalues of the pencil `A x = λ B x` with its deflating subspace, returned by
 [`gev_invariant_subspaces`](@ref).
 
 # Fields
-- `indices`: the columns of the cluster in the basis `W`;
-- `basis`: `W[:, indices]`, an approximate basis of the deflating subspace of the cluster. It is
-  not an enclosure of that subspace: no bound of the distance between the two is computed;
-- `block`: the diagonal block `Λ_CC` of the transformed matrix, a `BallMatrix`;
-- `discs`: the discs of the cluster from [`miyajima2014a_schurnewton`](@ref);
-- `residual`: an upper bound of `‖A basis − B basis block‖₂`, valid for every `A` and `B` in the
-  given balls.
+- `indices`: the indices of the cluster among the `n` approximate eigenvalues;
+- `certified`: whether the subspace was enclosed (Theorem 3.5 for one index, Theorem 3.11
+  through Algorithm 2 for several);
+- `center`, `radius`: a disc containing exactly `length(indices)` eigenvalues of the pencil,
+  counted with multiplicity;
+- `basis`: when `certified`, a ball matrix containing a basis of the deflating subspace of those
+  eigenvalues; its radii are infinite otherwise;
+- `block`: when `certified`, a ball matrix containing the matrix `Λ` with
+  `A X = B X Λ` for that basis `X`; its radii are infinite otherwise.
 """
-struct GEVInvariantSubspace{MT, BT, IT, RT}
-    indices::UnitRange{Int}
-    basis::MT
-    block::BT
-    discs::Vector{IT}
-    residual::RT
+struct GEVInvariantSubspace{T, CT}
+    indices::Vector{Int}
+    certified::Bool
+    center::CT
+    radius::T
+    basis::BallMatrix{T, CT}
+    block::BallMatrix{T, CT}
 end
 
 Base.size(s::GEVInvariantSubspace) = size(s.basis)
@@ -37,15 +44,27 @@ dim(s::GEVInvariantSubspace) = length(s.indices)
 """
     gev_invariant_subspaces(A::BallMatrix, B::BallMatrix)
 
-For each cluster `C` of the block diagonalisation [`miyajima2014a_schurnewton`](@ref)`(A, B)` of
-the pencil `A x = λ B x`: the columns `W[:, C]` of its basis, the diagonal block `Λ_CC`, the discs
-of the cluster, and an upper bound of the residual `‖A W[:, C] − B W[:, C] Λ_CC‖₂`. One
-[`GEVInvariantSubspace`](@ref) per cluster.
+Enclosures of all the eigenvalues of the pencil `A x = λ B x` and of their deflating subspaces,
+one [`GEVInvariantSubspace`](@ref) for each cluster of eigenvalues, valid for every `A` and `B`
+in the given balls. The vector returned is empty when the method fails, which includes the case
+of a singular `B`: its nonsingularity is proved, not assumed.
 
-What is verified is the residual: it is evaluated in ball arithmetic on the given balls, so it
-holds for every `A` and `B` in them. The columns `W[:, C]` are an approximate basis of the
-deflating subspace. An enclosure of the subspace itself, which is what Section 3.3 of the paper
-below gives (Lemmas 3.9 and 3.10, Theorem 3.15), is not computed here.
+This is [`verifyeigall`](@ref)`(A, B; method = :miyajima2014a)` read cluster by cluster, that
+is Algorithms 1 and 2 of the paper below. With `X̃` the matrix of approximate eigenvectors
+(`similarity` in the result of `verifyeigall`):
+
+  - the discs of Corollary 3.2 are grouped into connected components, and a component of `k`
+    discs contains exactly `k` eigenvalues (Remark 3.3);
+  - for an isolated disc, Theorem 3.5 gives an eigenvector `x` with
+    `|x − X̃ e_i| ≤ |X̃| J⁽ⁱ⁾ q`, normalised by `(X̃⁻¹ x)_i = 1`;
+  - for a component `v` of `k > 1` discs, Theorem 3.11 gives a basis `X` of the deflating
+    subspace in `⟨X̃ V, |X̃| U Uᵀ P̄_ε⟩`, normalised by `Vᵀ X̃⁻¹ X = I_k`, with `A X = B X Λ` and
+    `Λ ∈ ⟨λ̃ I_k, Vᵀ P̄_ε⟩`, the `k` eigenvalues lying in the disc `⟨λ̃, ρ(Vᵀ P̄_ε)⟩`. Here `V`
+    and `U` are the columns of the identity with indices in `v` and outside it.
+
+Where Algorithm 2 declines on a component, the entry has `certified = false`, the disc is the
+smallest one about the mean `λ̃` that contains the discs of the component, and `basis` and
+`block` have infinite radii.
 
 # Reference
 
@@ -53,26 +72,16 @@ S. Miyajima, "Fast enclosure for all eigenvalues and invariant subspaces in gene
 eigenvalue problems", SIAM Journal on Matrix Analysis and Applications 35 (2014), 1205-1225,
 doi 10.1137/140953150.
 """
-function gev_invariant_subspaces(A::BallMatrix{T, NT}, B::BallMatrix) where {T, NT}
-    size(A) == size(B) ||
-        throw(DimensionMismatch("A and B must have the same size"))
-
-    vbd = miyajima2014a_schurnewton(A, B)
-    n = size(A, 1)
-    W = BallMatrix(vbd.basis)
-    CTm = eltype(mid(vbd.transformed))
-    Acx = BallMatrix(Matrix{CTm}(mid(A)), rad(A))
-    Bcx = BallMatrix(Matrix{CTm}(mid(B)), rad(B))
-
-    out = GEVInvariantSubspace[]
-    for cluster in vbd.clusters
-        Wc = W[:, cluster]
-        Λc = vbd.block_diagonal[cluster, cluster]
-        # deflating-subspace residual: A·W_C − B·W_C·Λ_CC
-        residual = upper_bound_L2_opnorm(Acx * Wc - (Bcx * Wc) * Λc)
+function gev_invariant_subspaces(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
+    size(A) == size(B) || throw(DimensionMismatch("A and B must have the same size"))
+    r = verifyeigall(A, B; method = :miyajima2014a)
+    CT = complex(T)
+    out = GEVInvariantSubspace{T, CT}[]
+    r.spectrum_covered || return out
+    for i in eachindex(r.clusters)
         push!(out,
-            GEVInvariantSubspace(cluster, Wc, Λc, vbd.cluster_intervals[cluster],
-                residual))
+            GEVInvariantSubspace{T, CT}(r.clusters[i], r.certified[i], r.centers[i],
+                r.radii[i], r.subspaces[i], r.blocks[i]))
     end
-    return identity.(out)
+    return out
 end
