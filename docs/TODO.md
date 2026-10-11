@@ -80,12 +80,31 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       (5), Schur (8), polar (7) and Takagi (9); `src/eigenvalues/rump_lange_2023.jl` has the
       Hermitian eigenproblem, reached by `verifyeigall(A; method = :rumplange2023, kappa)`, and
       `verifysvdall(A; kappa)`, in place of the stub. Left to do:
-      the exported `verified_lu`, `verified_qr`, `verified_cholesky`, `verified_polar`,
-      `verified_takagi` and their extended-precision variants still run the old code, and
-      `verified_cholesky` has callers (RigorousInvariantMeasures, the Gram transform), so the
-      rewiring is a step of its own; the left null space for `m > n` in `verifysvdall`, which
+      the left null space for `m > n` in `verifysvdall`, which
       the paper describes and leaves out of its listing; the paper's sizes (n = 100 to 1000)
       and tables were not reproduced, the tests using n up to 30 or 40.
+    - **The exported decompositions, rewired** (2026-10-11, `dbec098` to `abc9c13`):
+      `verified_lu`, `verified_qr`, `verified_cholesky`, `verified_polar` and `verified_takagi`
+      are wrappers over the routines above, in Float64 or in BigFloat at `precision_bits`. On
+      nighthawk (`probe_decomposition_containment.jl`, factors at 2048 bits, n = 10 and 40) the
+      old `verified_lu` had 45 of 100 and 780 of 1600 entries of `L` outside its enclosure, the
+      old `verified_qr` all entries of `Q`, the old `verified_cholesky` none; the new routines
+      none. The new polar radii are larger than the old heuristic ones (n = 100, Float64:
+      1.6e-10 against 2.7e-13 for `Q`), and the BigFloat runs are slower (n = 100, real: LU 4.5 s
+      against 0.5 s, QR 8.0 s against 1.1 s, polar 11 s against 2.1 s;
+      `probe_rewire_decompositions.jl`). RigorousInvariantMeasures calls `verified_cholesky`
+      with `use_bigfloat = false` and reads `success` and `G`, which are unchanged; it was not
+      rerun.
+    - **The extension variants, not rewired:** `verified_{lu,cholesky,qr,polar,takagi}_double64`,
+      `_multifloat` and `verified_{lu,cholesky,qr,polar}_gla` still run their own code on
+      `_lu_perturbed_identity`. `probe_extension_decompositions.jl` (n = 10, 40, real, factors at
+      2048 bits): `lu_double64`, `lu_multifloat`, `lu_gla`, `cholesky_double64` and
+      `cholesky_multifloat` return `success = true` with about half of the entries outside
+      (errors near 1e-31 against radii near 1e-47 and 1e-62; for `lu_gla` 5.5e-17 against
+      9.7e-77); the three polar variants had no entry outside; for the QR variants and
+      `cholesky_gla` the midpoints differ from the reference by order one, so the probe compared
+      different normalisations and says nothing. To decide: remove them, or give the
+      Rump and Ogita routines an approximate factorisation computed in the extended type.
     - **Fixed:** `krawczyk_linear_system` is `verifylss` (`6751cf7`); RigorousInvariantMeasures
       calls it. `is_M_matrix` follows Definition 5.4 of Varga (2004) with its sign conditions,
       and `is_H_matrix` is the test on the comparison matrix (`2383207`). Sections 3.1 and 3.2
