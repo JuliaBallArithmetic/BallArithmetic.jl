@@ -230,6 +230,93 @@ using GenericLinearAlgebra
         end
     end
 
+    @testset "the paper's version: Theorem 10 for β" begin
+        setprecision(BigFloat, 256) do
+            rng = MersenneTwister(5)
+            for n in (2, 5, 12, 30), T in (Float64, Float32)
+                N = randn(rng, T, n, n)
+                Bc = Matrix(Symmetric(N' * N + n * I))
+                β = BallArithmetic._gev_beta_theorem_10(Bc)
+                @test β isa T
+                @test isfinite(β)
+                # √‖B⁻¹‖₂ = 1/√λ_min(B)
+                λmin = minimum(eigvals(Symmetric(BigFloat.(Bc))))
+                @test 1 / sqrt(λmin) <= β
+                # the price of α₁α∞ ≥ ‖L̃⁻¹‖₂²: at most a factor √n here
+                @test β <= sqrt(BigFloat(n)) / sqrt(λmin) * (1 + 1e-3)
+            end
+            # not positive definite: the factorisation does not run to completion
+            @test BallArithmetic._gev_beta_theorem_10([1.0 2.0; 2.0 1.0]) == Inf
+            @test BallArithmetic._gev_beta_theorem_10([1.0 0.0; 0.0 -1.0]) == Inf
+        end
+    end
+
+    @testset "the paper's version against a 256-bit reference" begin
+        setprecision(BigFloat, 256) do
+            rng = MersenneTwister(77)
+            for n in (3, 6, 10, 25), T in (Float64, Float32)
+                M = randn(rng, T, n, n)
+                Ac = Matrix(Symmetric(M + M'))
+                N = randn(rng, T, n, n)
+                Bc = Matrix(Symmetric(N' * N + n * I))
+                F = eigen(Symmetric(Ac), Symmetric(Bc))
+                # plain matrices: the paper's version is the default
+                res = verify_generalized_eigenpairs(Ac, Bc, Matrix(F.vectors),
+                    collect(F.values))
+                @test res isa GEVResult{T}
+                @test res.certified
+                same = verify_generalized_eigenpairs(BallMatrix(Ac), BallMatrix(Bc),
+                    Matrix(F.vectors), collect(F.values); method = :paper)
+                @test same.separation_bounds == res.separation_bounds
+                Lb = cholesky(Symmetric(BigFloat.(Bc))).L
+                Cb = Lb \ BigFloat.(Ac) / Lb'
+                Fb = eigen(Symmetric((Cb + Cb') / 2))
+                Vb = Lb' \ Fb.vectors
+                for i in 1:n
+                    lo, hi = res.eigenvalue_intervals[i]
+                    @test lo <= Fb.values[i] <= hi
+                    @test abs(Fb.values[i] - BigFloat(F.values[i])) <= res.global_bound
+                    isfinite(res.eigenvector_radii[i]) || continue
+                    v = Vb[:, i]
+                    x = BigFloat.(F.vectors[:, i])
+                    @test norm(x - v * (dot(v, x) / dot(v, v))) <= res.eigenvector_radii[i]
+                end
+                # Theorem 6: εᵢ ≤ δ for the δ of (26)
+                @test all(res.individual_bounds .<= res.global_bound)
+            end
+        end
+    end
+
+    @testset "the paper's version: a cluster, and what it refuses" begin
+        A = [6.0 0.0 0.0; 0.0 9.0 0.0; 0.0 0.0 16.0]
+        B = [2.0 0.0 0.0; 0.0 3.0 0.0; 0.0 0.0 4.0]
+        F = eigen(Symmetric(A), Symmetric(B))
+        res = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        @test res.certified
+        @test res.separation_bounds[1] == res.global_bound
+        @test res.separation_bounds[2] == res.global_bound
+        @test all(isinf, res.eigenvector_radii[1:2])
+        @test isfinite(res.eigenvector_radii[3])
+        for (i, λ) in enumerate((3.0, 3.0, 4.0))
+            lo, hi = res.eigenvalue_intervals[i]
+            @test lo <= λ <= hi
+        end
+        # matrices with radii, and other number types, are for method = :ball
+        @test_throws ArgumentError verify_generalized_eigenpairs(
+            BallMatrix(A, fill(1e-12, 3, 3)), BallMatrix(B), F.vectors, F.values;
+            method = :paper)
+        @test_throws ArgumentError verify_generalized_eigenpairs(
+            BallMatrix(BigFloat.(A)), BallMatrix(BigFloat.(B)), F.vectors, F.values;
+            method = :paper)
+        @test_throws ArgumentError verify_generalized_eigenpairs(A, B, F.vectors, F.values;
+            method = :other)
+        # B indefinite
+        res = verify_generalized_eigenpairs(A, [1.0 0.0 0.0; 0.0 -1.0 0.0; 0.0 0.0 1.0],
+            F.vectors, F.values)
+        @test !res.certified
+        @test occursin("Theorem 10", res.message)
+    end
+
     @testset "input that is not accepted" begin
         A = BallMatrix([4.0 1.0; 1.0 3.0])
         B = BallMatrix([2.0 0.5; 0.5 2.0])

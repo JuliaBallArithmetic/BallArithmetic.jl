@@ -385,4 +385,9 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     Techniques 1, 3 and 4, for any floating-point type. Not reproduced: Technique 2 (an a
     priori rounding estimate, replaced by the ball product) and Theorem 10 (β from a Cholesky
     factor; `compute_beta_bound` uses an approximate inverse, which Remark 2 allows).
+    **A second version, `method = :paper`** (the default for plain matrices), is Algorithm 1 as
+    the paper computes it, for `Float32` and `Float64` matrices with radius zero: Theorem 10
+    for β, the products `fl▽`, `fl△`, the a priori estimate (48), and δ by (26). One constant
+    is not the paper's: its (51) has `γₙ` for the Cholesky backward error where Higham's
+    Theorem 10.3, which it cites, has `γₙ₊₁`; the code uses `γₙ₊₁`.
 

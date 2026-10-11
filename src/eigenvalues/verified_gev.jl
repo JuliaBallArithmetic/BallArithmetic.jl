@@ -178,7 +178,7 @@ function _gev_eigenvalue_radii(λ::Vector{T}, δ::T, ε::Vector{T}) where {T}
 end
 
 """
-    verify_generalized_eigenpairs(A::BallMatrix, B::BallMatrix, X̃, λ̃) -> GEVResult
+    verify_generalized_eigenpairs(A, B, X̃, λ̃; method) -> GEVResult
 
 Error bounds for all the approximate eigenpairs `(λ̃ᵢ, x̃⁽ⁱ⁾)` of `A x = λ B x`, with `A` real
 symmetric and `B` real symmetric positive definite: Algorithm 1 of Miyajima, Ogita, Rump and
@@ -204,16 +204,33 @@ The result is `certified` when steps 1 and 2 succeed; the eigenvalue bounds then
 `i`, clusters included. The eigenvector bound is given index by index, and is `Inf` where the
 hypotheses of Theorem 7 are not proved.
 
-How it is computed. `R_g` and `G_g` are enclosed in ball arithmetic from one enclosure of
-`B X̃` (Technique 1 of the paper), and `r⁽ⁱ⁾`, `gᵢ`, `β ‖r⁽ⁱ⁾‖₂`, `√gᵢ` are taken from them and
-used in both steps 2 and 4 (Techniques 3 and 4). The two norms of Theorem 4 are bounded by
-[`upper_bound_L2_opnorm`](@ref); the paper uses `√(‖·‖₁‖·‖∞)` for the first and `‖·‖∞` for the
-second, in its (26). Every scalar operation is rounded in the direction that keeps the bound.
+Every scalar operation is rounded in the direction that keeps the bound.
 
-What is not reproduced: Technique 2, an a priori estimate of the rounding error of `X̃ᵀ(B X̃)`,
-whose place is taken by the ball product; and Theorem 10, the bound of `‖B⁻¹‖₂` from a Cholesky
-factor, whose place is taken by the bound of [`compute_beta_bound`](@ref) (Remark 2 of the
-paper leaves the method for `β` open).
+# The two versions
+
+`method = :paper` is Algorithm 1 as the paper computes it, for `A` and `B` in floating point
+(`Float32` or `Float64`, radius zero); it is the default when `A` and `B` are passed as plain
+matrices:
+
+  - `β` by Theorem 10, from a floating-point Cholesky factor `L̃` of `B`, an approximate inverse
+    `X_L` of it obtained by substitution, and the a priori bounds of Theorems 8 and 9;
+  - `Z̲ = fl▽(B X̃)`, `Z̄ = fl△(B X̃)` and the same two products for `A X̃`, with the rounding mode
+    downward and upward (Technique 1);
+  - `‖I − G_g‖∞` by the a priori estimate (48), with `Z_c` and `Z_r` of (49) and (50), from one
+    product in rounding to nearest (Technique 2);
+  - `δ := β √(‖R_g‖₁ ‖R_g‖∞) / (1 − ‖I − G_g‖∞)`, formula (26);
+  - `r⁽ⁱ⁾`, `gᵢ` from the enclosures of `R_g` and of `B X̃` already computed (Techniques 3, 4).
+
+One constant differs from the paper's text: its (51) states the backward error of the Cholesky
+factorisation with `γₙ`, citing Higham, whose Theorem 10.3 has `γₙ₊₁`; `α_C` is computed with
+`γₙ₊₁`. The paper does not write the formula of the enclosure of `R_g`; here column `j` of
+`B X̃ D̃` is enclosed by the products of `λ̃ⱼ` with `Z̲` and `Z̄`, rounded outwards.
+
+`method = :ball`, the default for ball matrices, gives the same four steps for matrices with
+radii and for any floating-point type: `R_g` and `G_g` are enclosed by ball products, the two
+norms of Theorem 4 are bounded by [`upper_bound_L2_opnorm`](@ref), and `β` comes from
+[`compute_beta_bound`](@ref) (Remark 2 of the paper leaves the method for `β` open). It does
+not use Technique 2 or Theorem 10.
 
 The input is checked: a `DimensionMismatch` or an `ArgumentError` for wrong sizes or complex
 data; a result with `certified = false` when the midpoints or the radii of `A` or `B` are not
@@ -226,7 +243,8 @@ symmetric positive definite generalized eigenvalue problems", Reliable Computing
 24-45.
 """
 function verify_generalized_eigenpairs(A::BallMatrix{T}, B::BallMatrix{T},
-        X̃::AbstractMatrix{<:Real}, λ̃::AbstractVector{<:Real}) where {T}
+        X̃::AbstractMatrix{<:Real}, λ̃::AbstractVector{<:Real}; method::Symbol = :ball) where {T}
+    method in (:ball, :paper) || throw(ArgumentError("method must be :ball or :paper"))
     n = size(A, 1)
     (size(A) == (n, n) && size(B) == (n, n)) ||
         throw(DimensionMismatch("A and B must be square of the same order"))
@@ -242,6 +260,16 @@ function verify_generalized_eigenpairs(A::BallMatrix{T}, B::BallMatrix{T},
             "the midpoints and the radii of A and B must be symmetric")
     issorted(λ) ||
         return _gev_failure(λ, X, T(Inf), "the approximate eigenvalues must be in increasing order")
+
+    if method === :paper
+        T <: Union{Float32, Float64} || throw(ArgumentError(
+            "method = :paper is for Float32 and Float64: its a priori bounds are those of " *
+            "IEEE 754 arithmetic"))
+        (iszero(rad(A)) && iszero(rad(B))) || throw(ArgumentError(
+            "method = :paper is for matrices with radius zero: the paper takes A and B in " *
+            "floating point"))
+        return _gev_paper(mid(A), mid(B), X, λ)
+    end
 
     # Step 1
     β = compute_beta_bound(B)
@@ -264,7 +292,6 @@ function verify_generalized_eigenpairs(A::BallMatrix{T}, B::BallMatrix{T},
     Rc, Rr, Gc, Gr = mid(Rg), rad(Rg), mid(Gg), rad(Gg)
     τ = Vector{T}(undef, n)            # β ‖r⁽ⁱ⁾‖₂, from above
     μ = Vector{T}(undef, n)            # √gᵢ, from below; zero when gᵢ > 0 is not proved
-    ε = Vector{T}(undef, n)
     for i in 1:n
         s = zero(T)
         for k in 1:n
@@ -274,8 +301,25 @@ function verify_generalized_eigenpairs(A::BallMatrix{T}, B::BallMatrix{T},
         τ[i] = mul_up(β, sqrt_up(s))
         g = sub_down(Gc[i, i], Gr[i, i])
         μ[i] = g > 0 ? sqrt_down(g) : zero(T)
-        ε[i] = μ[i] > 0 ? div_up(τ[i], μ[i]) : T(Inf)
     end
+
+    return _gev_steps_3_4(λ, X, β, δ, τ, μ, nR)
+end
+
+
+# floating-point matrices: the paper's own setting
+function verify_generalized_eigenpairs(A::AbstractMatrix{T}, B::AbstractMatrix{T},
+        X̃::AbstractMatrix{<:Real}, λ̃::AbstractVector{<:Real};
+        method::Symbol = :paper) where {T <: AbstractFloat}
+    return verify_generalized_eigenpairs(BallMatrix(Matrix(A)), BallMatrix(Matrix(B)), X̃, λ̃;
+        method)
+end
+
+# Theorem 5 from τᵢ ≥ β‖r⁽ⁱ⁾‖₂ and 0 ≤ μᵢ ≤ √gᵢ, then Steps 3 and 4 of Algorithm 1
+function _gev_steps_3_4(λ::Vector{T}, X::Matrix{T}, β::T, δ::T, τ::Vector{T}, μ::Vector{T},
+        nR::T) where {T}
+    n = length(λ)
+    ε = T[μ[i] > 0 ? div_up(τ[i], μ[i]) : T(Inf) for i in 1:n]
 
     # Step 3
     η = _gev_eigenvalue_radii(λ, δ, ε)
@@ -301,6 +345,186 @@ function verify_generalized_eigenpairs(A::BallMatrix{T}, B::BallMatrix{T},
     return GEVResult{T}(true, intervals, X, ξ, β, δ, ε, η, nR, "")
 end
 
+# ---------------------------------------------------------------------------
+# Algorithm 1 as the paper computes it, for floating-point (point) matrices
+# ---------------------------------------------------------------------------
+
+# Theorem 10: β ≥ √‖B⁻¹‖₂ from the floating-point Cholesky factor L̃ of B and an approximate
+# inverse X_L of it computed by substitution, with the a priori bounds of Theorems 8 and 9.
+# u is the unit roundoff and u̲ the underflow unit. Returns Inf when the factorisation does
+# not run to completion or a condition of the theorem fails.
+#
+# One constant is not the paper's. Its (51) states the backward error of the Cholesky
+# factorisation with γₙ and cites Higham; Theorem 10.3 of Higham, "Accuracy and Stability of
+# Numerical Algorithms" (SIAM, 1996), has γₙ₊₁. α_C is computed here with γₙ₊₁.
+function _gev_beta_theorem_10(B::AbstractMatrix{T}) where {T <: Union{Float32, Float64}}
+    n = size(B, 1)
+    u, u_ = eps(T) / 2, nextfloat(zero(T))
+    nu = mul_up(T(n), u)
+    nu < 1 || return T(Inf)
+    # the Cholesky factorisation, in rounding to nearest
+    L = zeros(T, n, n)
+    for j in 1:n
+        s = B[j, j]
+        for k in 1:(j - 1)
+            s -= L[j, k] * L[j, k]
+        end
+        (s > 0 && isfinite(s)) || return T(Inf)
+        L[j, j] = sqrt(s)
+        for i in (j + 1):n
+            t = B[i, j]
+            for k in 1:(j - 1)
+                t -= L[i, k] * L[j, k]
+            end
+            L[i, j] = t / L[j, j]
+        end
+    end
+    all(isfinite, L) || return T(Inf)
+    # X_L, column by column, by forward substitution on L̃ (X_L eᵢ) = eᵢ
+    XL = zeros(T, n, n)
+    for i in 1:n
+        XL[i, i] = one(T) / L[i, i]
+        for k in (i + 1):n
+            t = zero(T)
+            for m in i:(k - 1)
+                t -= L[k, m] * XL[m, i]
+            end
+            XL[k, i] = t / L[k, k]
+        end
+    end
+    all(isfinite, XL) || return T(Inf)
+
+    absL, absX = abs.(L), abs.(XL)
+    rowsum_up(M, i) = (acc = zero(T); for j in axes(M, 2); acc = add_up(acc, M[i, j]); end; acc)
+    colsum_up(M, j) = (acc = zero(T); for i in axes(M, 1); acc = add_up(acc, M[i, j]); end; acc)
+    matvec_up(M, v) = T[(acc = zero(T); for j in axes(M, 2); acc = add_up(acc, mul_up(M[i, j], v[j])); end; acc)
+                        for i in axes(M, 1)]
+    Ls = T[rowsum_up(absL, i) for i in 1:n]                 # |L̃| s
+    LTs = T[colsum_up(absL, j) for j in 1:n]                # |L̃ᵀ| s
+    XLs = matvec_up(absX, Ls)                               # |X_L| |L̃| s
+    LLTs = matvec_up(absL, LTs)                             # |L̃| |L̃ᵀ| s
+    d1 = T[add_up(T(n), absL[i, i]) for i in 1:n]           # n s + diag(|L̃|)
+    d2 = T[add_up(T(n - 1), absL[i, i]) for i in 1:n]       # (n − 1) s + diag(|L̃|)
+    norm1_up(v) = (acc = zero(T); for x in v; acc = add_up(acc, x); end; acc)
+    γ(m) = (mu = mul_up(T(m), u); div_up(mu, sub_down(one(T), mu)))
+    under = div_up(mul_up(T(n), u_), sub_down(one(T), nu))
+    ζ1 = add_up(mul_up(γ(n), norm1_up(XLs)), mul_up(under, norm1_up(d1)))
+    ζ∞ = add_up(mul_up(γ(n), maximum(XLs)), mul_up(under, maximum(d1)))
+    (ζ1 < 1 && ζ∞ < 1) || return T(Inf)
+    normX1 = maximum(colsum_up(absX, j) for j in 1:n)
+    normX∞ = maximum(rowsum_up(absX, i) for i in 1:n)
+    α1 = div_up(normX1, sub_down(one(T), ζ1))
+    α∞ = div_up(normX∞, sub_down(one(T), ζ∞))
+    n1u = mul_up(T(n - 1), u)
+    underC = div_up(mul_up(T(n), u_), sub_down(one(T), n1u))
+    mul_up(T(n + 1), u) < 1 || return T(Inf)
+    αC = add_up(mul_up(γ(n + 1), maximum(LLTs)), mul_up(underC, maximum(d2)))
+    a = mul_up(α1, α∞)
+    q = mul_up(a, αC)
+    q < 1 || return T(Inf)
+    β = sqrt_up(div_up(a, sub_down(one(T), q)))::T
+    return isfinite(β) ? β : T(Inf)
+end
+
+# Algorithm 1 with Techniques 1 to 4 and Theorem 10, on floating-point matrices
+function _gev_paper(A::AbstractMatrix{T}, B::AbstractMatrix{T}, X::Matrix{T},
+        λ::Vector{T}) where {T <: Union{Float32, Float64}}
+    n = length(λ)
+    u, u_ = eps(T) / 2, nextfloat(zero(T))
+    nu = mul_up(T(n), u)
+    nu < 1 || return _gev_failure(λ, X, T(Inf), "n u < 1 fails")
+    γn = div_up(nu, sub_down(one(T), nu))
+
+    # Step 1: Theorem 10
+    β = _gev_beta_theorem_10(B)
+    isfinite(β) || return _gev_failure(λ, X, β,
+        "Theorem 10 gives no bound of ‖B⁻¹‖₂: the Cholesky factorisation of B did not run " *
+        "to completion, or α₁ α∞ α_C < 1 fails")
+
+    # Step 2. Technique 1: Z̲ = fl▽(B X̃), Z̄ = fl△(B X̃), used for R_g and for G_g
+    Zlo, Zhi = _product_down_up(Matrix{T}(B), X)
+    Wlo, Whi = _product_down_up(Matrix{T}(A), X)
+    (all(isfinite, Zlo) && all(isfinite, Zhi) && all(isfinite, Wlo) && all(isfinite, Whi)) ||
+        return _gev_failure(λ, X, β, "a product overflowed")
+    # |R_g| entrywise, R_g = A X̃ − B X̃ D̃: column j of B X̃ D̃ lies between the products of λ̃ⱼ
+    # with the two ends
+    absR = Matrix{T}(undef, n, n)
+    for j in 1:n, i in 1:n
+        plo = λ[j] >= 0 ? mul_down(Zlo[i, j], λ[j]) : mul_down(Zhi[i, j], λ[j])
+        phi = λ[j] >= 0 ? mul_up(Zhi[i, j], λ[j]) : mul_up(Zlo[i, j], λ[j])
+        absR[i, j] = max(abs(sub_down(Wlo[i, j], phi)), abs(sub_up(Whi[i, j], plo)))
+    end
+    R1, R∞ = zero(T), zero(T)
+    for j in 1:n
+        acc = zero(T)
+        for i in 1:n
+            acc = add_up(acc, absR[i, j])
+        end
+        R1 = max(R1, acc)
+    end
+    for i in 1:n
+        acc = zero(T)
+        for j in 1:n
+            acc = add_up(acc, absR[i, j])
+        end
+        R∞ = max(R∞, acc)
+    end
+    nR = sqrt_up(mul_up(R1, R∞))::T                         # ‖R_g‖₂ ≤ √(‖R_g‖₁ ‖R_g‖∞)
+
+    # Technique 2, (48) to (50)
+    Zc = similar(Zlo)
+    Zr = similar(Zlo)
+    for k in eachindex(Zlo)
+        Zc[k] = add_up(Zlo[k], div_up(sub_up(Zhi[k], Zlo[k]), T(2)))
+        Zr[k] = sub_up(Zc[k], Zlo[k])
+    end
+    F = I - X' * Zc                                         # fl□(I − X̃ᵀ Z_c)
+    absXt = abs.(permutedims(X))
+    function absXt_rowsums_norm(M)                          # ‖ |X̃ᵀ| |M| s ‖∞
+        v = T[(acc = zero(T); for j in 1:n; acc = add_up(acc, abs(M[i, j])); end; acc)
+              for i in 1:n]
+        best = zero(T)
+        for i in 1:n
+            acc = zero(T)
+            for j in 1:n
+                acc = add_up(acc, mul_up(absXt[i, j], v[j]))
+            end
+            best = max(best, acc)
+        end
+        return best
+    end
+    normF = zero(T)
+    for i in 1:n
+        acc = zero(T)
+        for j in 1:n
+            acc = add_up(acc, abs(F[i, j]))
+        end
+        normF = max(normF, acc)
+    end
+    nG = add_up(add_up(add_up(normF, absXt_rowsums_norm(Zr)),
+            mul_up(γn, add_up(absXt_rowsums_norm(Zc), one(T)))), mul_up(T(n), u_))
+    nG < 1 || return _gev_failure(λ, X, β,
+        "‖I − X̃ᵀBX̃‖∞ < 1 is not proved by (48): the approximate eigenvectors are not close " *
+        "enough to orthonormal in the inner product of B")
+    δ = div_up(mul_up(β, nR), sub_down(one(T), nG))         # (26)
+    isfinite(δ) || return _gev_failure(λ, X, β, "the bound δ of (26) is not finite")
+
+    # Techniques 3 and 4: τᵢ = β‖r⁽ⁱ⁾‖₂ from the columns of |R_g|, μᵢ = √gᵢ from x̃⁽ⁱ⁾ᵀ[Z̲, Z̄]eᵢ
+    τ = Vector{T}(undef, n)
+    μ = Vector{T}(undef, n)
+    for i in 1:n
+        s = zero(T)
+        g = zero(T)
+        for k in 1:n
+            s = add_up(s, mul_up(absR[k, i], absR[k, i]))
+            x = X[k, i]
+            g = add_down(g, x >= 0 ? mul_down(x, Zlo[k, i]) : mul_down(x, Zhi[k, i]))
+        end
+        τ[i] = mul_up(β, sqrt_up(s)::T)
+        μ[i] = g > 0 ? sqrt_down(g)::T : zero(T)
+    end
+    return _gev_steps_3_4(λ, X, β, δ, τ, μ, nR)
+end
 
 # ---------------------------------------------------------------------------
 # Miyajima (2010), Theorem 1 — the two-residual generalized enclosure

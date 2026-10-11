@@ -72,19 +72,20 @@ function MMul4(A::BallMatrix{T, T}, B::AbstractMatrix{T}) where {T <: AbstractFl
     return BallMatrix(mC, rC)
 end
 
+# The product of two floating-point matrices with the rounding mode downward and upward:
+# `fl▽(AB)` and `fl△(AB)` in the notation of Rump's papers, entrywise below and above `AB`.
+function _product_down_up(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
+    up = setrounding(T, RoundUp) do
+        A * B
+    end
+    down = setrounding(T, RoundDown) do
+        A * B
+    end
+    return down, up
+end
+
 function MMul4(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
-    mA = mid(A)
-    mB = mid(B)
-
-    C2 = setrounding(T, RoundUp) do
-        C2 = mA * mB
-        return C2
-    end
-
-    C1 = setrounding(T, RoundDown) do
-        C1 = mA * mB
-        return C1
-    end
+    C1, C2 = _product_down_up(mid(A), mid(B))
 
     mC, rC = setrounding(T, RoundUp) do
         mC = (C1 + C2) / 2
