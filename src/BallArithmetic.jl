@@ -159,6 +159,7 @@ export NKEigenpairResult, NKEigenpairsResult, certify_eigenpair, certify_eigenpa
 # Verified matrix decompositions (Rump & Ogita 2024)
 # Rigorous residual computation helpers (must be before decomposition files)
 include("decompositions/rigorous_residual.jl")
+include("decompositions/rump_ogita_2024.jl")
 include("decompositions/verified_lu.jl")
 include("decompositions/verified_cholesky.jl")
 include("decompositions/verified_qr.jl")
