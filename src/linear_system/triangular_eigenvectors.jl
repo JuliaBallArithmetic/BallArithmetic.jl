@@ -42,7 +42,8 @@ If `min_{i≠j} |L[i,i] - L[j,j]| < tol`, falls back to `eigen()` + `inv()`.
 
 # Returns
 `(V, W, eigenvalues)` where `V` is the eigenvector matrix, `W = V⁻¹`, and
-`eigenvalues = diag(L)`.
+`eigenvalues = diag(L)`, all complex and in floating point: they are approximations, with no
+error bound. A matrix that is not triangular is an `ArgumentError`.
 """
 function triangular_eigenvectors(L::AbstractMatrix{T}; tol=nothing) where T
     n = size(L, 1)
@@ -53,26 +54,20 @@ function triangular_eigenvectors(L::AbstractMatrix{T}; tol=nothing) where T
         tol = n * eps(RT)
     end
 
-    eigenvalues = diag(L)
+    (istril(L) || istriu(L)) || throw(ArgumentError("Matrix must be upper or lower triangular"))
+    CT = promote_type(float(T), Complex{RT})
+    eigenvalues = Vector{CT}(diag(L))
 
     if !_has_distinct_diagonal(L, tol)
         # Fallback: repeated eigenvalues
         F = eigen(Matrix(L))
-        V = Matrix(F.vectors)
+        V = Matrix{CT}(F.vectors)
         W = inv(V)
-        return V, W, F.values
+        return V, W, Vector{CT}(F.values)
     end
 
-    CT = promote_type(float(T), Complex{RT})
-
-    if istril(L)
-        V, W = _triangular_eigenvectors_lower(L, eigenvalues, CT)
-    elseif istriu(L)
-        V, W = _triangular_eigenvectors_upper(L, eigenvalues, CT)
-    else
-        throw(ArgumentError("Matrix must be upper or lower triangular"))
-    end
-
+    V, W = istril(L) ? _triangular_eigenvectors_lower(L, eigenvalues, CT) :
+           _triangular_eigenvectors_upper(L, eigenvalues, CT)
     return V, W, eigenvalues
 end
 
