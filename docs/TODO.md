@@ -314,9 +314,13 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       algebra", Acta Numerica 31 (2022) 347-414.
     - **LU, Cholesky and QR factors:** in the mixed-precision literature found, what is refined
       is the solution of the linear or least-squares problem, not the factors (Carson and
-      Higham 2017 and the papers around it). One hit on the factors themselves, M. Ahues and
-      F. Hama (2013), "Using Newton-Kantorovich method to compute QR and (L + I)U-
-      factorizations", was not confirmed on Crossref.
+      Higham 2017 and the papers around it). One hit on the factors themselves was read and set
+      aside (Isaia, 2026-10-11): M. P. Ahues and M. F. Hama, "Using Newton-Kantorovich method
+      to compute QR and (L + I)U-factorizations", J. Math. Comput. Sci. 3(1) (2013) 332-351.
+      Crossref and zbMATH have no record of it; it has four references; its convergence
+      statement is the standard a posteriori one for Newton's method, quoted from Kantorovich
+      and Krylov (1955); its examples are 4×4. Statements and examples were read, not the
+      proofs. Not filed in the library.
     - **Polar and Takagi:** no paper on refining an approximate factor was found; for the
       polar decomposition only new iterations to compute it.
     - **How the citing papers were found:** the open API of zbMATH (its website is behind a
