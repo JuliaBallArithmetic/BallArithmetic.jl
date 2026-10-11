@@ -176,14 +176,25 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       Chapter 8:** monotonicity checking (8.4.5), preconditioning (8.4.6, Proposition 8.11),
       the verified determinant of a real matrix (8.5), the special cases of 8.6 (symmetric,
       symmetric positive definite, tridiagonal H-matrices).
-    - **Implement from the thesis, do not remove** (decided 2026-10-11): the routines of
-      `src/linear_system` and `src/matrix_properties` that cite J. Horáček, *Interval linear and
-      nonlinear systems* (the thesis is in `references/`, in twelve parts, dated 2019 where the
-      files say 2012): `hbr_method` (the audit names Theorem 5.12), `interval_shaving`
-      (Chapter 5), `interval_gauss_seidel`, `interval_jacobi`, `is_well_preconditioned` and the
-      preconditioners, `interval_least_squares` and `subsquares_method` (Chapter 6),
-      (the determinants and the regularity tests are done, see above). Each is to be
-      read against its chapter and implemented as stated there.
+    - **Chapter 5 of the thesis, done on 2026-10-11** (`af7dbac`, `d4261b3`):
+      `interval_jacobi` and `interval_gauss_seidel` (Algorithms 5.15 and 5.17, stopping
+      criterion of 5.7.2), `interval_initial_enclosure` (Proposition 5.14 and (5.4), new),
+      `hbr_method` (Theorem 5.12, with `⟨A⟩⁻¹` enclosed by `verifylss`), `is_well_preconditioned`
+      and `apply_preconditioner` on balls. Tested against the solutions of the vertex systems in
+      rational arithmetic. Not implemented: extended interval arithmetic for a diagonal entry
+      containing zero (5.7.4).
+    - **`interval_shaving` (Section 5.9), to decide.** The method of the thesis guesses a Farkas
+      certificate by solving a linear programme (5.9.1), completes the system (5.12) to a square
+      one with a basis of a null space, encloses its solution, and widens the slice by Lemma
+      5.22 with the bounds (5.15) and (5.16), with the iterative improvement of 5.9.3. The
+      package has no linear programming solver among its dependencies, and what `shaving.jl`
+      does is unrelated to the thesis (the audit: it removed the exact solution). Options: a
+      solver as a weak dependency with the routine in an extension; or remove `interval_shaving`
+      until then. `sherman_morrison_inverse_update` is a floating-point formula and claims
+      nothing.
+    - **Still to implement from the thesis** (the thesis is in `references/`, dated 2019 where
+      some files say 2012): `interval_least_squares` and `subsquares_method` (Chapter 6). Each
+      is to be read against its chapter and implemented as stated there.
     - **`qi_intervals`, `qi_sqrt_intervals`, removed** (2026-10-11, at Isaia's word) with their
       rebalanced variants: Qi (1984) was tried and found not effective, and the audit found the
       interval `B_{n+1}` of its Theorem 2 missing for non-square input.
