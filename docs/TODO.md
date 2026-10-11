@@ -105,23 +105,31 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       `cholesky_gla` the midpoints differ from the reference by order one, so the probe compared
       different normalisations and says nothing. Left as they are for the moment (Isaia,
       2026-10-11).
-    - **The products in doubled precision are not `prodK`.** Rump and Ogita (2024) compute their
-      products with INTLAB's `prodK`, `k = 2`, which is the scheme of M. Lange and S. M. Rump,
-      "Accurate floating-point matrix residuals" (manuscript, in `~/Library/ToBeProcessed`): each
-      factor split into `k + 1` matrices at absolute splitting points taken from the Euclidean
-      norms of rows and columns, the products of the leading parts exact, all formed by level-3
-      BLAS (6 matrix products for `k = 2`), unevaluated sums of matrices as input and output.
-      Ours (`_two_term_product_sum`, `_accurate_product_sum`) is one Dot2 accumulation of Ogita,
-      Rump and Oishi (2005) for each entry, with the a priori `γ²` bound. On nighthawk, 16
-      threads, `RA − I` with `R = inv(A)`, `cond(A) = 1e12`, 2000 sampled entries against exact
-      values (`probe_prodk_accuracy.jl`, `probe_prodk_accuracy2.jl`): no entry outside either
-      bound in any run (Float64 n = 200, 1000, 2000; ComplexF64 n = 200, 1000; cond 1e2, 1e6,
-      1e15 at n = 1000; BigFloat n = 100 and complex n = 60 at 256 bits). At n = 1000: 0.19 s
-      against 0.002 s for the floating-point product, median error 1.5e-22 against 2.0e-7, median
-      bound 5.7e-16, median radius of the ordinary ball product 1.3e-5. The paper's Table 4
-      gives, for its own matrices at n = 1000 and `k = 2`, a time ratio 7.3 and errors 1.7e-24
-      against 3.1e-12. Not implemented: the scheme of Lange and Rump, `k` other than 2, more
-      than two output terms.
+    - **The products in doubled precision, and `prodK`.** Rump and Ogita (2024) compute their
+      products with INTLAB's `prodK`, `k = 2`, the scheme of M. Lange and S. M. Rump, "Accurate
+      floating-point matrix residuals" (manuscript, in `~/Library/ToBeProcessed`).
+      `_lange_rump_two_terms` (`src/types/MMul/lange_rump.jl`, 2026-10-11) implements, for
+      Float32 and Float64, real and complex: Algorithms 1 to 4, the exactness of Lemma 4 and
+      Corollary 5 with `λ = 1`, the balanced points (25), the evaluation (27) for any `k`, sums of
+      products with the summands split separately, and an error matrix of our own (the paper does
+      not list how `prodK` computes its second output). `_two_term_product_sum` and
+      `_accurate_product_sum` call it and fall back on the Dot2 accumulation of Ogita, Rump and
+      Oishi (2005) where it declines and for BigFloat. On nighthawk, `RA − I`, `R = inv(A)`,
+      `cond(A) = 1e12`, 1000 sampled entries against exact values, no entry outside the bound in
+      any run (`probe_prodk_timing2.jl`): one thread, n = 1000, time over the floating-point
+      product 3.5, 7.3, 12.6 for `k = 1, 2, 3`, median error 4.6e-14, 1.2e-20, 0, median bound
+      7.4e-10, 1.8e-16, 4.2e-23; the paper's Table 4 has the ratios 4.1 and 7.3 for `k = 1, 2`.
+      With 16 threads the ratio at `k = 2` is 16.6 at n = 1000 and 12.1 at n = 4000 (the splitting
+      and the summation are not threaded). The Dot2 accumulation: ratio 117 on one thread at
+      n = 1000, median error 1.5e-22, median bound 5.7e-16 (`probe_prodk_timing.jl`,
+      `probe_prodk_accuracy.jl`).
+      **Left of the paper, to implement:** `λ < 1` with the bound (15); unbalanced splittings
+      (23), (26); the Karatsuba evaluation (Lemma 14, Algorithm 6; 5 products for 6 at `k = 2`);
+      the blocked summation of Section 8.1 (Lemma 15); unevaluated sums as one factor
+      (Algorithm 7) and more than two output terms with (35). **Proposed to leave out, to
+      decide:** Toom-Cook (the paper says `prodK` does not use it), sparse factors (Section 8.4,
+      `spProdK`), SYRK. The residual `_rump2022a_prodK` of `rump_verifyeigall.jl` still has its
+      own Dot2 loop.
     - **Fixed:** `krawczyk_linear_system` is `verifylss` (`6751cf7`); RigorousInvariantMeasures
       calls it. `is_M_matrix` follows Definition 5.4 of Varga (2004) with its sign conditions,
       and `is_H_matrix` is the test on the comparison matrix (`2383207`). Sections 3.1 and 3.2

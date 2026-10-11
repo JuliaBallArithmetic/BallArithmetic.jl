@@ -202,19 +202,17 @@ end
 # Rump and Ogita (2024) call INTLAB's `prodK` with k = 2: one output with an error matrix, and
 # the unevaluated sum of two matrices.
 #
-# The algorithm is not that of `prodK`. By M. Lange and S. M. Rump, "Accurate floating-point
-# matrix residuals" (manuscript; `prodK` is in INTLAB from Version 14), `prodK` splits each
-# factor into k + 1 matrices at absolute splitting points, chosen from the Euclidean norms of the
-# rows and columns so that the products of the leading parts are exact in any order of
-# evaluation, and forms them with level-3 BLAS: 6 matrix products for k = 2, "as if" in
-# (k/2 + 1)-fold precision, with unevaluated sums of matrices as input and as output. Here every
-# entry is one Dot2 accumulation of Ogita, Rump and Oishi (2005), some ten operations for each
-# product with a fused multiply-add and no BLAS, and the bound is the a priori γ² one. On
-# nighthawk, 16 threads, for RA − I with R = inv(A), cond(A) = 1e12, n = 1000
-# (`probe_prodk_accuracy.jl`): 0.19 s against 0.002 s for the floating-point `R*A - I`, median
-# error 1.5e-22 against 2.0e-7, median bound 5.7e-16; the ordinary ball product had median
-# radius 1.3e-5. The scheme of Lange and Rump is not implemented.
-# ---------------------------------------------------------------------------------------------
+# `prodK` itself is the splitting scheme of M. Lange and S. M. Rump, "Accurate floating-point
+# matrix residuals" (manuscript; in INTLAB from Version 14). For Float32 and Float64 the two
+# routines below use it, `_lange_rump_two_terms` in `lange_rump.jl`, which says what of the paper
+# is implemented. Where it declines, and for other types such as BigFloat, every entry is one
+# Dot2 accumulation of Ogita, Rump and Oishi (2005), some ten operations for each product with a
+# fused multiply-add and no BLAS, with the a priori γ² bound.
+#
+# On nighthawk for RA − I, R = inv(A), cond(A) = 1e12, n = 1000, one thread
+# (`probe_prodk_timing.jl`, `probe_prodk_timing2.jl`): the floating-point `R*A - I` 0.017 s; the
+# splitting scheme with k = 2, 0.124 s, median error 1.2e-20, median bound 1.8e-16; the Dot2
+# accumulation 2.0 s, median error 1.5e-22, median bound 5.7e-16 (16 threads).
 
 # The signed real pairs whose compensated sums are the real and the imaginary part of
 # Σ_t sgn_t A_t B_t, the A_t and B_t real or complex point matrices.
