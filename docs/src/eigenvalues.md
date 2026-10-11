@@ -13,13 +13,12 @@ Ref. [Miyajima2012](@cite). The interested reader may refer to the treatment in
 ### Main Functions
 
 - [`rigorous_eigenvalues`](@ref) - General eigenvalue verification
-- [`rump_lange_2023_cluster_bounds`](@ref) - Schur-based cluster bounds
-- [`refine_cluster_bounds`](@ref) - Iterative refinement of cluster bounds
+- [`verifysvdall`](@ref) - all singular values and singular subspaces (Rump and Lange 2023); for a Hermitian matrix, `verifyeigall(A; method = :rumplange2023)`
 
 ### Result Types
 
 - [`RigorousEigenvaluesResult`](@ref) - Result from rigorous eigenvalue computation
-- [`RumpLange2023Result`](@ref) - Schur-based result
+- [`VerifySvdAllResult`](@ref) - result of `verifysvdall`
 
 ## Generalized Eigenvalue Problems
 

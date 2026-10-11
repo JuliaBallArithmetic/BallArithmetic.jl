@@ -18,9 +18,8 @@ evbox
 ## Rump-Lange 2023 Method
 
 ```@docs
-RumpLange2023Result
-rump_lange_2023_cluster_bounds
-refine_cluster_bounds
+VerifySvdAllResult
+verifysvdall
 ```
 
 ## Generalized Eigenvalues

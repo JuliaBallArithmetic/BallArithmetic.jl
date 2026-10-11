@@ -1,198 +1,191 @@
-using Test
-using LinearAlgebra
 using BallArithmetic
+using LinearAlgebra
+using Random
+using Test
 
-@testset "RumpLange2023 Cluster Bounds" begin
-    @testset "Isolated eigenvalues (no clusters)" begin
-        A = BallMatrix(Diagonal([1.0, 5.0, 10.0]))
-        result = rump_lange_2023_cluster_bounds(A; hermitian=true)
+# Rump and Lange (2023): all eigenpairs of a Hermitian matrix, all singular pairs of a matrix.
 
-        @test length(result) == 3
-        @test result.num_clusters == 3  # All isolated
-        @test result.verified
+_rl_inside(X, B) = all(abs.(X - mid(B)) .<= rad(B))
 
-        # Each eigenvalue should be in its own cluster
-        @test all(==(1), result.cluster_sizes)
+# the orthonormal basis of span(V) nearest to X: the unitary polar factor of P X, P the projector
+function _nearest_basis(V, X)
+    Z = V * (V' * X)
+    E = eigen(Hermitian(Z' * Z))
+    return Z * (E.vectors * Diagonal(1 ./ sqrt.(E.values)) * E.vectors')
+end
 
-        # True eigenvalues should be contained
-        λ_true = [1.0, 5.0, 10.0]
-        for i in 1:3
-            @test λ_true[i] ∈ result.eigenvalues[i]
-        end
+@testset "Rump-Lange 2023: the Hermitian eigenproblem" begin
+    rng = MersenneTwister(20261016)
+    function hermitian(d, S)
+        Q = Matrix(qr(randn(rng, S, length(d), length(d))).Q)
+        A = Q * Diagonal(d) * Q'
+        return (A + A') / 2
     end
-
-    @testset "Two clusters" begin
-        # Create matrix with two clusters: {1.0, 1.1} and {10.0}
-        A_mid = Matrix(Diagonal([1.0, 1.1, 10.0]))
-        A_rad = zeros(size(A_mid))
-        A_rad[1, 2] = A_rad[2, 1] = 0.2  # Couple first two
-        A = BallMatrix(A_mid, A_rad)
-
-        result = rump_lange_2023_cluster_bounds(A; hermitian=true, cluster_tol=0.5)
-
-        @test result.num_clusters <= 2  # Should identify at most 2 clusters
-
-        # Find the cluster with size 2 (or 1 if not clustered)
-        two_element_cluster = findfirst(==(2), result.cluster_sizes)
-        if two_element_cluster !== nothing
-            # The close eigenvalues should be in same cluster
-            cluster1_indices = findall(==(two_element_cluster), result.cluster_assignments)
-            @test length(cluster1_indices) == 2
-        end
-    end
-
-    @testset "Multiple clusters" begin
-        # Three clusters: {1.0, 1.1}, {5.0, 5.2}, {10.0}
-        A_mid = Matrix(Diagonal([1.0, 1.1, 5.0, 5.2, 10.0]))
-        A_rad = zeros(size(A_mid))
-        A_rad[1, 2] = A_rad[2, 1] = 0.15  # Cluster 1
-        A_rad[3, 4] = A_rad[4, 3] = 0.25  # Cluster 2
-        A = BallMatrix(A_mid, A_rad)
-
-        result = rump_lange_2023_cluster_bounds(A; hermitian=true, cluster_tol=0.5)
-
-        @test 1 <= result.num_clusters <= 3
-
-        # All eigenvalues should be assigned to some cluster
-        @test all(c -> 1 <= c <= result.num_clusters, result.cluster_assignments)
-
-        # Cluster sizes should sum to n
-        @test sum(result.cluster_sizes) == 5
-    end
-
-    @testset "Fast vs rigorous mode" begin
-        A = BallMatrix(Diagonal([1.0, 1.1, 5.0]))
-
-        result_fast = rump_lange_2023_cluster_bounds(A; hermitian=true, fast=true)
-        result_rigorous = rump_lange_2023_cluster_bounds(A; hermitian=true, fast=false)
-
-        # Both should verify
-        @test result_fast.verified
-        @test result_rigorous.verified
-
-        # Both should identify same cluster structure
-        @test result_fast.num_clusters == result_rigorous.num_clusters
-        @test result_fast.cluster_assignments == result_rigorous.cluster_assignments
-
-        # True eigenvalues should be contained in both
-        λ_true = eigvals(mid(A))
-        for i in 1:3
-            @test λ_true[i] ∈ result_fast.eigenvalues[i]
-            @test λ_true[i] ∈ result_rigorous.eigenvalues[i]
-        end
-    end
-
-    @testset "Cluster separations" begin
-        A = BallMatrix(Diagonal([1.0, 1.1, 10.0]))
-
-        result = rump_lange_2023_cluster_bounds(A; hermitian=true, cluster_tol=0.3)
-
-        # Cluster separations should be positive
-        @test all(s -> s > 0, result.cluster_separations)
-
-        # If we have 2 clusters ({1.0,1.1} and {10.0}), separation should be ~8-9
-        if result.num_clusters == 2
-            # The well-separated cluster should have large separation
-            large_sep = maximum(result.cluster_separations)
-            @test large_sep > 8.0
-        end
-    end
-
-    @testset "Cluster residuals" begin
-        A = BallMatrix(Diagonal([1.0, 2.0, 3.0]))
-        result = rump_lange_2023_cluster_bounds(A; hermitian=true)
-
-        # All residuals should be small for diagonal matrix
-        @test all(r -> r < 1e-12, result.cluster_residuals)
-        @test all(r -> r >= 0, result.cluster_residuals)
-    end
-
-    @testset "Cluster bounds vs individual bounds" begin
-        A_mid = Matrix(Diagonal([1.0, 1.05, 1.1]))
-        A_rad = zeros(size(A_mid))
-        A_rad[1, 2] = A_rad[2, 1] = 0.1
-        A_rad[2, 3] = A_rad[3, 2] = 0.1
-        A = BallMatrix(A_mid, A_rad)
-
-        result = rump_lange_2023_cluster_bounds(A; hermitian=true, cluster_tol=0.3)
-
-        # If all three form one cluster
-        if result.num_clusters == 1
-            # All individual bounds should be contained in cluster bound
-            for i in 1:3
-                cluster_idx = result.cluster_assignments[i]
-                cluster_bound = result.cluster_bounds[cluster_idx]
-
-                # Individual bound should intersect with cluster bound
-                @test mid(result.eigenvalues[i]) ∈ cluster_bound ||
-                      mid(cluster_bound) ∈ result.eigenvalues[i]
+    # Theorem 4.2 and Theorem 6.2 against an eigendecomposition at 1024 bits
+    function check(A, r; ρ = 0.0)
+        n = size(A, 1)
+        B = eltype(A) <: Complex ? Complex{BigFloat} : BigFloat
+        setprecision(BigFloat, 1024) do
+            F = eigen(Hermitian(B.(A)))
+            λ = F.values
+            @test sort(reduce(vcat, r.clusters)) == 1:n
+            used = falses(n)
+            for v in r.clusters
+                a, b = minimum(r.lo[v]), maximum(r.hi[v])
+                idx = findall(l -> a <= l <= b, λ)
+                @test length(idx) == length(v)                  # exactly |μ| eigenvalues
+                used[idx] .= true
+                # a numbering with λ_j ∈ L_j: the sorted eigenvalues of the cluster against the
+                # intervals sorted by midpoint
+                ord = sort(v; by = j -> r.lo[j] + r.hi[j])
+                @test all(r.lo[ord[t]] <= λ[idx[t]] <= r.hi[ord[t]] for t in eachindex(idx))
+                if ρ == 0 && length(idx) == length(v)
+                    Q = _nearest_basis(F.vectors[:, idx], B.(mid(r.vectors)[:, v]))
+                    @test _rl_inside(Q, r.vectors[:, v])
+                end
+            end
+            @test all(used)
+            for (s, v) in enumerate(r.clusters), w in r.clusters[(s + 1):end]
+                @test maximum(r.hi[v]) < minimum(r.lo[w]) || maximum(r.hi[w]) < minimum(r.lo[v])
             end
         end
     end
-
-    @testset "Refine cluster bounds" begin
-        A = BallMatrix(Diagonal([1.0, 1.1, 5.0]))
-        result_initial = rump_lange_2023_cluster_bounds(A; hermitian=true)
-
-        # Refine with 2 iterations
-        result_refined = refine_cluster_bounds(result_initial, A; iterations=2)
-
-        @test length(result_refined) == 3
-        @test result_refined.num_clusters == result_initial.num_clusters
-
-        # Refined bounds should be equal or tighter
-        for i in 1:3
-            @test rad(result_refined.eigenvalues[i]) <=
-                  rad(result_initial.eigenvalues[i]) + 1e-14
+    @testset "separated eigenvalues, n = $n, $S" for n in (5, 30), S in (Float64, ComplexF64)
+        A = hermitian(randn(rng, n) .* 3, S)
+        r = BallArithmetic._rumplange2023_eig(BallMatrix(A))
+        @test all(length(v) == 1 for v in r.clusters)
+        check(A, r)
+        # Table 2 of the paper: refined inclusions of relative error about 1e-14
+        @test maximum((r.hi .- r.lo) ./ max.(abs.(r.lo), abs.(r.hi))) < 1e-11
+        @test maximum(rad(r.vectors)) < 1e-10
+    end
+    @testset "clusters, $S" for S in (Float64, ComplexF64)
+        # two tenfold clusters of width 1e-11, as in the paper's Table 3, and separated ones
+        d = vcat(0.1 .+ 1e-11 .* randn(rng, 10), 0.2 .+ 1e-11 .* randn(rng, 10),
+            range(0.3, 1.0; length = 10), range(-1.0, -0.3; length = 10))
+        A = hermitian(d, S)
+        r = BallArithmetic._rumplange2023_eig(BallMatrix(A))
+        check(A, r)
+        @test all(isfinite, rad(r.vectors))
+        # an exactly double eigenvalue
+        A2 = Matrix{S}(Diagonal([1.0, 1.0, 2.0, 3.0]))
+        r2 = BallArithmetic._rumplange2023_eig(BallMatrix(A2))
+        check(A2, r2)
+        # a multiple of the identity: one cluster of everything
+        r3 = BallArithmetic._rumplange2023_eig(BallMatrix(Matrix{S}(2.0I, 4, 4)))
+        @test r3.clusters == [[1, 2, 3, 4]]
+        check(Matrix{S}(2.0I, 4, 4), r3)
+    end
+    @testset "the paper's interval matrix (4.5)" begin
+        A = [16.0 7 0 3 7; 7 -4 -1 -2 1; 0 -1 -6 5 1; 3 -2 5 -6 3; 7 1 1 3 -2]
+        r = BallArithmetic._rumplange2023_eig(BallMatrix(A, fill(0.5, 5, 5)))
+        # Section 4: the first three eigenvalues form one cluster, the other two are alone
+        @test sort(length.(r.clusters)) == [1, 1, 3]
+        for _ in 1:20
+            Ep = 0.5 * (2 * rand(rng, 5, 5) .- 1)
+            check(A + (Ep + Ep') / 2, r; ρ = 0.5)
         end
+        # Table 4: at radius 0.1 the five eigenvalues are separated
+        @test length(BallArithmetic._rumplange2023_eig(BallMatrix(A, fill(0.1, 5, 5))).clusters) == 5
+    end
+    @testset "through verifyeigall" begin
+        A = hermitian([-2.0, -1.0, 0.5, 0.5 + 1e-12, 3.0, 4.0], Float64)
+        r = verifyeigall(BallMatrix(A); method = :rumplange2023)
+        @test r isa VerifyEigAllResult
+        @test r.spectrum_covered && all(r.certified)
+        λ = setprecision(() -> eigvals(Hermitian(big.(A))), BigFloat, 1024)
+        for (i, v) in enumerate(r.clusters)
+            @test count(l -> abs(l - r.centers[i]) <= r.radii[i], λ) == length(v)
+            # A Q = Q M on the ball: the residual contains zero
+            res = BallMatrix(ComplexF64.(A)) * r.subspaces[i] - r.subspaces[i] * r.blocks[i]
+            @test all(abs.(mid(res)) .<= rad(res))
+        end
+        @test all(l -> any(j -> abs(l - r.gershgorin_centers[j]) <= r.gershgorin_radii[j], 1:6), λ)
+        # the block resolvent floor of a Hermitian matrix: the distance to the spectrum
+        f = block_resolvent_floor(r)
+        @test f.kappa < 1 + 1e-8
+        for z in (0.7 + 0.3im, -5.0 + 0im, 3.5 + 2.0im)
+            truth = minimum(svdvals(A - z * I))
+            s = sigma_min_floor(f, z; near = true)
+            @test 0 < s <= truth * (1 + 1e-10)
+            @test s >= 0.99 * truth
+        end
+        @test_throws MethodError verifyeigall(BallMatrix(A); method = :rumplange2023, maxiter = 3)
+        @test_throws ArgumentError BallArithmetic._rumplange2023_eig(BallMatrix(randn(rng, 2, 3)))
+    end
+end
 
-        # True eigenvalues should still be contained
-        λ_true = eigvals(mid(A))
-        for i in 1:3
-            @test λ_true[i] ∈ result_refined.eigenvalues[i]
+@testset "Rump-Lange 2023: singular values and singular subspaces" begin
+    rng = MersenneTwister(20261017)
+    function withsv(m, n, σ, S)
+        p = min(m, n)
+        return Matrix(qr(randn(rng, S, m, m)).Q)[:, 1:p] * Diagonal(σ) * Matrix(qr(randn(rng, S, n, n)).Q)[:, 1:p]'
+    end
+    function check(A, r; vectors = true)
+        m, n = size(A)
+        p = min(m, n)
+        B = eltype(A) <: Complex ? Complex{BigFloat} : BigFloat
+        setprecision(BigFloat, 1024) do
+            F = svd(B.(A))
+            σ = F.S
+            lo = [mid(b) - rad(b) for b in r.values]
+            hi = [mid(b) + rad(b) for b in r.values]
+            @test all(>=(0), lo)
+            @test sort(reduce(vcat, r.clusters)) == 1:p
+            used = falses(p)
+            for v in r.clusters
+                a, b = minimum(lo[v]), maximum(hi[v])
+                idx = findall(s -> a <= s <= b, σ)
+                @test length(idx) == length(v)
+                used[idx] .= true
+                ord = sort(v; by = j -> -(lo[j] + hi[j]))      # σ is in decreasing order
+                @test all(lo[ord[t]] <= σ[idx[t]] <= hi[ord[t]] for t in eachindex(idx))
+                if vectors && length(idx) == length(v)
+                    if all(isfinite, rad(r.U)[:, v])
+                        @test _rl_inside(_nearest_basis(F.U[:, idx], B.(mid(r.U)[:, v])), r.U[:, v])
+                    end
+                    if all(isfinite, rad(r.V)[:, v])
+                        @test _rl_inside(_nearest_basis(F.V[:, idx], B.(mid(r.V)[:, v])), r.V[:, v])
+                    end
+                end
+            end
+            @test all(used)
         end
     end
-
-    @testset "Non-Hermitian matrix" begin
-        A = BallMatrix([2.0 1.0; 0.5 3.0])
-        result = rump_lange_2023_cluster_bounds(A; hermitian=false)
-
-        @test length(result) == 2
-        @test 1 <= result.num_clusters <= 2
-
-        # Check containment (may have complex eigenvalues)
-        λ_true = eigvals(mid(A))
-        for i in 1:2
-            ball_i = result.eigenvalues[i]
-            # For real matrices with real eigenvalues
-            @test abs(real(λ_true[i]) - mid(ball_i)) <= rad(ball_i)
-        end
+    @testset "$m × $n, $S" for (m, n) in ((6, 6), (30, 12), (12, 30), (5, 1)), S in (Float64, ComplexF64)
+        p = min(m, n)
+        A = withsv(m, n, collect(range(3.0, 0.5; length = p)), S)
+        r = verifysvdall(BallMatrix(A))
+        @test r isa VerifySvdAllResult
+        @test size(r.U) == (m, p) && size(r.V) == (n, p)
+        @test all(length(v) == 1 for v in r.clusters)
+        check(A, r)
+        # Tables 11 and 12 of the paper: singular values to about 1e-14, vectors to the gap
+        @test maximum(rad(b) / mid(b) for b in r.values) < 1e-11
+        @test maximum(rad(r.U)) < 1e-9 && maximum(rad(r.V)) < 1e-9
     end
-
-    @testset "Gershgorin disc computation" begin
-        # Matrix where Gershgorin gives good bounds
-        A = BallMatrix([10.0 1.0 0.5;
-                        1.0  5.0 0.3;
-                        0.5  0.3 2.0])
-
-        result = rump_lange_2023_cluster_bounds(A; hermitian=true)
-
-        # All eigenvalues should be contained in some ball
-        # (eigenvalue ordering may differ between true and computed)
-        λ_true = eigvals(Hermitian(mid(A)))
-        for λ in λ_true
-            contained = any(λ ∈ ball for ball in result.eigenvalues)
-            @test contained
-        end
+    @testset "clusters and the threshold" begin
+        σ = vcat(0.1 .+ 1e-11 .* randn(rng, 5), 0.2 .+ 1e-11 .* randn(rng, 5), collect(range(0.3, 1.0; length = 8)))
+        A = withsv(40, 18, σ, Float64)
+        r = verifysvdall(BallMatrix(A))
+        check(A, r)
+        # with the threshold the two groups are two clusters with narrow subspaces (Table 14)
+        k = verifysvdall(BallMatrix(A); kappa = 1e-8)
+        check(A, k)
+        @test sort(length.(k.clusters)) == vcat(fill(1, 8), [5, 5])
+        @test maximum(rad(k.U)) < 1e-9 && maximum(rad(k.V)) < 1e-9
+        @test_throws ArgumentError verifysvdall(BallMatrix(A); kappa = -1)
     end
-
-    @testset "Tolerance parameter effect" begin
-        A = BallMatrix(Diagonal([1.0, 1.05, 1.1]))
-
-        result_tight = rump_lange_2023_cluster_bounds(A; hermitian=true, cluster_tol=0.01)
-        result_loose = rump_lange_2023_cluster_bounds(A; hermitian=true, cluster_tol=0.5)
-
-        # Tighter tolerance should give more clusters
-        @test result_tight.num_clusters >= result_loose.num_clusters
+    @testset "a singular matrix, and a ball of matrices" begin
+        # rank deficient: the smallest interval reaches zero and its left subspace is not claimed
+        A = withsv(6, 4, [3.0, 2.0, 1.0, 0.0], Float64)
+        r = verifysvdall(BallMatrix(A))
+        check(A, r; vectors = false)
+        @test minimum(mid(b) - rad(b) for b in r.values) == 0
+        A = withsv(7, 5, [5.0, 4.0, 3.0, 2.0, 1.0], Float64)
+        r = verifysvdall(BallMatrix(A, fill(1e-9, 7, 5)))
+        for _ in 1:10
+            check(A + 1e-9 * (2 * rand(rng, 7, 5) .- 1), r; vectors = false)
+        end
     end
 end
