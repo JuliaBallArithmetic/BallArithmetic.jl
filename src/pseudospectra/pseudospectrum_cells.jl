@@ -68,9 +68,13 @@ undecided.
 
 A cell that is neither is cut into four, down to cells whose `r` is below `min_halfdiag`, which
 are returned as `undecided`; so are the cells not yet examined when `max_evaluations` centres
-have been used. `r` is rounded up and carries a margin for the rounding of the centres of the
-parts, so that the discs of radius `r` about the centres of the returned cells cover the
-rectangle. Cells accumulate along the level curve `σ_min = ε` and not over the area.
+have been used, the cells being examined from the largest to the smallest. `r` is rounded up and
+carries a margin for the rounding of the centres of the parts, so that the discs of radius `r`
+about the centres of the returned cells cover the rectangle.
+
+The cells that are cut are those the bounds do not decide. With bounds within a factor of
+`σ_min` these lie along the level curve `σ_min = ε`; where `lower` returns zero and
+`σ_min > ε`, they fill that region down to `min_halfdiag`.
 
 No use is made of the maximum principle for the resolvent norm on cells free of eigenvalues,
 which would let the bound on the boundary of such a cell serve for its interior.
@@ -92,7 +96,7 @@ function pseudospectrum_cells(lower, upper, lo::Number, hi::Number; ε::Real,
     evaluations = 0
     εT = T(ε)
     while !isempty(stack)
-        cell = pop!(stack)
+        cell = popfirst!(stack)
         if evaluations >= max_evaluations
             push!(undecided, cell)
             continue

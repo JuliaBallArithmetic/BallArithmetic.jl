@@ -62,9 +62,24 @@ using Test
                 vcat(r.included, r.undecided))
         end
         @test r.evaluations ≥ length(r.excluded) + length(r.included) + length(r.undecided)
-        # a finer resolution leaves a smaller undecided area
-        r2 = pseudospectrum_cells(lower, upper, lo, hi; ε, min_halfdiag = 0.0125)
-        @test area(r2.undecided) < area(r.undecided)
+    end
+
+    @testset "bounds from a singular value computation: the undecided cells follow the level curve" begin
+        A = randn(rng, 5, 5)
+        bA = BallMatrix(A)
+        lower = z -> (σ = svdbox(BallArithmetic._shifted_ball(ComplexF64(z), bA));
+        max(0.0, minimum(mid(x) - rad(x) for x in σ)))
+        upper = z -> sigma_min_upper(bA, z)
+        ε = 0.2
+        r1 = pseudospectrum_cells(lower, upper, -4 - 4im, 4 + 4im; ε, min_halfdiag = 0.1)
+        r2 = pseudospectrum_cells(lower, upper, -4 - 4im, 4 + 4im; ε, min_halfdiag = 0.025)
+        @test area(r2.undecided) < 0.5 * area(r1.undecided)
+        for c in r2.excluded, z in points(c, rng)
+            @test σtrue(A, z) > ε
+        end
+        for c in r2.included, z in points(c, rng)
+            @test σtrue(A, z) < ε
+        end
     end
 
     @testset "limits and arguments" begin
