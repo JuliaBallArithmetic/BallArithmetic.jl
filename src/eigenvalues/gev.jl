@@ -5,8 +5,8 @@
     RigorousGeneralizedEigenvaluesResult
 
 Container returned by [`rigorous_generalized_eigenvalues`](@ref) bundling
-the midpoint eigenvector factorisation, the certified eigenvalue
-enclosures, and the norm bounds underpinning their verification.
+the midpoint eigenvector factorisation, the balls whose union contains the
+eigenvalues, and the norm bounds underpinning their verification.
 Besides behaving like the underlying vector of eigenvalue balls, the
 struct exposes the interval residual, the projected residual used in the
 Miyajima certification, and the coupling defect of the left action
@@ -17,7 +17,7 @@ struct RigorousGeneralizedEigenvaluesResult{XT, YT, ΛT, ΛMT, ET, RT, BT}
     right_vectors::XT
     """Ball enclosure of the left action verifying `left_action * B * right_vectors ≈ I`."""
     left_action::YT
-    """Certified eigenvalues returned as floating-point balls."""
+    """Balls whose union contains the eigenvalues; a single ball need not contain one."""
     eigenvalues::ΛT
     """Diagonal ball matrix containing the eigenvalue enclosure."""
     Λ::ΛMT
@@ -49,7 +49,7 @@ Base.iterate(result::RigorousGeneralizedEigenvaluesResult, state) =
     RigorousEigenvaluesResult
 
 Container returned by [`rigorous_eigenvalues`](@ref) bundling the
-midpoint eigenvector factorisation, the certified eigenvalue enclosures,
+midpoint eigenvector factorisation, the balls whose union contains the eigenvalues,
 and the norm bounds underpinning their verification. Besides behaving
 like the underlying vector of eigenvalue balls, the struct exposes the
 interval residual, the projected residual used in the Miyajima
@@ -60,7 +60,7 @@ struct RigorousEigenvaluesResult{VT, YT, ΛT, ΛMT, ET, RT, BT}
     vectors::VT
     """Ball enclosure of the inverse of `vectors`."""
     inverse::YT
-    """Certified eigenvalues returned as floating-point balls."""
+    """Balls whose union contains the eigenvalues; a single ball need not contain one."""
     eigenvalues::ΛT
     """Diagonal ball matrix containing the eigenvalue enclosure."""
     Λ::ΛMT
@@ -91,10 +91,16 @@ Base.iterate(result::RigorousEigenvaluesResult, state) =
 """
     rigorous_generalized_eigenvalues(A::BallMatrix, B::BallMatrix)
 
-Compute rigorous enclosures for the eigenvalues of the generalised
+Compute a set of balls whose union contains the eigenvalues of the generalised
 problem `A * x = λ * B * x`, following Ref. [Miyajima2012](@cite).  The
 returned [`RigorousGeneralizedEigenvaluesResult`](@ref) exposes both the
-interval enclosures and the norm bounds used during certification.
+balls and the norm bounds used during certification.
+
+**What is certified.** The returned balls have the computed eigenvalues as centres and one common
+radius, and every eigenvalue of every pair of matrices in the input balls lies in their union.
+A single ball need not contain an eigenvalue, and the number of eigenvalues in a ball or in a
+group of overlapping balls is not certified. For sets with a certified number of eigenvalues
+use [`verifyeigall`](@ref).
 
 # References
 
@@ -108,8 +114,9 @@ end
 """
     gevbox(A::BallMatrix{T}, B::BallMatrix{T})
 
-Backward-compatible wrapper returning only the vector of eigenvalue
-enclosures produced by [`rigorous_generalized_eigenvalues`](@ref).
+Backward-compatible wrapper returning only the vector of balls
+produced by [`rigorous_generalized_eigenvalues`](@ref): their union contains the eigenvalues, a single ball need
+not contain one.
 """
 function gevbox(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
     result = rigorous_generalized_eigenvalues(A, B)
@@ -153,12 +160,15 @@ end
 """
     rigorous_eigenvalues(A::BallMatrix)
 
-Compute rigorous enclosures for the eigenvalues of `A`, following
-Ref. [Miyajima2012](@cite).  The returned
-[`RigorousEigenvaluesResult`](@ref) exposes both the interval enclosures
-and the norm bounds used during certification.
+Compute a set of balls whose union contains the eigenvalues of `A`, following
+Ref. [Miyajima2012](@cite).  The returned [`RigorousEigenvaluesResult`](@ref) exposes both the
+balls and the norm bounds used during certification.
 
-TODO: Using Miyajima's algorithm is overkill, may be worth using
+**What is certified.** The returned balls have the computed eigenvalues as centres and one common
+radius, and every eigenvalue of every matrix in the input ball lies in their union.
+A single ball need not contain an eigenvalue, and the number of eigenvalues in a ball or in a
+group of overlapping balls is not certified. For sets with a certified number of eigenvalues
+use [`verifyeigall`](@ref).
 
 # References
 
@@ -172,8 +182,9 @@ end
 """
     evbox(A::BallMatrix{T})
 
-Backward-compatible wrapper returning only the vector of eigenvalue
-enclosures produced by [`rigorous_eigenvalues`](@ref).
+Backward-compatible wrapper returning only the vector of balls
+produced by [`rigorous_eigenvalues`](@ref): their union contains the eigenvalues, a single ball need
+not contain one.
 """
 function evbox(A::BallMatrix{T}) where {T}
     result = rigorous_eigenvalues(A)
