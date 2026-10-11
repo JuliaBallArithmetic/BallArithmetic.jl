@@ -6,12 +6,18 @@ using BallArithmetic
 const CS = BallArithmetic.CertifScripts
 
 # Reference factor of exactly the matrix `verified_cholesky` factors, namely the
-# symmetrised (A + A*)/2, computed in high precision.
+# symmetrised (A + A*)/2, and its inverse. They are computed at 1024 bits: the enclosures are
+# at 256 bits with radii near 1e-76, and a reference at the same precision has errors of that
+# size (one entry of 100 lay outside by a factor 1.17, none with the reference at 1024 bits;
+# probe_gram_reference_precision.jl on nighthawk).
 function _reference_factor(G)
-    BT = eltype(G) <: Complex ? Complex{BigFloat} : BigFloat
-    Gb = BT.(G)
-    return cholesky(Hermitian((Gb + Gb') / 2)).U
+    setprecision(BigFloat, 1024) do
+        BT = eltype(G) <: Complex ? Complex{BigFloat} : BigFloat
+        Gb = BT.(G)
+        cholesky(Hermitian((Gb + Gb') / 2)).U
+    end
 end
+_reference_inverse(G) = setprecision(() -> inv(_reference_factor(G)), BigFloat, 1024)
 
 function _encloses(ball, exact)
     all(abs.(convert.(eltype(exact), ball.c) .- exact) .<=
@@ -55,7 +61,7 @@ end
             # the factor enclosure contains the exact Cholesky factor
             Ltrue = _reference_factor(G)
             @test _encloses(gt.factor, Ltrue)
-            @test _encloses(gt.factor_inv, inv(Ltrue))
+            @test _encloses(gt.factor_inv, _reference_inverse(G))
 
             At = CS.apply_gram_transform(BallMatrix(A), gt)
             @test eltype(At.r) === Float64          # rounded outward to A's type
@@ -109,7 +115,7 @@ end
 
             for method in (:backsub, :verify)
                 gt = CS.gram_transform(G; inverse_method = method)
-                @test _encloses(gt.factor_inv, inv(Ltrue))
+                @test _encloses(gt.factor_inv, _reference_inverse(G))
             end
 
             # the uniform-inflation route is the looser of the two
@@ -141,7 +147,7 @@ end
             L = chol.G
             good_inv = inv(Matrix(L.c))
             gt = CS.gram_transform(G; factor = L, factor_inv = good_inv)
-            @test _encloses(gt.factor_inv, inv(_reference_factor(G)))
+            @test _encloses(gt.factor_inv, _reference_inverse(G))
 
             # an inverse that is not one must be rejected rather than believed
             @test_throws ArgumentError CS.gram_transform(G; factor = L,

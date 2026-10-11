@@ -54,7 +54,7 @@ using BallArithmetic
         A = randn(ComplexF64, n, n)  # Not symmetric
 
         # Should warn about non-symmetry
-        result = @test_logs (:warn,) verified_takagi(A)
+        result = @test_logs (:warn, r"not complex symmetric") match_mode = :any verified_takagi(A)
         # Still returns a result (it symmetrizes)
         @test result isa BallArithmetic.VerifiedTakagiResult
     end
