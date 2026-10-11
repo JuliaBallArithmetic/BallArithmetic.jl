@@ -123,6 +123,14 @@ With `M_A ≥ ‖(zI − A)⁻¹‖₂` on `Γ` (`resolvent_bound_A`), `M_T̃ �
 
 The hypothesis that `T̃` has no spectrum on `Γ` follows from `γ < 1`. Every operation is rounded
 up. Returns `Inf` when `δ ≥ 1` or `γ ≥ 1`.
+
+# Reference
+
+The comparison of two Riesz projections through the resolvent on a contour is the lemma
+"Resolvent bridge" of I. Nisoli, *Certified spectral approximation of transfer operators and the
+Gauss map*, arXiv:2602.19435 (2026), in its section on spectral stability and projections; the
+form above, with a pair `Q`, `T̃` that is neither exactly unitary nor an exact factorisation, is
+derived in this docstring.
 """
 function spectral_projector_error_bound(; resolvent_bound_A::Real, contour_radius::Real,
         orth_defect::Real, fact_defect::Real)
