@@ -1,12 +1,9 @@
-# Newton-Kantorovich eigenpair certifier
+# Enclosure of one eigenpair of a matrix by a contraction argument on the map
 #
-# Certifies simple eigenpairs (λ, v) of a matrix A via the augmented map
-#   F(z, v) = (Av - zv, u'v - 1)
-# where u is a left eigenvector with u'v = 1. The NK theorem gives a
-# contraction ball when the preconditioned Newton operator has Lipschitz
-# constant q₀ < 1 and the discriminant (1-q₀)² - 4‖C‖·y ≥ 0.
+#     F(z, w) = (A w − z w, uᴴ w − 1),        (z, w) ∈ ℂ × ℂᴺ,
 #
-# Reference: Kantorovich & Akilov, "Functional Analysis", Ch. XVIII.
+# with u a fixed vector. The statement and its proof are in the docstring of
+# `certify_eigenpair`; nothing is taken from a reference.
 
 using LinearAlgebra
 
@@ -64,8 +61,37 @@ Base.lastindex(r::NKEigenpairsResult) = length(r.results)
 """
     certify_eigenpair(A, λ_approx, v_approx; u_approx=nothing, norm_method=:fast)
 
-Certify a single eigenpair (λ, v) of matrix `A` using the Newton-Kantorovich
-theorem on the augmented map F(z,v) = (Av - zv, u'v - 1).
+An enclosure of one eigenpair of `A` near the approximate pair `(λ̃, ṽ)`, valid for every matrix
+of `A` when it is a ball matrix.
+
+# What is proved
+
+Let `u` be a vector with `uᴴṽ = 1` up to rounding (an approximate left eigenvector), and
+`F(z, w) := (A w − z w, uᴴ w − 1)` on `ℂ × ℂᴺ` with the Euclidean norm. With `x₀ := (λ̃, ṽ)`,
+`J := F′(x₀)`, a matrix `C` (the floating-point inverse of the midpoint of `J`) and
+
+    y ≥ ‖C F(x₀)‖₂,        q₀ ≥ ‖I − C J‖₂,        c ≥ ‖C‖₂,
+
+if `q₀ < 1` and `(1 − q₀)² − 4 c y ≥ 0`, then with `r := 2y/(1 − q₀)` there is exactly one
+`(z, w)` with `‖(z − λ̃, w − ṽ)‖₂ ≤ r`, `A w = z w` and `uᴴ w = 1`; and `z` is a simple
+eigenvalue of `A`. When `certified`, the result has `eigenvalue = ⟨λ̃, r⟩` and each component of
+`eigenvector` of radius `r` about that of `ṽ`.
+
+Proof. `F` is quadratic: `F(x₀ + h) = F(x₀) + J h + Q(h)` with `Q(h) = (−h_z h_w, 0)`, so
+`‖Q(h)‖₂ = |h_z| ‖h_w‖₂ ≤ ‖h‖₂²/2` and `‖Q′(h)‖₂ ≤ ‖h‖₂`. For `T(x) := x − C F(x)`,
+
+    ‖T(x₀ + h) − x₀‖₂ ≤ y + q₀ ‖h‖₂ + c ‖h‖₂²/2,        ‖T′(x₀ + h)‖₂ ≤ q₀ + c ‖h‖₂.
+
+From `4cy ≤ (1 − q₀)²`, `c r ≤ (1 − q₀)/2`: the first bound at `‖h‖₂ ≤ r` is at most
+`y + q₀ r + (1 − q₀) r/4 ≤ r`, and the second at most `(1 + q₀)/2 < 1`. So `T` maps the ball
+of radius `r` into itself and is a contraction on it; its fixed point is the only zero of
+`C F` there, and `C` is invertible because `‖I − CJ‖₂ < 1`. At the zero the derivative of `F`
+is invertible, by the second bound, which excludes a second independent eigenvector `w′`
+(then `(0, w′ − (uᴴw′) w)` would be in its kernel) and a generalised eigenvector `w′` with
+`(A − z) w′ = w` (then `(1, w′ − (uᴴw′) w)` would be).
+
+`y`, `q₀` and `c` are computed in ball arithmetic over the ball `A`, so the conclusion holds
+for each of its matrices, with an eigenpair that depends on the matrix.
 
 # Arguments
 - `A`: square matrix (plain or `BallMatrix`)
@@ -74,6 +100,9 @@ theorem on the augmented map F(z,v) = (Av - zv, u'v - 1).
 - `u_approx`: optional left eigenvector (computed automatically if `nothing`)
 - `norm_method::Symbol`: `:fast` uses `upper_bound_L2_opnorm`, `:svd` uses
   `svd_bound_L2_opnorm`
+
+The enclosed eigenvector is the one normalised by `uᴴ w = 1`, with `u` the vector given, or
+computed, divided by the conjugate of `uᴴ ṽ`.
 
 # Returns
 [`NKEigenpairResult`](@ref) with certification status and enclosure.
@@ -106,12 +135,12 @@ function certify_eigenpair(
     else
         u = convert(Vector{NT}, collect(u_approx))
     end
-    # Normalize so u'v = 1
+    # Normalise so that uᴴv = 1: uᴴv is antilinear in u, so u is divided by the conjugate
     uv = LinearAlgebra.dot(u, v)
     if abs(uv) < eps(T) * 100
         return _unverified_result(T, NT, λ, v, N)
     end
-    u = u / uv
+    u = u / conj(uv)
 
     # --- Step 3: Augmented Jacobian J_mid ---
     J_mid = zeros(NT, N + 1, N + 1)
@@ -173,9 +202,7 @@ function certify_eigenpair(
         return _unverified_result_with_diagnostics(T, NT, λ, v, N, q0, C_norm, y)
     end
 
-    disc = setrounding(T, RoundDown) do
-        (one(T) - q0)^2 - T(4) * C_norm * y
-    end
+    disc = _nk_discriminant(q0, C_norm, y)
 
     if disc < zero(T)
         return _unverified_result_with_diagnostics(T, NT, λ, v, N, q0, C_norm, y)
@@ -299,6 +326,14 @@ function _build_augmented_jacobian_ball(A_ball::BallMatrix, λ::NT, v::Vector{NT
     return BallMatrix(J_mid, J_rad)
 end
 
+# A lower bound of (1 − q₀)² − 4 c y for q₀ < 1: the square from below, the product from above.
+# For q₀ ≥ 1 the value is only a diagnostic.
+function _nk_discriminant(q0::T, c::T, y::T) where {T}
+    a = sub_down(one(T), q0)
+    sq = a >= 0 ? mul_down(a, a) : mul_up(a, a)
+    return sub_down(sq, mul_up(mul_up(T(4), c), y))
+end
+
 """
 Compute ‖M‖₂ upper bound using the selected method.
 """
@@ -327,9 +362,7 @@ Return an unverified result with computed diagnostics.
 """
 function _unverified_result_with_diagnostics(::Type{T}, ::Type{NT}, λ::NT, v::Vector{NT},
                                               N::Int, q0::T, C_norm::T, y::T) where {T, NT}
-    disc = setrounding(T, RoundDown) do
-        (one(T) - q0)^2 - T(4) * C_norm * y
-    end
+    disc = _nk_discriminant(q0, C_norm, y)
     eigenvalue = Ball(λ, T(Inf))
     eigenvector = [Ball(v[i], T(Inf)) for i in 1:N]
     return NKEigenpairResult{T, NT}(

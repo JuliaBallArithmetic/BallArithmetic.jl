@@ -391,3 +391,13 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     is not the paper's: its (51) has `γₙ` for the Cholesky backward error where Higham's
     Theorem 10.3, which it cites, has `γₙ₊₁`; the code uses `γₙ₊₁`.
 
+20. **`certify_eigenpair`, `certify_eigenpairs`, audited on 2026-10-12.** The enclosure rests on
+    a contraction argument that is now written, with its proof, in the docstring; the header
+    used to cite a chapter of Kantorovich and Akilov as its authority. Found: the discriminant
+    `(1 − q₀)² − 4cy` was evaluated with the rounding mode downward, which rounds the product
+    `4cy` down and the discriminant up; `u` was divided by `uᴴṽ` where the conjugate is needed
+    for `uᴴṽ = 1`, so a computed complex `u` gave a large residual (no wrong enclosure, a
+    refusal); and the package had no test of either routine. Added:
+    `test_newton_kantorovich_eigenpair.jl`, against 256-bit eigendecompositions.
+    GKWExperiments calls these routines in six scripts and one source file.
+
