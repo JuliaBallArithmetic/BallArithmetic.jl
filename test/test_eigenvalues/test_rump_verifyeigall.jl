@@ -417,6 +417,31 @@ end
     @test_throws ArgumentError verifyeigall(J; fallback = :nonsense)
 end
 
+@testset ":rump2022aconditioned: the frame by the condition number of the eigenvectors" begin
+    same(a, b) = a.clusters == b.clusters && a.certified == b.certified && a.radii == b.radii &&
+                 mid(a.similarity) == mid(b.similarity)
+    rng = MersenneTwister(20261011)
+    B = BallMatrix(randn(rng, 10, 10))
+    # a threshold nothing exceeds: the paper's algorithm; one everything exceeds, with the
+    # recursion then refused: the Schur variant
+    @test same(verifyeigall(B; method = :rump2022aconditioned, kappa_max = Inf),
+        verifyeigall(B; method = :rump2022a))
+    @test same(verifyeigall(B; method = :rump2022aconditioned, kappa_max = 0),
+        verifyeigall(B; method = :rump2022aschur))
+    # a Jordan block under an orthogonal similarity, eigenvector matrix ill conditioned: the
+    # frame stays unitary and the result is sound against the input's own eigenvalues
+    Q = Matrix(qr(randn(rng, 8, 8)).Q)
+    J = Q * diagm(0 => fill(0.7, 8), 1 => ones(7)) * Q'
+    r = verifyeigall(BallMatrix(J); method = :rump2022aconditioned)
+    @test cond(mid(r.similarity)) < 1 / sqrt(eps())
+    @test _sound(r, _reference_eigvals(J))
+    for A in (randn(rng, 12, 12), _rump_cluster(30, 2, MersenneTwister(12)))
+        r = verifyeigall(BallMatrix(A); method = :rump2022aconditioned, kappa_max = 10)
+        @test _sound(r, _reference_eigvals(A))
+        @test !r.spectrum_covered || all(r.certified)
+    end
+end
+
 @testset "verifyeigall for a pencil with the Rump methods" begin
     rng = MersenneTwister(20261011)
     methods = (:rump2022a, :rump2022adiscclusters, :rump2022aschur, :rump2022aschurstep6)

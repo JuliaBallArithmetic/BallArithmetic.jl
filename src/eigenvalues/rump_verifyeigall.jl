@@ -805,6 +805,31 @@ did not run, and its condition number is what [`block_resolvent_floor`](@ref) bo
 _rump2022a_schur_step6(B::BallMatrix; kwargs...) =
     _rump2022a_thm2_2_core(B, _rump2022a_transform; frame = schur, kwargs...)
 
+"""
+    _rump2022a_conditioned(B::BallMatrix; kappa_max = 1/√eps, maxiter = 20, inflate = 0.1,
+                           maxlevels = 3) -> VerifyEigAllResult
+
+Theorem 2.2 of Rump (2022) with the frame chosen by the condition number of the eigenvector
+matrix `W` of the midpoint: `W` when `cond(W) ≤ kappa_max`, the unitary factor of a Schur
+decomposition otherwise. The same rule is applied in the recursion of step 6: the columns left
+uncertified are transformed by the eigenvectors of their diagonal block when the condition
+number of that eigenvector matrix is at most `kappa_max`, and are left as they are otherwise.
+**A deviation from Rump's algorithm**, named for it; reached through [`verifyeigall`](@ref) with
+`method = :rump2022aconditioned`.
+
+`cond` is computed in floating point and only selects the frame: every claim of the result is
+that of Theorem 2.2 on the enclosure of the transformed matrix, whatever frame was selected. The
+effect of the rule is that the condition number of the similarity returned, which
+[`block_resolvent_floor`](@ref) divides by, is a product of factors at most `kappa_max`; the
+price is that clusters which only an ill-conditioned frame separates stay uncertified.
+"""
+function _rump2022a_conditioned(B::BallMatrix{T}; kappa_max::Real = inv(sqrt(eps(T))),
+        kwargs...) where {T}
+    ok(V) = cond(Matrix{Complex{Float64}}(V)) <= kappa_max
+    frame = M -> (F = eigen(M); ok(F.vectors) ? F : schur(M))
+    return _rump2022a_thm2_2_core(B, _rump2022a_transform; frame, subframe_ok = ok, kwargs...)
+end
+
 # The algorithm of Theorem 2.2, shared by both transformations: `transform(B, W, X0)` returns an
 # enclosure of W^{-1} B W together with the diagnostic that certified it, or `nothing` when it
 # cannot certify one. Everything after the transformation is the theorem itself and is identical
@@ -813,13 +838,14 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
         cluster_rule = _rump2022a_clusters;
         maxiter::Integer = 20, inflate::Real = 0.1,
         maxlevels::Integer = 3, frame = eigen, retransform = transform,
-        untransformed = _rump2022a_untransformed) where {T, NT}
+        untransformed = _rump2022a_untransformed, subframe_ok = V -> true) where {T, NT}
     n = size(B, 1)
     CT = complex(T)
     # `frame` is `eigen` (the paper's step 1) or `schur`: both return the similarity in `vectors`
     # and its approximate eigenvalues in `values`. `retransform` is the transformation of the
     # recursion of step 6, which acts on the transformed matrix; it differs from `transform` for
-    # a pencil, whose first transformation involves B.
+    # a pencil, whose first transformation involves B. `subframe_ok` may refuse the eigenvector
+    # matrix of the uncertified block in step 6, which ends the recursion.
     F = frame(Matrix{CT}(mid(B)))
     W = Matrix{CT}(F.vectors)
     X0 = Matrix{CT}(Diagonal(F.values))
@@ -853,6 +879,7 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
             break
         end
         (all(isfinite, sub.values) && all(isfinite, sub.vectors)) || break
+        subframe_ok(sub.vectors) || break
         Tm = Matrix{CT}(I, n, n)
         Tm[J, J] .= sub.vectors
         d = CT[mid(A)[i, i] for i in 1:n]
@@ -993,6 +1020,7 @@ visible in the name rather than buried in a docstring:
 | `:rump2022adiscclusters` | [`_rump2022a_discclusters`](@ref) | Theorem 2.2 with the diagonal clustered at `√eps·‖A‖` rather than the `1e-14·‖A‖` of the paper's step 2, so that a multiple eigenvalue is grouped; a deviation, named for it |
 | `:rump2022aschur` | [`_rump2022a_schur`](@ref) | Theorem 2.2 in the frame of a Schur decomposition in place of the eigenvector matrix of the paper's step 1, without the recursion of step 6; a deviation, named for it |
 | `:rump2022aschurstep6` | [`_rump2022a_schur_step6`](@ref) | the Schur frame followed by the recursion of step 6 on the columns left uncertified; a deviation, named for it |
+| `:rump2022aconditioned` | [`_rump2022a_conditioned`](@ref) | the eigenvector frame when its condition number is at most `kappa_max`, the Schur frame otherwise, and the same rule in the recursion of step 6; a deviation, named for it |
 | `:miyajima2014a` | [`_miyajima2014a_alg1`](@ref) | Algorithms 1 and 2 of Miyajima (2014): Gershgorin discs on the pencil transformed by an approximate generalised eigendecomposition, each cluster certified by Brouwer's theorem on a Newton operator |
 
 The Neumann variant is kept because it does not need the solve to
@@ -1040,11 +1068,13 @@ function _verifyeigall_method(B::BallMatrix, method::Symbol; kwargs...)
     method === :rump2022adiscclusters && return _rump2022a_discclusters(B; kwargs...)
     method === :rump2022aschur && return _rump2022a_schur(B; kwargs...)
     method === :rump2022aschurstep6 && return _rump2022a_schur_step6(B; kwargs...)
+    method === :rump2022aconditioned && return _rump2022a_conditioned(B; kwargs...)
     method === :miyajima2014a &&
         return _miyajima2014a_alg1(B, BallMatrix(Matrix{eltype(mid(B))}(I, size(B)...)))
     throw(ArgumentError("verifyeigall: unknown method $(repr(method)); the implemented " *
                         "methods are :rump2022a, :rump2022aneumann, :rump2022adiscclusters, " *
-                        ":rump2022aschur, :rump2022aschurstep6 and :miyajima2014a"))
+                        ":rump2022aschur, :rump2022aschurstep6, :rump2022aconditioned and " *
+                        ":miyajima2014a"))
 end
 
 """
