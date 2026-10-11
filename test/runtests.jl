@@ -65,8 +65,6 @@ using Test
     # Norm bounds
     include("test_norm_bounds/test_norm_bounds.jl")
     include("test_norm_bounds/test_abs_norm_bounds.jl")
-    include("test_norm_bounds/test_oishi.jl")
-    include("test_norm_bounds/test_oishi_triangular.jl")
     include("test_norm_bounds/test_oishi_2023_schur.jl")
     include("test_norm_bounds/test_rump_oishi_2024.jl")
 

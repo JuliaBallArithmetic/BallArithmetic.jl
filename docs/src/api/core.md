@@ -36,7 +36,6 @@ upper_bound_L_inf_opnorm
 collatz_upper_bound_L2_opnorm
 svd_bound_L2_opnorm
 rump_oishi_2024_triangular_bound
-backward_singular_value_bound
 ```
 
 ### L2 Operator Norm: Method Comparison

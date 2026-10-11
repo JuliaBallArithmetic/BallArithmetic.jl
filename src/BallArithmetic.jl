@@ -82,14 +82,12 @@ include("types/convertpromote.jl")
 include("norm_bounds/rigorous_norm.jl")
 export upper_bound_norm
 include("norm_bounds/rigorous_opnorm_bounds.jl")
-include("norm_bounds/oishi.jl")
-include("norm_bounds/oishi_triangular.jl")
 include("norm_bounds/rump_oishi_2024.jl")
 include("norm_bounds/oishi_2023_schur.jl")
 include("norm_bounds/triangular_inverse_bounds.jl")
 
 export upper_bound_L1_opnorm, upper_bound_L2_opnorm, upper_bound_L_inf_opnorm
-export rump_oishi_2024_triangular_bound, backward_singular_value_bound
+export rump_oishi_2024_triangular_bound
 export Oishi2023Result, oishi_2023_sigma_min_bound, oishi_2023_optimal_block_size
 export RumpOishi2024Result, rump_oishi_2024_sigma_min_bound,
        rump_oishi_2024_optimal_block_size
