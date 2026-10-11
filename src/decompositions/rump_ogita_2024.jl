@@ -438,3 +438,66 @@ function _rumpogita2024_qr(A::BallMatrix{T}; full::Bool = false) where {T}
     Rfull = BallMatrix(vcat(mid(R), zeros(S, k, n)), vcat(rad(R), zeros(T, k, n)))
     return (; Q, R = Rfull)
 end
+
+"""
+    _rumpogita2024_schur(A::BallMatrix; kwargs...) -> (; Q, T, X, D) or nothing
+
+Section 8 of Rump and Ogita (2024): inclusions of the factors of a complex Schur decomposition
+of a matrix with simple eigenvalues. For every matrix `Ã` of the ball `A` there are a unitary
+`Q` and an upper triangular `T` with `Ã = QTQ*`, `Q` and `T` in the ball matrices returned; the
+diagonal of `T` holds the eigenvalues in the order of `D`. Returns `nothing` when the
+verification fails, which includes every matrix for which the eigenvalues are not proved
+simple: the paper restricts the method to that case, the decomposition being discontinuous at a
+multiple eigenvalue.
+
+# The method
+
+(8.1) of the paper: with `Ã = XDX⁻¹` an eigendecomposition and `X = QR` the QR decomposition of
+`X`, `Ã = QTQ*` with `T = RDR⁻¹`. Inclusions of `X` and of the diagonal `D` come from
+[`verifyeigall`](@ref) (Section 6 refers to Rump (2022) for a general matrix), each cluster
+being required to be a single certified eigenvalue; `kwargs` are passed to it. The inclusions of
+`Q` and `R` are those of [`_rumpogita2024_qr`](@ref) for the ball matrix `X`, valid for the true
+eigenvector matrix in it; and `T` is the solution of the linear system `TR = RD` with `R` and
+`D` replaced by their inclusions, enclosed by a verified solve. Its diagonal is `D` and its
+entries below the diagonal are exact zeros. The paper notes that the replacement of `X`, `R` and
+`D` by inclusions is a source of overestimation that the other decompositions do not have.
+
+# Reference
+
+S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
+Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 8.
+"""
+function _rumpogita2024_schur(A::BallMatrix{T}; kwargs...) where {T}
+    n = size(A, 1)
+    n == size(A, 2) || throw(ArgumentError("_rumpogita2024_schur: A must be square"))
+    CT = complex(T)
+    e = verifyeigall(A; kwargs...)
+    (e.spectrum_covered && all(e.certified) && all(c -> length(c) == 1, e.clusters) &&
+     length(e.clusters) == n) || return nothing
+    Xm, Xr = Matrix{CT}(undef, n, n), Matrix{T}(undef, n, n)
+    dm, dr = Vector{CT}(undef, n), Vector{T}(undef, n)
+    for j in 1:n
+        Xm[:, j] .= vec(mid(e.subspaces[j]))
+        Xr[:, j] .= vec(rad(e.subspaces[j]))
+        dm[j], dr[j] = mid(e.blocks[j])[1, 1], rad(e.blocks[j])[1, 1]
+    end
+    (all(isfinite, Xr) && all(isfinite, dr)) || return nothing
+    X = BallMatrix(Xm, Xr)
+    D = BallMatrix(Matrix{CT}(Diagonal(dm)), Matrix{T}(Diagonal(dr)))
+    f = _rumpogita2024_qr(X)
+    f === nothing && return nothing
+    # T R = R D, that is Rᵀ Tᵀ = (R D)ᵀ
+    Rt = BallMatrix(Matrix(transpose(mid(f.R))), Matrix(transpose(rad(f.R))))
+    RD = f.R * D
+    sol = verifylss(Rt, BallMatrix(Matrix(transpose(mid(RD))), Matrix(transpose(rad(RD)))))
+    sol.certified || return nothing
+    Tm, Tr = Matrix(transpose(mid(sol.solution))), Matrix(transpose(rad(sol.solution)))
+    for j in 1:n, i in 1:n
+        if i > j
+            Tm[i, j], Tr[i, j] = zero(CT), zero(T)
+        elseif i == j
+            Tm[i, j], Tr[i, j] = dm[i], dr[i]
+        end
+    end
+    return (; Q = f.Q, T = BallMatrix(Tm, Tr), X, D)
+end

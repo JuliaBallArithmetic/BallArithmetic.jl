@@ -286,3 +286,55 @@ end
         @test BallArithmetic._rumpogita2024_qr(BallMatrix([1.0 0.0; 0.0 1e-3; 0.0 0.0], fill(1e-2, 3, 2))) === nothing
     end
 end
+
+@testset "Rump-Ogita 2024, Section 8: the Schur decomposition" begin
+    rng = MersenneTwister(20261015)
+    med(v) = sort(v)[(length(v) + 1) ÷ 2]
+    @testset "n = $n, cond = 1e$k, $S" for (n, k) in ((6, 1), (15, 2), (15, 6)), S in (Float64, ComplexF64)
+        A = _randsvd(rng, n, k; S)
+        r = BallArithmetic._rumpogita2024_schur(BallMatrix(A); fallback = nothing)
+        @test r !== nothing
+        @test istriu(mid(r.T)) && iszero(tril(rad(r.T), -1))
+        # the factors of the eigenvector matrix that verifyeigall normalises, at 1024 bits
+        e = verifyeigall(BallMatrix(A); fallback = nothing)
+        @test maximum(rad(e.similarity)) == 0        # no recursion: the frame is the point matrix W
+        Q, Tt, X, λ = setprecision(BigFloat, 1024) do
+            Ab = Complex{BigFloat}.(A)
+            F = eigen(Ab)
+            W = Complex{BigFloat}.(mid(e.similarity))
+            X = similar(Ab)
+            λ = Vector{Complex{BigFloat}}(undef, n)
+            for j in 1:n
+                i = argmin(abs.(F.values .- e.centers[j]))
+                v = F.vectors[:, i]
+                X[:, j] = v / (W \ v)[e.clusters[j][1]]
+                λ[j] = F.values[i]
+            end
+            R = Matrix(cholesky(Hermitian(X' * X)).U)
+            Q = X / UpperTriangular(R)
+            Q, R * Diagonal(λ) / UpperTriangular(R), X, λ
+        end
+        @test _inside(X, r.X)
+        @test all(abs(λ[j] - mid(r.D)[j, j]) <= rad(r.D)[j, j] for j in 1:n)
+        @test _inside(Q, r.Q)
+        @test _inside(triu(Tt), r.T)
+        @test Float64(opnorm(Q * triu(Tt) * Q' - A, Inf)) < 1e-200 * 1e190
+        k <= 2 && @test med(_relerr(r.Q)) < 1e-9
+    end
+    @testset "what is declined" begin
+        # a double eigenvalue, a defective matrix, a non-square one
+        @test BallArithmetic._rumpogita2024_schur(BallMatrix([2.0 0.0; 0.0 2.0])) === nothing
+        @test BallArithmetic._rumpogita2024_schur(BallMatrix([1.0 1.0; 0.0 1.0])) === nothing
+        @test_throws ArgumentError BallArithmetic._rumpogita2024_schur(BallMatrix(randn(rng, 2, 3)))
+    end
+    @testset "a ball of matrices" begin
+        A = Matrix(Diagonal(collect(1.0:5.0))) + 0.1 * randn(rng, 5, 5)
+        r = BallArithmetic._rumpogita2024_schur(BallMatrix(A, fill(1e-10, 5, 5)); fallback = nothing)
+        @test r !== nothing
+        # A Q − Q T contains zero, and so does Q*Q − I
+        res = BallMatrix(ComplexF64.(A), fill(1e-10, 5, 5)) * r.Q - r.Q * r.T
+        @test all(abs.(mid(res)) .<= rad(res))
+        orth = BallArithmetic._ball_adjoint(r.Q) * r.Q - I
+        @test all(abs.(mid(orth)) .<= rad(orth))
+    end
+end
