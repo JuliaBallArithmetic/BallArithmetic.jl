@@ -4,6 +4,10 @@ Opened 2026-10-11 on the branch `rigour-fixes`. Each item says what was run, whe
 and what was not tried. The probe scripts are one-off and live in `~/scratch` on nighthawk, with
 their outputs beside them (`<script>.nighthawk.txt`).
 
+The papers are in Isaia's library (`~/Library`), not in the repository: the PDFs were taken out
+of `references/` on 2026-10-11 (they remain in the history), `references/references.bib` stays,
+and `references/*.pdf` is ignored.
+
 ## Frames for `verifyeigall` and for the block resolvent floor
 
 `block_resolvent_floor` divides by the condition number of the similarity, so the frame decides
@@ -216,7 +220,7 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       sources.** `probe_refine_routines.jl` on nighthawk (n = 8): started from an exact
       factorisation perturbed by 1e-8, every one returns a residual between 1e-9 and 4e-8, five
       with `converged = true`; from the unperturbed factors all return about 1e-16. Nothing in
-      `src` calls them. Sources now in `references/` (`ab1b9f8`): Higham (1986), Nakatsukasa,
+      `src` calls them. Sources now in the library: Higham (1986), Nakatsukasa,
       Bai and Gygi (2010), Yamamoto, Nakatsukasa, Yanagisawa and Fukaya (2015), Carson and
       Higham (2017), Ogita and Aishima (2020), Terao, Ozaki and Ogita (2020, the accepted
       manuscript) and Martin, Peters and Wilkinson (1966), the last two supplied by Isaia. Not

@@ -2,7 +2,7 @@
 # matrix:
 #
 #   S. M. Rump and S. Oishi, "A note on Oishi's lower bound for the smallest singular value of
-#   linearized Galerkin equations" (the copy in `references/`), Theorem 1.3 and Lemma 1.2.
+#   linearized Galerkin equations", Theorem 1.3 and Lemma 1.2 (numbering of the preprint read).
 #
 # The general case, with a lower left block, is `rump_oishi_2024_sigma_min_bound` in
 # `oishi_2023_schur.jl`.
