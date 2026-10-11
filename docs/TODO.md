@@ -355,7 +355,7 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       `VerifiedLinearSystemResult`. The others: `Enclosure.λ::Any`,
       `PreconditionerResult.factorization::Any`, `PolyRange.diag::NamedTuple`,
       `SylvesterResolventResult.X` and `.R` (`Union{Nothing, …}`).
-    - **Return type not inferred as concrete:** 47 calls of 39 functions out of 212 exported.
+    - **Return type not inferred as concrete:** 47 calls of 42 functions out of 212 exported.
       `Any`: `verifyeigall(A, B)`, `rump_oishi_2024_triangular_bound`, `compute_beta_bound`.
       `Union{Float64, BigFloat}`: `upper_bound_L2_opnorm`, `collatz_upper_bound_L2_opnorm`,
       `sigma_min_upper`, `similarity_condition_number`. Untyped `Vector`: `evbox`, `gevbox`,
