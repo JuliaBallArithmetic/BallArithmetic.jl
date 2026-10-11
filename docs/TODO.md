@@ -374,3 +374,15 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     - **Pairs with nearly the same fields:** `SchurGershgorinResult` and
       `Miyajima2014aSchurNewtonResult`; `Oishi2023Result` and `RumpOishi2024Result`.
 
+19. **`verify_generalized_eigenpairs`, rewritten on 2026-10-12** after Miyajima, Ogita, Rump and
+    Oishi (2010), Reliable Computing 14, 24-45 (in the library inbox as `MiyajimaEtAl2010`).
+    What the old code did that the paper does not: it declined every problem with a cluster,
+    where (39) of the paper gives the cluster the global bound δ; it did not check the
+    hypothesis `ξ̂ᵢ < √gᵢ` of Theorem 7; δ and the ends of the intervals were formed in rounding
+    to nearest; symmetry was tested on the midpoints up to `1e-10` with a warning; the order of
+    the approximate eigenvalues was assumed; errors were caught and returned as a message;
+    everything was `Float64`. Now: Algorithm 1 with Lemmas 2 and 3, Theorems 4, 5 and 7,
+    Techniques 1, 3 and 4, for any floating-point type. Not reproduced: Technique 2 (an a
+    priori rounding estimate, replaced by the ball product) and Theorem 10 (β from a Cholesky
+    factor; `compute_beta_bound` uses an approximate inverse, which Remark 2 allows).
+

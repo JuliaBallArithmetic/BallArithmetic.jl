@@ -2,9 +2,10 @@ using Test
 using BallArithmetic
 using LinearAlgebra
 using Random
+using GenericLinearAlgebra
 
 @testset "Verified Generalized Eigenvalue Problems" begin
-    @testset "Beta Bound Computation (Theorem 10)" begin
+    @testset "Beta Bound Computation" begin
         # Simple diagonal SPD matrix
         B = BallMatrix([2.0 0.0; 0.0 3.0], fill(1e-10, 2, 2))
         β = compute_beta_bound(B)
@@ -109,44 +110,6 @@ using Random
         end
     end
 
-    @testset "Residual Matrix Computation" begin
-        A = BallMatrix([4.0 1.0; 1.0 3.0], fill(0.01, 2, 2))
-        B = BallMatrix([2.0 0.5; 0.5 2.0], fill(0.01, 2, 2))
-
-        F = eigen(Symmetric(A.c), Symmetric(B.c))
-        X̃ = F.vectors
-        λ̃ = F.values
-
-        Rg = BallArithmetic.compute_residual_matrix(A, B, X̃, λ̃)
-
-        @test size(Rg) == (2, 2)
-
-        # Residual should be small for good approximate eigenpairs
-        norm_Rg = maximum([abs(Rg[i, j].c) + Rg[i, j].r for i in 1:2, j in 1:2])
-        @test norm_Rg < 0.1
-    end
-
-    @testset "Gram Matrix Computation" begin
-        B = BallMatrix([2.0 0.5; 0.5 2.0], fill(1e-10, 2, 2))
-
-        # Use orthonormal vectors (should give identity)
-        X̃ = Matrix{Float64}(I, 2, 2)
-
-        Gg = BallArithmetic.compute_gram_matrix(B, X̃)
-
-        @test size(Gg) == (2, 2)
-
-        # X̃ᵀBX̃ should equal B for identity matrix
-        # Check diagonal elements
-        for i in 1:2
-            if isa(Gg[i, i], Ball)
-                @test abs(Gg[i, i].c - B.c[i, i]) < 0.01
-            else
-                @test abs(Gg[i, i] - B.c[i, i]) < 0.01
-            end
-        end
-    end
-
     @testset "Global vs Individual Bounds" begin
         A = BallMatrix([5.0 1.0; 1.0 4.0], fill(1e-10, 2, 2))
         B = BallMatrix([2.0 0.0; 0.0 2.0], fill(1e-10, 2, 2))
@@ -167,60 +130,131 @@ using Random
         end
     end
 
-    @testset "Eigenvalue Separation (Lemma 2)" begin
-        # Clustered eigenvalues
-        λ̃ = [1.0, 1.1, 1.2, 2.0, 3.0]
-        δ̂ = 0.5
-        ε = [0.3, 0.3, 0.3, 0.4, 0.5]
-
-        η = BallArithmetic.compute_eigenvalue_separation(λ̃, δ̂, ε)
-
-        @test length(η) == 5
-        @test all(η .<= δ̂)
-        @test all(η .<= ε)
-
-        # η is exactly the PROVEN half-width min(δ̂, εᵢ). It is never shrunk to
-        # manufacture disjointness: below min(δ̂, εᵢ) no theorem supports the
-        # interval, so a shrunk interval could simply miss its eigenvalue.
-        @test η == min.(δ̂, ε)
-
-        # These particular eigenvalues are too clustered, and that is reported
-        # rather than papered over.
-        @test !eigenvalue_intervals_disjoint(λ̃, η)
-
-        # Well-separated eigenvalues keep their bounds and do separate.
-        @test η[5] ≈ min(δ̂, ε[5]) atol=1e-10
-        @test eigenvalue_intervals_disjoint([1.0, 2.0, 3.0], [0.1, 0.1, 0.1])
-        # touching intervals share an endpoint ⇒ not disjoint
-        @test !eigenvalue_intervals_disjoint([1.0, 2.0], [0.5, 0.5])
-        # all pairs are tested, so sortedness is not assumed
-        @test eigenvalue_intervals_disjoint([3.0, 1.0, 2.0], [0.1, 0.1, 0.1])
+    @testset "the radii of (39): Lemmas 2 and 3" begin
+        radii = BallArithmetic._gev_eigenvalue_radii
+        # isolated values, every gap above 2δ: Lemma 2, η = ε
+        @test radii([1.0, 2.0, 3.0], 0.2, [0.1, 0.05, 0.15]) == [0.1, 0.05, 0.15]
+        # ε above δ: the smaller of the two is used
+        @test radii([1.0, 2.0, 3.0], 0.2, [0.3, 0.05, Inf]) == [0.2, 0.05, 0.2]
+        # a run 1.0, 1.1, 1.2 (gaps 0.1 ≤ 2δ) whose intervals are disjoint: Lemma 3, η = ε
+        @test radii([1.0, 1.1, 1.2, 2.0], 0.1, [0.01, 0.02, 0.03, 0.05]) ==
+              [0.01, 0.02, 0.03, 0.05]
+        # the same run with overlapping intervals: η = δ on the whole run, ε outside it
+        @test radii([1.0, 1.1, 1.2, 2.0], 0.1, [0.06, 0.06, 0.03, 0.05]) ==
+              [0.1, 0.1, 0.1, 0.05]
+        # touching intervals are not disjoint
+        @test radii([1.0, 1.5], 0.25, [0.25, 0.25]) == [0.25, 0.25]
+        @test radii([1.0, 1.25], 0.25, [0.125, 0.125]) == [0.25, 0.25]
+        # one eigenvalue
+        @test radii([1.0], 0.5, [0.1]) == [0.1]
     end
 
-    @testset "clustered eigenvalues are declined, not faked" begin
-        # Regression for a rigor break: compute_eigenvalue_separation used to
-        # shrink overlapping ηᵢ to half the gap between approximate eigenvalues,
-        # making the intervals disjoint by construction and reporting
-        # success = true. With eigenvalues {1, 1+1e-9, 5} and input balls of
-        # radius 1e-8 that returned η₁ = 5.0e-10 against a certified
-        # ε₁ = 5.7e-8 and δ̂ = 1.9e-7; sampling the input ball, 63% of
-        # eigenvalues fell outside their reported interval, the worst by 40
-        # half-widths.
-        Q = Matrix(qr(randn(MersenneTwister(2), 3, 3)).Q)
+    @testset "a cluster is bounded by δ, not shrunk" begin
+        # Eigenvalues {1, 1 + 1e-9, 5} with input balls of radius 1e-8. An earlier version
+        # shrank the radii of the pair to half their gap, 5e-10, and 63% of the eigenvalues of
+        # sampled matrices fell outside. By (39) the radius of the pair is δ.
+        rng = MersenneTwister(2)
+        Q = Matrix(qr(randn(rng, 3, 3)).Q)
         Ac = Matrix(Symmetric(Q * Diagonal([1.0, 1.0 + 1e-9, 5.0]) * Q'))
         Bc = Matrix(1.0I, 3, 3)
-        A = BallMatrix(Ac, fill(1e-8, 3, 3))
-        B = BallMatrix(Bc, fill(1e-8, 3, 3))
+        r = 1e-8
+        A = BallMatrix(Ac, fill(r, 3, 3))
+        B = BallMatrix(Bc, fill(r, 3, 3))
 
         F = eigen(Symmetric(Ac), Symmetric(Bc))
-        p = sortperm(F.values)
-        res = verify_generalized_eigenpairs(A, B, Matrix(F.vectors)[:, p],
-            collect(F.values)[p])
+        res = verify_generalized_eigenpairs(A, B, Matrix(F.vectors), collect(F.values))
 
+        @test res.certified
+        @test res.separation_bounds[1] == res.global_bound
+        @test res.separation_bounds[2] == res.global_bound
+        @test res.separation_bounds[3] == min(res.global_bound, res.individual_bounds[3])
+        @test all(isinf, res.eigenvector_radii[1:2])
+        @test isfinite(res.eigenvector_radii[3])
+        # symmetric matrices of the two balls: the i-th eigenvalue is in the i-th interval
+        outside = 0
+        for _ in 1:300
+            E = (2rand(rng, 3, 3) .- 1) .* r
+            E = (E + E') / 2
+            G = (2rand(rng, 3, 3) .- 1) .* r
+            G = (G + G') / 2
+            ev = sort(eigvals(Symmetric(Ac + E), Symmetric(Bc + G)))
+            for i in 1:3
+                lo, hi = res.eigenvalue_intervals[i]
+                (lo <= ev[i] <= hi) || (outside += 1)
+            end
+        end
+        @test outside == 0
+    end
+
+    @testset "eigenvectors against a 256-bit reference (Theorem 7)" begin
+        setprecision(BigFloat, 256) do
+            rng = MersenneTwister(31)
+            for n in (3, 6, 10)
+                M = randn(rng, n, n)
+                Ac = Matrix(Symmetric(M + M'))
+                N = randn(rng, n, n)
+                Bc = Matrix(Symmetric(N' * N + n * I))
+                F = eigen(Symmetric(Ac), Symmetric(Bc))
+                res = verify_generalized_eigenpairs(BallMatrix(Ac), BallMatrix(Bc),
+                    Matrix(F.vectors), collect(F.values))
+                @test res.certified
+                @test all(isfinite, res.eigenvector_radii)
+                # the reference, through the Cholesky factor of B: L⁻¹AL⁻ᵀ y = λ y, x = L⁻ᵀ y
+                Lb = cholesky(Symmetric(BigFloat.(Bc))).L
+                Cb = Lb \ BigFloat.(Ac) / Lb'
+                Fb = eigen(Symmetric((Cb + Cb') / 2))
+                Vb = Lb' \ Fb.vectors
+                for i in 1:n
+                    lo, hi = res.eigenvalue_intervals[i]
+                    @test lo <= Fb.values[i] <= hi
+                    # the distance of x̃ from the line spanned by the true eigenvector
+                    v = Vb[:, i]
+                    x = BigFloat.(F.vectors[:, i])
+                    d = norm(x - v * (dot(v, x) / dot(v, v)))
+                    @test d <= res.eigenvector_radii[i]
+                end
+            end
+        end
+    end
+
+    @testset "BigFloat" begin
+        setprecision(BigFloat, 256) do
+            Ac = BigFloat[4 1 0; 1 3 1; 0 1 5]
+            Bc = BigFloat[2 1 0; 1 3 0; 0 0 1]
+            F = eigen(Symmetric(Float64.(Ac)), Symmetric(Float64.(Bc)))
+            res = verify_generalized_eigenpairs(BallMatrix(Ac), BallMatrix(Bc), F.vectors,
+                F.values)
+            @test res isa GEVResult{BigFloat}
+            @test res.certified
+            @test all(res.separation_bounds .< 1e-12)
+        end
+    end
+
+    @testset "input that is not accepted" begin
+        A = BallMatrix([4.0 1.0; 1.0 3.0])
+        B = BallMatrix([2.0 0.5; 0.5 2.0])
+        F = eigen(Symmetric(mid(A)), Symmetric(mid(B)))
+        # not symmetric
+        res = verify_generalized_eigenpairs(BallMatrix([4.0 1.0; 1.5 3.0]), B, F.vectors,
+            F.values)
         @test !res.certified
-        @test occursin("too clustered", res.message)
-        # the reported η are the proven ones, not shrunk
-        @test res.separation_bounds ≈ min.(res.global_bound, res.individual_bounds)
+        @test occursin("symmetric", res.message)
+        @test all(isinf, res.separation_bounds)
+        res = verify_generalized_eigenpairs(BallMatrix(mid(A), [0.0 1e-3; 0.0 0.0]), B,
+            F.vectors, F.values)
+        @test !res.certified
+        # not sorted
+        res = verify_generalized_eigenpairs(A, B, F.vectors[:, [2, 1]], F.values[[2, 1]])
+        @test !res.certified
+        @test occursin("increasing", res.message)
+        # B not positive definite: Theorem 4 does not apply
+        Bi = BallMatrix([1.0 0.0; 0.0 -1.0])
+        Fi = eigen(mid(A), mid(Bi))
+        res = verify_generalized_eigenpairs(A, Bi, real.(Fi.vectors), sort(real.(Fi.values)))
+        @test !res.certified
+        # complex data
+        @test_throws ArgumentError verify_generalized_eigenpairs(
+            BallMatrix(complex(mid(A))), BallMatrix(complex(mid(B))), F.vectors, F.values)
     end
 
     @testset "successful results really contain the whole input ball" begin
@@ -322,22 +356,15 @@ using Random
     @testset "Error Handling: Non-Square Matrices" begin
         A = BallMatrix(randn(3, 2), fill(1e-10, 3, 2))
         B = BallMatrix(Matrix{Float64}(I, 3, 3), fill(1e-10, 3, 3))
-        X̃ = randn(3, 3)
-        λ̃ = randn(3)
-
-        result = verify_generalized_eigenpairs(A, B, X̃, λ̃)
-        @test !result.certified
-        @test contains(result.message, "square")
+        @test_throws DimensionMismatch verify_generalized_eigenpairs(A, B, randn(3, 3),
+            randn(3))
     end
 
     @testset "Error Handling: Dimension Mismatch" begin
         A = BallMatrix(Matrix{Float64}(I, 3, 3), fill(1e-10, 3, 3))
         B = BallMatrix(Matrix{Float64}(I, 3, 3), fill(1e-10, 3, 3))
-        X̃ = randn(3, 2)  # Wrong size
-        λ̃ = randn(3)
-
-        result = verify_generalized_eigenpairs(A, B, X̃, λ̃)
-        @test !result.certified
+        @test_throws DimensionMismatch verify_generalized_eigenpairs(A, B, randn(3, 2),
+            randn(3))
     end
 
     @testset "Poor Approximate Solution" begin
@@ -409,6 +436,6 @@ using Random
         @test result.residual_norm >= 0
         @test isfinite(result.residual_norm)
 
-        @test !isempty(result.message)
+        @test isempty(result.message)
     end
 end

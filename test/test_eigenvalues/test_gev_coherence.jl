@@ -49,30 +49,39 @@ Tests consistency with:
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-        # 6/2 and 9/3 are both exactly 3, so this pencil still has a DOUBLE
-        # eigenvalue and cannot be split into three certified intervals.
-        @test !result.certified
-        @test occursin("too clustered", result.message)
+        # 6/2 and 9/3 are both exactly 3: a double eigenvalue. Algorithm 1 bounds the two
+        # copies by the global δ of Theorem 4 and the simple eigenvalue 4 by its own ε.
+        @test result.certified
+        @test result.separation_bounds[1] == result.global_bound
+        @test result.separation_bounds[2] == result.global_bound
+        @test result.separation_bounds[3] <= result.global_bound
+        for i in 1:3
+            lo, hi = result.eigenvalue_intervals[i]
+            @test lo <= expected_eigenvalues[i] <= hi
+        end
+        # no eigenvector is claimed for the double eigenvalue
+        @test all(isinf, result.eigenvector_radii[1:2])
+        @test isfinite(result.eigenvector_radii[3])
     end
 
-    @testset "coincident eigenvalues cannot be separated" begin
-        # Regression: A = Diagonal([6,9,12]), B = Diagonal([2,3,4]) has the
-        # TRIPLE eigenvalue 3. `eigen` returns the three copies split by 4.4e-16
-        # of floating-point noise, while the certified radii are ~2.5e-10 — six
-        # orders of magnitude larger. The old separation step shrank η to
-        # gap/2 ≈ 2.2e-16 and reported three intervals of that half-width as
-        # verified, which is meaningless for a triple eigenvalue. It must decline.
+    @testset "coincident eigenvalues are bounded by the global bound" begin
+        # A = Diagonal([6,9,12]), B = Diagonal([2,3,4]) has the triple eigenvalue 3; `eigen`
+        # returns three copies split by rounding. An earlier version shrank the radii to half
+        # those gaps. By (39) of the paper the radius of each is δ, and no eigenvector is given.
         A = BallMatrix(Diagonal([6.0, 9.0, 12.0]), fill(1e-10, 3, 3))
         B = BallMatrix(Diagonal([2.0, 3.0, 4.0]), fill(1e-10, 3, 3))
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-        @test !result.certified
-        @test occursin("too clustered", result.message)
-        @test isempty(result.eigenvalue_intervals)
-        # η is the proven radius, orders of magnitude above the spurious gaps
+        @test result.certified
+        @test all(==(result.global_bound), result.separation_bounds)
         @test all(result.separation_bounds .> 1e-12)
+        for i in 1:3
+            lo, hi = result.eigenvalue_intervals[i]
+            @test lo <= 3.0 <= hi
+        end
+        @test all(isinf, result.eigenvector_radii)
     end
 
     @testset "well-separated diagonal pencil verifies" begin
