@@ -272,3 +272,56 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     Theorem 1 at n = 100: `δ` 1.3e-10, 3.0e-7, 1.5e-3 with ball products and 5.7e-14, 9.6e-11,
     5.0e-7 in doubled precision, for κ = 1e2, 1e6, 1e10. Not run: the matrices of the paper,
     sparse input, Theorems 2 to 4, the upper bounds of Theorem 1 and its other singular values.
+
+17. **Refinement of an approximate decomposition: the literature.** Searched on 2026-10-11,
+    after the `refine_*` routines were removed for having no source. Bibliographic details were
+    checked on Crossref or the arXiv where a DOI or an identifier is given; unless said
+    otherwise only titles and abstracts were read.
+    - **The Waseda line, on inverse factors with accurate dot products:** T. Ogita, "Accurate
+      matrix factorization: inverse LU and inverse QR factorizations", SIAM J. Matrix Anal.
+      Appl. 31(5) (2010) 2477-2497, doi 10.1137/090754376; T. Ogita and S. Oishi, "Accurate and
+      robust inverse Cholesky factorization", NOLTA, IEICE 3(1) (2012) 103-111,
+      doi 10.1587/nolta.3.103 (open on J-STAGE); Y. Yanagisawa, T. Ogita and S. Oishi,
+      "Convergence analysis of an algorithm for accurate inverse Cholesky factorization", Japan
+      J. Indust. Appl. Math. 31(3) (2014) 461-482, doi 10.1007/s13160-014-0154-4; S. Oishi,
+      T. Ogita and S. M. Rump, "Iterative refinement for ill-conditioned linear systems", Japan
+      J. Indust. Appl. Math. 26(2-3) (2009) 465-476, doi 10.1007/bf03186544. None is in the
+      library. They refine an approximate inverse of a factor, the idea that Rump and Ogita
+      (2024) verify; what they would add is accuracy for condition numbers beyond `1/u`, where
+      our routines were not tested.
+    - **Newton's method for decompositions in general:** J.-C. Yakoubsohn, "Unified Newton's
+      method for matrix decompositions", Appl. Algebra Eng. Commun. Comput. 37(2) (2026)
+      541-570, doi 10.1007/s00200-025-00720-7. Title only; no arXiv version found. The closest
+      match to the question; to obtain and read first.
+    - **Singular value decomposition:** Y. Uchino, T. Terao and K. Ozaki, "Acceleration of
+      iterative refinement for singular value decomposition", Numer. Algorithms 95(2) (2024)
+      979-1009 (in the library inbox as `s11075-023-01596-9.pdf`); W. Gao, Y. Ma and M. Shao,
+      "A mixed precision Jacobi SVD algorithm", ACM Trans. Math. Softw. 51(1) (2025);
+      D. Armentano and J.-C. Yakoubsohn, "High order numerical methods to approximate the
+      singular value decomposition", arXiv:2309.06201.
+    - **Symmetric eigendecomposition:** K. Shiroma and Y. Yamamoto, "Fixed-point analysis of
+      Ogita-Aishima's symmetric eigendecomposition refinement algorithm for multiple
+      eigenvalues", JSIAM Lett. 12 (2020) 5-8; T. Terao, T. Imamura and K. Ozaki, "Iterative
+      refinement for an eigenpair subset of a real symmetric matrix", JSIAM Lett. 16 (2024)
+      89-92; arXiv:2602.19090 and arXiv:2602.23778 (Terao with Ozaki, and with Ozaki, Imamura
+      and Ogita, February 2026).
+    - **Non-Hermitian:** Bujanović, Kressner and Schröder (the Schur refinement the package
+      uses); T. Terao, "Iterative refinement for diagonalizable non-Hermitian
+      eigendecompositions", arXiv:2604.02840 (2026); A. Dmytryshyn, M. Fasi, N. J. Higham and
+      X. Liu, "Mixed-precision algorithms for solving the Sylvester matrix equation",
+      arXiv:2503.03456.
+    - **Survey:** N. J. Higham and T. Mary, "Mixed precision algorithms in numerical linear
+      algebra", Acta Numerica 31 (2022) 347-414.
+    - **LU, Cholesky and QR factors:** in the mixed-precision literature found, what is refined
+      is the solution of the linear or least-squares problem, not the factors (Carson and
+      Higham 2017 and the papers around it). One hit on the factors themselves, M. Ahues and
+      F. Hama (2013), "Using Newton-Kantorovich method to compute QR and (L + I)U-
+      factorizations", was not confirmed on Crossref.
+    - **Polar and Takagi:** no paper on refining an approximate factor was found; for the
+      polar decomposition only new iterations to compute it.
+    - **How the citing papers were found:** the open API of zbMATH (its website is behind a
+      bot check), searching reference lists for the titles of eleven seed papers; 59 distinct
+      citing documents, a lower bound since zbMATH holds reference lists for part of the
+      literature only and has none yet for Rump and Ogita (2024). Script and list:
+      `zbmath_citing.py`, `zbmath_citing.bemtivi.tsv`, kept in `~/scratch` on nighthawk with
+      the other probes.
