@@ -103,7 +103,7 @@ function psi_squared(μ::T) where {T <: AbstractFloat}
     μ ≤ zero(T) && return one(T)
     μ2 = mul_up(μ, μ)
     return add_up(add_up(one(T), div_up(μ2, T(2))),
-        mul_up(div_up(μ, T(2)), sqrt_up(add_up(μ2, T(4)))))
+        mul_up(div_up(μ, T(2)), sqrt_up(add_up(μ2, T(4)))::T))
 end
 
 """

@@ -58,7 +58,7 @@ function rump_oishi_2024_triangular_bound(T::BallMatrix{RT}, k::Int) where {RT}
     norm_F < 1 || return RT(Inf)
     β = div_up(norm_Ddinv, sub_down(one(RT), norm_F))
     bound = mul_up(max(RT(norm_Ainv), β), RT(ψ))
-    return isfinite(bound) ? bound : RT(Inf)
+    return (isfinite(bound) ? bound : RT(Inf))::RT
 end
 
 export rump_oishi_2024_triangular_bound

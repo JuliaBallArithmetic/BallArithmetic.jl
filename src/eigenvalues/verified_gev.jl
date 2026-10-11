@@ -140,7 +140,7 @@ function compute_beta_bound(B::BallMatrix{T}) where {T}
     denom = sub_down(one(T), T(nR))
     denom > 0 || return T(Inf)
 
-    return sqrt_up(div_up(T(nY), denom))
+    return sqrt_up(div_up(T(nY), denom))::T
 end
 
 # Step 3 of Algorithm 1: the radii η of (39). The sorted approximations are cut into runs at

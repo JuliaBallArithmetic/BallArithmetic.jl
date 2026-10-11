@@ -101,7 +101,8 @@ function collatz_upper_bound_L2_opnorm(A::BallMatrix{T}; iterates = 5) where {T}
     RT = real(eltype(A.c))
     absA = upper_abs(A)
     lam = _collatz_quotient_up(x -> absA' * (absA * x), k, RT, iterates)
-    return isfinite(lam) ? sqrt_up(lam) : RT(Inf)
+    # asserted: inference gives Union{Float64, BigFloat} for RoundingEmulator's sqrt_up
+    return (isfinite(lam) ? sqrt_up(lam) : RT(Inf))::RT
 end
 
 using LinearAlgebra
@@ -165,7 +166,7 @@ function upper_bound_frobenius(A::BallMatrix{T}) where {T <: Union{Float32, Floa
     @inbounds for x in upper_abs(A)
         s = add_up(s, mul_up(x, x))
     end
-    return sqrt_up(s)
+    return sqrt_up(s)::T
 end
 upper_bound_frobenius(A::BallMatrix) = upper_bound_norm(A, 2)
 
@@ -181,13 +182,13 @@ function upper_bound_L2_opnorm(A::BallMatrix{T}; svd::Bool = false) where {T}
     isempty(A.c) && return zero(real(T))
     norm1 = upper_bound_L1_opnorm(A)
     norminf = upper_bound_L_inf_opnorm(A)
-    v = min(collatz_upper_bound_L2_opnorm(A), sqrt_up(mul_up(norm1, norminf)),
+    v = min(collatz_upper_bound_L2_opnorm(A), sqrt_up(mul_up(norm1, norminf))::real(T),
         upper_bound_frobenius(A))
     if svd
         s = svd_bound_L2_opnorm(A)
         isfinite(s) && (v = min(v, s))
     end
-    return v
+    return v::real(T)
 end
 
 """

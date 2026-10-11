@@ -142,5 +142,5 @@ function sigma_min_upper(A::BallMatrix{T}, z::Number) where {T}
         den = add_down(den, mul_down(a, a))
     end
     den > 0 || return T(Inf)
-    return div_up(sqrt_up(num), sqrt_down(den))
+    return div_up(sqrt_up(num)::T, sqrt_down(den)::T)
 end
