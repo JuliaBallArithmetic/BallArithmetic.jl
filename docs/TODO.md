@@ -74,16 +74,18 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
 ## Left from the audit of 2026-10-10
 
 12. Step 4, as decided on 2026-10-11.
-    - **Implement from the paper, do not remove:** `verified_lu`, `verified_qr`,
-      `verified_cholesky`, `verified_polar`, `verified_takagi`, the Schur decomposition and
-      their extended-precision variants, from Rump and Ogita (2024); the PDF is in
-      `~/Library/ToBeProcessed` on nighthawk. `src/decompositions/rump_ogita_2024.jl` owns the
-      paper. Done: Algorithm 3.2 (`b698f68`). To do, in the paper's order: Section 3.2 (square
-      LU, with the product `X_L(A X_U)` in two-fold precision and (3.8)), 3.3 and 3.4
-      (rectangular LU), 4 (Cholesky), 5 (QR, Lemma 5.1), 6 (eigendecomposition), 7 (singular
-      value and polar decomposition, which rests on Rump and Lange (2023)), 8 (Schur), 9
-      (Takagi); each checked against the paper's tables. `rump_lange_2023` likewise from its
-      paper, which is in the library and in `references/`.
+    - **Rump and Ogita (2024) and Rump and Lange (2023), implemented** (2026-10-11, tip
+      `bdceedf`): `src/decompositions/rump_ogita_2024.jl` has Algorithm 3.2, the LU
+      decomposition for every shape (Sections 3.2 to 3.4), Cholesky (4), QR economy and full
+      (5), Schur (8), polar (7) and Takagi (9); `src/eigenvalues/rump_lange_2023.jl` has the
+      Hermitian eigenproblem, reached by `verifyeigall(A; method = :rumplange2023, kappa)`, and
+      `verifysvdall(A; kappa)`, in place of the stub. Left to do:
+      the exported `verified_lu`, `verified_qr`, `verified_cholesky`, `verified_polar`,
+      `verified_takagi` and their extended-precision variants still run the old code, and
+      `verified_cholesky` has callers (RigorousInvariantMeasures, the Gram transform), so the
+      rewiring is a step of its own; the left null space for `m > n` in `verifysvdall`, which
+      the paper describes and leaves out of its listing; the paper's sizes (n = 100 to 1000)
+      and tables were not reproduced, the tests using n up to 30 or 40.
     - **Fixed:** `krawczyk_linear_system` is `verifylss` (`6751cf7`); RigorousInvariantMeasures
       calls it. `is_M_matrix` follows Definition 5.4 of Varga (2004) with its sign conditions,
       and `is_H_matrix` is the test on the comparison matrix (`2383207`). Sections 3.1 and 3.2
