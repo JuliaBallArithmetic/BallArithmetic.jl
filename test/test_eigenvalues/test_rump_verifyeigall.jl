@@ -417,6 +417,66 @@ end
     @test_throws ArgumentError verifyeigall(J; fallback = :nonsense)
 end
 
+@testset "verifyeigall for a pencil with the Rump methods" begin
+    rng = MersenneTwister(20261011)
+    methods = (:rump2022a, :rump2022adiscclusters, :rump2022aschur, :rump2022aschurstep6)
+    cases = [(randn(rng, 8, 8), I + 0.2 * randn(rng, 8, 8)),
+        (randn(rng, 12, 12), randn(rng, 12, 12)),
+        (randn(rng, ComplexF64, 6, 6), randn(rng, ComplexF64, 6, 6)),
+        (Matrix(Diagonal(collect(1.0:6.0))) + triu(randn(rng, 6, 6), 1), Matrix(Diagonal(fill(2.0, 6))))]
+    for (A, B) in cases, method in methods
+        n = size(A, 1)
+        r = verifyeigall(BallMatrix(A), BallMatrix(B); method)
+        # the eigenvalues of the pencil at 2048 bits, judged as for one matrix
+        λ = setprecision(() -> eigvals(Complex{BigFloat}.(B) \ Complex{BigFloat}.(A)), BigFloat, 2048)
+        @test all(isfinite, r.radii)
+        @test _sound(r, λ)
+        @test !r.spectrum_covered || all(r.certified)
+        method === :rump2022a && @test r.spectrum_covered
+        # the transformed matrix contains W⁻¹B⁻¹AW
+        if maximum(rad(r.similarity)) == 0
+            M = setprecision(BigFloat, 512) do
+                W = Complex{BigFloat}.(mid(r.similarity))
+                W \ ((Complex{BigFloat}.(B) \ Complex{BigFloat}.(A)) * W)
+            end
+            @test all(abs.(M - mid(r.transformed)) .<= rad(r.transformed) .* (1 + 1e-12))
+        end
+        method === :rump2022aschur &&
+            @test opnorm(mid(r.similarity)' * mid(r.similarity) - I) < 1e-12
+        # A Y = B Y M on each certified cluster: the residual of the midpoints against the radii
+        for i in eachindex(r.clusters)
+            r.certified[i] || continue
+            Y, Mi = r.subspaces[i], r.blocks[i]
+            res = BallMatrix(ComplexF64.(A)) * Y - BallMatrix(ComplexF64.(B)) * Y * Mi
+            @test all(abs.(mid(res)) .<= rad(res) .* (1 + 1e-12))
+        end
+        # the block resolvent floor is a lower bound of σ_min(B⁻¹A − zI)
+        f = block_resolvent_floor(r)
+        C = ComplexF64.(B) \ ComplexF64.(A)
+        for z in (0.3 + 2.0im, -4.0 + 0.5im, 7.0 + 0im)
+            @test 0 <= sigma_min_floor(f, z; near = true) <= minimum(svdvals(C - z * I)) * (1 + 1e-9)
+        end
+    end
+    # a ball pencil: the discs hold the eigenvalues of members of the two balls
+    A, B = cases[1]
+    r = verifyeigall(BallMatrix(A, fill(1e-8, 8, 8)), BallMatrix(B, fill(1e-8, 8, 8)); method = :rump2022a)
+    for _ in 1:10
+        Ap = A + 1e-8 * (2 * rand(rng, 8, 8) .- 1)
+        Bp = B + 1e-8 * (2 * rand(rng, 8, 8) .- 1)
+        λ = setprecision(() -> eigvals(Complex{BigFloat}.(Bp) \ Complex{BigFloat}.(Ap)), BigFloat, 512)
+        @test all(l -> any(i -> abs(l - r.centers[i]) <= r.radii[i], eachindex(r.clusters)), λ)
+    end
+    # a singular B: nothing is certified, nothing is thrown, no transformed matrix is claimed
+    Bs = Matrix(Diagonal([1.0, 1.0, 1.0, 0.0]))
+    for method in methods
+        r = verifyeigall(BallMatrix(randn(rng, 4, 4)), BallMatrix(Bs); method)
+        @test count(r.certified) == 0 && !r.spectrum_covered
+        @test all(isinf, r.radii)
+        @test_throws ArgumentError block_resolvent_floor(r)
+    end
+    @test_throws ArgumentError verifyeigall(BallMatrix(A), BallMatrix(B); method = :rump2022aneumann)
+end
+
 @testset "verifyeigall: an exactly singular eigenvector matrix declines the transformation" begin
     # for the 24-fold Jordan block in its own basis the computed eigenvector matrix is singular
     # and the floating-point solve of the Newton step throws; the result is then the one of a

@@ -115,7 +115,7 @@ end
         A = BallMatrix(randn(MersenneTwister(1), 5, 5))
         B = BallMatrix(Matrix(3.0I, 5, 5))
         # only Miyajima's method takes a pencil; Rump's is stated for a single matrix
-        @test_throws ArgumentError verifyeigall(A, B; method = :rump2022a)
+        @test_throws ArgumentError verifyeigall(A, B; method = :rump2022aneumann)
         @test_throws ArgumentError verifyeigall(A, B; method = :nonsense)
         @test_throws DimensionMismatch verifyeigall(A, BallMatrix(randn(4, 4)))
         @test_throws ArgumentError verifyeigall(BallMatrix(randn(2, 3)), BallMatrix(randn(2, 3)))

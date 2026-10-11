@@ -263,6 +263,125 @@ function _rump2022a_transform(B::BallMatrix{T}, W::Matrix{CT}, X0::Matrix{CT}) w
     return BallMatrix(X) + sol.solution, sol.spectral_radius_bound
 end
 
+# The residual A W − B W D of a pencil, D diagonal, enclosed as `_rump2022a_prodK` encloses
+# B W − W X. The product of three factors is brought to products of two by error-free
+# transformations of W D: with w = w_r + i w_i and d = d_r + i d_i,
+#
+#     Re(w d) = (P1 + E1) − (P2 + E2),      Im(w d) = (P3 + E3) + (P4 + E4),
+#
+# where (P1, E1), (P2, E2), (P3, E3), (P4, E4) are `two_product` of (w_r, d_r), (w_i, d_i),
+# (w_r, d_i), (w_i, d_r), exact unless a product underflows. Each of the real and imaginary parts
+# of an entry of the residual is then one compensated sum of N = 10n products, to which the bound
+# at `_accuracy_term` applies; the interval parts rad(A)|W| and rad(B)|W||D| are added, and
+# |B| times 8 eta for the underflow of the four `two_product` of an entry of W D.
+function _rump2022a_prodK_pencil(A::BallMatrix{T}, B::BallMatrix{T}, W::Matrix{CT},
+        D::Vector{CT}) where {T, CT}
+    n = size(W, 1)
+    Am, Bm = Matrix{CT}(mid(A)), Matrix{CT}(mid(B))
+    Are, Aim, Bre, Bim = real.(Am), imag.(Am), real.(Bm), imag.(Bm)
+    Wre, Wim = real.(W), imag.(W)
+    P = ntuple(_ -> Matrix{T}(undef, n, n), 4)
+    E = ntuple(_ -> Matrix{T}(undef, n, n), 4)
+    for j in 1:n, i in 1:n
+        dr, di = real(D[j]), imag(D[j])
+        P[1][i, j], E[1][i, j] = two_product(Wre[i, j], dr)
+        P[2][i, j], E[2][i, j] = two_product(Wim[i, j], di)
+        P[3][i, j], E[3][i, j] = two_product(Wre[i, j], di)
+        P[4][i, j], E[4][i, j] = two_product(Wim[i, j], dr)
+    end
+    p1, m1 = one(T), -one(T)
+    re_terms = ((Are, Wre, p1), (Aim, Wim, m1),
+        (Bre, P[1], m1), (Bre, E[1], m1), (Bre, P[2], p1), (Bre, E[2], p1),
+        (Bim, P[3], p1), (Bim, E[3], p1), (Bim, P[4], p1), (Bim, E[4], p1))
+    im_terms = ((Are, Wim, p1), (Aim, Wre, p1),
+        (Bre, P[3], m1), (Bre, E[3], m1), (Bre, P[4], m1), (Bre, E[4], m1),
+        (Bim, P[1], m1), (Bim, E[1], m1), (Bim, P[2], p1), (Bim, E[2], p1))
+    M = Matrix{CT}(undef, n, n)
+    for j in 1:n, i in 1:n
+        M[i, j] = CT(compensated_terms(re_terms, i, j), compensated_terms(im_terms, i, j))
+    end
+    absA, absB, absW, absD = abs_up.(Am), abs_up.(Bm), abs_up.(W), abs_up.(D)
+    under = mul_up(T(8), subnormal_min(T))
+    absprod, extra = setrounding(T, RoundUp) do
+        Q = abs.(P[1]) .+ abs.(E[1]) .+ abs.(P[2]) .+ abs.(E[2]) .+
+            abs.(P[3]) .+ abs.(E[3]) .+ abs.(P[4]) .+ abs.(E[4])
+        absA * absW .+ absB * Q,
+        rad(A) * absW .+ rad(B) * (absW .* transpose(absD)) .+ absB * fill(under, n, n)
+    end
+    r = add_up.(_accuracy_term(abs_up.(M), absprod, 10 * n, T, true), extra)
+    return BallMatrix(M, r)
+end
+
+# The transformation for a pencil A x = λ B x. With D the diagonal matrix of the approximate
+# eigenvalues,
+#
+#     W⁻¹B⁻¹A W  =  D + (B W)⁻¹(A W − B W D),      so      (B W) Δ = A W − B W D,
+#
+# and `verifylss` applied to the ball matrix B W encloses Δ while proving B W, hence B and W,
+# nonsingular (Theorem 10.8 of Rump (2010) for an interval matrix). The Newton step of
+# `_rump2022a_transform` on the eigenvalue matrix is not taken: it would make the matrix in the
+# third factor full, and the residual is brought to products of two factors only for a diagonal.
+function _rump2022a_pencil_transform(A::BallMatrix{T}, B::BallMatrix{T}, W::Matrix{CT},
+        X0::Matrix{CT}) where {T, CT}
+    D = diag(X0)
+    (all(isfinite, D) && all(isfinite, W)) || return nothing, T(Inf)
+    Res = _rump2022a_prodK_pencil(A, B, W, D)
+    sol = verifylss(BallMatrix(Matrix{CT}(mid(B)), rad(B)) * BallMatrix(W), Res)
+    sol.certified || return nothing, sol.spectral_radius_bound
+    return BallMatrix(Matrix{CT}(Diagonal(D))) + sol.solution, sol.spectral_radius_bound
+end
+
+# When the transformation of a pencil is not certified nothing is known: the Gershgorin discs of
+# A, which `_rump2022a_untransformed` reports for one matrix, say nothing of the pencil.
+function _rump2022a_pencil_untransformed(A::BallMatrix{T}, W, defect) where {T}
+    n = size(A, 1)
+    CT = complex(T)
+    return VerifyEigAllResult([[i] for i in 1:n], fill(false, n), zeros(CT, n), fill(T(Inf), n),
+        BallMatrix{T, CT}[BallMatrix(zeros(CT, n, 1), fill(T(Inf), n, 1)) for _ in 1:n],
+        BallMatrix{T, CT}[BallMatrix(zeros(CT, 1, 1), fill(T(Inf), 1, 1)) for _ in 1:n],
+        Matrix{CT}(W), false, 0, T(defect))
+end
+
+"""
+    _rump2022a_pencil(A::BallMatrix, B::BallMatrix; frame = :eigen,
+                      cluster_rule = _rump2022a_clusters, maxiter = 20, inflate = 0.1,
+                      maxlevels = 3) -> VerifyEigAllResult
+
+Theorem 2.2 of Rump (2022) for the pencil `A x = λ B x`: the theorem is applied to a ball matrix
+containing `W⁻¹B⁻¹AW`, which has the eigenvalues of the pencil. **An extension of Rump's
+algorithm**, which is stated for one matrix; reached through `verifyeigall(A, B; method)` with
+`method` one of `:rump2022a`, `:rump2022adiscclusters`, `:rump2022aschur`, `:rump2022aschurstep6`.
+
+The steps after the transformation are those of [`_rump2022a`](@ref), the recursion of step 6
+included, since they act on the transformed matrix alone. The transformation is
+[`_rump2022a_pencil_transform`](@ref): the residual `AW − BWD` is enclosed with error-free
+transformations and `(BW)Δ = AW − BWD` by a verified solve with the ball matrix `BW`, which
+proves `B` nonsingular. `B⁻¹A` is not formed. `W` is the matrix of generalised eigenvectors
+(`frame = :eigen`) or the factor `Z` of a generalised Schur decomposition `Q*AZ = S`,
+`Q*BZ = T` (`frame = :schur`), for which `Z⁻¹B⁻¹AZ = T⁻¹S` is triangular and `Z` unitary.
+
+In the result, `subspaces[i]` and `blocks[i]` of a certified cluster satisfy
+`A * subspaces[i] = B * subspaces[i] * blocks[i]`; `similarity` and `transformed` are `W` and the
+ball matrix containing `W⁻¹B⁻¹AW`; the Gershgorin fields are those of that matrix. When the
+transformation is not certified (a singular or nearly singular `B` among the causes) nothing is
+certified and every radius is `Inf`.
+"""
+function _rump2022a_pencil(A::BallMatrix{T}, B::BallMatrix{T}; frame::Symbol = :eigen,
+        cluster_rule = _rump2022a_clusters, kwargs...) where {T}
+    CT = complex(T)
+    Bm = Matrix{CT}(mid(B))
+    fr = if frame === :eigen
+        M -> eigen(M, Bm)
+    elseif frame === :schur
+        M -> (F = schur(M, Bm); (vectors = F.Z, values = F.α ./ F.β))
+    else
+        throw(ArgumentError("_rump2022a_pencil: frame must be :eigen or :schur"))
+    end
+    return _rump2022a_thm2_2_core(A, (M, W, X0) -> _rump2022a_pencil_transform(M, B, W, X0),
+        cluster_rule; frame = fr, retransform = _rump2022a_transform,
+        untransformed = _rump2022a_pencil_untransformed, kwargs...)
+end
+
 # ---------------------------------------------------------------------------------------------
 # Clustering: step 2 of the algorithm, connected components of "these two are indistinguishable"
 # ---------------------------------------------------------------------------------------------
@@ -693,16 +812,19 @@ _rump2022a_schur_step6(B::BallMatrix; kwargs...) =
 function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
         cluster_rule = _rump2022a_clusters;
         maxiter::Integer = 20, inflate::Real = 0.1,
-        maxlevels::Integer = 3, frame = eigen) where {T, NT}
+        maxlevels::Integer = 3, frame = eigen, retransform = transform,
+        untransformed = _rump2022a_untransformed) where {T, NT}
     n = size(B, 1)
     CT = complex(T)
     # `frame` is `eigen` (the paper's step 1) or `schur`: both return the similarity in `vectors`
-    # and its approximate eigenvalues in `values`
+    # and its approximate eigenvalues in `values`. `retransform` is the transformation of the
+    # recursion of step 6, which acts on the transformed matrix; it differs from `transform` for
+    # a pencil, whose first transformation involves B.
     F = frame(Matrix{CT}(mid(B)))
     W = Matrix{CT}(F.vectors)
     X0 = Matrix{CT}(Diagonal(F.values))
     A, defect = _rump2022a_try(transform, B, W, X0)
-    A === nothing && return _rump2022a_untransformed(B, W, defect)
+    A === nothing && return untransformed(B, W, defect)
 
     lv = _rump2022a_level(A, cluster_rule, maxiter, inflate)
     total = lv.iters
@@ -735,7 +857,7 @@ function _rump2022a_thm2_2_core(B::BallMatrix{T, NT}, transform,
         Tm[J, J] .= sub.vectors
         d = CT[mid(A)[i, i] for i in 1:n]
         d[J] .= sub.values
-        A2, _ = _rump2022a_try(transform, A, Tm, Matrix{CT}(Diagonal(d)))
+        A2, _ = _rump2022a_try(retransform, A, Tm, Matrix{CT}(Diagonal(d)))
         A2 === nothing && break
         lv2 = _rump2022a_level(A2, cluster_rule, maxiter, inflate)
         total += lv2.iters
@@ -875,8 +997,8 @@ visible in the name rather than buried in a docstring:
 
 The Neumann variant is kept because it does not need the solve to
 succeed, so it still returns a result where the solve declines; where both succeed, the
-faithful one is at least as tight. `:miyajima2014a` is the only method that takes a pencil, so
-`verifyeigall(A, B)` accepts it alone; called with one matrix it solves `A x = λ x`.
+faithful one is at least as tight. `:miyajima2014a` called with one matrix solves `A x = λ x`;
+for a pencil see `verifyeigall(A, B)`.
 
 Note that `spectrum_covered` is not the same condition in the two families. Rump's needs the
 self-mapping test on every cluster together with `ρ(Z) < 1`; Miyajima's needs only `‖t‖_∞ < 1`,
@@ -926,24 +1048,39 @@ function _verifyeigall_method(B::BallMatrix, method::Symbol; kwargs...)
 end
 
 """
-    verifyeigall(A::BallMatrix, B::BallMatrix; method = :miyajima2014a)
+    verifyeigall(A::BallMatrix, B::BallMatrix; method = :miyajima2014a, kwargs...)
         -> VerifyEigAllResult
 
 Verified inclusions of all eigenvalues and invariant subspaces of the pencil `A x = λ B x`.
 
-Only [`_miyajima2014a_alg1`](@ref) solves a pencil, so `:miyajima2014a` is the only method accepted
-here; Rump (2022) is stated for a single matrix and `:rump2022a` is refused rather than applied
-to `B⁻¹A`, which would be a different algorithm from the one the name refers to. `B` is not
-assumed nonsingular: its nonsingularity is proved, by `‖t‖_∞ < 1`.
+| `method` | routine | what it is |
+|---|---|---|
+| `:miyajima2014a` | [`_miyajima2014a_alg1`](@ref) | Algorithms 1 and 2 of Miyajima (2014), which are stated for a pencil |
+| `:rump2022a` | [`_rump2022a_pencil`](@ref) | Theorem 2.2 of Rump (2022) applied to an enclosure of `W⁻¹B⁻¹AW`, `W` the generalised eigenvectors; an extension, Rump's paper being stated for one matrix |
+| `:rump2022adiscclusters` | [`_rump2022a_pencil`](@ref) | the same with the clustering of [`_rump2022a_discclusters`](@ref) |
+| `:rump2022aschur` | [`_rump2022a_pencil`](@ref) | the same in the frame `Z` of a generalised Schur decomposition, without the recursion of step 6 |
+| `:rump2022aschurstep6` | [`_rump2022a_pencil`](@ref) | the Schur frame followed by the recursion of step 6 |
+
+`B` is not assumed nonsingular: every method proves it, and returns an uncertified result when it
+cannot. `B⁻¹A` is formed by none of them. `:rump2022aneumann` is not implemented for a pencil.
+No fallback is run. The keywords `maxiter`, `inflate` and `maxlevels` are those of the Rump
+methods for one matrix; `:miyajima2014a` takes none.
 """
-function verifyeigall(A::BallMatrix, B::BallMatrix; method::Symbol = :miyajima2014a)
+function verifyeigall(A::BallMatrix, B::BallMatrix; method::Symbol = :miyajima2014a, kwargs...)
     size(A) == size(B) ||
         throw(DimensionMismatch("verifyeigall: A is $(size(A)) and B is $(size(B))"))
     size(A, 1) == size(A, 2) ||
         throw(ArgumentError("verifyeigall expects square matrices"))
-    method === :miyajima2014a && return _miyajima2014a_alg1(A, B)
-    throw(ArgumentError("verifyeigall: method $(repr(method)) does not take a pencil; " *
-                        "the implemented pencil method is :miyajima2014a"))
+    method === :miyajima2014a && return _miyajima2014a_alg1(A, B; kwargs...)
+    method === :rump2022a && return _rump2022a_pencil(A, B; kwargs...)
+    method === :rump2022adiscclusters &&
+        return _rump2022a_pencil(A, B; cluster_rule = _rump2022a_discclusters_rule, kwargs...)
+    method === :rump2022aschur &&
+        return _rump2022a_pencil(A, B; frame = :schur, maxlevels = 0, kwargs...)
+    method === :rump2022aschurstep6 && return _rump2022a_pencil(A, B; frame = :schur, kwargs...)
+    throw(ArgumentError("verifyeigall: method $(repr(method)) does not take a pencil; the " *
+                        "implemented pencil methods are :miyajima2014a, :rump2022a, " *
+                        ":rump2022adiscclusters, :rump2022aschur and :rump2022aschurstep6"))
 end
 
 # ---------------------------------------------------------------------------------------------
