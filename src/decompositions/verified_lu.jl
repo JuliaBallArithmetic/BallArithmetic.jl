@@ -413,6 +413,38 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
 end
 
 """
+    _strict_lower_triangular(A::AbstractMatrix)
+
+Extract strictly lower triangular part of A (below diagonal).
+"""
+function _strict_lower_triangular(A::AbstractMatrix{T}) where {T}
+    m, n = size(A)
+    L = zeros(T, m, n)
+    for j in 1:min(m - 1, n)
+        for i in (j + 1):m
+            L[i, j] = A[i, j]
+        end
+    end
+    return L
+end
+
+"""
+    _upper_triangular(A::AbstractMatrix)
+
+Extract upper triangular part of A (including diagonal).
+"""
+function _upper_triangular(A::AbstractMatrix{T}) where {T}
+    m, n = size(A)
+    U = zeros(T, m, n)
+    for j in 1:n
+        for i in 1:min(j, m)
+            U[i, j] = A[i, j]
+        end
+    end
+    return U
+end
+
+"""
     verified_lu(A::AbstractMatrix; precision_bits = 256, use_bigfloat = true)
 
 Inclusions of the factors of the LU decomposition of the `m × n` matrix `A`, by Section 3 of
