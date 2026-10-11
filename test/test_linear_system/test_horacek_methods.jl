@@ -289,61 +289,80 @@ end
 end
 
 @testset "Determinant Methods" begin
-    @testset "Hadamard Inequality" begin
-        A = BallMatrix([2.0 1.0; 1.0 2.0], fill(0.1, 2, 2))
+    rng = MersenneTwister(20261011)
+    # det is affine in each entry: over a real interval matrix its range is the hull of the
+    # vertex determinants, computed here in rational arithmetic
+    function vertex_range(Ac, AΔ)
+        n = size(Ac, 1)
+        C, D = Rational{BigInt}.(Ac), Rational{BigInt}.(AΔ)
+        dets = [det([C[i, j] + (isodd(mask >> ((j - 1) * n + i - 1)) ? D[i, j] : -D[i, j])
+                     for i in 1:n, j in 1:n]) for mask in 0:(2^(n * n) - 1)]
+        return minimum(dets), maximum(dets)
+    end
+    encloses(d, lo, hi) = isinf(rad(d)) ||
+        (big(mid(d)) - big(rad(d)) <= lo && hi <= big(mid(d)) + big(rad(d)))
+    methods = (:hadamard, :gershgorin, :cramer, :cofactor, :gaussian_elimination, :auto)
+    finite = Dict(m => 0 for m in methods)
+    for n in (1, 2, 3), _ in 1:300
+        Ac = randn(rng, n, n) + (rand(rng, Bool) ? 3I : 0I)
+        AΔ = rand(rng, n, n) .* 10.0^rand(rng, -6:0.5:0)
+        A = BallMatrix(Ac, AΔ)
+        lo, hi = vertex_range(Ac, AΔ)
+        for m in methods
+            r = interval_det(A; method = m)
+            @test encloses(r.determinant, lo, hi)
+            isfinite(rad(r.determinant)) && (finite[m] += 1)
+            # a determinant enclosure away from zero is a proof of regularity
+            contains_zero(r) || @test lo > 0 || hi < 0
+        end
+    end
+    @test all(finite[m] > 0 for m in methods)
 
-        result = det_hadamard(A)
-
-        @test result.method == :hadamard
-        # Should give conservative bound
-        @test 3.0 ∈ result.determinant
+    @testset "the bunches of Figures 8.3 and 8.4" begin
+        b = BallArithmetic._bunch_product_bounds
+        for (a, bb) in ((0.5, 2.0), (-2.0, -0.5), (-1.0, 3.0), (-3.0, 1.0), (-2.0, 2.0)), k in 1:5
+            lo, hi = b(a, bb, k)
+            # every product of k numbers taken at the two ends, and of conjugate pairs of
+            # modulus between the smallest and the largest modulus of [a, b]
+            moduli = a > 0 ? (a, bb) : bb < 0 ? (-bb, -a) : (0.0, max(-a, bb))
+            for j in 0:k
+                p = big(a)^j * big(bb)^(k - j)
+                @test lo <= p <= hi
+                for pairs in 1:(k ÷ 2), m in moduli, i in 0:(k - 2pairs)
+                    q = big(m)^(2pairs) * big(a)^i * big(bb)^(k - 2pairs - i)
+                    @test lo <= q <= hi
+                end
+            end
+        end
+        @test b(1.0, 2.0, 1) == (1.0, 2.0) && b(-1.0, 3.0, 1) == (-1.0, 3.0)
     end
 
-    @testset "Gershgorin-based Determinant" begin
-        A = BallMatrix([3.0 0.5; 0.5 2.0], fill(0.05, 2, 2))
-
-        result = det_gershgorin(A)
-
-        @test result.method == :gershgorin
-        # True det ≈ 5.75
-        @test 5.0 < mid(result.determinant) < 7.0
-    end
-
-    @testset "Cramer's Rule (Small Matrix)" begin
-        A = BallMatrix([2.0 1.0; 1.0 3.0], fill(0.01, 2, 2))
-
-        result = det_cramer(A)
-
-        @test result.method == :cramer
-        @test result.tight  # Cramer is exact
-        # det = 2*3 - 1*1 = 5
-        @test 5.0 ∈ result.determinant
-        @test abs(mid(result.determinant) - 5.0) < 0.1
-    end
-
-    @testset "Automatic Method Selection" begin
-        # Small matrix - should use Cramer
-        A_small = BallMatrix([2.0 1.0; 1.0 2.0], fill(0.01, 2, 2))
-        result_small = interval_det(A_small)
-        @test result_small.method == :cramer
-
-        # Larger matrix - should use Gaussian elimination
-        A_large = BallMatrix(Matrix{Float64}(I, 5, 5), fill(0.01, 5, 5))
-        result_large = interval_det(A_large, method=:auto)
-        # Should choose either gaussian_elimination or hadamard
-        @test result_large.method in [:gaussian_elimination, :hadamard, :cramer]
-    end
-
-    @testset "Zero Detection" begin
-        # Regular matrix
-        A_reg = BallMatrix([3.0 1.0; 1.0 2.0], fill(0.01, 2, 2))
-        result_reg = interval_det(A_reg)
-        @test !contains_zero(result_reg)
-
-        # Possibly singular matrix
-        A_sing = BallMatrix([1.0 1.0; 1.0 1.0], fill(0.5, 2, 2))
-        result_sing = interval_det(A_sing)
-        # May or may not contain zero depending on method precision
+    @testset "examples" begin
+        # diagonal with separated discs: the product of the diagonal intervals
+        D = BallMatrix([2.0 0.0; 0.0 -3.0], [0.5 0.0; 0.0 0.5])
+        r = det_gershgorin(D)
+        @test encloses(r.determinant, big(-8.75), big(-3.75))
+        @test rad(r.determinant) < 2.6
+        @test !contains_zero(r)
+        # Hadamard on the identity gives 1; no sign
+        h = det_hadamard(BallMatrix(Matrix(1.0I, 4, 4)))
+        @test mid(h.determinant) == 0 && 1 <= rad(h.determinant) < 1 + 1e-12
+        @test contains_zero(h)
+        # Cramer on a point matrix
+        c = det_cramer(BallMatrix([2.0 1.0; 1.0 3.0]))
+        @test abs(mid(c.determinant) - 5) < 1e-12 && rad(c.determinant) < 1e-12
+        @test interval_det(BallMatrix([2.0 1.0; 1.0 2.0], fill(0.01, 2, 2))).method == :cofactor
+        @test interval_det(BallMatrix(Matrix(1.0I, 5, 5), fill(0.01, 5, 5))).method ==
+              :gaussian_elimination
+        @test_throws ArgumentError det_gershgorin(BallMatrix(randn(ComplexF64, 2, 2)))
+        @test_throws ArgumentError interval_det(D; method = :nonsense)
+        # complex input for the methods that take it
+        Z = randn(rng, ComplexF64, 3, 3)
+        exact = det(Complex{BigFloat}.(Z))
+        for m in (:hadamard, :cramer, :cofactor)
+            d = interval_det(BallMatrix(Z); method = m).determinant
+            @test abs(exact - mid(d)) <= rad(d)
+        end
     end
 end
 

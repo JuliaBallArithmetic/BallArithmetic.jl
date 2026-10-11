@@ -96,5 +96,6 @@ Rigorous bounds on matrix determinants.
 - [`det_hadamard`](@ref) - Hadamard bound
 - [`det_gershgorin`](@ref) - Gershgorin bound
 - [`det_cramer`](@ref) - Cramer-based bound
+- [`det_cofactor`](@ref) - Laplace expansion in ball arithmetic
 - [`contains_zero`](@ref) - Check if determinant contains zero
 - [`DeterminantResult`](@ref) - Result type

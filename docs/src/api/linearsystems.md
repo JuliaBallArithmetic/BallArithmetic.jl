@@ -87,5 +87,6 @@ interval_det
 det_hadamard
 det_gershgorin
 det_cramer
+det_cofactor
 contains_zero
 ```

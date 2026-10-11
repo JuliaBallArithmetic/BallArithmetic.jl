@@ -219,7 +219,7 @@ export is_regular, is_singular_sufficient_condition
 
 include("matrix_properties/determinant.jl")
 export DeterminantResult
-export det_hadamard, det_gershgorin, det_cramer
+export det_hadamard, det_gershgorin, det_cramer, det_cofactor
 export interval_det, contains_zero
 
 include("linear_system/inflation.jl")

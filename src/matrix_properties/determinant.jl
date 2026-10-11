@@ -1,381 +1,248 @@
-"""
-    determinant.jl
-
-Determinant computation methods for interval matrices.
-Provides various algorithms with different accuracy/speed tradeoffs.
-
-# References
-- Horáček, J. (2012), "Interval linear and nonlinear systems", PhD thesis, Chapters 7-8
-- Rohn, J. (1993), "Bounds on eigenvalues of interval matrices"
-- Neumaier, A. (1990), "Interval Methods for Systems of Equations"
-"""
-
-using LinearAlgebra
+# Enclosures of the determinant of an interval matrix, after
+#
+#   J. Horáček, Interval linear and nonlinear systems, doctoral thesis, Charles University,
+#   Prague, 2019, Chapter 8: Sections 8.4.1 (Gaussian elimination), 8.4.2 (Gerschgorin discs),
+#   8.4.3 (Hadamard's inequality) and 8.4.4 (Cramer's rule).
+#
+# Not implemented from that chapter: monotonicity checking (8.4.5), preconditioning (8.4.6), the
+# verified determinant of a real matrix (8.5) and the special cases of Section 8.6.
+#
+# Every routine returns a ball that contains det(A) for every matrix A of the input ball.
 
 """
     DeterminantResult{T}
 
-Result from interval determinant computation.
+Result of a determinant enclosure.
 
 # Fields
-- `determinant::Ball{T}`: Enclosure of determinant
-- `method::Symbol`: Method used
-- `computation_time::T`: Time spent (optional)
-- `tight::Bool`: Whether enclosure is known to be tight
+- `determinant::Ball`: a ball containing `det(A)` for every matrix `A` of the input; radius `Inf`
+  where the method gives no bound
+- `method::Symbol`: the method used
+- `computation_time::T`: not measured, zero
+- `tight::Bool`: always `false`: no routine here proves that its enclosure is the hull
 """
-struct DeterminantResult{T}
-    """Determinant enclosure."""
-    determinant::Ball{T}
-    """Method used."""
+struct DeterminantResult{T, BT <: Ball}
+    determinant::BT
     method::Symbol
-    """Computation time."""
     computation_time::T
-    """Whether enclosure is tight."""
     tight::Bool
 end
+DeterminantResult(d::Ball, method::Symbol) = DeterminantResult(d, method, zero(radtype(typeof(d))), false)
+
+_unbounded_determinant(::Type{T}) where {T} = Ball(zero(T), T(Inf))
 
 """
-    det_hadamard(A::BallMatrix{T}) where {T}
+    det_hadamard(A::BallMatrix) -> DeterminantResult
 
-Compute determinant bound using Hadamard's inequality.
+Section 8.4.3 of Horáček (2019): by Hadamard's inequality, for every matrix of the interval
+matrix `A`,
 
-# Hadamard's Inequality
-For any n×n matrix A:
-    |det(A)| ≤ ∏_{i=1}^n ||a_i||
+    |det(A)| ≤ d = ∏_i ( Σ_j mag(A_ji)² )^(1/2),
 
-where a_i is the i-th row of A.
-
-# Arguments
-- `A`: Interval matrix (n×n)
-
-# Returns
-`DeterminantResult` with determinant bounds.
-
-# Example
-```julia
-A = BallMatrix([2.0 1.0; 1.0 2.0], fill(0.1, 2, 2))
-
-result = det_hadamard(A)
-println("det(A) ∈ ", result.determinant)
-```
-
-# Notes
-- O(n²) complexity - very fast
-- Provides only upper bound on |det(A)|
-- Very conservative for most matrices
-- Useful for quick nonsingularity check
-- Not tight except for special cases
+the product of the largest Euclidean norms of the columns. The same holds with the rows, and
+the smaller of the two bounds is returned, as the ball of centre zero and radius `d`. The sign
+of the determinant cannot be detected in this way. Real or complex input.
 """
 function det_hadamard(A::BallMatrix{T}) where {T}
     n = size(A, 1)
-
-    # Compute row norms
-    row_norms = T[]
-    for i in 1:n
-        norm_i = T(0)
-        for j in 1:n
-            a_ij = A[i, j]
-            # Maximum absolute value in interval
-            max_abs = max(abs(inf(a_ij)), abs(sup(a_ij)))
-            norm_i += max_abs^2
+    n == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
+    mag = upper_abs(A)
+    function norms_product(byrow::Bool)
+        d = one(T)
+        for i in 1:n
+            s = zero(T)
+            for j in 1:n
+                m = byrow ? mag[i, j] : mag[j, i]
+                s = add_up(s, mul_up(m, m))
+            end
+            d = mul_up(d, sqrt_up(s))
         end
-        push!(row_norms, sqrt(norm_i))
+        return d
     end
+    d = min(norms_product(false), norms_product(true))
+    return DeterminantResult(Ball(zero(T), d), :hadamard)
+end
 
-    # Product of row norms
-    hadamard_bound = prod(row_norms)
-
-    # Return symmetric interval
-    det_enclosure = Ball(T(0), hadamard_bound)
-
-    return DeterminantResult(det_enclosure, :hadamard, T(0), false)
+# Figures 8.3 and 8.4 of the thesis: an interval containing every product of k real numbers of
+# [a, b], and with them every product in which pairs of them are replaced by pairs of complex
+# conjugates lying in discs centred on the real axis inside [a, b], whose product is the square
+# of a modulus between the smallest and the largest modulus of [a, b].
+function _bunch_product_bounds(a::T, b::T, k::Int) where {T}
+    if a > 0                                   # c) nonnegative: [a^k, b^k]
+        return pow_down(a, k), pow_up(b, k)
+    elseif b < 0                               # b1), b2) nonpositive
+        lo, hi = pow_down(-b, k), pow_up(-a, k)          # bounds of the modulus
+        return iseven(k) ? (lo, hi) : (-hi, -lo)
+    elseif -a <= b                             # d1), d2) contains 0, |a| ≤ |b|: [a b^(k-1), b^k]
+        return -mul_up(-a, pow_up(b, k - 1)), pow_up(b, k)
+    elseif iseven(k)                           # d3) contains 0, |a| > |b|: [a^(k-1) b, a^k]
+        return -mul_up(pow_up(-a, k - 1), b), pow_up(-a, k)
+    else                                       # d4) [a^k, a^(k-1) b]
+        return -pow_up(-a, k), mul_up(pow_up(-a, k - 1), b)
+    end
 end
 
 """
-    det_gershgorin(A::BallMatrix{T}) where {T}
+    det_gershgorin(A::BallMatrix) -> DeterminantResult
 
-Compute determinant bound using Gershgorin circle theorem.
+Section 8.4.2 of Horáček (2019), for a real interval matrix. Every eigenvalue of every matrix of
+`A` lies in an interval Gerschgorin disc, of centre `mid(A_ii)` and radius
+`rad(A_ii) + Σ_{j≠i} mag(A_ij)`, and a group of `k` discs whose union is connected (a "bunch")
+contains `k` eigenvalues. With `[a, b]` the projection of a bunch on the real axis, the product
+of its `k` eigenvalues lies in the interval of Figures 8.3 and 8.4 of the thesis:
 
-# Gershgorin Approach
-Eigenvalues lie in union of Gershgorin discs:
-    λ_i ∈ {z : |z - a_{ii}| ≤ ∑_{j≠i} |a_{ij}|}
+- `[a, b]` for one disc;
+- `[a^k, b^k]` when `a > 0`; when `b < 0`, `[a^k, b^k]` for odd `k` and `[b^k, a^k]` for even `k`;
+- when `a ≤ 0 ≤ b` and `|a| ≤ |b|`, `[a b^(k−1), b^k]`;
+- when `a ≤ 0 ≤ b` and `|a| > |b|`, `[a^(k−1) b, a^k]` for even `k` and `[a^k, a^(k−1) b]` for
+  odd `k`.
 
-Determinant is product of eigenvalues.
+Complex eigenvalues come in conjugate pairs and the product of a pair, the square of its
+modulus, lies between the squares of the smallest and the largest modulus of `[a, b]`
+(Figure 8.5), so the same intervals hold. The determinant is enclosed by the product of the
+intervals of the bunches. The ends of the discs and the powers are rounded outwards.
 
-# Arguments
-- `A`: Interval matrix (n×n)
-
-# Returns
-`DeterminantResult` with determinant bounds.
-
-# Example
-```julia
-A = BallMatrix([3.0 0.5; 0.5 2.0], fill(0.1, 2, 2))
-
-result = det_gershgorin(A)
-println("det(A) ∈ ", result.determinant)
-```
-
-# Notes
-- O(n²) complexity - fast
-- Can provide tighter bounds than Hadamard for diagonally dominant matrices
-- Conservative for general matrices
-- Uses product of disc bounds
+The thesis remarks that the overestimation may be large, and that the method suits tight
+intervals or a matrix close to a diagonal one. Throws on complex input, where the discs are not
+centred on the real axis.
 """
 function det_gershgorin(A::BallMatrix{T}) where {T}
     n = size(A, 1)
-
-    # Compute Gershgorin disc for each row
-    disc_inf = T[]
-    disc_sup = T[]
-
+    n == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
+    eltype(mid(A)) <: Real ||
+        throw(ArgumentError("det_gershgorin is for real interval matrices"))
+    mag = upper_abs(A)
+    lo, hi = Vector{T}(undef, n), Vector{T}(undef, n)
     for i in 1:n
-        a_ii = A[i, i]
-        center = mid(a_ii)
-
-        # Row sum excluding diagonal
-        row_sum = T(0)
+        r = rad(A)[i, i]
         for j in 1:n
-            if j != i
-                a_ij = A[i, j]
-                row_sum += max(abs(inf(a_ij)), abs(sup(a_ij)))
-            end
+            j == i || (r = add_up(r, mag[i, j]))
         end
-
-        # Add radius of diagonal element
-        radius = rad(a_ii) + row_sum
-
-        # Disc bounds
-        push!(disc_inf, center - radius)
-        push!(disc_sup, center + radius)
+        lo[i], hi[i] = sub_down(mid(A)[i, i], r), add_up(mid(A)[i, i], r)
     end
-
-    # Estimate determinant bounds (conservative)
-    # This is a simplified approach; full computation requires more care
-    det_lower = prod(max.(disc_inf, T(0))) - prod(max.(-disc_inf, T(0)))
-    det_upper = prod(disc_sup)
-
-    if det_lower > det_upper
-        det_lower, det_upper = det_upper, det_lower
+    all(isfinite, lo) && all(isfinite, hi) ||
+        return DeterminantResult(_unbounded_determinant(T), :gershgorin)
+    order = sortperm(lo)
+    det = Ball(one(T), zero(T))
+    a, b, k = lo[order[1]], hi[order[1]], 1
+    for idx in order[2:end]
+        if lo[idx] <= b                      # the disc meets the current bunch
+            b = max(b, hi[idx])
+            k += 1
+        else
+            det = det * _ball_from_bounds(_bunch_product_bounds(a, b, k)...)
+            a, b, k = lo[idx], hi[idx], 1
+        end
     end
-
-    det_mid = (det_lower + det_upper) / 2
-    det_rad = (det_upper - det_lower) / 2
-
-    det_enclosure = Ball(det_mid, det_rad)
-
-    return DeterminantResult(det_enclosure, :gershgorin, T(0), false)
+    det = det * _ball_from_bounds(_bunch_product_bounds(a, b, k)...)
+    return DeterminantResult(det, :gershgorin)
 end
 
 """
-    det_cramer(A::BallMatrix{T}) where {T}
+    det_cramer(A::BallMatrix) -> DeterminantResult
 
-Compute determinant using Cramer's rule (cofactor expansion).
+Section 8.4.4 of Horáček (2019). By Cramer's rule the first coefficient of the solution of
+`A x = e₁` is `x₁ = det(A_{2:n})/det(A)`, with `A_{2:n}` the matrix without its first row and
+column, so that (8.3)
 
-# Warning
-This method has O(n!) complexity and should only be used for n ≤ 4.
+    det(A) ⊆ det(A_{2:n}) / x₁
 
-# Arguments
-- `A`: Small interval matrix (n ≤ 4)
-
-# Returns
-`DeterminantResult` with exact interval determinant.
-
-# Example
-```julia
-A = BallMatrix([2.0 1.0; 1.0 3.0], fill(0.05, 2, 2))
-
-result = det_cramer(A)
-println("det(A) ∈ ", result.determinant)  # Exact result
-```
-
-# Notes
-- O(n!) complexity - only for tiny matrices
-- Provides exact interval arithmetic result
-- Tight enclosure (no overestimation from method)
-- Wrapping effect still present
+for an enclosure `x₁` of that coefficient over the interval matrix. The rule is applied
+recursively down to order one. The enclosure of `x₁` is that of [`verifylss`](@ref). The method
+works when no enclosure of `x₁` in the recursion contains zero and every solve is certified;
+otherwise the returned ball has radius `Inf`.
 """
 function det_cramer(A::BallMatrix{T}) where {T}
     n = size(A, 1)
-
-    if n > 4
-        @warn "Cramer's rule is O(n!), only recommended for n ≤ 4. Using n=$n may be very slow."
+    n == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
+    CT = eltype(mid(A))
+    det = Ball(one(CT), zero(T))
+    M = A
+    for m in n:-1:2
+        e1 = zeros(CT, m)
+        e1[1] = one(CT)
+        sol = try
+            verifylss(M, BallVector(e1))
+        catch
+            return DeterminantResult(_unbounded_determinant(T), :cramer)
+        end
+        sol.certified || return DeterminantResult(_unbounded_determinant(T), :cramer)
+        x1 = sol.solution[1]
+        sub_down(abs_down(mid(x1)), rad(x1)) > 0 ||
+            return DeterminantResult(_unbounded_determinant(T), :cramer)
+        det = det / x1
+        M = M[2:m, 2:m]
     end
-
-    if n == 1
-        return DeterminantResult(A[1, 1], :cramer, T(0), true)
-    elseif n == 2
-        # det = a11*a22 - a12*a21
-        det_val = A[1, 1] * A[2, 2] - A[1, 2] * A[2, 1]
-        return DeterminantResult(det_val, :cramer, T(0), true)
-    elseif n == 3
-        # Sarrus rule for 3×3
-        det_val = (A[1, 1] * A[2, 2] * A[3, 3] +
-                   A[1, 2] * A[2, 3] * A[3, 1] +
-                   A[1, 3] * A[2, 1] * A[3, 2] -
-                   A[1, 3] * A[2, 2] * A[3, 1] -
-                   A[1, 2] * A[2, 1] * A[3, 3] -
-                   A[1, 1] * A[2, 3] * A[3, 2])
-        return DeterminantResult(det_val, :cramer, T(0), true)
-    else
-        # General cofactor expansion (expensive!)
-        det_val = _cofactor_expansion(A, 1)
-        return DeterminantResult(det_val, :cramer, T(0), true)
-    end
+    return DeterminantResult(det * M[1, 1], :cramer)
 end
 
 """
-    _cofactor_expansion(A, row)
+    det_cofactor(A::BallMatrix) -> DeterminantResult
 
-Internal: Recursive cofactor expansion along given row.
+The Laplace expansion of the determinant along the first row, evaluated in ball arithmetic. It
+is not a method of the thesis; its cost is `n!`, and it is used by [`interval_det`](@ref) for
+orders up to three. For order two each entry occurs once in the formula, so the only
+overestimation is that of the ball product.
 """
-function _cofactor_expansion(A::BallMatrix{T}, row::Int) where {T}
+function det_cofactor(A::BallMatrix{T}) where {T}
+    size(A, 1) == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
+    return DeterminantResult(_cofactor_expansion(A), :cofactor)
+end
+
+function _cofactor_expansion(A::BallMatrix{T}) where {T}
     n = size(A, 1)
-
-    if n == 1
-        return A[1, 1]
+    n == 1 && return A[1, 1]
+    n == 2 && return A[1, 1] * A[2, 2] - A[1, 2] * A[2, 1]
+    total = A[1, 1] * _cofactor_expansion(A[2:n, 2:n])
+    for j in 2:n
+        term = A[1, j] * _cofactor_expansion(A[2:n, [k for k in 1:n if k != j]])
+        total = isodd(j) ? total + term : total - term
     end
-
-    det_sum = Ball(T(0), T(0))
-
-    for j in 1:n
-        # Get minor (remove row and column j)
-        minor_indices_row = [i for i in 1:n if i != row]
-        minor_indices_col = [k for k in 1:n if k != j]
-
-        minor = A[minor_indices_row, minor_indices_col]
-
-        # Recursive call
-        minor_det = _cofactor_expansion(minor, 1)
-
-        # Add contribution with correct sign
-        sign_factor = (-1)^(row + j)
-        det_sum = det_sum + sign_factor * A[row, j] * minor_det
-    end
-
-    return det_sum
+    return total
 end
 
 """
-    interval_det(A::BallMatrix{T};
-                method::Symbol=:auto,
-                check_regularity::Bool=true) where {T}
+    interval_det(A::BallMatrix; method = :auto) -> DeterminantResult
 
-Compute interval determinant enclosure using specified or automatic method.
+An enclosure of the determinant of the interval matrix `A` by
 
-# Methods
-- `:auto`: Choose automatically based on matrix size and properties
-- `:hadamard`: Hadamard inequality (fast, conservative)
-- `:gershgorin`: Gershgorin-based bounds (fast, moderate)
-- `:gaussian_elimination`: Gaussian elimination (moderate speed, good accuracy)
-- `:cramer`: Cramer's rule (slow, exact for small n)
-
-# Arguments
-- `A`: Interval matrix (n×n)
-- `method`: Computation method
-- `check_regularity`: First check if matrix is regular
-
-# Returns
-`DeterminantResult` with determinant enclosure.
-
-# Example
-```julia
-A = BallMatrix([3.0 1.0; 1.0 2.0], fill(0.1, 2, 2))
-
-# Automatic method selection
-result = interval_det(A)
-println("det(A) ∈ ", result.determinant)
-
-# Specific method
-result_hadamard = interval_det(A, method=:hadamard)
-```
-
-# Notes
-- Auto mode chooses:
-  - Cramer for n ≤ 3
-  - Gaussian elimination for n ≤ 20
-  - Hadamard for n > 20
-- Check regularity first to avoid wasted computation
+- `:gaussian_elimination`: Section 8.4.1 of Horáček (2019), the product of the diagonal of the
+  row echelon form ([`interval_gaussian_elimination_det`](@ref));
+- `:gershgorin`: [`det_gershgorin`](@ref);
+- `:hadamard`: [`det_hadamard`](@ref);
+- `:cramer`: [`det_cramer`](@ref);
+- `:cofactor`: [`det_cofactor`](@ref);
+- `:auto`: the cofactor expansion for orders up to three, Gaussian elimination above.
 """
-function interval_det(A::BallMatrix{T};
-                     method::Symbol=:auto,
-                     check_regularity::Bool=true) where {T}
+function interval_det(A::BallMatrix{T}; method::Symbol = :auto) where {T}
     n = size(A, 1)
-
-    # Check regularity if requested
-    if check_regularity
-        # Quick diagonal dominance check
-        reg_result = is_regular_diagonal_dominance(A)
-        if !reg_result.is_regular
-            # Try Gershgorin
-            reg_result = is_regular_gershgorin(A)
-        end
-
-        if reg_result.is_regular
-            # Matrix is regular, determinant doesn't contain 0
-            # Continue with computation
-        end
+    n == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
+    method == :auto && (method = n <= 3 ? :cofactor : :gaussian_elimination)
+    if method == :hadamard
+        return det_hadamard(A)
+    elseif method == :gershgorin
+        return det_gershgorin(A)
+    elseif method == :gaussian_elimination
+        return DeterminantResult(interval_gaussian_elimination_det(A), :gaussian_elimination)
+    elseif method == :cramer
+        return det_cramer(A)
+    elseif method == :cofactor
+        return det_cofactor(A)
     end
-
-    # Select method
-    actual_method = if method == :auto
-        if n <= 3
-            :cramer
-        elseif n <= 20
-            :gaussian_elimination
-        else
-            :hadamard
-        end
-    else
-        method
-    end
-
-    # Compute determinant using selected method
-    return if actual_method == :hadamard
-        det_hadamard(A)
-    elseif actual_method == :gershgorin
-        det_gershgorin(A)
-    elseif actual_method == :gaussian_elimination
-        # Use Gaussian elimination from linear_system module
-        # Import the function if needed
-        result_ge = interval_gaussian_elimination_det(A)
-        DeterminantResult(result_ge, :gaussian_elimination, T(0), false)
-    elseif actual_method == :cramer
-        det_cramer(A)
-    else
-        error("Unknown determinant method: $actual_method")
-    end
+    throw(ArgumentError("unknown determinant method $method"))
 end
-
-# NOTE: interval_gaussian_elimination_det is defined in linear_system/gaussian_elimination.jl
-# No fallback needed since that file is always loaded before this one.
 
 """
-    contains_zero(det_result::DeterminantResult{T}) where {T}
+    contains_zero(det_result::DeterminantResult) -> Bool
 
-Check if determinant enclosure contains zero (possible singularity).
-
-# Arguments
-- `det_result`: Result from determinant computation
-
-# Returns
-`true` if 0 ∈ det(A), `false` otherwise.
-
-# Example
-```julia
-A = BallMatrix([1.0 1.0; 1.0 1.0], fill(0.1, 2, 2))
-result = interval_det(A)
-
-if contains_zero(result)
-    println("Matrix may be singular")
-end
-```
+Whether zero lies in the enclosure of the determinant. `false` proves that the interval matrix
+is regular; `true` proves nothing.
 """
-function contains_zero(det_result::DeterminantResult{T}) where {T}
-    return T(0) ∈ det_result.determinant
+function contains_zero(det_result::DeterminantResult)
+    d = det_result.determinant
+    return !(sub_down(abs_down(mid(d)), rad(d)) > 0)
 end
 
-# Export functions
 export DeterminantResult
-export det_hadamard, det_gershgorin, det_cramer
+export det_hadamard, det_gershgorin, det_cramer, det_cofactor
 export interval_det, contains_zero
