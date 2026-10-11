@@ -1,38 +1,14 @@
-"""
-    shaving.jl
-
-Shaving methods for interval linear systems using Sherman-Morrison formula.
-Removes provably infeasible parts of solution enclosures efficiently.
-
-# References
-- Horáček, J. (2012), "Interval linear and nonlinear systems", PhD thesis, Chapter 5
-- Neumaier, A. (1990), "Interval Methods for Systems of Equations"
-- Sherman, J., Morrison, W.J. (1950), "Adjustment of an inverse matrix"
-"""
+# The shaving method for a square interval linear system, after
+#
+#   J. Horáček, Interval linear and nonlinear systems, doctoral thesis, Charles University,
+#   Prague, 2019, Section 5.9 (an adapted version of M. Hladík and J. Horáček, reference [81] of
+#   the thesis): Lemma 5.21, the sufficient condition of Section 5.9.1, the width of a slice by
+#   Lemma 5.22 with the bounds (5.15) and (5.16), and the iterative improvement of Section 5.9.3.
+#
+# Not implemented: the update of the preconditioner by the Sherman-Morrison formula in the
+# iterative improvement, which the thesis proposes for speed; the system is solved again.
 
 using LinearAlgebra
-
-"""
-    ShavingResult{T, VT}
-
-Result from interval shaving method.
-
-# Fields
-- `solution::VT`: Shaved (refined) solution enclosure
-- `shaved_amount::T`: Total amount shaved from all boundaries
-- `iterations::Int`: Number of shaving passes performed
-- `components_shaved::Int`: Number of component boundaries that were improved
-"""
-struct ShavingResult{T, VT}
-    """Shaved solution enclosure."""
-    solution::VT
-    """Total amount shaved."""
-    shaved_amount::T
-    """Number of shaving passes."""
-    iterations::Int
-    """Components improved."""
-    components_shaved::Int
-end
 
 """
     sherman_morrison_inverse_update(A_inv::Matrix{T}, u::Vector{T}, v::Vector{T}) where {T}
@@ -66,7 +42,7 @@ A_updated_inv = sherman_morrison_inverse_update(A_inv, u, v)
 # Notes
 - O(n²) complexity vs O(n³) for full inverse
 - Numerically stable if |1 + v^T A^(-1)u| is not too small
-- Critical for efficient shaving implementation
+- A floating-point formula: the result is an approximation, with no error bound
 """
 function sherman_morrison_inverse_update(A_inv::Matrix{T}, u::Vector{T}, v::Vector{T}) where {T}
     # Compute A^(-1) * u
@@ -88,233 +64,229 @@ function sherman_morrison_inverse_update(A_inv::Matrix{T}, u::Vector{T}, v::Vect
     return A_inv - update
 end
 
+
 """
-    interval_shaving(A::BallMatrix{T}, b::BallVector{T}, x0::BallVector{T};
-                     max_iterations::Int=10,
-                     min_improvement::T=T(1e-6),
-                     R::Union{Nothing, Matrix{T}}=nothing) where {T}
+    ShavingResult{T, VT}
 
-Refine solution enclosure x0 by shaving infeasible boundaries using Sherman-Morrison updates.
+Result of [`interval_shaving`](@ref).
 
-# Algorithm
-For each component i and each boundary (lower/upper):
-1. Fix x_i at its boundary value
-2. Update inverse using Sherman-Morrison formula
-3. Compute bounds on x_i from remaining equations
-4. If bound excludes fixed value, shrink interval
-5. Repeat until no significant improvement
+# Fields
+- `solution`: the shaved box; it contains every point of the solution set that the initial box
+  contains
+- `shaved_amount`: the sum of the widths removed
+- `iterations`: number of passes over the variables
+- `components_shaved`: number of slices removed
+- `empty`: `true` when a slice as wide as the box was removed, which proves that the initial box
+  contains no point of the solution set; `solution` is then meaningless
+"""
+struct ShavingResult{T, VT}
+    solution::VT
+    shaved_amount::T
+    iterations::Int
+    components_shaved::Int
+    empty::Bool
+end
 
-# Mathematical Details
-When fixing x_i = α, the system becomes:
-    A * x = b  with  x_i = α
+"""
+    _shaving_lp(c, Aeq, beq, lb, ub) -> Vector or nothing
 
-This is equivalent to:
-    (A with i-th column replaced by e_i) * x' = b - α * A[:,i]
+A minimiser of `c'v` subject to `Aeq v = beq`, `lb ≤ v ≤ ub`, in floating point, or `nothing`.
+The method is supplied by the extension loaded with JuMP and HiGHS. The result is used as a
+guess only and need not be verified.
+"""
+function _shaving_lp end
 
-The inverse can be updated efficiently using Sherman-Morrison formula.
+"""
+    interval_shaving(A::BallMatrix, b::BallVector, x0::BallVector; passes = 1,
+        improvements = 3, min_improvement = 1e-6, lp_solver = nothing) -> ShavingResult
 
-# Arguments
-- `A`: Coefficient ball matrix (n×n)
-- `b`: Right-hand side ball vector (n)
-- `x0`: Initial solution enclosure to be refined
-- `max_iterations`: Maximum number of shaving passes
-- `min_improvement`: Minimum relative improvement to continue shaving
-- `R`: Preconditioner A^(-1) (computed if not provided)
+The shaving method of Section 5.9 of Horáček (2019) for a real square interval system
+`A x = b`: slices of the box `x0` that contain no point of the solution set are cut off. With
+`x0` an enclosure of the solution set, so is the result.
 
-# Returns
-`ShavingResult` with refined solution enclosure.
+For the variable `i` and the upper end, the slice of width `α` is the box with `x_i` restricted
+to `[x̄_i − α, x̄_i]` (5.8), and similarly at the lower end. For each of the `2n` slices:
 
-# Example
-```julia
-A = BallMatrix([3.0 1.0; 1.0 2.0], fill(0.1, 2, 2))
-b = BallVector([4.0, 3.0], fill(0.1, 2))
+1. **A certificate for the midpoint system** (Section 5.9.1). By Lemma 5.21, `A x = b`, `x ∈ x`
+   has no solution exactly when
 
-# Get initial enclosure (e.g., from Krawczyk)
-result_krawczyk = krawczyk_linear_system(A, b)
-x0 = result_krawczyk.solution
+       Aᵀw + y − z = 0,    bᵀw + x̄ᵀy − x̲ᵀz = −1,    y, z ≥ 0                        (5.9)
 
-# Refine with shaving
-result_shaved = interval_shaving(A, b, x0)
+   is solvable. The linear programme `min b_cᵀw + x̄ᵀy − x̲ᵀz` subject to `A_cᵀw + y − z = 0`,
+   `−e ≤ w ≤ e`, `y, z ≥ 0` is solved for the slice of width zero. If its value is not
+   negative the slice is kept.
+2. **A square interval system.** The entries of `y` and `z` that vanish at the optimum are
+   fixed to zero; the remaining system (5.12) is completed to a square one, `C v = d`,
+   `C ∈ C`, with an orthonormal basis of the null space of its midpoint, the right-hand sides
+   chosen so that the normalised optimum solves it (5.13). Its solution set is enclosed by
+   [`verifylss`](@ref). If the components `u` of the enclosure that come from `y` and `z` are
+   nonnegative, (5.9) is solvable for every `A ∈ A`, `b ∈ b`, and the slice contains no point
+   of the solution set.
+3. **The width** (Section 5.9.2). The width `α` enters one coefficient, `C + α e_p e_qᵀ`, and by
+   Lemma 5.22 the solution becomes `v − α v_q/(1 + α C⁻¹_qp) · C⁻¹_*p`. With `c` an enclosure of
+   `C⁻¹_*p`, the solution set of `C u = e_p`, the largest `α` allowed is given by
+   `α < −1/c̲_q` when `c̲_q < 0` (5.15) and, for every component `k` of `u` other than `q`,
+   `α ≤ u̲_k / (sup(u_q c_k) − u̲_k c̲_q)` when the denominator is positive (5.16), all rounded
+   downwards.
+4. **Iterative improvement** (Section 5.9.3), `improvements` times: the coefficient is moved by
+   the width found, the system enclosed again, `c` updated by `c/(1 + α c_q)`, with its `q`-th
+   component computed as `1/(α + 1/c_q)`, and a further width added.
 
-println("Original width: ", maximum(rad(x0)))
-println("Shaved width: ", maximum(rad(result_shaved.solution)))
-println("Improvement: ", result_shaved.shaved_amount)
-```
+`passes` is the number of sweeps over the variables; a slice narrower than `min_improvement`
+times the width of its variable is not cut.
 
-# Notes
-- O(n²) per boundary test (efficient!)
-- Typically applied after Krawczyk or other method
-- Can significantly reduce interval widths
-- Diminishing returns after few iterations
-- Sherman-Morrison makes this practical
+`lp_solver(c, Aeq, beq, lb, ub)` must return a minimiser of `c'v` subject to `Aeq v = beq`,
+`lb ≤ v ≤ ub`, or `nothing`. It is a heuristic: whatever it returns, a slice is cut only after
+step 2 has verified the certificate. `nothing` uses JuMP with HiGHS, which must then be loaded
+(`using JuMP, HiGHS`).
 """
 function interval_shaving(A::BallMatrix{T}, b::BallVector{T}, x0::BallVector{T};
-                          max_iterations::Int=10,
-                          min_improvement::T=T(1e-6),
-                          R::Union{Nothing, Matrix{T}}=nothing) where {T}
-    n = size(A, 1)
-
-    # Compute preconditioner if not provided
-    # NOTE: The inverse here is an ORACLE - it's used as a preconditioner and
-    # its quality is verified A POSTERIORI through the shaving convergence.
-    # Per Horacek thesis, the method's correctness doesn't depend on inv() accuracy.
-    if R === nothing
-        R = inv(mid(A))
-    end
-
-    x = copy(x0)
-    total_shaved = T(0)
-    components_improved = 0
-
-    for iter in 1:max_iterations
-        iter_improvement = T(0)
-        iter_components = 0
-
-        # Try shaving each component's boundaries
-        for i in 1:n
-            x_i_original = x[i]
-            original_width = rad(x_i_original)
-
-            # Try shaving lower bound
-            lower_bound = inf(x_i_original)
-            new_lower = _shave_boundary(A, b, x, i, lower_bound, :lower, R)
-
-            x_i_new_inf = if new_lower > lower_bound + min_improvement * original_width
-                # Successful shave of lower bound
-                iter_improvement += (new_lower - lower_bound)
-                iter_components += 1
-                new_lower
-            else
-                lower_bound
+        passes::Int = 1, improvements::Int = 3, min_improvement::Real = 1e-6,
+        lp_solver = nothing) where {T}
+    n = _require_real_system(A, b, "interval_shaving")
+    length(x0) == n || throw(DimensionMismatch("interval_shaving: x0 must have length $n"))
+    lp = lp_solver === nothing ? _shaving_lp : lp_solver
+    applicable(lp, zeros(T, 1), zeros(T, 1, 1), zeros(T, 1), zeros(T, 1), zeros(T, 1)) ||
+        throw(ArgumentError("interval_shaving needs a linear programming solver: load JuMP " *
+                            "and HiGHS, or pass `lp_solver`"))
+    lo, hi = [inf(x0[i]) for i in 1:n], [sup(x0[i]) for i in 1:n]
+    shaved, cuts, done = zero(T), 0, 0
+    box() = BallVector([_ball_from_bounds(lo[i], hi[i]) for i in 1:n])
+    for pass in 1:passes
+        done = pass
+        progressed = false
+        for i in 1:n, upper in (true, false)
+            width = sub_down(hi[i], lo[i])
+            width > 0 || continue
+            α = _slice_width(A, b, lo, hi, i, upper, lp, improvements)
+            α > min_improvement * width || continue
+            if α >= sub_up(hi[i], lo[i])
+                return ShavingResult(box(), shaved, pass, cuts + 1, true)
             end
-
-            # Try shaving upper bound
-            upper_bound = sup(x_i_original)
-            new_upper = _shave_boundary(A, b, x, i, upper_bound, :upper, R)
-
-            x_i_new_sup = if new_upper < upper_bound - min_improvement * original_width
-                # Successful shave of upper bound
-                iter_improvement += (upper_bound - new_upper)
-                iter_components += 1
-                new_upper
-            else
-                upper_bound
-            end
-
-            # Update component with shaved bounds
-            if x_i_new_sup < x_i_new_inf
-                @warn "Shaving: Inconsistent bounds for component $i, keeping original"
-            else
-                x_i_new_mid = (x_i_new_inf + x_i_new_sup) / 2
-                x_i_new_rad = (x_i_new_sup - x_i_new_inf) / 2
-                x[i] = Ball(x_i_new_mid, x_i_new_rad)
-            end
+            upper ? (hi[i] = sub_up(hi[i], α)) : (lo[i] = add_down(lo[i], α))
+            shaved += α
+            cuts += 1
+            progressed = true
         end
-
-        total_shaved += iter_improvement
-        components_improved += iter_components
-
-        # Check if improvement is significant
-        if iter_improvement < min_improvement * maximum(rad(x))
-            break
-        end
+        progressed || break
     end
-
-    return ShavingResult(x, total_shaved, max_iterations, components_improved)
+    return ShavingResult(box(), shaved, done, cuts, false)
 end
 
-"""
-    _shave_boundary(A, b, x, i, boundary_value, bound_type, R)
-
-Internal function: Test if boundary can be shaved by solving constrained system.
-
-Note: This is a simplified implementation. A full implementation would use
-Sherman-Morrison formula to efficiently update inverse when fixing x_i.
-"""
-function _shave_boundary(A::BallMatrix{T}, b::BallVector{T}, x::BallVector{T},
-                         i::Int, boundary_value::T, bound_type::Symbol,
-                         _R::Matrix{T}) where {T}
-    n = length(x)
-
-    # Note: Full Sherman-Morrison based shaving would:
-    # 1. Build modified system with x_i fixed at boundary_value
-    # 2. Use u = e_i - A[:,i], v = e_i for rank-1 update
-    # 3. Apply Sherman-Morrison: (A + uv^T)^(-1) = R - (Ru)(v^T R)/(1 + v^T Ru)
-    # 4. Solve constrained system to check boundary consistency
-    #
-    # Current implementation uses simpler consistency check based on
-    # Oettli-Prager conditions for computational efficiency.
-
-    # Note: In full Sherman-Morrison implementation, we would extract:
-    # A_col_i_mid = mid(A)[:, i]
-    # A_col_i_rad = rad(A)[:, i]
-    # and use them for efficient inverse updates.
-
-    # Simple consistency check (simplified version)
-    try
-
-        # Compute interval enclosure for x_i using other equations
-        # Check if boundary_value is consistent with system
-
-        # Simple check: compute residual bounds
-        # If residual for component i is large, boundary may be infeasible
-
-        # For now, use simple criterion based on solution magnitude
-        # More sophisticated: solve remaining (n-1)×(n-1) system
-
-        # Compute bound on x_i from equations excluding equation i
-        x_i_bound_sum = T(0)
-        count = 0
-
-        for j in 1:n
-            if j != i
-                # From equation j: sum_k a_jk x_k = b_j
-                # Bound on x_i contribution: a_ji * x_i
-                # Required: |a_ji * x_i| ≤ |b_j| + sum_{k≠i} |a_jk||x_k|
-
-                A_ji = A[j, i]
-                if abs(mid(A_ji)) > eps(T) * 10
-                    # Bound from equation j
-                    rhs_bound = abs(mid(b[j])) + rad(b[j])
-                    lhs_sum = sum(abs(mid(A[j, k])) * sup(abs(x[k])) + rad(A[j, k]) * sup(abs(x[k]))
-                                  for k in 1:n if k != i)
-
-                    available = rhs_bound + lhs_sum
-                    a_ji_mag = abs(mid(A_ji)) - rad(A_ji)
-
-                    if a_ji_mag > eps(T) * 10
-                        x_i_max = available / a_ji_mag
-                        x_i_bound_sum += x_i_max
-                        count += 1
-                    end
-                end
-            end
-        end
-
-        if count > 0
-            avg_bound = x_i_bound_sum / count
-
-            if bound_type == :lower
-                # If trying to increase lower bound, check if boundary_value exceeds avg_bound
-                if abs(boundary_value) > avg_bound * 1.1
-                    return boundary_value * 0.9  # Shave conservatively
-                end
-            else  # :upper
-                if abs(boundary_value) > avg_bound * 1.1
-                    return boundary_value * 0.9  # Shave conservatively
-                end
-            end
-        end
-
-        # No shaving possible
-        return boundary_value
-
-    catch e
-        # Sherman-Morrison failed, don't shave
-        return boundary_value
+# A width α ≥ 0 such that the slice of that width of the box [lo, hi], at the upper or the lower
+# end of variable i, contains no point of the solution set; `Inf` when every width does.
+function _slice_width(A::BallMatrix{T}, b::BallVector{T}, lo::Vector{T}, hi::Vector{T}, i::Int,
+        upper::Bool, lp, improvements::Int) where {T}
+    n = length(lo)
+    slo, shi = copy(lo), copy(hi)
+    upper ? (slo[i] = hi[i]) : (shi[i] = lo[i])           # the slice of width zero
+    Ac, bc = mid(A), mid(b)
+    # step 1: the linear programme in (w, y, z)
+    Id = Matrix{T}(I, n, n)
+    cost = vcat(bc, shi, -slo)
+    sol = lp(cost, hcat(Matrix(transpose(Ac)), Id, -Id), zeros(T, n),
+        vcat(fill(-one(T), n), zeros(T, 2n)), vcat(ones(T, n), fill(T(Inf), 2n)))
+    (sol === nothing || length(sol) != 3n || !all(isfinite, sol)) && return zero(T)
+    opt = dot(cost, sol)
+    opt < -sqrt(eps(T)) * max(one(T), maximum(abs, cost)) * maximum(abs, sol) || return zero(T)
+    thr = sqrt(eps(T)) * maximum(abs, sol)
+    Y = [j for j in 1:n if sol[n + j] > thr]
+    Z = [j for j in 1:n if sol[2n + j] > thr]
+    N = n + length(Y) + length(Z)
+    N >= n + 1 || return zero(T)
+    vstar = vcat(sol[1:n], sol[n .+ Y], sol[2n .+ Z]) ./ (-opt)
+    # step 2: the square interval system C v = d
+    Cc, Cr = zeros(T, N, N), zeros(T, N, N)
+    Cc[1:n, 1:n] .= transpose(Ac)
+    Cr[1:n, 1:n] .= transpose(rad(A))
+    for (t, j) in enumerate(Y)
+        Cc[j, n + t] = one(T)
+        Cc[n + 1, n + t] = shi[j]
     end
+    for (t, j) in enumerate(Z)
+        Cc[j, n + length(Y) + t] = -one(T)
+        Cc[n + 1, n + length(Y) + t] = -slo[j]
+    end
+    Cc[n + 1, 1:n] .= bc
+    Cr[n + 1, 1:n] .= rad(b)
+    d = zeros(T, N)
+    d[n + 1] = -one(T)
+    if N > n + 1
+        K = nullspace(Cc[1:(n + 1), :])
+        size(K, 2) == N - n - 1 || return zero(T)
+        Cc[(n + 2):N, :] .= transpose(K)
+        d[(n + 2):N] .= transpose(K) * vstar
+    end
+    all(isfinite, Cc) || return zero(T)
+    # the coefficient that carries the width: −x̲_i in the column of z_i for an upper slice,
+    # x̄_i in the column of y_i for a lower one, both in row n + 1
+    p = n + 1
+    t = upper ? findfirst(==(i), Z) : findfirst(==(i), Y)
+    q = t === nothing ? nothing : (upper ? n + length(Y) + t : n + t)
+    C = BallMatrix(Cc, Cr)
+    rhs = BallVector(d)
+    v = _shaving_solve(C, rhs, n, N)
+    v === nothing && return zero(T)
+    q === nothing && return T(Inf)            # the system does not depend on the width
+    # step 3
+    ep = zeros(T, N)
+    ep[p] = one(T)
+    sc = try
+        verifylss(C, BallVector(ep))
+    catch
+        return zero(T)
+    end
+    sc.certified || return zero(T)
+    c = [sc.solution[k] for k in 1:N]
+    total = zero(T)
+    for it in 0:improvements
+        α = _slice_step(v, c, q, n, N)
+        (α > 0) || break
+        isfinite(α) || return T(Inf)
+        total = add_down(total, α)
+        it == improvements && break
+        # step 4: the system with the coefficient moved by α
+        moved = C[p, q] + Ball(α)
+        Cc[p, q], Cr[p, q] = mid(moved), rad(moved)
+        C = BallMatrix(copy(Cc), copy(Cr))
+        v = _shaving_solve(C, rhs, n, N)
+        v === nothing && break
+        den = Ball(one(T)) + Ball(α) * c[q]
+        inf(den) > 0 || break
+        cq = (inf(c[q]) > 0 || sup(c[q]) < 0) ? inv(Ball(α) + inv(c[q])) : c[q] / den
+        c = [k == q ? cq : c[k] / den for k in 1:N]
+    end
+    return total
 end
 
-# Export functions
+# the enclosure of the solution set of C v = d, when its components n+1:N are nonnegative
+function _shaving_solve(C::BallMatrix{T}, rhs::BallVector{T}, n::Int, N::Int) where {T}
+    s = try
+        verifylss(C, rhs)
+    catch
+        return nothing
+    end
+    s.certified || return nothing
+    v = [s.solution[k] for k in 1:N]
+    all(isfinite(rad(v[k])) for k in 1:N) && all(inf(v[k]) >= 0 for k in (n + 1):N) ||
+        return nothing
+    return v
+end
+
+# the largest width allowed by (5.15) and (5.16), rounded downwards; Inf when neither restricts
+function _slice_step(v::Vector{<:Ball}, c::Vector{<:Ball}, q::Int, n::Int, N::Int)
+    T = radtype(typeof(v[1]))
+    α = T(Inf)
+    cq = inf(c[q])
+    cq < 0 && (α = prevfloat(div_down(one(T), -cq)))
+    for k in (n + 1):N
+        k == q && continue
+        vk = inf(v[k])
+        D = sub_up(sup(v[q] * c[k]), mul_down(vk, cq))
+        D > 0 && (α = min(α, div_down(vk, D)))
+    end
+    return α
+end
+
 export ShavingResult
 export interval_shaving, sherman_morrison_inverse_update

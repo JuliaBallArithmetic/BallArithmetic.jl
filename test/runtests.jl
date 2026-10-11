@@ -108,4 +108,5 @@ using Test
     include("test_arbnumerics_ext/test_arbnumerics_ext.jl")
     include("test_fft_ext/test_fft.jl")
     include("test_doublefloats_ext/test_doublefloats_ext.jl")
+    include("test_linear_programming_ext/test_shaving_lp.jl")
 end
