@@ -305,7 +305,7 @@ function interval_det(A::BallMatrix{T};
     # Check regularity if requested
     if check_regularity
         # Quick diagonal dominance check
-        reg_result = is_regular_diagonal_dominance(A, strict=true)
+        reg_result = is_regular_diagonal_dominance(A)
         if !reg_result.is_regular
             # Try Gershgorin
             reg_result = is_regular_gershgorin(A)

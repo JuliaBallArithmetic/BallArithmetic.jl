@@ -213,7 +213,8 @@ include("matrix_classifiers/is_M_matrix.jl")
 
 include("matrix_properties/regularity.jl")
 export RegularityResult
-export is_regular_sufficient_condition, is_regular_gershgorin, is_regular_diagonal_dominance
+export is_regular_sufficient_condition, is_regular_spectral_radius, is_regular_gershgorin,
+       is_regular_diagonal_dominance
 export is_regular, is_singular_sufficient_condition
 
 include("matrix_properties/determinant.jl")

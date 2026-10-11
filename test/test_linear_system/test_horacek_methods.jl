@@ -13,6 +13,7 @@ Tests implementations from:
 using Test
 using BallArithmetic
 using LinearAlgebra
+using Random
 
 @testset "Horáček Methods" begin
 
@@ -189,7 +190,7 @@ end
     @testset "Diagonal Dominance Test" begin
         A = BallMatrix([10.0 1.0; 1.0 8.0], fill(0.1, 2, 2))
 
-        result = is_regular_diagonal_dominance(A, strict=true)
+        result = is_regular_diagonal_dominance(A)
 
         @test result.is_regular
         @test result.method == :diagonal_dominance
@@ -211,6 +212,72 @@ end
         result = is_regular(A)
         @test !result.is_regular
     end
+end
+
+@testset "Regularity and singularity against the vertex determinants" begin
+    # det is affine in each entry, so over a real interval matrix its extreme values are taken
+    # at vertex matrices: the matrix is regular exactly when all vertex determinants have one
+    # strict sign. The determinants are computed in rational arithmetic.
+    rng = MersenneTwister(20261011)
+    function vertex_signs(Ac, AΔ)
+        n = size(Ac, 1)
+        C, D = Rational{BigInt}.(Ac), Rational{BigInt}.(AΔ)
+        signs = Set{Int}()
+        for mask in 0:(2^(n * n) - 1)
+            V = [C[i, j] + (isodd(mask >> ((j - 1) * n + i - 1)) ? D[i, j] : -D[i, j])
+                 for i in 1:n, j in 1:n]
+            push!(signs, Int(sign(det(V))))
+        end
+        return signs
+    end
+    regular_methods = (A -> is_regular_sufficient_condition(A).is_regular,
+        A -> is_regular_sufficient_condition(A; condition = 2).is_regular,
+        A -> is_regular_spectral_radius(A).is_regular,
+        A -> is_regular_diagonal_dominance(A).is_regular,
+        A -> is_regular_gershgorin(A).is_regular,
+        A -> is_regular(A).is_regular)
+    proved_regular = zeros(Int, length(regular_methods))
+    proved_singular = zeros(Int, 4)
+    for n in (2, 3), _ in 1:400
+        Ac = randn(rng, n, n) + (rand(rng, Bool) ? 2I : 0I)
+        AΔ = rand(rng, n, n) .* 10.0^rand(rng, -3:0.5:0.5)
+        A = BallMatrix(Ac, AΔ)
+        signs = vertex_signs(Ac, AΔ)
+        truly_regular = signs == Set([1]) || signs == Set([-1])
+        for (k, f) in enumerate(regular_methods)
+            if f(A)
+                proved_regular[k] += 1
+                @test truly_regular
+            end
+        end
+        for c in 1:4
+            if is_singular_sufficient_condition(A; conditions = (c,))
+                proved_singular[c] += 1
+                @test !truly_regular
+            end
+        end
+    end
+    # every condition was exercised on the positive side
+    @test all(>(0), proved_regular)
+    @test all(>(0), proved_singular)
+
+    # Examples 4.36 and 4.39 of the thesis
+    A36 = BallMatrix([1.0 1.0; -1.0 1.0], [1.0 0.0; 0.0 1.0])
+    @test !is_regular_spectral_radius(A36).is_regular
+    A39 = BallMatrix([0.5 1.0; -1.0 0.5], [0.5 0.0; 0.0 0.5])
+    r39 = is_regular_spectral_radius(A39)
+    @test r39.is_regular && 0.6 <= r39.certificate < 0.6 + 1e-12
+
+    # each condition of Theorem 11.13 on a matrix built for it
+    Z = BallMatrix(zeros(3, 3), Matrix(1.0I, 3, 3))
+    @test is_singular_sufficient_condition(Z; conditions = (1,))
+    @test is_singular_sufficient_condition(Z; conditions = (3,))
+    @test is_singular_sufficient_condition(Z; conditions = (4,))
+    @test is_singular_sufficient_condition(BallMatrix(Matrix(1.0I, 3, 3), Matrix(1.5I, 3, 3));
+        conditions = (2,))
+    @test !is_singular_sufficient_condition(BallMatrix(Matrix(1.0I, 3, 3), fill(1e-3, 3, 3)))
+    @test_throws ArgumentError is_singular_sufficient_condition(BallMatrix(randn(ComplexF64, 2, 2)))
+    @test_throws ArgumentError is_regular(Z; methods = [:nonsense])
 end
 
 @testset "Determinant Methods" begin
