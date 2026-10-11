@@ -200,7 +200,7 @@ end
         @test hasfield(RumpOishi2024Result{Float64}, :psi_C_A_inv)
         @test hasfield(RumpOishi2024Result{Float64}, :schur_contraction)
         @test hasfield(RumpOishi2024Result{Float64}, :used_fast_gamma)
-        @test hasfield(RumpOishi2024Result{Float64}, :verified)
+        @test hasfield(RumpOishi2024Result{Float64}, :certified)
         @test hasfield(RumpOishi2024Result{Float64}, :block_size)
         @test result.block_size == 2
     end
@@ -301,7 +301,7 @@ end
         @test hasfield(Oishi2023Result{Float64}, :A_inv_B_norm)
         @test hasfield(Oishi2023Result{Float64}, :C_A_inv_norm)
         @test hasfield(Oishi2023Result{Float64}, :schur_contraction)
-        @test hasfield(Oishi2023Result{Float64}, :verified)
+        @test hasfield(Oishi2023Result{Float64}, :certified)
         @test hasfield(Oishi2023Result{Float64}, :block_size)
         @test result.block_size == 2
     end

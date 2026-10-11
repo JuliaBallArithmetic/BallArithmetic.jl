@@ -10,7 +10,7 @@
 # Every routine returns a ball that contains det(A) for every matrix A of the input ball.
 
 """
-    DeterminantResult{T}
+    DeterminantResult
 
 Result of a determinant enclosure.
 
