@@ -100,6 +100,19 @@ function _shifted_ball(z::Complex{RT}, M::AbstractMatrix{Complex{RT}}) where {RT
     return BallMatrix(c, r)
 end
 
+# the same for a ball matrix: zI − M for every M of the ball
+function _shifted_ball(z::Complex{RT}, A::BallMatrix{RT}) where {RT}
+    Am = Matrix{Complex{RT}}(mid(A))
+    c = -Am
+    r = copy(rad(A))
+    for i in axes(Am, 1)
+        d = Ball(z, zero(RT)) - Ball(Am[i, i], r[i, i])
+        c[i, i] = mid(d)
+        r[i, i] = rad(d)
+    end
+    return BallMatrix(c, r)
+end
+
 """
     sylvester_resolvent_precompute(T, k; X_oracle = nothing)
 
