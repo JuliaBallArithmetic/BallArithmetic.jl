@@ -241,24 +241,6 @@ function _ogita_svd_refine_multifloat_impl(A, U, Σ, V, max_iterations)
 end
 
 #==============================================================================#
-# LU Decomposition Refinement (from Rump-Ogita 2024)
-#==============================================================================#
-
-
-
-#==============================================================================#
-# QR Decomposition Refinement (from Rump-Ogita 2024)
-#==============================================================================#
-
-
-
-#==============================================================================#
-# Cholesky Decomposition Refinement (from Rump-Ogita 2024)
-#==============================================================================#
-
-
-
-#==============================================================================#
 # Schur Decomposition Refinement with MultiFloats
 #==============================================================================#
 
@@ -526,7 +508,6 @@ end
 # Exports
 #==============================================================================#
 
-export refine_lu_multifloat, refine_qr_multifloat, refine_cholesky_multifloat
 
 #==============================================================================#
 # Verified Matrix Decompositions with MultiFloat Oracle (Rump-Ogita 2024)
@@ -1177,17 +1158,6 @@ function _verified_takagi_svd_mf(A::AbstractMatrix{Complex{T}}, MF;
         setprecision(BigFloat, old_prec)
     end
 end
-
-#==============================================================================#
-# Iterative Refinement Methods with MultiFloat Oracle
-#==============================================================================#
-
-# Result types are already available via `using BallArithmetic` at module top
-
-
-
-
-
 
 #==============================================================================#
 # Precision Cascade SVD Refinement

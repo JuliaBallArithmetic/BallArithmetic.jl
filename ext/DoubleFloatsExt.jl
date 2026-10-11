@@ -1508,15 +1508,4 @@ function _gram_schmidt_d64(V::AbstractMatrix{T}) where T
     return Q, R
 end
 
-#==============================================================================#
-# Iterative Refinement Methods with Double64 Oracle
-#==============================================================================#
-
-# Import refinement result types
-
-
-
-
-
-
 end # module
