@@ -163,15 +163,26 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       (arXiv:2602.19435). StatisticalPeriodicity was named as a user of the removed routine and
       was not checked. There is no projector for a pencil now; it would need a bound of
       `(zB − A)⁻¹` on a contour.
-    - **To fix, having users or callers:** `adaptive_ogita_svd`.
+    - **Fixed on 2026-10-11** (`faa8f7f`): `adaptive_ogita_svd` and `ogita_svd_refine` on every
+      shape, real and complex, each level at the precision it records. The refinement is
+      Algorithm 1 of Ogita and Aishima (2020), stated there for a real matrix with `m ≥ n` and
+      full factors; the conjugates in the two rectangular blocks for complex data are ours.
+    - **From Horáček's thesis, done on 2026-10-11:** `regularity.jl` (`399a6cb` to `428ae6c`):
+      Theorems 4.2, 11.12 (both conditions) and 11.13 (four conditions), Definition 4.24; tested
+      against the vertex determinants in rational arithmetic on 800 interval matrices of order 2
+      and 3. `determinant.jl` (`72c718d`): Sections 8.4.2 (Gerschgorin discs, Figures 8.3 and
+      8.4), 8.4.3 (Hadamard, columns and rows) and 8.4.4 (Cramer's rule (8.3), by `verifylss`);
+      the old `det_cramer` was a cofactor expansion and is now `det_cofactor`. **Left of
+      Chapter 8:** monotonicity checking (8.4.5), preconditioning (8.4.6, Proposition 8.11),
+      the verified determinant of a real matrix (8.5), the special cases of 8.6 (symmetric,
+      symmetric positive definite, tridiagonal H-matrices).
     - **Implement from the thesis, do not remove** (decided 2026-10-11): the routines of
       `src/linear_system` and `src/matrix_properties` that cite J. Horáček, *Interval linear and
       nonlinear systems* (the thesis is in `references/`, in twelve parts, dated 2019 where the
       files say 2012): `hbr_method` (the audit names Theorem 5.12), `interval_shaving`
       (Chapter 5), `interval_gauss_seidel`, `interval_jacobi`, `is_well_preconditioned` and the
       preconditioners, `interval_least_squares` and `subsquares_method` (Chapter 6),
-      `det_gershgorin` and `det_hadamard` (Chapters 7 and 8), `is_regular*` and
-      `is_singular_sufficient_condition` (Chapter 11, Theorems 11.12 and 11.13). Each is to be
+      (the determinants and the regularity tests are done, see above). Each is to be
       read against its chapter and implemented as stated there.
     - **`qi_intervals`, `qi_sqrt_intervals`, removed** (2026-10-11, at Isaia's word) with their
       rebalanced variants: Qi (1984) was tried and found not effective, and the audit found the
