@@ -65,7 +65,7 @@ using Random
             F = eigen(Bc \ Ac)
             res = miyajima_gev_enclosure(BallMatrix(complex(Ac)), BallMatrix(complex(Bc)),
                 complex(Matrix(F.vectors)), collect(F.values))
-            @test res.success
+            @test res.certified
             @test res.nrmR2 < 1
             @test isfinite(res.radius)
             @test _encloses(res, eigvals(BigFloat.(Bc) \ BigFloat.(Ac)))
@@ -79,7 +79,7 @@ using Random
         F = eigen(Bc \ Ac)
         res = miyajima_gev_enclosure(BallMatrix(complex(Ac)), BallMatrix(complex(Bc)),
             complex(Matrix(F.vectors)), collect(F.values))
-        @test res.success
+        @test res.certified
         @test _encloses(res, eigvals(BigFloat.(Bc) \ BigFloat.(Ac)))
     end
 
@@ -92,7 +92,7 @@ using Random
             B = BallMatrix(Bc, fill(r, 2, 2))
             F = eigen(mid(B) \ mid(A))
             res = miyajima_gev_enclosure(A, B, Matrix(F.vectors), collect(F.values))
-            @test res.success
+            @test res.certified
             push!(radii, res.radius)
             # the true eigenvalues of the centre pencil stay enclosed
             @test _encloses(res, eigvals(BigFloat.(real(mid(B))) \
@@ -116,7 +116,7 @@ using Random
         Ypoor = inv(mid(B * BallMatrix(X̃))) .* (1 + 1e-6)
         poor = miyajima_gev_enclosure(A, B, X̃, λ̃; Y = Ypoor)
 
-        @test best.success && poor.success
+        @test best.certified && poor.certified
         @test poor.radius >= best.radius            # worse Y ⇒ looser, still valid
         tr = eigvals(BigFloat.(real(Bc)) \ BigFloat.(real(Ac)))
         @test _encloses(best, tr)
@@ -129,7 +129,7 @@ using Random
         # a hopeless X̃ drives ‖R₂‖ ≥ 1
         res = miyajima_gev_enclosure(BallMatrix(Ac), BallMatrix(Bc),
             complex([1.0 1.0; 1.0 1.0000001]), [1.0, 2.0])
-        @test res.success == false || res.nrmR2 < 1
+        @test res.certified == false || res.nrmR2 < 1
 
         @test_throws DimensionMismatch miyajima_gev_enclosure(
             BallMatrix(Ac), BallMatrix(Bc), complex(rand(3, 3)), [1.0, 2.0])
@@ -149,7 +149,7 @@ end
             F = eigen(Bc \ Ac)
             res = miyajima_gev_enclosure(BallMatrix(complex(Ac)), BallMatrix(complex(Bc)),
                 complex(Matrix(F.vectors)), collect(F.values))
-            @test res.success
+            @test res.certified
             @test length(res.radii) == n
             @test all(res.radii .>= 0)
 
@@ -176,7 +176,7 @@ end
         Bc = complex([2.0 0.5; 0.5 2.0])
         res = miyajima_gev_enclosure(BallMatrix(Ac), BallMatrix(Bc),
             complex([1.0 1.0; 1.0 1.0]), [1.0, 2.0])
-        @test res.success == false || res.nrmR2 < 1
-        res.success || @test isempty(res.radii)
+        @test res.certified == false || res.nrmR2 < 1
+        res.certified || @test isempty(res.radii)
     end
 end

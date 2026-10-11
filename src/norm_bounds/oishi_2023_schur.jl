@@ -21,7 +21,7 @@ Result from the Oishi 2023 Schur complement bound computation.
 - `A_inv_B_norm`: Upper bound on ‖A⁻¹B‖₂
 - `C_A_inv_norm`: Upper bound on ‖CA⁻¹‖₂
 - `schur_contraction`: Upper bound on ‖D_d⁻¹(D_f - CA⁻¹B)‖₂
-- `verified`: Whether all conditions of Theorem 1 are satisfied
+- `certified`: Whether all conditions of Theorem 1 are satisfied
 - `block_size`: The block size m used
 """
 struct Oishi2023Result{T}
@@ -31,7 +31,7 @@ struct Oishi2023Result{T}
     A_inv_B_norm::T
     C_A_inv_norm::T
     schur_contraction::T
-    verified::Bool
+    certified::Bool
     block_size::Int
 end
 
@@ -53,7 +53,7 @@ This improves upon Oishi 2023 by:
 - `psi_C_A_inv`: ψ(‖CA⁻¹‖₂) factor
 - `schur_contraction`: Upper bound on ‖D_d⁻¹(D_f - CA⁻¹B)‖₂
 - `used_fast_gamma`: Whether the fast γ bound was used
-- `verified`: Whether the method succeeded (only requires schur_contraction < 1)
+- `certified`: Whether the method succeeded (only requires schur_contraction < 1)
 - `block_size`: The block size m used
 
 # Reference
@@ -68,7 +68,7 @@ struct RumpOishi2024Result{T}
     psi_C_A_inv::T
     schur_contraction::T
     used_fast_gamma::Bool
-    verified::Bool
+    certified::Bool
     block_size::Int
 end
 
@@ -336,7 +336,7 @@ function oishi_2023_optimal_block_size(G::BallMatrix{T}; max_m::Int=100) where {
 
     for m in 2:max_m
         result = oishi_2023_sigma_min_bound(G, m)
-        if result.verified && result.sigma_min_lower > best_result.sigma_min_lower
+        if result.certified && result.sigma_min_lower > best_result.sigma_min_lower
             best_m = m
             best_result = result
         end
@@ -619,7 +619,7 @@ function rump_oishi_2024_optimal_block_size(G::BallMatrix{T}; max_m::Int=100,
 
     for m in 2:max_m
         result = rump_oishi_2024_sigma_min_bound(G, m; try_fast_gamma=try_fast_gamma)
-        if result.verified && result.sigma_min_lower > best_result.sigma_min_lower
+        if result.certified && result.sigma_min_lower > best_result.sigma_min_lower
             best_m = m
             best_result = result
         end

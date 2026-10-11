@@ -10,7 +10,7 @@ using BallArithmetic
 
         for i in 1:2
             result = certify_eigenpair(A, eig.values[i], eig.vectors[:, i])
-            @test result.verified
+            @test result.certified
             @test eig.values[i] ∈ result.eigenvalue
             @test result.enclosure_radius < 1e-13
             @test result.defect_q < 1.0
@@ -24,7 +24,7 @@ using BallArithmetic
 
         for i in 1:3
             result = certify_eigenpair(A, eig.values[i], eig.vectors[:, i])
-            @test result.verified
+            @test result.certified
             @test eig.values[i] ∈ result.eigenvalue
             @test result.enclosure_radius < 1e-14
         end
@@ -39,7 +39,7 @@ using BallArithmetic
 
         for i in 1:3
             result = certify_eigenpair(A, eig.values[i], eig.vectors[:, i])
-            @test result.verified
+            @test result.certified
             @test real(eig.values[i]) ∈ result.eigenvalue
             @test result.enclosure_radius < 1e-12
         end
@@ -53,7 +53,7 @@ using BallArithmetic
 
         for i in 1:2
             result = certify_eigenpair(A, eig.values[i], eig.vectors[:, i])
-            @test result.verified
+            @test result.certified
             @test result.enclosure_radius < 1e-13
         end
     end
@@ -63,11 +63,11 @@ using BallArithmetic
         result = certify_eigenpairs(A; hermitian=true)
 
         @test result.n_total == 2
-        @test result.n_verified == 2
+        @test result.n_certified == 2
         @test length(result) == 2
 
         for r in result
-            @test r.verified
+            @test r.certified
             @test r.enclosure_radius < 1e-13
         end
     end
@@ -77,7 +77,7 @@ using BallArithmetic
         result = certify_eigenpairs(A; indices=[1, 3])
 
         @test result.n_total == 2
-        @test result.n_verified == 2
+        @test result.n_certified == 2
         @test length(result) == 2
 
         # First result corresponds to eigenvalue 1.0
@@ -96,7 +96,7 @@ using BallArithmetic
         # At least one eigenpair should fail to certify (near-defective)
         results = [certify_eigenpair(A, eig.values[i], eig.vectors[:, i]) for i in 1:2]
         # The pair is nearly defective so at least one should fail or have large radius
-        any_failed = any(r -> !r.verified || r.enclosure_radius > 1e-3, results)
+        any_failed = any(r -> !r.certified || r.enclosure_radius > 1e-3, results)
         @test any_failed
     end
 
@@ -105,7 +105,7 @@ using BallArithmetic
         result = certify_eigenpair(A, 2.0, [1.0, 0.0])
 
         @test result isa NKEigenpairResult{Float64, Float64}
-        @test result.verified == true
+        @test result.certified == true
         @test result.eigenvalue isa Ball{Float64, Float64}
         @test length(result.eigenvector) == 2
         @test result.enclosure_radius isa Float64
@@ -138,13 +138,13 @@ using BallArithmetic
         result = certify_eigenpairs(A; hermitian=false)
 
         @test result.n_total == 2
-        @test result.n_verified == 2
+        @test result.n_certified == 2
     end
 
     @testset "norm_method=:svd option" begin
         A = BallMatrix([2.0 1.0; 1.0 2.0])
         eig = eigen(Hermitian(mid(A)))
         result = certify_eigenpair(A, eig.values[1], eig.vectors[:, 1]; norm_method=:svd)
-        @test result.verified
+        @test result.certified
     end
 end

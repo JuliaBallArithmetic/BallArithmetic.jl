@@ -59,7 +59,7 @@ function run_test1(; sizes=TEST1_SIZES, nonnormalities=TEST1_NONNORMALITIES,
                 r = method_fn()
                 results[(n, nn, name)] = r
                 if verbose
-                    status = r.success ? "OK" : "FAIL"
+                    status = r.certified ? "OK" : "FAIL"
                     @printf("  %-15s: bound=%.4e, time=%.4fs [%s]\n",
                             name, r.bound, r.time_seconds, status)
                 end
@@ -106,7 +106,7 @@ function test1_to_latex(results; output_file="benchmark_test1.tex")
                 key = (n, nn, method)
                 if haskey(results, key)
                     r = results[key]
-                    if r.success
+                    if r.certified
                         @printf(io, " & %.3f", r.time_seconds)
                     else
                         print(io, " & \\textcolor{failred}{fail}")
@@ -138,7 +138,7 @@ function test1_to_latex(results; output_file="benchmark_test1.tex")
                 key = (n, nn, method)
                 if haskey(results, key)
                     r = results[key]
-                    if r.success
+                    if r.certified
                         @printf(io, " & %.2e", r.bound)
                     else
                         print(io, " & \\textcolor{failred}{--}")

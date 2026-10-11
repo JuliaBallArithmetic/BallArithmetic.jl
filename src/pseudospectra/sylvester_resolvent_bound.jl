@@ -57,8 +57,8 @@ struct SylvesterResolventResult{T}
     n::Int
     precomputation_success::Bool
     failure_reason::String
-    X::Union{Nothing, Matrix}
-    R::Union{Nothing, BallMatrix}
+    X::Matrix{Complex{T}}
+    R::DenseBallMatrix{T, Complex{T}}
 end
 
 """
@@ -135,7 +135,8 @@ function sylvester_resolvent_precompute(T::AbstractMatrix{ET}, k::Int;
     1 ≤ k < n || throw(ArgumentError("k must satisfy 1 ≤ k < n"))
     RT = float(real(ET))
     fail(reason) = SylvesterResolventResult{RT}(RT(Inf), RT(Inf), RT(Inf), RT(Inf), RT(Inf),
-        k, n, false, reason, nothing, nothing)
+        k, n, false, reason, zeros(Complex{RT}, k, n - k),
+        BallMatrix(zeros(Complex{RT}, k, n - k), fill(RT(Inf), k, n - k)))
 
     # the identity behind the bound needs these zeros exactly: an entry below the diagonal, however
     # small, is not covered
@@ -302,13 +303,13 @@ end
 The bound of [`parametric_resolvent_bound`](@ref) at a point `z` and its terms: `resolvent_bound`
 (upper bound of `‖(zI − T)⁻¹‖₂`), `K_S` (of `κ₂(S(X))`), `M_A` (of `‖(zI − T₁₁)⁻¹‖₂`), `M_D` (of
 `‖(zI − T₂₂)⁻¹‖₂`), `r` (of `‖R‖₂`) and `coupling_term` (of `‖(zI − T₁₁)⁻¹R(zI − T₂₂)⁻¹‖₂`), with
-the `config` used. When `success` is `false` the numbers are `Inf` and `failure_reason` says which
+the `config` used. When `certified` is `false` the numbers are `Inf` and `failure_reason` says which
 step did not apply.
 """
 struct ParametricResolventResult{T}
     z::Complex{T}
     resolvent_bound::T
-    success::Bool
+    certified::Bool
     failure_reason::String
     config::ResolventBoundConfig
     K_S::T
@@ -477,7 +478,7 @@ function find_optimal_split(T::AbstractMatrix, z::Number;
     best = nothing
     for k in k_range
         precomp, result = parametric_resolvent_bound(T, k, z, config)
-        result.success || continue
+        result.certified || continue
         if best === nothing || result.resolvent_bound < best[3].resolvent_bound
             best = (k, precomp, result)
         end
@@ -504,7 +505,7 @@ function compare_all_configs(T::AbstractMatrix, k::Int, z::Number;
             cfg.coupling_estimator, miyajima_method, power_iterations, cfg.fallback_to_tri)
         result = parametric_resolvent_bound(precomp, T, z, adjusted)
         results[name] = result
-        bounds[name] = result.success ? Float64(result.resolvent_bound) : Inf
+        bounds[name] = result.certified ? Float64(result.resolvent_bound) : Inf
     end
     return (; precomp, results, bounds, best = findmin(bounds)[2], z)
 end

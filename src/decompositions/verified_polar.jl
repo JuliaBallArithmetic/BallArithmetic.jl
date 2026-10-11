@@ -11,13 +11,13 @@ Result of [`verified_polar`](@ref).
   decomposition)
 - `P::PM`: ball matrix containing the Hermitian positive definite factor
 - `is_right::Bool`: `true` for `A = QP`, `false` for `A = PQ`
-- `success::Bool`: whether the verification succeeded; when `false` the radii are infinite and
+- `certified::Bool`: whether the verification succeeded; when `false` the radii are infinite and
   nothing is proved
 - `residual_norm::RT`: an upper bound of `‖Q̃P̃ − A‖_∞ / ‖A‖_∞` (of `‖P̃Q̃ − A‖_∞ / ‖A‖_∞` for
   the left decomposition) over all `Q̃ ∈ Q`, `P̃ ∈ P`
 
 # Statement
-When `success` is `true`, `A` has full rank and `A = QP` (or `A = PQ`) with `P` Hermitian
+When `certified` is `true`, `A` has full rank and `A = QP` (or `A = PQ`) with `P` Hermitian
 positive definite and `Q` with orthonormal columns (rows), `Q` and `P` in the ball matrices
 returned.
 
@@ -29,7 +29,7 @@ struct VerifiedPolarResult{QM<:BallMatrix, PM<:BallMatrix, RT<:Real}
     Q::QM
     P::PM
     is_right::Bool
-    success::Bool
+    certified::Bool
     residual_norm::RT
 end
 
@@ -45,7 +45,7 @@ Rump and Ogita (2024), from the inclusions of the singular value decomposition o
 With `right = true`, which needs `m ≥ n`, the decomposition is `A = QP` with `Q` of size `m × n`
 with orthonormal columns and `P` of size `n × n` Hermitian positive definite. With
 `right = false`, which needs `m ≤ n`, it is `A = PQ` with `P` of size `m × m` and `Q` of size
-`m × n` with orthonormal rows, obtained from the right decomposition of `A*`. `success` is
+`m × n` with orthonormal rows, obtained from the right decomposition of `A*`. `certified` is
 `false` when a singular value is not separated from zero.
 
 # Arguments
@@ -59,7 +59,7 @@ with orthonormal columns and `P` of size `n × n` Hermitian positive definite. W
 ```julia
 A = randn(ComplexF64, 50, 50)
 r = verified_polar(A; use_bigfloat = false)
-r.success      # A = Q P with Q in r.Q and P in r.P
+r.certified      # A = Q P with Q in r.Q and P in r.P
 ```
 
 # Reference

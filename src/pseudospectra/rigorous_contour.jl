@@ -11,8 +11,8 @@ export Enclosure
 
 A chain of discs with a certified bound on each.
 
-- `λ`: the point the chain was built around
-- `points[i]`, `radiuses[i]`: centre and radius of disc `i`
+- `λ`: the point the chain was built around, as a `ComplexF64`
+- `points[i]`, `radii[i]`: centre and radius of disc `i`
 - `bounds[i]`: a ball containing `σ_min(T − zI)` for every `z` of disc `i`
 - `loop_closure`: `true` when every disc is proved to overlap the next and the last the first.
   The closed polygon through the centres is then contained in the union of the discs, since a
@@ -22,10 +22,10 @@ A chain of discs with a certified bound on each.
 The bounds are for the matrix `T` the chain was built from.
 """
 struct Enclosure
-    λ::Any
+    λ::ComplexF64
     points::Vector{ComplexF64}
     bounds::Vector{Ball{Float64, Float64}}
-    radiuses::Vector{Float64}
+    radii::Vector{Float64}
     loop_closure::Bool
 end
 
@@ -35,18 +35,18 @@ function _disc_bound(T, c, r, K, svd_method, apply_vbd)
 end
 
 # consecutive discs overlap, and the last overlaps the first: distances rounded up, sums down
-function _chain_closed(points, radiuses)
+function _chain_closed(points, radii)
     N = length(points)
     N >= 2 || return false
     for i in 1:N
         j = i == N ? 1 : i + 1
-        dist_up(points[i], points[j]) < add_down(radiuses[i], radiuses[j]) || return false
+        dist_up(points[i], points[j]) < add_down(radii[i], radii[j]) || return false
     end
     return true
 end
 
-_enclosure(λ, points, bounds, radiuses) = Enclosure(λ, ComplexF64.(points),
-    Ball{Float64, Float64}.(bounds), Float64.(radiuses), _chain_closed(points, radiuses))
+_enclosure(λ, points, bounds, radii) = Enclosure(ComplexF64(λ), ComplexF64.(points),
+    Ball{Float64, Float64}.(bounds), Float64.(radii), _chain_closed(points, radii))
 
 """
     check_enclosure(E::Enclosure)
@@ -54,7 +54,7 @@ _enclosure(λ, points, bounds, radiuses) = Enclosure(λ, ComplexF64.(points),
 Whether every disc of `E` overlaps the next and the last overlaps the first, recomputed from the
 centres and radii with directed rounding.
 """
-check_enclosure(E::Enclosure) = _chain_closed(E.points, E.radiuses)
+check_enclosure(E::Enclosure) = _chain_closed(E.points, E.radii)
 
 """
     bound_resolvent(E::Enclosure)
@@ -74,15 +74,15 @@ function _certify_circle(T, λ, r, N; svd_method::SVDMethod = MiyajimaM1(),
     N = Int(N)
     points = ComplexF64[]
     bounds = Ball{Float64, Float64}[]
-    radiuses = Float64[]
+    radii = Float64[]
     pearl_radius = 5 * (r * 2 * π / N) / 8
     for j in 0:(N - 1)
         z = ComplexF64(λ + r * cispi(2 * j / N))
         push!(points, z)
         push!(bounds, _disc_bound(T, z, pearl_radius, svd(T - z * I), svd_method, apply_vbd))
-        push!(radiuses, pearl_radius)
+        push!(radii, pearl_radius)
     end
-    return _enclosure(λ, points, bounds, radiuses)
+    return _enclosure(λ, points, bounds, radii)
 end
 
 # A chain built step by step: `advance(z, K)` gives the next point from the current one and the SVD
@@ -92,7 +92,7 @@ end
 function _walk_chain(advance, T, λ, z0, max_steps, svd_method, apply_vbd)
     points = ComplexF64[]
     bounds = Ball{Float64, Float64}[]
-    radiuses = Float64[]
+    radii = Float64[]
     z = ComplexF64(z0)
     for t_step in 1:max_steps
         K = svd(T - z * I)
@@ -100,11 +100,11 @@ function _walk_chain(advance, T, λ, z0, max_steps, svd_method, apply_vbd)
         r = mul_up(dist_up(z, z_next), 0.625)
         push!(points, z)
         push!(bounds, _disc_bound(T, z, r, K, svd_method, apply_vbd))
-        push!(radiuses, r)
-        t_step > 10 && abs(z - points[1]) < r + radiuses[1] && break
+        push!(radii, r)
+        t_step > 10 && abs(z - points[1]) < r + radii[1] && break
         z = z_next
     end
-    return _enclosure(λ, points, bounds, radiuses)
+    return _enclosure(λ, points, bounds, radii)
 end
 
 # along the circle of centre λ and radius r, with steps proportional to the distance from the

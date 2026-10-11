@@ -343,9 +343,11 @@ Outcome of [`verifysvdall`](@ref) for an `m × n` matrix, `p = min(m, n)`.
 struct VerifySvdAllResult{T, NT}
     values::Vector{Ball{T, T}}
     clusters::Vector{Vector{Int}}
-    U::BallMatrix{T, NT}
-    V::BallMatrix{T, NT}
+    U::DenseBallMatrix{T, NT}
+    V::DenseBallMatrix{T, NT}
 end
+VerifySvdAllResult(values::Vector{Ball{T, T}}, clusters, U::BallMatrix{T, NT},
+    V::BallMatrix{T, NT}) where {T, NT} = VerifySvdAllResult{T, NT}(values, clusters, U, V)
 
 """
     verifysvdall(A::BallMatrix; kappa = 0) -> VerifySvdAllResult

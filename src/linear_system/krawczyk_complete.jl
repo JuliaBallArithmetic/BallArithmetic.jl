@@ -23,7 +23,7 @@ struct KrawczykResult{T, VT}
     """Verified enclosure of the solution."""
     solution::VT
     """Whether verification succeeded."""
-    verified::Bool
+    certified::Bool
     """Number of iterations performed."""
     iterations::Int
     """Final residual norm."""
@@ -45,10 +45,10 @@ arithmetic, and stops when `X` is in the interior of `Y`; then `A` and `R` are n
 the solution is in `x̃ + X` (Theorem 10.8 there). This is the iteration of Krawczyk (1969) for a
 linear system with the inflation of Rump.
 
-`verified` is the success of that test. `iterations` is the number of iterations,
+`certified` is the success of that test. `iterations` is the number of iterations,
 `contraction_factor` an upper bound of `‖I − RA‖₂` (a diagnostic: the test may succeed when it
 is not below one), `residual_norm` an upper bound of `‖A x̂ − b‖₂` over the two balls for `x̂` the
-midpoint of the returned enclosure. When `verified` is false the enclosure proves nothing.
+midpoint of the returned enclosure. When `certified` is false the enclosure proves nothing.
 
 The preconditioner and the approximate solution are those of the algorithm; the keywords `R`,
 `x_approx` and `expansion_factor` of earlier versions are gone with the code that used them,

@@ -56,7 +56,7 @@ using JuMP, HiGHS
         A = BallMatrix([3.0 -0.5; 0.5 3.0], fill(1.0, 2, 2))
         b = BallVector([0.0, 0.0], [4.0, 4.0])
         r0 = hbr_method(A, b)
-        if r0.success
+        if r0.certified
             r = interval_shaving(A, b, r0.solution; passes = 2)
             @test !r.empty
             @test contains_all(r.solution, vertex_solutions(mid(A), rad(A), mid(b), rad(b)))

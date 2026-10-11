@@ -64,12 +64,12 @@ end
             result_2024 = rump_oishi_2024_sigma_min_bound(G, m)
 
             @testset "Block size m=$m" begin
-                if result_2024.verified
+                if result_2024.certified
                     @test result_2024.sigma_min_lower ≤ σ_true * 1.01
                     @test result_2024.sigma_min_lower > 0
 
                     # 2024 should give tighter or equal bounds
-                    if result_2023.verified
+                    if result_2023.certified
                         @test result_2024.sigma_min_lower ≥ result_2023.sigma_min_lower * 0.99
                         println("  m=$m: 2023=$(result_2023.sigma_min_lower), 2024=$(result_2024.sigma_min_lower), true=$σ_true")
                         println("       Improvement: $(result_2024.sigma_min_lower / result_2023.sigma_min_lower)")
@@ -96,9 +96,9 @@ end
         result_2024 = rump_oishi_2024_sigma_min_bound(G, m)
 
         println("\nTest case where 2023 may fail:")
-        println("  Oishi 2023: verified=$(result_2023.verified), ‖A⁻¹B‖=$(result_2023.A_inv_B_norm), ‖CA⁻¹‖=$(result_2023.C_A_inv_norm)")
+        println("  Oishi 2023: verified=$(result_2023.certified), ‖A⁻¹B‖=$(result_2023.A_inv_B_norm), ‖CA⁻¹‖=$(result_2023.C_A_inv_norm)")
 
-        if result_2024.verified
+        if result_2024.certified
             @test result_2024.sigma_min_lower ≤ σ_true * 1.01
             println("  Rump-Oishi 2024: verified=true, σ_min_lower=$(result_2024.sigma_min_lower), true=$σ_true")
         end
@@ -118,8 +118,8 @@ end
         result_with_gamma = rump_oishi_2024_sigma_min_bound(G, 5; try_fast_gamma=true)
         result_without_gamma = rump_oishi_2024_sigma_min_bound(G, 5; try_fast_gamma=false)
 
-        @test result_with_gamma.verified
-        @test result_without_gamma.verified
+        @test result_with_gamma.certified
+        @test result_without_gamma.certified
 
         println("\nFast γ bound test:")
         println("  With fast γ: used=$(result_with_gamma.used_fast_gamma), σ_min_lower=$(result_with_gamma.sigma_min_lower)")
@@ -142,7 +142,7 @@ end
 
         @test best_m ≥ 1
         @test best_m < n
-        if best_result.verified
+        if best_result.certified
             @test best_result.sigma_min_lower ≤ σ_true * 1.01
             println("\nOptimal block size: m=$best_m, σ_min_lower=$(best_result.sigma_min_lower), true=$σ_true")
         end
@@ -173,13 +173,13 @@ end
         println("\nPaper Example 3 (k=$k, n=$n, m=20):")
         println("  True ‖G⁻¹‖ ≈ $(1/σ_true)")
 
-        if result_2023.verified
+        if result_2023.certified
             println("  Oishi 2023: ‖G⁻¹‖ ≤ $(result_2023.G_inv_upper)")
         else
             println("  Oishi 2023: failed")
         end
 
-        if result_2024.verified
+        if result_2024.certified
             println("  Rump-Oishi 2024: ‖G⁻¹‖ ≤ $(result_2024.G_inv_upper)")
             @test result_2024.sigma_min_lower ≤ σ_true * 1.01
         end
@@ -230,7 +230,7 @@ end
             result = oishi_2023_sigma_min_bound(A, m)
 
             @testset "Block size m=$m" begin
-                if result.verified
+                if result.certified
                     # The bound should be a valid lower bound
                     @test result.sigma_min_lower ≤ σ_true * 1.01  # Allow small numerical tolerance
                     @test result.sigma_min_lower > 0
@@ -253,7 +253,7 @@ end
         for m in [1, 4, n-1]
             result = oishi_2023_sigma_min_bound(I_ball, m)
 
-            if result.verified
+            if result.certified
                 # σ_min(I) = 1
                 @test result.sigma_min_lower ≤ 1.0
                 @test result.sigma_min_lower > 0.5  # Should be reasonably tight
@@ -280,7 +280,7 @@ end
         @test best_m ≥ 1
         @test best_m < n
 
-        if best_result.verified
+        if best_result.certified
             @test best_result.sigma_min_lower ≤ σ_true * 1.01
             @test best_result.sigma_min_lower > 0
             println("  Optimal block size: m=$best_m, σ_min_lower=$(best_result.sigma_min_lower), σ_true=$σ_true")
@@ -319,7 +319,7 @@ end
         # Result might not be verified for ill-conditioned matrices
         @test result.block_size == n ÷ 2
         # If not verified, bounds should reflect this
-        if !result.verified
+        if !result.certified
             @test result.sigma_min_lower == 0.0
             @test result.G_inv_upper == Inf
         end
@@ -359,7 +359,7 @@ end
 
         println("\nComparison with SVD methods:")
         println("  True σ_min = $σ_true")
-        if oishi_result.verified
+        if oishi_result.certified
             println("  Oishi 2023 lower bound = $(oishi_result.sigma_min_lower)")
         else
             println("  Oishi 2023: conditions not satisfied")
@@ -367,7 +367,7 @@ end
         println("  SVD lower bound = $svd_lower")
 
         # Both should be valid lower bounds
-        if oishi_result.verified
+        if oishi_result.certified
             @test oishi_result.sigma_min_lower ≤ σ_true * 1.01
         end
         @test svd_lower ≤ σ_true * 1.01
@@ -391,7 +391,7 @@ end
 
             @test result isa Oishi2023Result{BigFloat}
 
-            if result.verified
+            if result.certified
                 @test Float64(result.sigma_min_lower) ≤ σ_true * 1.01
                 @test Float64(result.sigma_min_lower) > 0
 
@@ -431,7 +431,7 @@ end
     @testset "a diagonal entry that may be below its midpoint" begin
         G = BallMatrix([2.0 0.0; 0.0 1.0], [0.0 0.0; 0.0 1e-17])
         for r in (oishi_2023_sigma_min_bound(G, 1), rump_oishi_2024_sigma_min_bound(G, 1))
-            @test !r.verified || r.sigma_min_lower < 1.0
+            @test !r.certified || r.sigma_min_lower < 1.0
         end
     end
 
@@ -454,7 +454,7 @@ end
             G = BallMatrix(Gm, fill(1e-12, n, n))
             for r in (oishi_2023_sigma_min_bound(G, m), rump_oishi_2024_sigma_min_bound(G, m),
                 rump_oishi_2024_sigma_min_bound(G, m; try_fast_gamma = false))
-                r.verified || continue
+                r.certified || continue
                 for _ in 1:5
                     member = big.(Gm) .+ big(1e-12) .* rand(rng, (-1, 1), n, n)
                     @test r.sigma_min_lower <= minimum(svdvals(Float64.(member))) * (1 + 1e-10)

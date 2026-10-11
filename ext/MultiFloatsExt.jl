@@ -739,7 +739,7 @@ function BallArithmetic.verified_qr_multifloat(
     if m < n
         result_sq = BallArithmetic.verified_qr_multifloat(A[:, 1:m];
             precision=precision, bigfloat_precision=bigfloat_precision)
-        if !result_sq.success
+        if !result_sq.certified
             Q_ball = BallMatrix(fill(BigFloat(NaN), m, m), fill(BigFloat(Inf), m, m))
             R_ball = BallMatrix(fill(BigFloat(NaN), m, n), fill(BigFloat(Inf), m, n))
             return VerifiedQRResult(Q_ball, R_ball, false, BigFloat(Inf), BigFloat(Inf))

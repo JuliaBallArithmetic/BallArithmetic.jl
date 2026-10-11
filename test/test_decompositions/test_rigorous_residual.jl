@@ -93,7 +93,7 @@ end
         A = randn(n, n) + 5*I
         result = verified_lu(A)
 
-        @test result.success
+        @test result.certified
         @test result.residual_norm >= 0
         @test result.residual_norm < 1e-10
         @test isfinite(result.residual_norm)
@@ -110,7 +110,7 @@ end
         A = randn(ComplexF64, n, n) + 5*I
         result = verified_lu(A)
 
-        @test result.success
+        @test result.certified
         @test result.residual_norm >= 0
         @test result.residual_norm < 1e-10
     end
@@ -120,7 +120,7 @@ end
         A = randn(n, n)
         result = verified_qr(A)
 
-        @test result.success
+        @test result.certified
         @test result.residual_norm >= 0
         @test result.residual_norm < 1e-8
         @test isfinite(result.residual_norm)
@@ -131,7 +131,7 @@ end
         A = randn(ComplexF64, 8, 8)
         result = verified_qr(A)
 
-        @test result.success
+        @test result.certified
         @test 0 <= result.residual_norm < 1e-60
         @test 0 <= result.orthogonality_defect < 1e-60
     end
@@ -142,7 +142,7 @@ end
         A = B * B' + I
         result = verified_cholesky(A)
 
-        @test result.success
+        @test result.certified
         @test result.residual_norm >= 0
         @test result.residual_norm < 1e-10
         @test isfinite(result.residual_norm)
@@ -154,7 +154,7 @@ end
         A = (A + A') / 2
         result = verified_cholesky(A)
 
-        @test result.success
+        @test result.certified
         @test 0 <= result.residual_norm < 1e-60
     end
 
@@ -163,7 +163,7 @@ end
         A = randn(n, n) + 5*I
         result = verified_lu(A; use_bigfloat=false)
 
-        @test result.success
+        @test result.certified
         @test result.residual_norm >= 0
         @test result.residual_norm < 1e-10
     end
@@ -173,7 +173,7 @@ end
         A = randn(n, n)
         result = verified_qr(A; use_bigfloat=false)
 
-        @test result.success
+        @test result.certified
         @test result.residual_norm >= 0
     end
 
@@ -183,7 +183,7 @@ end
         A = B * B' + I
         result = verified_cholesky(A; use_bigfloat=false)
 
-        @test result.success
+        @test result.certified
         @test result.residual_norm >= 0
     end
 end

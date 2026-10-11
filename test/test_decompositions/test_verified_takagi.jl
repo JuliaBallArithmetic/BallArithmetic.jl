@@ -21,7 +21,7 @@ using BallArithmetic
 
             result = BallArithmetic.VerifiedTakagiResult(U, Σ, success, residual_norm)
 
-            @test result.success
+            @test result.certified
             @test result.residual_norm == residual_norm
             @test length(result.Σ) == n
         end
@@ -39,7 +39,7 @@ using BallArithmetic
 
         result = verified_takagi(A)
 
-        @test result.success
+        @test result.certified
         @test result.residual_norm < 1e-8
 
         # Verify reconstruction
@@ -74,7 +74,7 @@ using BallArithmetic
 
         result = verified_takagi(A)
 
-        @test result.success
+        @test result.certified
 
         # For real symmetric, Takagi values are |eigenvalues|
         eigs = eigvals(Symmetric(A_real))
@@ -89,7 +89,7 @@ using BallArithmetic
 
         result = verified_takagi(A)
 
-        @test result.success
+        @test result.certified
 
         # Takagi values should be |diagonal entries|
         expected_Σ = sort(abs.(diag(D)), rev=true)
@@ -104,7 +104,7 @@ using BallArithmetic
         # a multiple singular value: the decomposition is not unique and nothing is certified
         result = verified_takagi(A)
 
-        @test !result.success
+        @test !result.certified
         @test all(isinf, rad(result.U))
         @test all(b -> isinf(rad(b)), result.Σ)
     end
@@ -117,11 +117,11 @@ using BallArithmetic
 
         # Low precision
         result_low = verified_takagi(A; precision_bits=64)
-        @test result_low.success
+        @test result_low.certified
 
         # High precision
         result_high = verified_takagi(A; precision_bits=512)
-        @test result_high.success
+        @test result_high.certified
 
         # Both should give valid results
         @test result_low.residual_norm < 1e-6
@@ -140,7 +140,7 @@ using BallArithmetic
             B = randn(ComplexF64, n, n)
             A = B + transpose(B)
             r = verified_takagi(A; kw...)
-            @test r.success
+            @test r.certified
             @test r.residual_norm < tol
             setprecision(BigFloat, 1024) do
                 Ab = big.(A)
@@ -160,7 +160,7 @@ using BallArithmetic
     @testset "the symmetric part of a non-symmetric input" begin
         A = [2.0+1im 0.5; 0.25 1.0-1im]
         r = @test_logs (:warn,) verified_takagi(A; use_bigfloat = false)
-        @test r.success
+        @test r.certified
         S = (A + transpose(A)) / 2
         @test maximum(abs.(svdvals(S) .- mid.(r.Σ))) < 1e-12
     end
@@ -173,7 +173,7 @@ using BallArithmetic
 
         result = verified_takagi(A)
 
-        @test result.success
+        @test result.certified
 
         # U should be unitary: U' * U ≈ I
         U_mid = mid(result.U)

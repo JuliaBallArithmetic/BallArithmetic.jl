@@ -104,23 +104,38 @@ struct VerifyEigAllResult{T, CT}
     certified::Vector{Bool}
     centers::Vector{CT}
     radii::Vector{T}
-    subspaces::Vector{BallMatrix{T, CT}}
-    blocks::Vector{BallMatrix{T, CT}}
+    subspaces::Vector{DenseBallMatrix{T, CT}}
+    blocks::Vector{DenseBallMatrix{T, CT}}
     basis::Matrix{CT}
     spectrum_covered::Bool
     iterations::Int
     transform_defect::T
     gershgorin_centers::Vector{CT}
     gershgorin_radii::Vector{T}
-    similarity::BallMatrix{T, CT}
-    transformed::BallMatrix{T, CT}
+    similarity::DenseBallMatrix{T, CT}
+    transformed::DenseBallMatrix{T, CT}
 end
 
-# the methods that have no Gershgorin discs to report
-VerifyEigAllResult(clusters, certified, centers::Vector{CT}, radii::Vector{T}, subspaces, blocks,
-    basis, covered, iterations, defect) where {T, CT} =
-    VerifyEigAllResult(clusters, certified, centers, radii, subspaces, blocks, basis, covered,
-        iterations, defect, CT[], T[], BallMatrix(zeros(CT, 0, 0)), BallMatrix(zeros(CT, 0, 0)))
+# the type parameters from the centres and the radii; the ball matrices are converted to the
+# dense storage of the fields
+VerifyEigAllResult(clusters, certified, centers::Vector{CT}, radii::Vector{T},
+    args::Vararg{Any, 10}) where {T, CT} =
+    VerifyEigAllResult{T, CT}(clusters, certified, centers, radii, args...)
+
+# A ball matrix that says nothing: midpoints zero, radii infinite. It stands for an enclosure
+# that was not obtained, so that the field keeps its size and its type.
+_unbounded_ball_matrix(::Type{T}, ::Type{CT}, m::Int, n::Int) where {T, CT} = BallMatrix(
+    zeros(CT, m, n), fill(T(Inf), m, n))
+
+# the methods that have no Gershgorin discs to report, nor a similarity with its transformed
+# matrix: these two are then unbounded
+function VerifyEigAllResult(clusters, certified, centers::Vector{CT}, radii::Vector{T},
+        subspaces, blocks, basis, covered, iterations, defect) where {T, CT}
+    n = size(basis, 1)
+    return VerifyEigAllResult{T, CT}(clusters, certified, centers, radii, subspaces, blocks,
+        basis, covered, iterations, defect, CT[], T[], _unbounded_ball_matrix(T, CT, n, n),
+        _unbounded_ball_matrix(T, CT, n, n))
+end
 
 function Base.show(io::IO, r::VerifyEigAllResult)
     nc = count(r.certified)
@@ -1180,8 +1195,8 @@ defects. Produced by [`orthonormal_invariant_basis`](@ref).
 """
 struct AlmostInvariantBasis{T, CT}
     cluster::Vector{Int}
-    basis::BallMatrix{T, CT}
-    block::BallMatrix{T, CT}
+    basis::DenseBallMatrix{T, CT}
+    block::DenseBallMatrix{T, CT}
     orthogonality_defect::T
     invariance_defect::T
 end

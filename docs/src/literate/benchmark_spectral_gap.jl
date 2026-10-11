@@ -315,7 +315,7 @@ Ratio of parametric bound to Miyajima bound as gap varies.
             if haskey(gap_results, (gap, method)) && haskey(gap_results, (gap, "Miyajima"))
                 r = gap_results[(gap, method)]
                 r_miy = gap_results[(gap, "Miyajima")]
-                if r.success && r_miy.success && r_miy.bound > 0
+                if r.certified && r_miy.certified && r_miy.bound > 0
                     ratio = r.bound / r_miy.bound
                     @printf(io, "(%.2f, %.4e) ", gap, ratio)
                 end
@@ -351,7 +351,7 @@ Ratio of parametric bound to Miyajima bound as nonnormality varies.
             if haskey(nn_results, (nn, method)) && haskey(nn_results, (nn, "Miyajima"))
                 r = nn_results[(nn, method)]
                 r_miy = nn_results[(nn, "Miyajima")]
-                if r.success && r_miy.success && r_miy.bound > 0
+                if r.certified && r_miy.certified && r_miy.bound > 0
                     ratio = r.bound / r_miy.bound
                     @printf(io, "(%.3f, %.4e) ", nn, ratio)
                 end

@@ -116,7 +116,7 @@ G = BallMatrix(G_mid, zeros(n, n))
 # Compute bounds with optimal block size
 best_m, result = rump_oishi_2024_optimal_block_size(G; max_m=30)
 
-if result.verified
+if result.certified
     println("σ_min(G) ≥ ", result.sigma_min_lower)
     println("‖G⁻¹‖ ≤ ", result.G_inv_upper)
     println("Optimal block size: m = ", best_m)

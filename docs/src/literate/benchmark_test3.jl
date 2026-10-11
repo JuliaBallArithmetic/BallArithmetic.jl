@@ -73,7 +73,7 @@ function run_test3(; sizes=TEST3_SIZES, nonnormalities=TEST3_NONNORMALITIES,
                 r = certify_parametric(A, z, spec.config; name=spec.name)
                 results[(n, nn, spec.name)] = r
                 if verbose
-                    status = r.success ? "OK" : "FAIL"
+                    status = r.certified ? "OK" : "FAIL"
                     @printf("  %-8s: bound=%.4e, time=%.4fs [%s]\n",
                             spec.name, r.bound, r.time_seconds, status)
                 end
@@ -86,9 +86,9 @@ function run_test3(; sizes=TEST3_SIZES, nonnormalities=TEST3_NONNORMALITIES,
             results[(n, nn, "Ogita")] = r_ogi
             if verbose
                 @printf("  %-8s: bound=%.4e, time=%.4fs [%s]\n",
-                        "Miyajima", r_miy.bound, r_miy.time_seconds, r_miy.success ? "OK" : "FAIL")
+                        "Miyajima", r_miy.bound, r_miy.time_seconds, r_miy.certified ? "OK" : "FAIL")
                 @printf("  %-8s: bound=%.4e, time=%.4fs [%s]\n",
-                        "Ogita", r_ogi.bound, r_ogi.time_seconds, r_ogi.success ? "OK" : "FAIL")
+                        "Ogita", r_ogi.bound, r_ogi.time_seconds, r_ogi.certified ? "OK" : "FAIL")
             end
         end
     end
@@ -111,7 +111,7 @@ function compute_bound_ratios(results)
         if !haskey(groups, key)
             groups[key] = Dict{String,Float64}()
         end
-        if r.success
+        if r.certified
             groups[key][method] = r.bound
         end
     end
@@ -147,11 +147,11 @@ function rank_methods(results)
     for method in methods
         method_results = [(k, v) for (k, v) in results if k[3] == method]
         n_total = length(method_results)
-        n_success = count(r -> r[2].success, method_results)
+        n_success = count(r -> r[2].certified, method_results)
 
         success_rate[method] = n_success / n_total
 
-        times = [r[2].time_seconds for r in method_results if r[2].success]
+        times = [r[2].time_seconds for r in method_results if r[2].certified]
         avg_time[method] = isempty(times) ? Inf : mean(times)
 
         method_ratios = [v for (k, v) in ratios if k[3] == method]
@@ -213,7 +213,7 @@ function test3_to_latex(results; output_file="benchmark_test3.tex")
             key = (n, 1.0, method)
             if haskey(results, key)
                 r = results[key]
-                if r.success
+                if r.certified
                     @printf(io, " & %.2e", r.bound)
                 else
                     print(io, " & \\textcolor{failred}{--}")
@@ -242,7 +242,7 @@ function test3_to_latex(results; output_file="benchmark_test3.tex")
             key = (n, 1.0, method)
             if haskey(results, key)
                 r = results[key]
-                if r.success
+                if r.certified
                     @printf(io, " & %.3f", r.time_seconds)
                 else
                     print(io, " & --")
@@ -275,7 +275,7 @@ function test3_to_latex(results; output_file="benchmark_test3.tex")
         print(io, "\\addplot[$(colors[mod1(i, length(colors))]), mark=*, thick] coordinates {")
         for n in sizes
             key = (n, 1.0, method)
-            if haskey(results, key) && results[key].success
+            if haskey(results, key) && results[key].certified
                 @printf(io, "(%d, %.4f) ", n, results[key].time_seconds)
             end
         end

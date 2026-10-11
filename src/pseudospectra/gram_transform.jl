@@ -348,7 +348,7 @@ function gram_transform(gram;
     else
         chol = verified_cholesky(G; precision_bits = precision_bits,
             use_bigfloat = use_bigfloat)
-        chol.success ||
+        chol.certified ||
             throw(ArgumentError("verified Cholesky of the Gram matrix failed: G " *
                                 "could not be proven positive definite. Try " *
                                 "use_bigfloat = true or a larger precision_bits."))

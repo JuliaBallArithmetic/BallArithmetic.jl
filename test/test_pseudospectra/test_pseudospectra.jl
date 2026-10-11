@@ -10,7 +10,7 @@ using LinearAlgebra
     function bound_holds(E)
         b = BallArithmetic.bound_resolvent(E)
         return all(b >= truth(c + s * r * cispi(θ)) * (1 - 1e-12)
-        for (c, r) in zip(E.points, E.radiuses) for s in (0.0, 1.0) for θ in 0:0.25:1.75)
+        for (c, r) in zip(E.points, E.radii) for s in (0.0, 1.0) for θ in 0:0.25:1.75)
     end
 
     @test BallArithmetic._follow_level_set(0.5 + im * 0, 0.01, K) == (0.5 - 0.01im, 1.0)
@@ -22,7 +22,7 @@ using LinearAlgebra
     @test all(abs.(enc[1].points .- 1.0) .<= 0.02)
     for E in enc
         @test E.loop_closure && BallArithmetic.check_enclosure(E)
-        @test length(E.points) == length(E.radiuses) == length(E.bounds)
+        @test length(E.points) == length(E.radii) == length(E.bounds)
         @test isfinite(BallArithmetic.bound_resolvent(E)) && bound_holds(E)
     end
 

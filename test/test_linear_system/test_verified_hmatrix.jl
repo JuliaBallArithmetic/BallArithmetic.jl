@@ -53,8 +53,8 @@ _hmatrix_contains(res, x) = all(abs.(x .- Rational{BigInt}.(res.x_approx)) .<=
             sols = _hmatrix_exact_solutions(A, b, rng)
             for method in HMATRIX_METHODS, m in (1, 3)
                 res = verified_linear_solve_hmatrix(A, b; method = method, m = m)
-                @test res.verified
-                res.verified || continue
+                @test res.certified
+                res.certified || continue
                 @test res.method === method
                 @test all(isfinite, res.error_bound)
                 @test mid(res.solution) == res.x_approx
@@ -75,7 +75,7 @@ _hmatrix_contains(res, x) = all(abs.(x .- Rational{BigInt}.(res.x_approx)) .<=
             sols = _hmatrix_exact_solutions(A, b, rng; nvert = 0)
             for method in HMATRIX_METHODS
                 res = verified_linear_solve_hmatrix(A, b; method = method)
-                res.verified || continue
+                res.certified || continue
                 @test _hmatrix_contains(res, sols[1])
             end
         end
@@ -89,7 +89,7 @@ _hmatrix_contains(res, x) = all(abs.(x .- Rational{BigInt}.(res.x_approx)) .<=
             A = BallMatrix(Am, fill(1e-12, n, n))
             b = BallVector(randn(rng, n), fill(1e-12, n))
             r1 = verified_linear_solve_hmatrix(A, b; method = :theorem_3_1)
-            r1.verified || continue
+            r1.certified || continue
             r3 = verified_linear_solve_hmatrix(A, b; method = :theorem_3_3)
             r3m = verified_linear_solve_hmatrix(A, b; method = :theorem_3_3, m = 4)
             # Corollary 3.1: Theorem 3.3 with m = 1 is never above Theorem 3.1
@@ -104,17 +104,17 @@ _hmatrix_contains(res, x) = all(abs.(x .- Rational{BigInt}.(res.x_approx)) .<=
         b = BallVector([3.0, 3.0], fill(1e-14, 2))
         R = inv(mid(A))
         res = verified_linear_solve_hmatrix(A, b; R = R, x_approx = [1.0, 1.0])
-        @test res.verified
+        @test res.certified
         @test res.R == R
         @test res.x_approx == [1.0, 1.0]
         @test all(res.error_bound .< 1e-12)
         # a poor x̃ is still enclosed, with a bound of its size
         res = verified_linear_solve_hmatrix(A, b; x_approx = [1.5, 0.5])
-        @test res.verified
+        @test res.certified
         @test all(abs.([1.0, 1.0] .- res.x_approx) .<= res.error_bound)
         # a poor R that leaves RA an H-matrix
         res = verified_linear_solve_hmatrix(A, b; R = [0.5 0.0; 0.0 0.3])
-        @test res.verified
+        @test res.certified
         @test all(abs.([1.0, 1.0] .- res.x_approx) .<= res.error_bound)
     end
 
@@ -124,15 +124,15 @@ _hmatrix_contains(res, x) = all(abs.(x .- Rational{BigInt}.(res.x_approx)) .<=
         b = BallVector([1.0, 2.0])
         for method in HMATRIX_METHODS
             res = verified_linear_solve_hmatrix(A, b; method = method)
-            @test !res.verified
+            @test !res.certified
             @test all(isinf, res.error_bound)
         end
         res = verified_linear_solve_hmatrix(BallMatrix([1.0 2.0; 2.0 4.0]), b)
-        @test !res.verified
+        @test !res.certified
         # R far from an inverse
         res = verified_linear_solve_hmatrix(BallMatrix([1.0 2.0; 3.0 4.0]), b;
             R = [1.0 0.0; 0.0 1.0])
-        @test !res.verified
+        @test !res.certified
         @test_throws ArgumentError verified_linear_solve_hmatrix(
             BallMatrix([2.0 0.0; 0.0 2.0]), b; method = :improved_method_a)
         @test_throws ArgumentError verified_linear_solve_hmatrix(

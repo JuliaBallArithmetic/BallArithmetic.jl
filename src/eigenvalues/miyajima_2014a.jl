@@ -419,7 +419,7 @@ function _miyajima2014a_alg1(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
     St, e = _residual_controlled_perturbation(G.R, G.YBXt - I)
     transformed = isfinite(e) ?
                   BallMatrix(Matrix{CT}(Diagonal(G.lambdas))) +
-                  BallMatrix(Matrix{CT}(St), fill(e, n, n)) : BallMatrix(zeros(CT, 0, 0))
+                  BallMatrix(Matrix{CT}(St), fill(e, n, n)) : _unbounded_ball_matrix(T, CT, n, n)
     return VerifyEigAllResult(clusters, collect(certified), centers, radii, subspaces, blocks,
         G.Xt, true, 0, G.tinf, CT[], T[], BallMatrix(Matrix{CT}(G.Xt)), transformed)
 end

@@ -10,13 +10,13 @@
 Result of [`hbr_method`](@ref).
 
 # Fields
-- `solution`: a box containing the solution set when `success` is `true`; infinite radii
+- `solution`: a box containing the solution set when `certified` is `true`; infinite radii
   otherwise
-- `success`: whether the hypotheses of Theorem 5.12 were verified and the enclosure computed
+- `certified`: whether the hypotheses of Theorem 5.12 were verified and the enclosure computed
 """
 struct HBRResult{VT}
     solution::VT
-    success::Bool
+    certified::Bool
 end
 
 _hbr_failure(::Type{T}, n) where {T} = HBRResult(BallVector(zeros(T, n), fill(T(Inf), n)), false)
@@ -43,7 +43,7 @@ whose solution set contains that of `A x = b` (Section 5.4). `preconditioner = n
 How it is verified: that the matrix is an H-matrix by [`is_H_matrix`](@ref); `⟨A⟩⁻¹` is enclosed
 by [`verifylss`](@ref), as the thesis suggests with the ε-inflation method; `α_i` and `β_i`
 are replaced by upper bounds, which enlarges the box, since the quotient grows with both.
-`success` is `false` where one of these steps fails.
+`certified` is `false` where one of these steps fails.
 """
 function hbr_method(A::BallMatrix{T}, b::BallVector{T}; preconditioner = nothing) where {T}
     n = _require_real_system(A, b, "hbr_method")

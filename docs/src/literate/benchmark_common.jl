@@ -63,7 +63,7 @@ struct BenchmarkResult
     method::String
     bound::Float64
     time_seconds::Float64
-    success::Bool
+    certified::Bool
     precision_bits::Int
     extra::Dict{Symbol, Any}
 end
@@ -120,7 +120,7 @@ function certify_parametric(A::BallMatrix, z::Number, config::ResolventBoundConf
         k_use = isnothing(k) ? max(1, n ÷ 4) : k
         # Use convenience function that handles precomputation
         _, result = parametric_resolvent_bound(T, k_use, Complex(z), config)
-        if result.success && isfinite(result.resolvent_bound)
+        if result.certified && isfinite(result.resolvent_bound)
             return BenchmarkResult(method_name, result.resolvent_bound, time() - t0, true, 53)
         else
             return BenchmarkResult(method_name, Inf, time() - t0, false, 53)

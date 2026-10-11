@@ -16,7 +16,7 @@ using LinearAlgebra
 Result of Newton-Kantorovich certification for a single eigenpair.
 
 # Fields
-- `verified::Bool`: whether the eigenpair was rigorously certified
+- `certified::Bool`: whether the eigenpair was rigorously certified
 - `eigenvalue::Ball{T,CT}`: certified eigenvalue enclosure
 - `eigenvector::Vector{Ball{T,CT}}`: certified eigenvector enclosure
 - `enclosure_radius::T`: NK ball radius in the product space
@@ -26,7 +26,7 @@ Result of Newton-Kantorovich certification for a single eigenpair.
 - `discriminant::T`: (1-q₀)² - 4·‖C‖₂·y
 """
 struct NKEigenpairResult{T<:AbstractFloat, CT<:Union{T, Complex{T}}}
-    verified::Bool
+    certified::Bool
     eigenvalue::Ball{T, CT}
     eigenvector::Vector{Ball{T, CT}}
     enclosure_radius::T
@@ -43,12 +43,12 @@ Batch result from `certify_eigenpairs`.
 
 # Fields
 - `results::Vector{NKEigenpairResult{T,CT}}`: individual results
-- `n_verified::Int`: number of verified eigenpairs
+- `n_certified::Int`: number of verified eigenpairs
 - `n_total::Int`: total number of eigenpairs attempted
 """
 struct NKEigenpairsResult{T<:AbstractFloat, CT<:Union{T, Complex{T}}}
     results::Vector{NKEigenpairResult{T, CT}}
-    n_verified::Int
+    n_certified::Int
     n_total::Int
 end
 
@@ -250,8 +250,8 @@ function certify_eigenpairs(
         push!(results, result)
     end
 
-    n_verified = count(r -> r.verified, results)
-    return NKEigenpairsResult{RT, ET}(results, n_verified, length(results))
+    n_certified = count(r -> r.certified, results)
+    return NKEigenpairsResult{RT, ET}(results, n_certified, length(results))
 end
 
 

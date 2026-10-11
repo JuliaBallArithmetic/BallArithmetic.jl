@@ -17,14 +17,13 @@ Result of a regularity test.
 - `is_regular::Bool`: `true` when regularity is proved; `false` when the test is inconclusive
 - `method::Symbol`: the condition that was tried last
 - `certificate::T`: the quantity compared in that condition, as described by each routine
-- `is_definitive::Bool`: always `false`: the conditions are sufficient, so a negative answer
-  does not say that the matrix is singular
+
+The conditions are sufficient: `is_regular = false` does not say that the matrix is singular.
 """
 struct RegularityResult{T}
     is_regular::Bool
     method::Symbol
     certificate::T
-    is_definitive::Bool
 end
 
 # an upper bound of ‖M⁻¹‖₂ for a point matrix M, Inf where none is obtained
@@ -60,7 +59,7 @@ function is_regular_sufficient_condition(A::BallMatrix{T}; condition::Integer = 
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
     condition in (1, 2) || throw(ArgumentError("condition must be 1 or 2"))
     b = _inverse_norm_or_inf(mid(A), T)
-    isfinite(b) || return RegularityResult(false, :sufficient_condition, T(-Inf), false)
+    isfinite(b) || return RegularityResult(false, :sufficient_condition, T(-Inf))
     λmin_c = div_down(one(T), mul_up(b, b))
     Δ = BallMatrix(rad(A))
     λmax_Δ = if condition == 1
@@ -70,7 +69,7 @@ function is_regular_sufficient_condition(A::BallMatrix{T}; condition::Integer = 
         upper_bound_L_inf_opnorm(Δ' * Δ)
     end
     separation = sub_down(λmin_c, λmax_Δ)
-    return RegularityResult(separation > 0, :sufficient_condition, separation, false)
+    return RegularityResult(separation > 0, :sufficient_condition, separation)
 end
 
 """
@@ -95,16 +94,16 @@ function is_regular_spectral_radius(A::BallMatrix{T}; R = nothing) where {T}
         R = try
             inv(Ac)
         catch
-            return RegularityResult(false, :spectral_radius, T(Inf), false)
+            return RegularityResult(false, :spectral_radius, T(Inf))
         end
     end
-    all(isfinite, R) || return RegularityResult(false, :spectral_radius, T(Inf), false)
+    all(isfinite, R) || return RegularityResult(false, :spectral_radius, T(Inf))
     bR = BallMatrix(Matrix(R))
     defect = upper_abs(bR * BallMatrix(Ac) - I)
     spread = upper_abs(BallMatrix(upper_abs(bR)) * BallMatrix(rad(A)))
     M = BallMatrix(add_up.(defect, spread))
     ϱ = collatz_upper_bound(M)
-    return RegularityResult(ϱ < 1, :spectral_radius, T(ϱ), false)
+    return RegularityResult(ϱ < 1, :spectral_radius, T(ϱ))
 end
 
 # min over the rows of mig(a_ii) − Σ_{k ≠ i} mag(a_ik), a lower bound of it
@@ -137,7 +136,7 @@ of the smallest difference of the two sides over the rows.
 function is_regular_diagonal_dominance(A::BallMatrix{T}) where {T}
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
     margin = _row_dominance_margin(A)
-    return RegularityResult(margin > 0, :diagonal_dominance, margin, false)
+    return RegularityResult(margin > 0, :diagonal_dominance, margin)
 end
 
 """
@@ -153,7 +152,7 @@ function is_regular_gershgorin(A::BallMatrix{T}) where {T}
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
     At = BallMatrix(Matrix(transpose(mid(A))), Matrix(transpose(rad(A))))
     margin = max(_row_dominance_margin(A), _row_dominance_margin(At))
-    return RegularityResult(margin > 0, :gershgorin, margin, false)
+    return RegularityResult(margin > 0, :gershgorin, margin)
 end
 
 """
@@ -168,7 +167,7 @@ function is_regular(A::BallMatrix{T};
         methods::Vector{Symbol} = [:diagonal_dominance, :gershgorin, :h_matrix,
             :sufficient_condition, :spectral_radius],
         verbose::Bool = false) where {T}
-    last_result = RegularityResult(false, :none, T(NaN), false)
+    last_result = RegularityResult(false, :none, T(NaN))
     for method in methods
         result = if method == :sufficient_condition
             is_regular_sufficient_condition(A)
@@ -179,7 +178,7 @@ function is_regular(A::BallMatrix{T};
         elseif method == :diagonal_dominance
             is_regular_diagonal_dominance(A)
         elseif method == :h_matrix
-            RegularityResult(is_H_matrix(A), :h_matrix, T(NaN), false)
+            RegularityResult(is_H_matrix(A), :h_matrix, T(NaN))
         else
             throw(ArgumentError("unknown regularity test $method"))
         end

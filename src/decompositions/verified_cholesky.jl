@@ -8,12 +8,12 @@ Result of [`verified_cholesky`](@ref).
 
 # Fields
 - `G::GM`: ball matrix containing the upper triangular Cholesky factor, `A = G*G`
-- `success::Bool`: whether the verification succeeded; when `false` the radii are infinite and
+- `certified::Bool`: whether the verification succeeded; when `false` the radii are infinite and
   nothing is proved, in particular not that `A` fails to be positive definite
 - `residual_norm::RT`: an upper bound of `‖G̃*G̃ − A‖_∞ / ‖A‖_∞` over all `G̃ ∈ G`
 
 # Statement
-When `success` is `true`, the Hermitian part `(A + A*)/2` of the input, which is the input when
+When `certified` is `true`, the Hermitian part `(A + A*)/2` of the input, which is the input when
 it is Hermitian, is proved positive definite, and its Cholesky factor, upper triangular with
 positive diagonal, lies in the ball matrix `G`.
 
@@ -23,7 +23,7 @@ Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 4.
 """
 struct VerifiedCholeskyResult{GM <: BallMatrix, RT <: Real}
     G::GM
-    success::Bool
+    certified::Bool
     residual_norm::RT
 end
 
@@ -52,7 +52,7 @@ end
 
 An inclusion of the Cholesky factor of `A`, by Section 4 of Rump and Ogita (2024); the method is
 described at [`_rumpogita2024_cholesky`](@ref). Returns a [`VerifiedCholeskyResult`](@ref): when
-`success` is `true`, `A` is proved positive definite and `A = G*G` with `G` upper triangular
+`certified` is `true`, `A` is proved positive definite and `A = G*G` with `G` upper triangular
 with positive diagonal, in the ball matrix returned. Positive definiteness is a conclusion and
 not an assumption.
 
@@ -71,7 +71,7 @@ statement is for its Hermitian part `(A + A*)/2`, enclosed in ball arithmetic.
 ```julia
 B = randn(100, 100); A = B' * B + I
 r = verified_cholesky(A; use_bigfloat = false)
-r.success      # A is positive definite and its Cholesky factor lies in r.G
+r.certified      # A is positive definite and its Cholesky factor lies in r.G
 ```
 
 # Reference

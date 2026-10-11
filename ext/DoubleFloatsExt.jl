@@ -1067,7 +1067,7 @@ function BallArithmetic.verified_qr_double64(
     # Handle m < n case recursively
     if m < n
         result_sq = BallArithmetic.verified_qr_double64(A[:, 1:m]; precision_bits=precision_bits)
-        if !result_sq.success
+        if !result_sq.certified
             Q_ball = BallMatrix(fill(BigFloat(NaN), m, m), fill(BigFloat(Inf), m, m))
             R_ball = BallMatrix(fill(BigFloat(NaN), m, n), fill(BigFloat(Inf), m, n))
             return VerifiedQRResult(Q_ball, R_ball, false, BigFloat(Inf), BigFloat(Inf))

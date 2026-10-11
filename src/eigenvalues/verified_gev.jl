@@ -33,7 +33,7 @@ All numeric fields use Float64 precision. This struct is not currently
 parametric; extension to other numeric types would require making it GEVResult{T}.
 
 # Fields
-- `success::Bool`: Whether verification succeeded
+- `certified::Bool`: Whether verification succeeded
 - `eigenvalue_intervals::Vector{Tuple{Float64, Float64}}`: Verified intervals [λ̃ᵢ - ηᵢ, λ̃ᵢ + ηᵢ] for each eigenvalue
 - `eigenvector_centers::Matrix{Float64}`: Approximate eigenvectors (centers)
 - `eigenvector_radii::Vector{Float64}`: Verified radii ξᵢ for eigenvector balls
@@ -42,10 +42,10 @@ parametric; extension to other numeric types would require making it GEVResult{T
 - `individual_bounds::Vector{Float64}`: Individual eigenvalue bounds ε (Theorem 5)
 - `separation_bounds::Vector{Float64}`: Separation bounds η (Lemma 2)
 - `residual_norm::Float64`: Norm of residual matrix ‖Rg‖₂
-- `message::String`: Diagnostic message (especially if success = false)
+- `message::String`: Diagnostic message (especially if `certified` is false)
 
 # Interpretation
-- If `success = true`: All eigenvalue intervals are guaranteed to contain exactly
+- If `certified = true`: All eigenvalue intervals are guaranteed to contain exactly
   one true eigenvalue, and all eigenvector balls contain the corresponding normalized
   eigenvector, rigorously accounting for all matrices in the input intervals [A] and [B].
 
@@ -54,7 +54,7 @@ parametric; extension to other numeric types would require making it GEVResult{T
   because the `n` intervals were **verified** pairwise disjoint. The radii are
   never reduced below `min(δ̂, εᵢ)` to make them disjoint: a narrower interval has
   no theorem behind it and may contain no eigenvalue at all.
-- If `success = false`: Check `message` for diagnostic information. Common failures:
+- If `certified = false`: Check `message` for diagnostic information. Common failures:
   - Approximate eigenvectors not sufficiently orthogonal (‖I - Gg‖₂ >= 1)
   - Eigenvalues too clustered to separate — the proven intervals overlap, so no
     interval can be certified to hold exactly one eigenvalue. Coincident or
@@ -64,7 +64,7 @@ parametric; extension to other numeric types would require making it GEVResult{T
   - B not positive definite
 """
 struct GEVResult
-    success::Bool
+    certified::Bool
     eigenvalue_intervals::Vector{Tuple{Float64, Float64}}
     eigenvector_centers::Matrix{Float64}
     eigenvector_radii::Vector{Float64}
@@ -464,7 +464,7 @@ but this implementation is optimized for Float64 hardware arithmetic.
 O(12n³) dominated by matrix multiplications with interval arithmetic
 
 # Verification Guarantees
-When `success = true`:
+When `certified = true`:
 - Each interval [λ̃ᵢ - ηᵢ, λ̃ᵢ + ηᵢ] contains exactly one true eigenvalue
 - Each ball B(x̃⁽ⁱ⁾, ξᵢ) contains the normalized true eigenvector
 - Results are rigorous for ALL matrices in the intervals [A] and [B]
@@ -479,7 +479,7 @@ B = BallMatrix([2.0 0.5; 0.5 2.0], fill(1e-10, 2, 2))
 F = eigen(Symmetric(A.c), Symmetric(B.c))
 result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-if result.success
+if result.certified
     println("Eigenvalue 1 ∈ ", result.eigenvalue_intervals[1])
     println("Eigenvalue 2 ∈ ", result.eigenvalue_intervals[2])
     println("Eigenvector radii: ", result.eigenvector_radii)
@@ -595,7 +595,7 @@ end
 Result of [`miyajima_gev_enclosure`](@ref).
 
 # Fields
-- `success::Bool`: whether `‖R₂‖_∞ < 1` held, i.e. whether the enclosure is proved
+- `certified::Bool`: whether `‖R₂‖_∞ < 1` held, i.e. whether the enclosure is proved
 - `centers::Vector`: the approximate eigenvalues `λ̃`
 - `radius`: a common radius valid for all eigenvalues (the smaller of Theorem 1's
   `‖R₁‖_∞/(1-‖R₂‖_∞)` and `maximum(radii)`)
@@ -605,7 +605,7 @@ Result of [`miyajima_gev_enclosure`](@ref).
 - `message::String`
 """
 struct MiyajimaGEVResult{T, CT}
-    success::Bool
+    certified::Bool
     centers::Vector{CT}
     radius::T
     radii::Vector{T}
@@ -659,7 +659,7 @@ A = BallMatrix([4.0 1.0; 1.0 3.0])
 B = BallMatrix([2.0 0.5; 0.5 2.0])
 F = eigen(Symmetric(mid(A)), Symmetric(mid(B)))
 res = miyajima_gev_enclosure(A, B, Matrix(F.vectors), collect(F.values))
-res.success && (res.radius)
+res.certified && (res.radius)
 ```
 """
 function miyajima_gev_enclosure(A::BallMatrix{T}, B::BallMatrix{T},

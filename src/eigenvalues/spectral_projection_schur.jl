@@ -29,9 +29,9 @@ Returned by [`compute_spectral_projector_schur`](@ref) and
   [`spectral_projector_error_bound`](@ref); `Inf` when no resolvent bound was given
 """
 struct SchurSpectralProjectorResult{T, NT}
-    projector::BallMatrix{T, NT}
-    schur_projector::BallMatrix{T, NT}
-    coupling_matrix::Union{BallMatrix{T, NT}, Nothing}
+    projector::DenseBallMatrix{T, NT}
+    schur_projector::DenseBallMatrix{T, NT}
+    coupling_matrix::DenseBallMatrix{T, NT}
     eigenvalue_separation::T
     projector_norm::T
     idempotency_defect::T
@@ -42,6 +42,9 @@ struct SchurSpectralProjectorResult{T, NT}
     fact_defect::T
     projector_error_bound::T
 end
+SchurSpectralProjectorResult(P, P_schur, Y, separation::T, projector_norm, idempotency_defect,
+    Q::Matrix{NT}, args::Vararg{Any, 5}) where {T, NT} = SchurSpectralProjectorResult{T, NT}(
+    P, P_schur, Y, separation, projector_norm, idempotency_defect, Q, args...)
 
 # x as a float of type RT, not below x
 function _float_up(::Type{RT}, x::Real) where {RT <: AbstractFloat}
@@ -258,9 +261,9 @@ Returned by [`compute_spectral_coefficient`](@ref).
   resolvent bound was given
 """
 struct SpectralCoefficientResult{T, NT}
-    coefficients::BallVector{T, NT}
-    left_eigenvector_schur::BallMatrix{T, NT}
-    coupling_matrix::Union{BallMatrix{T, NT}, Nothing}
+    coefficients::DenseBallVector{T, NT}
+    left_eigenvector_schur::DenseBallMatrix{T, NT}
+    coupling_matrix::DenseBallMatrix{T, NT}
     eigenvalue_separation::T
     schur_basis::Matrix{NT}
     schur_form::Matrix{NT}
@@ -268,6 +271,9 @@ struct SpectralCoefficientResult{T, NT}
     fact_defect::T
     coefficient_error_bound::T
 end
+SpectralCoefficientResult(c, IY, Y, separation::T, Q::Matrix{NT},
+    args::Vararg{Any, 4}) where {T, NT} = SpectralCoefficientResult{T, NT}(
+    c, IY, Y, separation, Q, args...)
 
 """
     compute_spectral_coefficient(A::BallMatrix, v, cluster_indices;

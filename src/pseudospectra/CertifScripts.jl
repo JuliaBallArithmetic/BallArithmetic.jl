@@ -525,7 +525,7 @@ end
 # is stored as a ball of radius zero; the smallest singular value itself is not enclosed here. A
 # bound that failed, or is not a positive finite number, is recorded as not certified.
 function _parametric_sample(result, ::Type{RT}, idx, z, elapsed) where {RT}
-    if result.success && isfinite(result.resolvent_bound) && result.resolvent_bound > 0
+    if result.certified && isfinite(result.resolvent_bound) && result.resolvent_bound > 0
         hi_res = RT(result.resolvent_bound)
         lo_val = div_down(one(RT), hi_res)
         val, res = Ball(lo_val, zero(RT)), Ball(hi_res, zero(RT))
@@ -583,7 +583,7 @@ function _evaluate_sample_parametric(T::BallMatrix{ET}, z::Number, idx::Int;
         precomp, Matrix(T.c), z_converted, config; svd_warm_start = warm_start)
 
     # Update warm start cache for next call
-    if result.success
+    if result.certified
         k = precomp.k
         T11 = T.c[1:k, 1:k]
         A_z = z_converted * I - T11

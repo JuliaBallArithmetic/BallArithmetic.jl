@@ -250,7 +250,7 @@ function verified_project_onto_eigenspace(v::BallVector,
     # Solve G * coeffs = rhs rigorously using Krawczyk
     krawczyk_result = krawczyk_linear_system(G, rhs)
 
-    if krawczyk_result.verified
+    if krawczyk_result.certified
         coeffs = krawczyk_result.solution
     else
         # Fallback: Neumann-series residual bound

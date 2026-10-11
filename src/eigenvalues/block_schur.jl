@@ -31,7 +31,8 @@ and an entry of a matrix is at most its norm in either, so every entry of `S −
 `Q_inv` is the adjoint of `Q` when the basis is unitary and `inv` of its midpoint otherwise; it is
 NOT `Q'` in general.
 """
-struct RigorousBlockSchurResult{QT, TT, IT, RT, VT}
+struct RigorousBlockSchurResult{QT, TT, IT, RT, VT, QIT <: BallMatrix, PT <: AbstractMatrix,
+    ST <: BallMatrix, AT <: BallMatrix}
     """Orthogonal/unitary transformation matrix (as ball matrix)."""
     Q::QT
     """Block upper triangular matrix (as ball matrix)."""
@@ -49,19 +50,19 @@ struct RigorousBlockSchurResult{QT, TT, IT, RT, VT}
     """Upper bound of ‖S‖₂ in Q⁻¹AQ = T + S; Inf when the inverse defect is not below 1."""
     perturbation_norm::RT
     """The floating-point approximate inverse of Q the residuals were computed with."""
-    Q_inv::BallMatrix
+    Q_inv::QIT
     """Floating-point solution S̃ of (I + R₂)S̃ = R₁."""
-    perturbation_approx::Matrix
+    perturbation_approx::PT
     """Upper bound of every entry of |S − S̃|; Inf when no ‖R₂‖_p, p ∈ {2, ∞}, is below 1."""
     perturbation_error::RT
     """Ball matrix containing Q⁻¹AQ: T + S̃ with `perturbation_error` added to every radius."""
-    similar::BallMatrix
+    similar::ST
     """Rigorous bound on ‖T‖₂ (norm of block triangular form)."""
     block_schur_norm::RT
     """Maximum norm of off-diagonal blocks."""
     off_diagonal_norm::RT
     """Original matrix."""
-    A::BallMatrix
+    A::AT
     """VBD result used in construction."""
     vbd_result::VT
 end

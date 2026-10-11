@@ -7,6 +7,20 @@ of balls.
 const BallVector{T, NT, BT, CM, RM} = BallArray{T, 1, NT, BT, CM, RM}
 
 """
+    DenseBallVector{T, NT}
+
+The [`BallVector`](@ref) whose midpoints and radii are stored in a `Vector`: a concrete type,
+for the fields of the result structs. See [`DenseBallMatrix`](@ref).
+"""
+const DenseBallVector{T <: AbstractFloat, NT <: Union{T, Complex{T}}} = BallArray{
+    T, 1, NT, Ball{T, NT}, Vector{NT}, Vector{T}}
+
+Base.convert(::Type{DenseBallVector{T, NT}}, B::DenseBallVector{T, NT}) where {T, NT} = B
+function Base.convert(::Type{DenseBallVector{T, NT}}, B::BallArray{T, 1}) where {T, NT}
+    return BallArray(Vector{NT}(B.c), Vector{T}(B.r))
+end
+
+"""
     BallVector(v::AbstractVector)
 
 Wrap a vector of midpoints into a `BallVector` with zero radii.

@@ -85,13 +85,13 @@ Result of [`verified_lu`](@ref).
 - `L::LM`: ball matrix containing the unit lower triangular (trapezoidal) factor
 - `U::UM`: ball matrix containing the upper triangular (trapezoidal) factor
 - `p::Vector{Int}`: row permutation
-- `success::Bool`: whether the verification succeeded; when `false` the radii are infinite and
+- `certified::Bool`: whether the verification succeeded; when `false` the radii are infinite and
   nothing is proved
 - `residual_norm::RT`: an upper bound of `‖L̃Ũ − A[p, q]‖_∞ / ‖A‖_∞` over all `L̃ ∈ L`, `Ũ ∈ U`
 - `q::Vector{Int}`: column permutation, the identity unless the matrix has more columns than rows
 
 # Statement
-When `success` is `true`, `A[p, q]` has a unique decomposition `LU` with `L` unit lower and `U`
+When `certified` is `true`, `A[p, q]` has a unique decomposition `LU` with `L` unit lower and `U`
 upper triangular, and these factors lie in the ball matrices `L` and `U`.
 
 # Reference
@@ -102,7 +102,7 @@ struct VerifiedLUResult{LM <: BallMatrix, UM <: BallMatrix, RT <: Real}
     L::LM
     U::UM
     p::Vector{Int}
-    success::Bool
+    certified::Bool
     residual_norm::RT
     q::Vector{Int}
 end
@@ -449,7 +449,7 @@ end
 
 Inclusions of the factors of the LU decomposition of the `m × n` matrix `A`, by Section 3 of
 Rump and Ogita (2024); the method is described at [`_rumpogita2024_lu`](@ref). Returns a
-[`VerifiedLUResult`](@ref): when `success` is `true`, `A[p, q] = LU` with `L` of size
+[`VerifiedLUResult`](@ref): when `certified` is `true`, `A[p, q] = LU` with `L` of size
 `m × min(m, n)` unit lower triangular and `U` of size `min(m, n) × n` upper triangular, both in
 the ball matrices returned. `p` comes from partial pivoting; `q` is the identity for `m ≥ n`, and
 for `m < n` the column permutation of Section 3.4 of the paper.
@@ -467,7 +467,7 @@ for `m < n` the column permutation of Section 3.4 of the paper.
 ```julia
 A = randn(100, 100)
 r = verified_lu(A; use_bigfloat = false)
-r.success      # A[r.p, r.q] = L U with L in r.L and U in r.U
+r.certified      # A[r.p, r.q] = L U with L in r.L and U in r.U
 ```
 
 # Reference

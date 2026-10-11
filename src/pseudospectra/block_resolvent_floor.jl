@@ -13,7 +13,7 @@ struct BlockResolventFloor{T <: AbstractFloat}
     centres::Vector{Complex{T}}
     nonnormality::Vector{T}
     coupling::Vector{T}
-    blocks::Vector{BallMatrix}
+    blocks::Vector{DenseBallMatrix{T, Complex{T}}}
     slack::T
     kappa::T
 end
@@ -97,8 +97,7 @@ SIAM J. Matrix Anal. Appl. **43**(4):1736-1754, 2022, doi 10.1137/21M1451440, fo
 """
 function block_resolvent_floor(r::VerifyEigAllResult{T, CT}) where {T, CT}
     M = r.transformed
-    n = size(M, 1)
-    n > 0 || throw(ArgumentError(
+    all(isfinite, rad(M)) || throw(ArgumentError(
         "block_resolvent_floor: the result carries no transformed matrix; the method did " *
         "not prove its basis nonsingular"))
     Mm, Mr = mid(M), rad(M)

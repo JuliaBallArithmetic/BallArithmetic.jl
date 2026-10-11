@@ -25,6 +25,22 @@ Users typically construct instances through the `BallMatrix`
 constructors below rather than specifying these parameters explicitly.
 """
 const BallMatrix{T, NT, BT, CM, RM} = BallArray{T, 2, NT, BT, CM, RM}
+
+"""
+    DenseBallMatrix{T, NT}
+
+The [`BallMatrix`](@ref) whose midpoints and radii are stored in a `Matrix`. Unlike
+`BallMatrix{T, NT}`, which leaves the storage types free, it is a concrete type; the fields of
+the result structs are declared with it, and a ball matrix with other storage is converted to it
+when the struct is built.
+"""
+const DenseBallMatrix{T <: AbstractFloat, NT <: Union{T, Complex{T}}} = BallArray{
+    T, 2, NT, Ball{T, NT}, Matrix{NT}, Matrix{T}}
+
+Base.convert(::Type{DenseBallMatrix{T, NT}}, B::DenseBallMatrix{T, NT}) where {T, NT} = B
+function Base.convert(::Type{DenseBallMatrix{T, NT}}, B::BallArray{T, 2}) where {T, NT}
+    return BallArray(Matrix{NT}(B.c), Matrix{T}(B.r))
+end
 # NOTE: we keep a short comment block that mirrors the five parameters of
 # the alias.  This keeps the mapping between the abstract type variables
 # and the physical storage (midpoints/radii) fresh when reading the code

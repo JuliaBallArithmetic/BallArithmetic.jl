@@ -260,7 +260,7 @@ using BallArithmetic
 
             println("\nOishi 2023 vs SVD (diagonal dominant):")
             println("  True σ_min = $σ_true")
-            if oishi_result.verified
+            if oishi_result.certified
                 println("  Oishi 2023 bound = $(oishi_result.sigma_min_lower) (ratio: $(oishi_result.sigma_min_lower/σ_true))")
                 @test oishi_result.sigma_min_lower ≤ σ_true * 1.01
                 @test oishi_result.sigma_min_lower > 0
@@ -282,7 +282,7 @@ using BallArithmetic
             any_verified = false
             for m in 1:7
                 result = oishi_2023_sigma_min_bound(A, m)
-                if result.verified
+                if result.certified
                     any_verified = true
                     @test result.sigma_min_lower ≤ σ_true * 1.01
                     println("  General matrix: m=$m verified, bound=$(result.sigma_min_lower), true=$σ_true")
@@ -309,7 +309,7 @@ using BallArithmetic
                 result = oishi_2023_sigma_min_bound(A, 3)
 
                 println("\nOishi 2023 BigFloat (256-bit):")
-                if result.verified
+                if result.certified
                     println("  σ_min_lower = $(Float64(result.sigma_min_lower))")
                     println("  σ_true ≈ $σ_true")
                     println("  Ratio = $(Float64(result.sigma_min_lower)/σ_true)")

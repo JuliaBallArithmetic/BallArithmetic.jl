@@ -14,7 +14,7 @@ using BallArithmetic
 
         result = krawczyk_linear_system(A, b)
 
-        @test result.verified
+        @test result.certified
         @test result.contraction_factor < 1.0
         @test result.residual_norm < 1e-10
 
@@ -35,7 +35,7 @@ using BallArithmetic
 
         result = krawczyk_linear_system(A, b)
 
-        @test result.verified
+        @test result.certified
         @test result.contraction_factor < 1.0
 
         # Check solution
@@ -54,7 +54,7 @@ using BallArithmetic
 
         result = krawczyk_linear_system(A, b)
 
-        @test result.verified
+        @test result.certified
         # For identity, solution = b
         for i in 1:n
             @test abs(mid(result.solution)[i] - b_mid[i]) <= rad(result.solution)[i] + 1e-12
@@ -64,14 +64,14 @@ using BallArithmetic
     @testset "the enclosure holds for members of the two balls" begin
         # 3x = 1 with exact data: the solution 1/3 is not a float, so the radius is positive
         r = krawczyk_linear_system(BallMatrix(fill(3.0, 1, 1)), BallVector([1.0]))
-        @test r.verified
+        @test r.certified
         @test rad(r.solution)[1] > 0
         @test abs(big(1) / 3 - mid(r.solution)[1]) <= rad(r.solution)[1]
         rng = MersenneTwister(20261011)
         for n in (3, 8), ρ in (0.0, 1e-8, 1e-4)
             Am, bm = randn(rng, n, n) + n * I, randn(rng, n)
             r = krawczyk_linear_system(BallMatrix(Am, fill(ρ, n, n)), BallVector(bm, fill(ρ, n)))
-            @test r.verified
+            @test r.certified
             for _ in 1:10
                 Ap = Am + ρ * (2 * rand(rng, n, n) .- 1)
                 bp = bm + ρ * (2 * rand(rng, n) .- 1)
@@ -82,7 +82,7 @@ using BallArithmetic
         end
         # a singular midpoint: not verified
         s = krawczyk_linear_system(BallMatrix([1.0 1.0; 1.0 1.0]), BallVector([1.0, 2.0]))
-        @test !s.verified
+        @test !s.certified
     end
 
     @testset "Moderately ill-conditioned" begin
@@ -120,7 +120,7 @@ end
         # - the method runs but produces poor results
         @test result isa KrawczykResult
         # At minimum, the contraction should be poor or the radius should be large
-        @test !result.verified || result.contraction_factor > 0.5 || maximum(rad(result.solution)) > 1e-10
+        @test !result.certified || result.contraction_factor > 0.5 || maximum(rad(result.solution)) > 1e-10
     end
 
     @testset "Expansion iterations" begin
@@ -133,7 +133,7 @@ end
 
         result = krawczyk_linear_system(A, b; max_iterations=20)
 
-        @test result.verified
+        @test result.certified
         @test result.iterations >= 1
     end
 end

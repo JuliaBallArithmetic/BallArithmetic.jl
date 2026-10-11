@@ -19,7 +19,7 @@ Result from interval Gaussian elimination.
 
 # Fields
 - `solution::VT`: Solution enclosure (or empty if singular)
-- `success::Bool`: Whether elimination succeeded
+- `certified::Bool`: Whether elimination succeeded
 - `singular::Bool`: Whether matrix is provably singular
 - `L::Matrix`: Lower triangular factor (if computed)
 - `U::BallMatrix`: Upper triangular factor
@@ -29,7 +29,7 @@ struct GaussianEliminationResult{T, MT, VT}
     """Solution enclosure."""
     solution::VT
     """Whether elimination succeeded."""
-    success::Bool
+    certified::Bool
     """Whether matrix is provably singular."""
     singular::Bool
     """Lower triangular factor."""
@@ -74,7 +74,7 @@ b = BallVector([4.0, 10.0, 24.0], fill(1e-10, 3))
 
 result = interval_gaussian_elimination(A, b)
 
-if result.success
+if result.certified
     println("Solution: ", result.solution)
 elseif result.singular
     println("Matrix is singular")
@@ -303,7 +303,7 @@ function is_regular_gaussian_elimination(A::BallMatrix{T}) where {T}
 
     result = interval_gaussian_elimination(A, b, pivoting=:none, store_factors=false)
 
-    return result.success && !result.singular
+    return result.certified && !result.singular
 end
 
 # Export functions

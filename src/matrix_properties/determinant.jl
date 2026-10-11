@@ -18,16 +18,11 @@ Result of a determinant enclosure.
 - `determinant::Ball`: a ball containing `det(A)` for every matrix `A` of the input; radius `Inf`
   where the method gives no bound
 - `method::Symbol`: the method used
-- `computation_time::T`: not measured, zero
-- `tight::Bool`: always `false`: no routine here proves that its enclosure is the hull
 """
-struct DeterminantResult{T, BT <: Ball}
+struct DeterminantResult{BT <: Ball}
     determinant::BT
     method::Symbol
-    computation_time::T
-    tight::Bool
 end
-DeterminantResult(d::Ball, method::Symbol) = DeterminantResult(d, method, zero(radtype(typeof(d))), false)
 
 _unbounded_determinant(::Type{T}) where {T} = Ball(zero(T), T(Inf))
 

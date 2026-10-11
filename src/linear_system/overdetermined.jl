@@ -21,8 +21,8 @@ Result of the routines for overdetermined interval systems.
 
 # Fields
 - `solution`: a box containing the solution set (for [`interval_least_squares`](@ref), the set
-  of least squares solutions) when `success` is `true`; infinite radii otherwise
-- `success`: whether a finite enclosure was obtained
+  of least squares solutions) when `certified` is `true`; infinite radii otherwise
+- `certified`: whether a finite enclosure was obtained
 - `unsolvable`: `true` when the solution set is proved empty, by an empty intersection of
   enclosures; `solution` is then meaningless
 - `method`: the method used
@@ -30,7 +30,7 @@ Result of the routines for overdetermined interval systems.
 """
 struct OverdeterminedResult{VT}
     solution::VT
-    success::Bool
+    certified::Bool
     unsolvable::Bool
     method::Symbol
     subsystems_checked::Int
@@ -54,13 +54,13 @@ function _square_enclosure(A::BallMatrix{T}, b::BallVector{T}, solver::Symbol) w
     x = try
         if solver == :hbr
             r = hbr_method(A, b)
-            r.success ? r.solution : nothing
+            r.certified ? r.solution : nothing
         elseif solver == :verifylss
             r = verifylss(A, b)
             r.certified ? r.solution : nothing
         elseif solver == :gaussian_elimination
             r = interval_gaussian_elimination(A, b)
-            r.success ? r.solution : nothing
+            r.certified ? r.solution : nothing
         else
             throw(ArgumentError("unknown solver $solver"))
         end
@@ -147,7 +147,7 @@ interval system. The solution set lies in the solution set of every square subsy
 3. return the intersection of the enclosures;
 4. if the intersection is empty, the system has no solution: `unsolvable = true`.
 
-A subsquare for which the solver gives no enclosure is skipped. `success` is `false` when none
+A subsquare for which the solver gives no enclosure is skipped. `certified` is `false` when none
 gives one.
 """
 function subsquares_method(A::BallMatrix{T}, b::BallVector{T}; selection::Symbol = :covering,
@@ -186,7 +186,7 @@ criterion of Section 5.7.2 or `max_iterations`.
   formed in ball arithmetic. The thesis does not say how the diagonal of a subsquare is kept
   free of zero; this is the preconditioning of Section 5.4 applied to each subsquare.
 
-An empty intersection proves that the system has no solution (`unsolvable = true`). `success`
+An empty intersection proves that the system has no solution (`unsolvable = true`). `certified`
 is `false` when no initial box is found.
 """
 function multi_jacobi_method(A::BallMatrix{T}, b::BallVector{T}; x0 = nothing,
@@ -250,7 +250,7 @@ the system has no solution.
   formed in ball arithmetic. The thesis warns that the overestimation of the product may be
   huge.
 
-`success` is `false` when the solver gives no enclosure.
+`certified` is `false` when the solver gives no enclosure.
 """
 function interval_least_squares(A::BallMatrix{T}, b::BallVector{T};
         method::Symbol = :supersquare, solver::Symbol = :verifylss) where {T}

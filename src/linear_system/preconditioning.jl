@@ -38,9 +38,9 @@ Result from preconditioner computation.
 - `method::PreconditionerType`: Method used
 - `condition_number::T`: Estimated condition number
 - `success::Bool`: Whether computation succeeded
-- `factorization::Any`: Stored factorization (for LU/LDLT)
+- `factorization`: the stored factorization (for LU/LDLT), `nothing` otherwise
 """
-struct PreconditionerResult{T}
+struct PreconditionerResult{T, F}
     """Approximate inverse matrix."""
     preconditioner::Matrix{T}
     """Preconditioning method used."""
@@ -50,7 +50,7 @@ struct PreconditionerResult{T}
     """Whether computation succeeded."""
     success::Bool
     """Stored factorization (if applicable)."""
-    factorization::Any
+    factorization::F
 end
 
 """

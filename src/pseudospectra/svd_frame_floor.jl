@@ -10,10 +10,10 @@ The quantities of [`svd_frame_floor`](@ref) that do not depend on `z`: ball matr
 `K ∋ V*AV` and `G ∋ V*V` for a floating-point matrix `V`, and `gram_norm ≥ ‖V‖₂²` (`Inf` when `V`
 is not proved invertible). Evaluate with [`sigma_min_floor`](@ref) or [`resolvent_bound`](@ref).
 """
-struct SVDFrameFloor{T <: AbstractFloat}
-    H::BallMatrix
-    K::BallMatrix
-    G::BallMatrix
+struct SVDFrameFloor{T <: AbstractFloat, NT}
+    H::DenseBallMatrix{T, NT}
+    K::DenseBallMatrix{T, NT}
+    G::DenseBallMatrix{T, NT}
     gram_norm::T
 end
 
@@ -59,7 +59,7 @@ function svd_frame_floor(A::BallMatrix{T}) where {T}
     AV = A * V
     G = V' * V
     ρ = upper_bound_L2_opnorm(G - I)
-    return SVDFrameFloor{T}(AV' * AV, V' * AV, G, ρ < 1 ? add_up(one(T), T(ρ)) : T(Inf))
+    return SVDFrameFloor{T, eltype(mid(G))}(AV' * AV, V' * AV, G, ρ < 1 ? add_up(one(T), T(ρ)) : T(Inf))
 end
 
 """

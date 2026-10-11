@@ -81,7 +81,7 @@ struct BenchmarkResult
     method::String
     bound::Float64
     time_seconds::Float64
-    success::Bool
+    certified::Bool
     precision_bits::Int
     extra::Dict{Symbol, Any}
 end
@@ -129,7 +129,7 @@ function certify_parametric(A::BallMatrix, z::Number, config::ResolventBoundConf
         precomp = sylvester_resolvent_precompute(T, k_use)
         result = parametric_resolvent_bound(precomp, T, z, config)
         method_name = isempty(name) ? "Param-$(config.coupling_estimator)" : name
-        if result.success && isfinite(result.resolvent_bound)
+        if result.certified && isfinite(result.resolvent_bound)
             return BenchmarkResult(method_name, result.resolvent_bound, time() - t0, true, 53)
         else
             return BenchmarkResult(method_name, Inf, time() - t0, false, 53)
@@ -196,7 +196,7 @@ function run_test1(; sizes=[20, 40, 60, 80], nonnormalities=[0.1, 0.5, 1.0, 2.0]
                 r = isempty(args) ? method_fn() : method_fn(args...)
                 results[(n, nn, r.method)] = r
                 if verbose
-                    status = r.success ? "OK" : "FAIL"
+                    status = r.certified ? "OK" : "FAIL"
                     @printf("  %-15s: bound=%.4e, time=%.4fs [%s]\n",
                             r.method, r.bound, r.time_seconds, status)
                 end
@@ -232,7 +232,7 @@ function run_test2(; n=50, radii=[1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-8],
             r = method_fn(A, z)
             results[(radius, r.method)] = r
             if verbose
-                status = r.success ? "OK" : "FAIL"
+                status = r.certified ? "OK" : "FAIL"
                 @printf("  %-20s: bound=%.4e, time=%.4fs [%s]\n",
                         r.method, r.bound, r.time_seconds, status)
             end
@@ -244,7 +244,7 @@ function run_test2(; n=50, radii=[1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-8],
                 r = certify_bigfloat(A, z; precision=prec)
                 results[(radius, r.method)] = r
                 if verbose
-                    status = r.success ? "OK" : "FAIL"
+                    status = r.certified ? "OK" : "FAIL"
                     @printf("  %-20s: bound=%.4e, time=%.4fs [%s]\n",
                             r.method, r.bound, r.time_seconds, status)
                 end
@@ -278,7 +278,7 @@ function run_test3(; sizes=[30, 50, 70], nonnormality=1.0, circle_radius=0.05, v
             r = certify_parametric(A, z, config; name=name)
             results[(n, name)] = r
             if verbose
-                status = r.success ? "OK" : "FAIL"
+                status = r.certified ? "OK" : "FAIL"
                 @printf("  Config %-6s: bound=%.4e, time=%.4fs [%s]\n",
                         name, r.bound, r.time_seconds, status)
             end
@@ -289,7 +289,7 @@ function run_test3(; sizes=[30, 50, 70], nonnormality=1.0, circle_radius=0.05, v
             r = method_fn(A, z)
             results[(n, r.method)] = r
             if verbose
-                status = r.success ? "OK" : "FAIL"
+                status = r.certified ? "OK" : "FAIL"
                 @printf("  %-12s: bound=%.4e, time=%.4fs [%s]\n",
                         r.method, r.bound, r.time_seconds, status)
             end
@@ -497,7 +497,7 @@ function results_to_latex(results; output_file="resolvent_benchmark.tex")
                     key = (n, nn, method)
                     if haskey(test1, key)
                         r = test1[key]
-                        if r.success
+                        if r.certified
                             @printf(io, " & %.3f", r.time_seconds)
                         else
                             print(io, " & \\textcolor{failred}{--}")
@@ -532,7 +532,7 @@ function results_to_latex(results; output_file="resolvent_benchmark.tex")
                 key = (r, method)
                 if haskey(test2, key)
                     res = test2[key]
-                    if res.success
+                    if res.certified
                         print(io, " & \\textcolor{okgreen}{\\checkmark}")
                     else
                         print(io, " & \\textcolor{failred}{\\texttimes}")

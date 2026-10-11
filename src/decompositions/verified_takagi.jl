@@ -9,12 +9,12 @@ Result of [`verified_takagi`](@ref).
 # Fields
 - `U::UM`: ball matrix containing the unitary factor
 - `Σ::SV`: balls containing the diagonal of `Σ`, the singular values of `A`, in decreasing order
-- `success::Bool`: whether the verification succeeded; when `false` the radii are infinite and
+- `certified::Bool`: whether the verification succeeded; when `false` the radii are infinite and
   nothing is proved
 - `residual_norm::RT`: an upper bound of `‖ŨΣ̃Ũᵀ − A‖_∞ / ‖A‖_∞` over all `Ũ ∈ U`, `Σ̃ ∈ Σ`
 
 # Statement
-When `success` is `true`, the symmetric part `(A + Aᵀ)/2` of the input, which is the input when
+When `certified` is `true`, the symmetric part `(A + Aᵀ)/2` of the input, which is the input when
 it is symmetric (`Aᵀ = A`, not `A* = A`), is nonsingular with simple singular values and equals
 `UΣUᵀ` with `U` unitary and `Σ` diagonal with positive entries, `U` and the diagonal of `Σ` in
 the balls returned. `U` is determined up to the sign of each column.
@@ -26,7 +26,7 @@ Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 9.
 struct VerifiedTakagiResult{UM<:BallMatrix, SV<:AbstractVector, RT<:Real}
     U::UM
     Σ::SV
-    success::Bool
+    certified::Bool
     residual_norm::RT
 end
 
@@ -38,7 +38,7 @@ by the third method of Section 9 of Rump and Ogita (2024), the one through the r
 matrix `[E F; F −E]` for `A = E + iF`; the method is described at
 [`_rumpogita2024_takagi`](@ref). Returns a [`VerifiedTakagiResult`](@ref).
 
-`success` is `false` when the singular values are not proved positive and simple, which
+`certified` is `false` when the singular values are not proved positive and simple, which
 includes every matrix with a multiple singular value, the identity for one: the decomposition is
 not unique there and the method does not apply.
 
@@ -55,7 +55,7 @@ statement is for its symmetric part `(A + Aᵀ)/2`, enclosed in ball arithmetic.
 ```julia
 B = randn(ComplexF64, 20, 20); A = B + transpose(B)
 r = verified_takagi(A; use_bigfloat = false)
-r.success      # A = U Σ Uᵀ with U in r.U and the diagonal of Σ in r.Σ
+r.certified      # A = U Σ Uᵀ with U in r.U and the diagonal of Σ in r.Σ
 ```
 
 # Reference

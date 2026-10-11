@@ -40,7 +40,7 @@ using Random
         # Verify
         result = verify_generalized_eigenpairs(A, B, X̃, λ̃)
 
-        @test result.success
+        @test result.certified
         @test length(result.eigenvalue_intervals) == 2
         @test length(result.eigenvector_radii) == 2
         @test all(isfinite.(result.eigenvector_radii))
@@ -69,7 +69,7 @@ using Random
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-        @test result.success
+        @test result.certified
 
         # Check eigenvalues are in intervals
         for i in 1:3
@@ -92,7 +92,7 @@ using Random
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-        @test result.success
+        @test result.certified
         @test length(result.eigenvalue_intervals) == 3
 
         # Well-separated eigenvalues should have good bounds
@@ -154,7 +154,7 @@ using Random
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-        @test result.success
+        @test result.certified
 
         # Individual bounds should be tighter than or equal to global bound
         for i in 1:2
@@ -217,7 +217,7 @@ using Random
         res = verify_generalized_eigenpairs(A, B, Matrix(F.vectors)[:, p],
             collect(F.values)[p])
 
-        @test !res.success
+        @test !res.certified
         @test occursin("too clustered", res.message)
         # the reported η are the proven ones, not shrunk
         @test res.separation_bounds ≈ min.(res.global_bound, res.individual_bounds)
@@ -238,7 +238,7 @@ using Random
             p = sortperm(F.values)
             res = verify_generalized_eigenpairs(A, B, Matrix(F.vectors)[:, p],
                 collect(F.values)[p])
-            res.success || continue
+            res.certified || continue
 
             # Aggregate: one assertion per configuration rather than one per
             # sampled eigenvalue, so the sampling strength is unchanged but the
@@ -268,7 +268,7 @@ using Random
 
         result = verify_generalized_eigenpairs(A, B, X̃, λ̃)
 
-        @test result.success
+        @test result.certified
 
         # Compare with true eigenvalues of A
         true_λ = eigvals(Symmetric(A.c))
@@ -292,7 +292,7 @@ using Random
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-        @test result.success
+        @test result.certified
         @test length(result.eigenvalue_intervals) == n
         @test length(result.eigenvector_radii) == n
 
@@ -309,7 +309,7 @@ using Random
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-        @test result.success
+        @test result.certified
 
         # Bounds should be larger due to uncertainties
         for i in 1:2
@@ -326,7 +326,7 @@ using Random
         λ̃ = randn(3)
 
         result = verify_generalized_eigenpairs(A, B, X̃, λ̃)
-        @test !result.success
+        @test !result.certified
         @test contains(result.message, "square")
     end
 
@@ -337,7 +337,7 @@ using Random
         λ̃ = randn(3)
 
         result = verify_generalized_eigenpairs(A, B, X̃, λ̃)
-        @test !result.success
+        @test !result.certified
     end
 
     @testset "Poor Approximate Solution" begin
@@ -357,11 +357,11 @@ using Random
         result = verify_generalized_eigenpairs(A, B, X̃, λ̃)
 
         # Should fail or give very large bounds
-        if result.success
+        if result.certified
             @test any(result.separation_bounds .> 10.0) ||
                   any(result.eigenvector_radii .> 10.0)
         else
-            @test !result.success
+            @test !result.certified
         end
     end
 
@@ -375,7 +375,7 @@ using Random
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-        @test result.success
+        @test result.certified
 
         # First two eigenvalues are very close
         # Separation bounds should be small for them

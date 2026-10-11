@@ -38,13 +38,13 @@ extremum is pinned to a bracket of width `min_hi-min_lo` / `max_hi-max_lo` (the
 residual overestimation). `method` is `:bisection` or `:critical`; `diag` carries
 the method-specific cost/quality record.
 """
-struct PolyRange{T <: AbstractFloat}
+struct PolyRange{T <: AbstractFloat, D <: NamedTuple}
     min_lo::T
     min_hi::T
     max_lo::T
     max_hi::T
     method::Symbol
-    diag::NamedTuple
+    diag::D
 end
 
 function Base.show(io::IO, R::PolyRange)

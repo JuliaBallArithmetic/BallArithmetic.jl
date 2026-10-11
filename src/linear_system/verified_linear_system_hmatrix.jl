@@ -11,19 +11,19 @@
 The result of [`verified_linear_solve_hmatrix`](@ref).
 
   - `solution`: the ball vector with midpoint `x_approx` and radius `error_bound`; when
-    `verified` it contains the solution of every system with data in the given balls;
+    `certified` it contains the solution of every system with data in the given balls;
   - `x_approx`: the approximate solution `x̃`;
-  - `error_bound`: `ε` with `|Â⁻¹ b̂ − x̃| ≤ ε` entrywise, infinite when not `verified`;
-  - `verified`: whether the hypothesis of the theorems was proved;
+  - `error_bound`: `ε` with `|Â⁻¹ b̂ − x̃| ≤ ε` entrywise, infinite when not `certified`;
+  - `certified`: whether the hypothesis of the theorems was proved;
   - `method`: the bound that was computed;
   - `R`: the approximate inverse used;
   - `v`: the positive vector with `⟨C⟩ v > 0`, empty when none was found.
 """
 struct VerifiedLinearSystemResult{T}
-    solution::BallVector{T}
+    solution::DenseBallVector{T, T}
     x_approx::Vector{T}
     error_bound::Vector{T}
-    verified::Bool
+    certified::Bool
     method::Symbol
     R::Matrix{T}
     v::Vector{T}
@@ -65,7 +65,7 @@ end
 An entrywise bound `ε` of the error of an approximate solution `x̃` of a real linear system:
 `|Â⁻¹ b̂ − x̃| ≤ ε` for every matrix `Â` in `A` and every vector `b̂` in `b`, together with the
 proof that every such `Â` is nonsingular. Returns a [`VerifiedLinearSystemResult`](@ref);
-`verified` is `false`, and the bound infinite, when the hypothesis could not be proved.
+`certified` is `false`, and the bound infinite, when the hypothesis could not be proved.
 
 The hypothesis, common to all four bounds: with `R` an approximate inverse and `C` a ball matrix
 containing `R Â` for every `Â` in `A`, there is a vector `v > 0` with `u := ⟨C⟩ v > 0`, where

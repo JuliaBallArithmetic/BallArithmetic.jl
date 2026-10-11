@@ -9,14 +9,14 @@ Result of [`verified_qr`](@ref).
 # Fields
 - `Q::QM`: ball matrix containing the factor with orthonormal columns
 - `R::RM`: ball matrix containing the upper triangular factor
-- `success::Bool`: whether the verification succeeded; when `false` the radii are infinite and
+- `certified::Bool`: whether the verification succeeded; when `false` the radii are infinite and
   nothing is proved
 - `residual_norm::RT`: an upper bound of `‖Q̃R̃ − A‖_∞ / ‖A‖_∞` over all `Q̃ ∈ Q`, `R̃ ∈ R`
 - `orthogonality_defect::RT`: an upper bound of `‖Q̃*Q̃ − I‖₂` over all `Q̃ ∈ Q`; the factor
   itself has orthonormal columns, and this measures the width of the enclosure
 
 # Statement
-When `success` is `true`, `A` has full rank and `A = QR` with `Q` having orthonormal columns and
+When `certified` is `true`, `A` has full rank and `A = QR` with `Q` having orthonormal columns and
 `R` upper triangular with positive diagonal entries, `Q` and `R` in the ball matrices returned.
 
 # Reference
@@ -26,7 +26,7 @@ Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 5.
 struct VerifiedQRResult{QM<:BallMatrix, RM<:BallMatrix, RT<:Real}
     Q::QM
     R::RM
-    success::Bool
+    certified::Bool
     residual_norm::RT
     orthogonality_defect::RT
 end
@@ -37,7 +37,7 @@ end
 
 Inclusions of the factors of the QR decomposition of the `m × n` matrix `A`, real or complex, by
 Section 5 of Rump and Ogita (2024); the method is described at [`_rumpogita2024_qr`](@ref).
-Returns a [`VerifiedQRResult`](@ref): when `success` is `true`, `A` has full rank and `A = QR`
+Returns a [`VerifiedQRResult`](@ref): when `certified` is `true`, `A` has full rank and `A = QR`
 with `R` upper triangular with positive diagonal entries.
 
 For `m ≥ n` the decomposition is the economy-size one, `Q` of size `m × n` and `R` of size
@@ -58,7 +58,7 @@ the range, which is not unique, and the statement is that some such basis lies i
 ```julia
 A = randn(100, 50)
 r = verified_qr(A; use_bigfloat = false)
-r.success      # A = Q R with Q (100 × 50) in r.Q and R (50 × 50) in r.R
+r.certified      # A = Q R with Q (100 × 50) in r.Q and R (50 × 50) in r.R
 ```
 
 # Reference

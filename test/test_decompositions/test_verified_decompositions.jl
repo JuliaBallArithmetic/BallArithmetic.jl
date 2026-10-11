@@ -77,7 +77,7 @@ end
             # Run verified LU
             result = verified_lu(A)
 
-            @test result.success
+            @test result.certified
             @test result.residual_norm < 1e-12
 
             # The verified factors should contain the true factors
@@ -103,7 +103,7 @@ end
 
             result = verified_lu(A)
 
-            @test result.success
+            @test result.certified
             # L and U should both be identity
             @test opnorm(mid(result.L) - I, Inf) < 1e-14
             @test opnorm(mid(result.U) - I, Inf) < 1e-14
@@ -115,7 +115,7 @@ end
 
             result = verified_lu(A)
 
-            @test result.success
+            @test result.certified
             # L should be identity, U should be D
             @test opnorm(mid(result.L) - I, Inf) < 1e-14
             @test opnorm(mid(result.U) - A, Inf) < 1e-14
@@ -139,7 +139,7 @@ end
             A = L_true * U_true
 
             result = verified_lu(A)
-            @test result.success
+            @test result.certified
             @test result.residual_norm < 1e-11
 
             L_mid = mid(result.L)
@@ -176,7 +176,7 @@ end
             # Run verified QR
             result = verified_qr(A)
 
-            @test result.success
+            @test result.certified
             @test result.residual_norm < 1e-12
             @test result.orthogonality_defect < 1e-12
 
@@ -206,7 +206,7 @@ end
 
             result = verified_qr(A)
 
-            @test result.success
+            @test result.certified
             Q_mid = mid(result.Q)
             R_mid = mid(result.R)
             @test opnorm(Q_mid * R_mid - A, Inf) / opnorm(A, Inf) < 1e-12
@@ -218,7 +218,7 @@ end
 
             result = verified_qr(A)
 
-            @test result.success
+            @test result.certified
             @test size(mid(result.Q)) == (m, n)
             @test size(mid(result.R)) == (n, n)
 
@@ -239,7 +239,7 @@ end
             A = Q_true * R_true
 
             result = verified_qr(A)
-            @test result.success
+            @test result.certified
             Q_mid = mid(result.Q)
             R_mid = mid(result.R)
             @test opnorm(Q_mid * R_mid - A, Inf) / opnorm(A, Inf) < 1e-11
@@ -269,7 +269,7 @@ end
             # Run verified Cholesky
             result = verified_cholesky(A)
 
-            @test result.success
+            @test result.certified
             @test result.residual_norm < 1e-12
 
             # The verified factor should reconstruct A
@@ -290,7 +290,7 @@ end
 
             result = verified_cholesky(A)
 
-            @test result.success
+            @test result.certified
             @test opnorm(mid(result.G) - I, Inf) < 1e-14
         end
 
@@ -300,7 +300,7 @@ end
 
             result = verified_cholesky(A)
 
-            @test result.success
+            @test result.certified
             G_expected = Diagonal([1.0, 2.0, 3.0, 4.0])
             @test opnorm(mid(result.G) - G_expected, Inf) < 1e-14
         end
@@ -312,7 +312,7 @@ end
 
             result = verified_cholesky(A)
 
-            @test result.success
+            @test result.certified
             G_mid = mid(result.G)
             @test opnorm(G_mid' * G_mid - A, Inf) / opnorm(A, Inf) < 1e-12
         end
@@ -329,7 +329,7 @@ end
 
             try
                 result = verified_cholesky(A)
-                @test result.success
+                @test result.certified
                 G_mid = mid(result.G)
                 @test opnorm(G_mid' * G_mid - A, Inf) / opnorm(A, Inf) < 1e-11
             catch e
@@ -360,7 +360,7 @@ end
             # Run verified polar
             result = verified_polar(A; right=true)
 
-            @test result.success
+            @test result.certified
             @test result.residual_norm < 1e-8  # Relaxed tolerance
 
             # The verified factors should reconstruct A
@@ -385,7 +385,7 @@ end
 
             result = verified_polar(A)
 
-            @test result.success
+            @test result.certified
             # Q should equal A, P should be identity
             @test opnorm(mid(result.Q) - A, Inf) < 1e-10
             @test opnorm(mid(result.P) - I, Inf) < 1e-10
@@ -398,7 +398,7 @@ end
 
             result = verified_polar(A)
 
-            @test result.success
+            @test result.certified
             # Q should be identity (or close), P should equal A
             @test opnorm(mid(result.Q) - I, Inf) < 1e-10
             @test opnorm(mid(result.P) - A, Inf) / opnorm(A, Inf) < 1e-10
@@ -416,7 +416,7 @@ end
 
             try
                 result = verified_polar(A)
-                @test result.success
+                @test result.certified
                 Q_mid = mid(result.Q)
                 P_mid = mid(result.P)
                 @test opnorm(Q_mid * P_mid - A, Inf) / opnorm(A, Inf) < 1e-9
@@ -449,7 +449,7 @@ end
             # Run verified Takagi
             result = verified_takagi(A)
 
-            @test result.success
+            @test result.certified
             @test result.residual_norm < 1e-10
 
             # The verified factors should reconstruct A
@@ -479,7 +479,7 @@ end
 
             result = verified_takagi(A)
 
-            @test result.success
+            @test result.certified
 
             # For real symmetric, Takagi gives eigendecomposition
             eigs = eigvals(Symmetric(A_real))
@@ -494,7 +494,7 @@ end
 
             result = verified_takagi(A)
 
-            @test result.success
+            @test result.certified
 
             # Diagonal entries' absolute values should be the Takagi values
             expected_Σ = sort(abs.(diag(D)), rev=true)
@@ -734,22 +734,22 @@ end
 
             # LU
             result_lu = verified_lu(A)
-            @test result_lu.success
+            @test result_lu.certified
             @test mid(result_lu.L)[1,1] ≈ 1.0
             @test mid(result_lu.U)[1,1] ≈ 3.0
 
             # Cholesky (need positive)
             result_chol = verified_cholesky(A)
-            @test result_chol.success
+            @test result_chol.certified
             @test mid(result_chol.G)[1,1] ≈ sqrt(3.0)
 
             # QR
             result_qr = verified_qr(A)
-            @test result_qr.success
+            @test result_qr.certified
 
             # Polar
             result_polar = verified_polar(A)
-            @test result_polar.success
+            @test result_polar.certified
 
             # SVD
             A_ball = BallMatrix(A)
@@ -767,7 +767,7 @@ end
             R = [cos(θ) -sin(θ); sin(θ) cos(θ)]
 
             result_polar = verified_polar(R)
-            @test result_polar.success
+            @test result_polar.certified
             @test opnorm(mid(result_polar.Q) - R, Inf) < 1e-10
             @test opnorm(mid(result_polar.P) - I, Inf) < 1e-10
 
@@ -793,7 +793,7 @@ end
             result_qr = verified_qr(A)
 
             # At least one should succeed
-            @test result_lu.success || result_qr.success
+            @test result_lu.certified || result_qr.certified
         end
     end
 
@@ -811,7 +811,7 @@ end
             A = randn(elt, m, n)
             for (kw, tol) in modes
                 r = verified_lu(A; kw...)
-                @test r.success
+                @test r.certified
                 @test r.residual_norm < tol
                 @test maximum(rad(r.L)) < tol && maximum(rad(r.U)) < tol
                 setprecision(BigFloat, 1024) do
@@ -832,7 +832,7 @@ end
             A = (A + A') / 2
             for (kw, tol) in modes
                 r = verified_cholesky(A; kw...)
-                @test r.success
+                @test r.certified
                 @test r.residual_norm < tol
                 @test maximum(rad(r.G)) < tol
                 setprecision(BigFloat, 1024) do
@@ -846,7 +846,7 @@ end
             A = B' * B + I
             A[1, 2] += 1e-3
             r = @test_logs (:warn,) verified_cholesky(A; use_bigfloat = false)
-            @test r.success
+            @test r.certified
             setprecision(BigFloat, 1024) do
                 H = (big.(A) + big.(A)') / 2
                 @test inside(Matrix(cholesky(Hermitian(H)).U), r.G)
@@ -855,7 +855,7 @@ end
 
         @testset "Cholesky declines an indefinite matrix" begin
             r = verified_cholesky([1.0 2.0; 2.0 1.0]; use_bigfloat = false)
-            @test !r.success
+            @test !r.certified
             @test all(isinf, rad(r.G))
         end
 
@@ -863,7 +863,7 @@ end
             A = randn(elt, m, n)
             for (kw, tol) in modes
                 r = verified_qr(A; kw...)
-                @test r.success
+                @test r.certified
                 @test r.residual_norm < tol
                 @test r.orthogonality_defect < tol
                 setprecision(BigFloat, 1024) do
@@ -879,12 +879,12 @@ end
         @testset "QR, full and wide" begin
             A = randn(8, 5)
             r = verified_qr(A; compute_full_Q = true, use_bigfloat = false)
-            @test r.success
+            @test r.certified
             @test size(r.Q) == (8, 8) && size(r.R) == (8, 5)
             @test r.orthogonality_defect < 1e-9
             W = randn(4, 7)
             r = verified_qr(W; use_bigfloat = false)
-            @test r.success
+            @test r.certified
             @test size(r.Q) == (4, 4) && size(r.R) == (4, 7)
             @test r.residual_norm < 1e-9
         end
@@ -893,7 +893,7 @@ end
             A = randn(elt, 7, 5)
             for (kw, tol) in (((; use_bigfloat = false), 1e-7), ((;), 1e-55))
                 r = verified_polar(A; kw...)
-                @test r.success && r.is_right
+                @test r.certified && r.is_right
                 @test r.residual_norm < tol
                 setprecision(BigFloat, 1024) do
                     Ab = big.(A)
@@ -904,7 +904,7 @@ end
                 end
                 # the left decomposition of the adjoint
                 l = verified_polar(Matrix(A'); right = false, kw...)
-                @test l.success && !l.is_right
+                @test l.certified && !l.is_right
                 @test size(l.Q) == (5, 7) && size(l.P) == (5, 5)
                 @test l.residual_norm < tol
                 setprecision(BigFloat, 1024) do
@@ -925,13 +925,13 @@ end
                 B' * B + I
             end
             r = verified_cholesky(A; precision_bits = 128)
-            @test r.success
+            @test r.certified
             @test precision(mid(r.G)[1, 1]) == 128
             setprecision(BigFloat, 1024) do
                 @test inside(Matrix(cholesky(Hermitian(A)).U), r.G)
             end
             l = verified_lu(A; precision_bits = 128)
-            @test l.success
+            @test l.certified
             setprecision(BigFloat, 1024) do
                 F = lu(A[l.p, :], NoPivot())
                 @test inside(Matrix(F.L), l.L)
@@ -942,11 +942,11 @@ end
         @testset "A singular matrix is declined" begin
             A = [1.0 2.0; 2.0 4.0]
             l = verified_lu(A; use_bigfloat = false)
-            @test !l.success && all(isinf, rad(l.U))
+            @test !l.certified && all(isinf, rad(l.U))
             q = verified_qr(A; use_bigfloat = false)
-            @test !q.success && all(isinf, rad(q.Q))
+            @test !q.certified && all(isinf, rad(q.Q))
             p = verified_polar(A; use_bigfloat = false)
-            @test !p.success && all(isinf, rad(p.P))
+            @test !p.certified && all(isinf, rad(p.P))
         end
     end
 

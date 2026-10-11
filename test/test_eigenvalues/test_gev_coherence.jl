@@ -25,7 +25,7 @@ Tests consistency with:
         # Compare with standard eigenvalue problem
         true_eigenvalues = eigvals(Symmetric(A.c))
 
-        @test result_gev.success
+        @test result_gev.certified
 
         for i in 1:2
             λ_lower, λ_upper = result_gev.eigenvalue_intervals[i]
@@ -51,7 +51,7 @@ Tests consistency with:
 
         # 6/2 and 9/3 are both exactly 3, so this pencil still has a DOUBLE
         # eigenvalue and cannot be split into three certified intervals.
-        @test !result.success
+        @test !result.certified
         @test occursin("too clustered", result.message)
     end
 
@@ -68,7 +68,7 @@ Tests consistency with:
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-        @test !result.success
+        @test !result.certified
         @test occursin("too clustered", result.message)
         @test isempty(result.eigenvalue_intervals)
         # η is the proven radius, orders of magnitude above the spurious gaps
@@ -84,7 +84,7 @@ Tests consistency with:
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-        @test result.success
+        @test result.certified
         for i in 1:3
             λ_lower, λ_upper = result.eigenvalue_intervals[i]
             @test λ_lower <= expected[i] <= λ_upper
@@ -108,7 +108,7 @@ Tests consistency with:
         result_scaled = verify_generalized_eigenpairs(A_scaled, B_scaled,
             F_scaled.vectors, F_scaled.values)
 
-        @test result.success && result_scaled.success
+        @test result.certified && result_scaled.certified
 
         # Eigenvalues should be identical (within tolerance)
         for i in 1:2
@@ -133,7 +133,7 @@ Tests consistency with:
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-        @test result.success
+        @test result.certified
 
         # Each verified interval must contain the corresponding approximate eigenvalue
         for i in 1:3
@@ -154,7 +154,7 @@ Tests consistency with:
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-        @test result.success
+        @test result.certified
 
         # Mathematical property: η ≤ ε ≤ δ̂
         for i in 1:2
@@ -176,7 +176,7 @@ Tests consistency with:
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-        @test result.success
+        @test result.certified
 
         # Compute true eigenvalues for comparison
         true_eigenvalues = eigvals(Symmetric(A.c), Symmetric(B.c))
@@ -202,7 +202,7 @@ Tests consistency with:
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
 
-        @test result.success
+        @test result.certified
 
         # All eigenvalues should be real (intervals don't contain complex values)
         for i in 1:3
@@ -230,12 +230,12 @@ Tests consistency with:
         result_poor = verify_generalized_eigenpairs(A, B, X_poor, λ_poor)
 
         # Good approximation should have smaller residual
-        if result_poor.success
+        if result_poor.certified
             @test result_good.residual_norm < result_poor.residual_norm
         end
 
         # Good approximation should succeed
-        @test result_good.success
+        @test result_good.certified
     end
 
     @testset "Multiple solver consistency" begin
@@ -252,7 +252,7 @@ Tests consistency with:
         F2 = eigen(Symmetric(A.c))
         result2 = verify_generalized_eigenpairs(A, B, F2.vectors, F2.values)
 
-        @test result1.success && result2.success
+        @test result1.certified && result2.certified
 
         # Verified intervals should overlap (consistency)
         for i in 1:3

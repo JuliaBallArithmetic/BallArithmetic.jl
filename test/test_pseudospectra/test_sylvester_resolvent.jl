@@ -84,7 +84,7 @@ using BallArithmetic
         Tbad = copy(T); Tbad[n, n - 1] = 1e-300
         pbad = sylvester_resolvent_precompute(Tbad, k)
         @test !pbad.precomputation_success && occursin("upper triangular", pbad.failure_reason)
-        @test !parametric_resolvent_bound(pbad, Tbad, 0.5 + 0im).success
+        @test !parametric_resolvent_bound(pbad, Tbad, 0.5 + 0im).certified
         @test !sylvester_resolvent_precompute(T, k; X_oracle = fill(NaN, k, n - k)).precomputation_success
         @test_throws ArgumentError sylvester_resolvent_precompute(T, 0)
         @test_throws ArgumentError sylvester_resolvent_precompute(T, n)
@@ -100,7 +100,7 @@ using BallArithmetic
             p = sylvester_resolvent_precompute(T, k)
             for z in (0.2 + 0.3im, 2.5 + 0.4im, -1.0 + 0im, n + 0.5 + 0.1im, 3.5 - 2im)
                 r = parametric_resolvent_bound(p, T, z, cfg)
-                @test r.success
+                @test r.certified
                 @test r.resolvent_bound ≥ truth(T, z) * tol
                 @test r.M_A ≥ truth(T[1:k, 1:k], z) * tol
                 @test r.M_D ≥ truth(T[(k + 1):n, (k + 1):n], z) * tol
@@ -117,7 +117,7 @@ using BallArithmetic
             p = sylvester_resolvent_precompute(T, k; X_oracle = X)
             for (_, cfg) in configs, z in (0.3 + 0.2im, 4.5 + 1im)
                 r = parametric_resolvent_bound(p, T, z, cfg)
-                @test r.success && r.resolvent_bound ≥ truth(T, z) * tol
+                @test r.certified && r.resolvent_bound ≥ truth(T, z) * tol
             end
         end
     end
@@ -139,9 +139,9 @@ using BallArithmetic
         p = sylvester_resolvent_precompute(T, k)
         for (_, cfg) in configs
             r1 = parametric_resolvent_bound(p, T, T[1, 1], cfg)      # an eigenvalue of T11
-            @test !r1.success && r1.resolvent_bound == Inf
+            @test !r1.certified && r1.resolvent_bound == Inf
             r2 = parametric_resolvent_bound(p, T, T[n, n], cfg)      # an eigenvalue of T22
-            @test !r2.success && r2.resolvent_bound == Inf
+            @test !r2.certified && r2.resolvent_bound == Inf
         end
         @test_throws DimensionMismatch parametric_resolvent_bound(p, T[1:5, 1:5], 0.5im)
     end
@@ -155,7 +155,7 @@ using BallArithmetic
         for est in (TriBacksub, NeumannOneInf, NeumannCollatz2)
             cfg = ResolventBoundConfig(OneInfNorm, est, CouplingNone, :M1, 3, false)
             r = parametric_resolvent_bound(p, T, z, cfg)
-            @test r.success
+            @test r.certified
             @test r.M_D ≥ truth(T[(k + 1):n, (k + 1):n], z) * tol
             @test r.resolvent_bound ≥ truth(T, z) * tol
         end
@@ -165,9 +165,9 @@ using BallArithmetic
         for est in (NeumannOneInf, NeumannCollatz2)
             off = ResolventBoundConfig(OneInfNorm, est, CouplingNone, :M1, 3, false)
             on = ResolventBoundConfig(OneInfNorm, est, CouplingNone, :M1, 3, true)
-            @test !parametric_resolvent_bound(p2, T2, z, off).success
+            @test !parametric_resolvent_bound(p2, T2, z, off).certified
             r = parametric_resolvent_bound(p2, T2, z, on)
-            @test r.success && r.resolvent_bound ≥ truth(T2, z) * tol
+            @test r.certified && r.resolvent_bound ≥ truth(T2, z) * tol
         end
     end
 
@@ -184,7 +184,7 @@ using BallArithmetic
         cfg = ResolventBoundConfig(FrobeniusNorm, TriBacksub, CouplingARSolve, :M4, 3, true)
         T = Matrix(UpperTriangular(0.3 * randn(ComplexF64, 7, 7))) + Diagonal(ComplexF64.(1:7))
         r = parametric_resolvent_bound(sylvester_resolvent_precompute(T, 3), T, 0.4im, cfg)
-        @test r.success && r.resolvent_bound ≥ truth(T, 0.4im) * tol
+        @test r.certified && r.resolvent_bound ≥ truth(T, 0.4im) * tol
     end
 
     @testset "BigFloat" begin
@@ -196,7 +196,7 @@ using BallArithmetic
             @test p.precomputation_success && p.residual_norm isa BigFloat
             for (_, cfg) in configs
                 r = parametric_resolvent_bound(p, T, 0.3 + 0.4im, cfg)
-                @test r.success && r.resolvent_bound isa BigFloat
+                @test r.certified && r.resolvent_bound isa BigFloat
                 @test r.resolvent_bound ≥ truth(T, 0.3 + 0.4im) * tol
             end
         end
@@ -207,7 +207,7 @@ using BallArithmetic
         T = Matrix(UpperTriangular(0.3 * randn(ComplexF64, n, n))) + Diagonal(ComplexF64.(1:n))
         zs = [0.5im, 2.5 + 0.2im, -1.0 + 0im]
         p, rs = parametric_resolvent_bound(T, k, zs, config_v2())
-        @test length(rs) == 3 && all(r -> r.success, rs)
+        @test length(rs) == 3 && all(r -> r.certified, rs)
         @test all(rs[i].resolvent_bound ≥ truth(T, zs[i]) * tol for i in 1:3)
         p1, r1 = parametric_resolvent_bound(T, k, zs[1])
         @test r1.config == config_v1() && r1.resolvent_bound ≥ truth(T, zs[1]) * tol
@@ -216,12 +216,12 @@ using BallArithmetic
         z_near = zs[1] + 1e-5
         rw = parametric_resolvent_bound(p, T, z_near, config_v2();
             svd_warm_start = SVDWarmStart(F.U, F.S, F.V))
-        @test rw.success && rw.resolvent_bound ≥ truth(T, z_near) * tol
+        @test rw.certified && rw.resolvent_bound ≥ truth(T, z_near) * tol
         # a useless warm start may fail to certify, and must not produce a wrong bound
         Q = Matrix(qr(randn(ComplexF64, k, k)).Q)
         rb = parametric_resolvent_bound(p, T, z_near, config_v2();
             svd_warm_start = SVDWarmStart(Q, ones(k), Q))
-        @test !rb.success || rb.resolvent_bound ≥ truth(T, z_near) * tol
+        @test !rb.certified || rb.resolvent_bound ≥ truth(T, z_near) * tol
     end
 
     @testset "Split selection and comparison of the configurations" begin

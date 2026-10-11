@@ -120,7 +120,7 @@ end
 
         result = interval_gaussian_elimination(A, b)
 
-        @test result.success
+        @test result.certified
         @test !result.singular
         @test length(result.solution) == 3
 
@@ -165,7 +165,7 @@ end
             is_regular(A).is_regular || continue
             sols = _vertex_solutions(Ac, AΔ, bc, bΔ)
             for (key, r) in ((:preconditioned, hbr_method(A, b)), (:simple, hbr_method_simple(A, b)))
-                r.success || continue
+                r.certified || continue
                 solved[key] += 1
                 @test _contains_all(r.solution, sols)
             end
@@ -178,15 +178,15 @@ end
         b = BallVector([1.0, 2.0], [0.1, 0.1])
         r = hbr_method_simple(A, b)
         sols = _vertex_solutions(mid(A), rad(A), mid(b), rad(b))
-        @test r.success && _contains_all(r.solution, sols)
+        @test r.certified && _contains_all(r.solution, sols)
         @test maximum(rad(r.solution)) <= _hull_radius(sols) * (1 + 1e-10)
     end
 
     @testset "the radius of b is used, and failure is reported" begin
         r = hbr_method(BallMatrix(fill(1.0, 1, 1)), BallVector([3.0], [0.1]))
-        @test r.success && rad(r.solution)[1] >= 0.1
+        @test r.certified && rad(r.solution)[1] >= 0.1
         notH = BallMatrix([1.0 2.0; 2.0 1.0], fill(0.5, 2, 2))
-        @test !hbr_method_simple(notH, BallVector([1.0, 1.0])).success
+        @test !hbr_method_simple(notH, BallVector([1.0, 1.0])).certified
         @test all(isinf, rad(hbr_method_simple(notH, BallVector([1.0, 1.0])).solution))
     end
 end
@@ -493,7 +493,7 @@ end
                 :lsq_normal => interval_least_squares(A, b; method = :normal_equations))
             for (key, r) in runs
                 @test !r.unsolvable
-                r.success || continue
+                r.certified || continue
                 found[key] = get(found, key, 0) + 1
                 @test inbox(r.solution, p)
             end
@@ -509,7 +509,7 @@ end
             bc, bΔ = randn(rng, m), fill(1e-3, m)
             for method in (:supersquare, :normal_equations)
                 r = interval_least_squares(BallMatrix(Ac, AΔ), BallVector(bc, bΔ); method)
-                r.success || continue
+                r.certified || continue
                 for _ in 1:8
                     A1 = Rational{BigInt}.(Ac .+ AΔ .* rand(rng, (-1, 1), m, n))
                     b1 = Rational{BigInt}.(bc .+ bΔ .* rand(rng, (-1, 1), m))
@@ -525,7 +525,7 @@ end
         @test subsquares_method(A, b; selection = :all).unsolvable
         @test multi_jacobi_method(A, b).unsolvable
         r = interval_least_squares(A, b)                 # nonempty all the same
-        @test r.success && !r.unsolvable
+        @test r.certified && !r.unsolvable
         @test_throws DimensionMismatch subsquares_method(BallMatrix(randn(2, 2)),
             BallVector(randn(2)))
         @test_throws ArgumentError subsquares_method(A, b; solver = :nonsense)
@@ -586,8 +586,8 @@ end
         result_jacobi = interval_jacobi(A, b)
         result_ge = interval_gaussian_elimination(A, b)
         result_hbr = hbr_method(A, b)
-        @test result_ge.success && result_gs.converged && result_jacobi.converged &&
-              result_hbr.success
+        @test result_ge.certified && result_gs.converged && result_jacobi.converged &&
+              result_hbr.certified
         sols = _vertex_solutions(mid(A), rad(A), mid(b), rad(b))
         for x in (result_gs.solution, result_jacobi.solution, result_ge.solution,
             result_hbr.solution)

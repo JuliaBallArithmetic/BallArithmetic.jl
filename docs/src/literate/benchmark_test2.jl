@@ -56,7 +56,7 @@ function run_test2(; n=TEST2_N, radii=TEST2_RADII,
             r = method_fn()
             results[(radius, name)] = r
             if verbose
-                status = r.success ? "OK" : "FAIL"
+                status = r.certified ? "OK" : "FAIL"
                 @printf("  %-20s: bound=%.4e, time=%.4fs [%s]\n",
                         name, r.bound, r.time_seconds, status)
             end
@@ -68,7 +68,7 @@ function run_test2(; n=TEST2_N, radii=TEST2_RADII,
                 r = certify_bigfloat(A, z; precision=prec)
                 results[(radius, r.method)] = r
                 if verbose
-                    status = r.success ? "OK" : "FAIL"
+                    status = r.certified ? "OK" : "FAIL"
                     @printf("  %-20s: bound=%.4e, time=%.4fs [%s]\n",
                             r.method, r.bound, r.time_seconds, status)
                 end
@@ -91,7 +91,7 @@ function find_breakdown_radii(results)
     breakdown = Dict{String, Float64}()
 
     for method in methods
-        radii_for_method = [k[1] for k in keys(results) if k[2] == method && results[k].success]
+        radii_for_method = [k[1] for k in keys(results) if k[2] == method && results[k].certified]
         if !isempty(radii_for_method)
             breakdown[method] = minimum(radii_for_method)
         else
@@ -136,7 +136,7 @@ function test2_to_latex(results; output_file="benchmark_test2.tex")
             key = (r, method)
             if haskey(results, key)
                 res = results[key]
-                if res.success
+                if res.certified
                     print(io, " & \\textcolor{okgreen}{\\checkmark}")
                 else
                     print(io, " & \\textcolor{failred}{\\texttimes}")
@@ -184,7 +184,7 @@ function test2_to_latex(results; output_file="benchmark_test2.tex")
         print(io, "\\addplot[$(colors[mod1(i, length(colors))]), mark=*, thick] coordinates {")
         for r in radii
             key = (r, method)
-            if haskey(results, key) && results[key].success
+            if haskey(results, key) && results[key].certified
                 @printf(io, "(%.2e, %.4e) ", r, results[key].bound)
             end
         end
