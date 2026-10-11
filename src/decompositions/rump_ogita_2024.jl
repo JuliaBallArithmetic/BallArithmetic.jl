@@ -501,3 +501,117 @@ function _rumpogita2024_schur(A::BallMatrix{T}; kwargs...) where {T}
     end
     return (; Q = f.Q, T = BallMatrix(Tm, Tr), X, D)
 end
+
+"""
+    _rumpogita2024_polar(A::BallMatrix; kappa = 0) -> (; Q, P, svd) or nothing
+
+Section 7 of Rump and Ogita (2024): inclusions of the factors of the polar decomposition. For
+every matrix `Ã` of the `m × n` ball `A`, `m ≥ n`, `Ã` is proved to have full rank and
+`Ã = QP` with `Q` of size `m × n` with orthonormal columns and `P` Hermitian positive definite,
+`Q` and `P` in the ball matrices returned. Returns `nothing` when a singular value is not
+separated from zero. `svd` is the result of [`verifysvdall`](@ref) the inclusions come from, and
+`kappa` its threshold.
+
+# The method
+
+The paper obtains the factors from the singular value decomposition `Ã = UΣV*` as `Q = UV*`
+and `P = VΣV*`, with the inclusions of Rump and Lange (2023). Those are, for each cluster `μ`
+of singular values, inclusions of orthonormal bases of the left and of the right singular
+subspace, and the two bases of a cluster are not matched to each other (for one singular value,
+the two vectors are determined up to a factor of modulus one each). So the factors are written
+with the right bases alone: with `V_μ` any orthonormal basis of the right singular subspace of
+the cluster and `H_μ := V_μ*Ã*ÃV_μ`, whose eigenvalues are the squares of the singular values of
+the cluster,
+
+    P = Σ_μ V_μ H_μ^{1/2} V_μ*,        Q = Ã Σ_μ V_μ H_μ^{-1/2} V_μ*.
+
+The singular values of the cluster lie in an interval `[a, b]` with `a > 0`, so `H_μ^{1/2}` is
+within `(b − a)/2` of `((a + b)/2) I` in the spectral norm, hence entrywise, and `H_μ^{-1/2}`
+within half the width of `[1/b, 1/a]` of its midpoint times `I`. For a cluster of one singular
+value these are `P = Σ σ_j v_j v_j*` and `Q = Σ Ãv_j v_j*/σ_j`.
+
+# Reference
+
+S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
+Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 7; and Rump and Lange (2023)
+for the singular value decomposition, see [`verifysvdall`](@ref).
+"""
+function _rumpogita2024_polar(A::BallMatrix{T}; kappa::Real = 0) where {T}
+    m, n = size(A)
+    m >= n || throw(ArgumentError("_rumpogita2024_polar: A must have at least as many rows as columns"))
+    r = verifysvdall(A; kappa)
+    S = eltype(mid(r.V))
+    lo = T[sub_down(mid(b), rad(b)) for b in r.values]
+    hi = T[add_up(mid(b), rad(b)) for b in r.values]
+    (all(>(0), lo) && all(isfinite, hi) && all(isfinite, rad(r.V))) || return nothing
+    # an interval [a, b] as the ball matrix (c ± ρ) I of the size of the cluster, every entry ± ρ
+    function scalar_block(a, b, k)
+        c = (a + b) / 2
+        ρ = max(sub_up(c, a), sub_up(b, c))
+        return BallMatrix(Matrix{S}(c * I, k, k), fill(ρ, k, k))
+    end
+    P = BallMatrix(zeros(S, n, n))
+    Pinv = BallMatrix(zeros(S, n, n))
+    for v in r.clusters
+        a, b = minimum(lo[v]), maximum(hi[v])
+        V = r.V[:, v]
+        Va = _ball_adjoint(V)
+        P = P + V * scalar_block(a, b, length(v)) * Va
+        Pinv = Pinv + V * scalar_block(div_down(one(T), b), div_up(one(T), a), length(v)) * Va
+    end
+    Ac = BallMatrix(Matrix{S}(mid(A)), rad(A))
+    return (; Q = Ac * Pinv, P, svd = r)
+end
+
+"""
+    _rumpogita2024_takagi(A::BallMatrix) -> (; U, sigma) or nothing
+
+Section 9 of Rump and Ogita (2024): inclusions of the factors of the Takagi decomposition of a
+complex symmetric matrix. For every symmetric matrix `Ã = Ãᵀ` of the ball `A`, `Ã` is proved
+nonsingular with simple singular values and `Ã = UΣUᵀ` with `U` unitary and `Σ` diagonal with
+positive entries in decreasing order, `U` in the ball matrix `U` and the diagonal of `Σ` in the
+balls `sigma`. `U` is determined up to the sign of each column. Returns `nothing` when the
+singular values are not proved positive and simple; the decomposition is discontinuous at a
+singular matrix.
+
+# The method
+
+The third method of the paper, which it finds best. With `Ã = E + iF`, `E` and `F` real
+symmetric, the real symmetric matrix `M = [E F; F −E]` has the eigenvalues `±σ_j`; if `[x; y]`
+is a unit eigenvector for `σ_j > 0`, then `u = x + iy` is a unit vector with `Ã ū = σ_j u`, and
+these `u` are the columns of `U`. The eigenvalues and eigenvectors of `M` are enclosed by
+[`_rumplange2023_eig`](@ref); each positive eigenvalue is required to be a cluster of its own,
+so that its unit eigenvector is determined up to sign. The bound on the eigenvector is a bound
+of the norm of the error of `[x; y]`, hence of the modulus of each entry of `x + iy`.
+
+# Reference
+
+S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
+Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 9.
+"""
+function _rumpogita2024_takagi(A::BallMatrix{T}) where {T}
+    n = size(A, 1)
+    n == size(A, 2) || throw(ArgumentError("_rumpogita2024_takagi: A must be square"))
+    Am, Ar = Matrix(mid(A)), rad(A)
+    (Am == transpose(Am) && Ar == transpose(Ar)) || throw(ArgumentError(
+        "_rumpogita2024_takagi: the midpoint must be symmetric (not Hermitian) and the radii symmetric"))
+    E, F = Matrix{T}(real.(Am)), Matrix{T}(imag.(Am))
+    M = BallMatrix([E F; F -E], [Ar Ar; Ar Ar])
+    r = _rumplange2023_eig(M)
+    pos = [v[1] for v in r.clusters if length(v) == 1 && r.lo[v[1]] > 0]
+    length(pos) == n || return nothing
+    count(v -> length(v) == 1 && r.hi[v[1]] < 0, r.clusters) == n || return nothing
+    sort!(pos; by = j -> -(r.lo[j] + r.hi[j]))
+    W, Wr = mid(r.vectors), rad(r.vectors)
+    all(isfinite, Wr[:, pos]) || return nothing
+    Um = Matrix{Complex{T}}(undef, n, n)
+    Ur = Matrix{T}(undef, n, n)
+    sigma = Vector{Ball{T, T}}(undef, n)
+    for (k, j) in enumerate(pos)
+        Um[:, k] .= complex.(W[1:n, j], W[(n + 1):(2n), j])
+        Ur[:, k] .= Wr[1, j]
+        c = (r.lo[j] + r.hi[j]) / 2
+        sigma[k] = Ball(c, max(sub_up(c, r.lo[j]), sub_up(r.hi[j], c)))
+    end
+    return (; U = BallMatrix(Um, Ur), sigma)
+end

@@ -338,3 +338,86 @@ end
         @test all(abs.(mid(orth)) .<= rad(orth))
     end
 end
+
+@testset "Rump-Ogita 2024, Section 7: the polar decomposition" begin
+    rng = MersenneTwister(20261018)
+    function refpolar(A)
+        setprecision(BigFloat, 1024) do
+            B = eltype(A) <: Complex ? Complex{BigFloat} : BigFloat
+            F = svd(B.(A))
+            F.U * F.Vt, F.V * Diagonal(F.S) * F.Vt
+        end
+    end
+    @testset "$m × $n, $S" for (m, n) in ((6, 6), (20, 9), (4, 1)), S in (Float64, ComplexF64)
+        σ = n == 1 ? [2.0] : collect(range(3.0, 0.5; length = n))
+        A = Matrix(qr(randn(rng, S, m, m)).Q)[:, 1:n] * Diagonal(σ) * Matrix(qr(randn(rng, S, n, n)).Q)'
+        r = BallArithmetic._rumpogita2024_polar(BallMatrix(A))
+        @test r !== nothing
+        Q, P = refpolar(A)
+        @test _inside(Q, r.Q) && _inside(P, r.P)
+        @test maximum(rad(r.Q)) < 1e-8 && maximum(rad(r.P)) < 1e-8
+    end
+    @testset "a cluster of singular values, a ball, a singular matrix" begin
+        Qm, Qn = Matrix(qr(randn(rng, 8, 8)).Q), Matrix(qr(randn(rng, 5, 5)).Q)
+        A = Qm[:, 1:5] * Diagonal([3.0, 2.0, 2.0, 2.0 + 1e-12, 1.0]) * Qn'
+        r = BallArithmetic._rumpogita2024_polar(BallMatrix(A); kappa = 1e-8)
+        @test r !== nothing && maximum(length, r.svd.clusters) == 3
+        Q, P = refpolar(A)
+        @test _inside(Q, r.Q) && _inside(P, r.P)
+        b = BallArithmetic._rumpogita2024_polar(BallMatrix(A, fill(1e-10, 8, 5)); kappa = 1e-6)
+        @test b !== nothing
+        for _ in 1:8
+            Q, P = refpolar(A + 1e-10 * (2 * rand(rng, 8, 5) .- 1))
+            @test _inside(Q, b.Q) && _inside(P, b.P)
+        end
+        @test BallArithmetic._rumpogita2024_polar(BallMatrix(Qm[:, 1:3] * Diagonal([1.0, 1.0, 0.0]) * Qn[1:3, 1:3])) === nothing
+        @test_throws ArgumentError BallArithmetic._rumpogita2024_polar(BallMatrix(randn(rng, 2, 3)))
+    end
+end
+
+@testset "Rump-Ogita 2024, Section 9: the Takagi decomposition" begin
+    rng = MersenneTwister(20261019)
+    # a complex symmetric matrix with singular values from 1 to 10^-k, as in the paper
+    function symmetric(n, k)
+        Q = Matrix(qr(randn(rng, ComplexF64, n, n)).Q)
+        A = transpose(Q) * Diagonal(exp10.(range(0, -k; length = n))) * Q
+        return (A + transpose(A)) / 2
+    end
+    @testset "n = $n, cond = 1e$k" for (n, k) in ((4, 1), (12, 2), (12, 6))
+        A = symmetric(n, k)
+        r = BallArithmetic._rumpogita2024_takagi(BallMatrix(A))
+        @test r !== nothing
+        # the factors at 1024 bits, by the same reduction, signs matched to the midpoint
+        U, σ = setprecision(BigFloat, 1024) do
+            E, F = big.(real.(A)), big.(imag.(A))
+            G = eigen(Symmetric([E F; F -E]))
+            idx = sortperm(G.values; rev = true)[1:n]
+            U = complex.(G.vectors[1:n, idx], G.vectors[(n + 1):(2n), idx])
+            for j in 1:n
+                real(dot(U[:, j], mid(r.U)[:, j])) < 0 && (U[:, j] .*= -1)
+            end
+            U, G.values[idx]
+        end
+        @test _inside(U, r.U)
+        @test all(abs(σ[j] - mid(r.sigma[j])) <= rad(r.sigma[j]) for j in 1:n)
+        @test issorted([mid(b) for b in r.sigma]; rev = true)
+        @test Float64(opnorm(U * Diagonal(σ) * transpose(U) - A, Inf)) < 1e-60     # the reference is a Takagi decomposition
+        @test Float64(opnorm(U' * U - I, Inf)) < 1e-60
+        @test maximum(rad(b) / mid(b) for b in r.sigma) < 1e-8
+    end
+    @testset "what is declined" begin
+        # a double singular value, a singular matrix, a matrix that is not symmetric
+        @test BallArithmetic._rumpogita2024_takagi(BallMatrix(Matrix{ComplexF64}(I, 3, 3))) === nothing
+        @test BallArithmetic._rumpogita2024_takagi(BallMatrix(ComplexF64[1 0; 0 0])) === nothing
+        @test_throws ArgumentError BallArithmetic._rumpogita2024_takagi(BallMatrix(ComplexF64[1 2; 3 4]))
+    end
+    @testset "a ball of matrices" begin
+        A = symmetric(5, 1)
+        r = BallArithmetic._rumpogita2024_takagi(BallMatrix(A, fill(1e-10, 5, 5)))
+        @test r !== nothing
+        Σ = BallMatrix(Matrix{ComplexF64}(Diagonal([mid(b) for b in r.sigma])), Matrix(Diagonal([rad(b) for b in r.sigma])))
+        Ut = BallMatrix(Matrix(transpose(mid(r.U))), Matrix(transpose(rad(r.U))))
+        res = r.U * Σ * Ut - BallMatrix(A, fill(1e-10, 5, 5))
+        @test all(abs.(mid(res)) .<= rad(res))
+    end
+end
