@@ -88,13 +88,28 @@ function _hbr_theorem_5_12(A::BallMatrix{T}, b::BallVector{T}) where {T}
         inf(d) > 0 || return _hbr_failure(T, n)
         α = max(sup(comparison[i, i] - inv(d)), zero(T))
         β = max(sup(u[i] / d - magb[i]), zero(T))
-        den = Ball(Ac[i, i], add_up(Ar[i, i], α))
-        sub_down(abs(mid(den)), rad(den)) > 0 || return _hbr_failure(T, n)
-        x = Ball(mid(b)[i], add_up(rad(b)[i], β)) / den
+        # the quotient of the two intervals by its ends: the ball quotient would overestimate it
+        # and lose the hull of the diagonal case
+        rn, rd = add_up(rad(b)[i], β), add_up(Ar[i, i], α)
+        x = _interval_quotient(sub_down(mid(b)[i], rn), add_up(mid(b)[i], rn),
+            sub_down(Ac[i, i], rd), add_up(Ac[i, i], rd))
+        x === nothing && return _hbr_failure(T, n)
         xc[i], xr[i] = mid(x), rad(x)
     end
     all(isfinite, xr) || return _hbr_failure(T, n)
     return HBRResult(BallVector(xc, xr), true)
+end
+
+# A ball containing [nl, nu]/[dl, du], its ends rounded outwards; nothing where the denominator
+# contains zero.
+function _interval_quotient(nl::T, nu::T, dl::T, du::T) where {T}
+    if du < 0
+        nl, nu, dl, du = -nu, -nl, -du, -dl
+    end
+    dl > 0 || return nothing
+    lo = nl >= 0 ? div_down(nl, du) : div_down(nl, dl)
+    hi = nu >= 0 ? div_up(nu, dl) : div_up(nu, du)
+    return _ball_from_bounds(lo, hi)
 end
 
 export HBRResult
