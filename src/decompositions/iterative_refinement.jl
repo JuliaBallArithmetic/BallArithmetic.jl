@@ -1,23 +1,35 @@
 # Iterative Refinement Methods for Matrix Decompositions
 #
-# References:
-# [1] N.J. Higham, "Computing the Polar Decomposition—with Applications",
-#     SIAM J. Sci. Stat. Comput. 7(4):1160-1174, 1986. doi:10.1137/0907079
-# [2] N.J. Higham, "Functions of Matrices: Theory and Computation",
-#     SIAM, Philadelphia, 2008. Chapter 8.
-# [3] Y. Nakatsukasa, Z. Bai, F. Gygi, "Optimizing Halley's Iteration for
-#     Computing the Matrix Polar Decomposition", SIAM J. Sci. Comput.
-#     32(5):2700-2720, 2010. doi:10.1137/090774999
-# [4] J.H. Wilkinson, "Rounding Errors in Algebraic Processes", Prentice-Hall, 1963.
-# [5] R.S. Martin, G. Peters, J.H. Wilkinson, "Iterative Refinement of the
-#     Solution of a Positive Definite System of Equations", Numer. Math.
-#     8:203-216, 1971. doi:10.1007/BF02163185
-# [6] Y. Yamamoto et al., "Roundoff error analysis of the CholeskyQR2 algorithm",
-#     Numer. Math. 131(2):297-322, 2015. doi:10.1007/s00211-014-0692-7
-# [7] T. Ogita, K. Aishima, "Iterative refinement for singular value decomposition
-#     based on matrix multiplication", J. Comput. Appl. Math. 369:112512, 2020.
-# [8] E. Carson, N.J. Higham, "A New Analysis of Iterative Refinement...",
-#     SIAM J. Sci. Comput. 39(6):A2834-A2856, 2017. doi:10.1137/17M1122918
+# References (bibliographic details checked on Crossref on 2026-10-11; the first four are in
+# `references/`):
+# [1] N. J. Higham, "Computing the polar decomposition, with applications",
+#     SIAM J. Sci. Stat. Comput. 7(4) (1986) 1160-1174, doi 10.1137/0907079.
+# [2] Y. Nakatsukasa, Z. Bai and F. Gygi, "Optimizing Halley's iteration for computing the
+#     matrix polar decomposition", SIAM J. Matrix Anal. Appl. 31(5) (2010) 2700-2720,
+#     doi 10.1137/090774999. (This file used to give SIAM J. Sci. Comput. 32(5).)
+# [3] Y. Yamamoto, Y. Nakatsukasa, Y. Yanagisawa and T. Fukaya, "Roundoff error analysis of
+#     the CholeskyQR2 algorithm", Electron. Trans. Numer. Anal. 44 (2015) 306-326. (This file
+#     used to give Numer. Math. 131(2):297-322 with a DOI that does not resolve.)
+# [4] E. Carson and N. J. Higham, "A new analysis of iterative refinement and its application
+#     to accurate solution of ill-conditioned sparse linear systems", SIAM J. Sci. Comput.
+#     39(6) (2017) A2834-A2856, doi 10.1137/17M1122918.
+# [5] R. S. Martin, G. Peters and J. H. Wilkinson, "Iterative refinement of the solution of a
+#     positive definite system of equations", Numer. Math. 8 (1966) 203-216,
+#     doi 10.1007/BF02162558. (This file used to give 1971 and the DOI of another paper.)
+#     Not obtained.
+# [6] T. Terao, K. Ozaki and T. Ogita, "LU-Cholesky QR algorithms for thin QR decomposition",
+#     Parallel Comput. 92 (2020) 102571, doi 10.1016/j.parco.2019.102571. (Cited below as
+#     "T. Fukaya et al." with a SIAM DOI that does not resolve.) Not obtained.
+# [7] T. Ogita and K. Aishima, "Iterative refinement for singular value decomposition based on
+#     matrix multiplication", J. Comput. Appl. Math. 369 (2020) 112512, in `references/`.
+# Books cited below and not checked: N. J. Higham, Functions of Matrices (SIAM, 2008) and
+# Accuracy and Stability of Numerical Algorithms (2nd ed., SIAM, 2002); J. H. Wilkinson,
+# Rounding Errors in Algebraic Processes (Prentice-Hall, 1963).
+#
+# STATUS (2026-10-11): none of the eight routines below has been checked against its source
+# yet. `probe_refine_routines.jl` on nighthawk: started from an exact factorisation perturbed
+# by 1e-8, every one of them returns a residual of the size of the perturbation (1e-9 to
+# 4e-8), five of them with `converged = true`.
 
 using LinearAlgebra
 
