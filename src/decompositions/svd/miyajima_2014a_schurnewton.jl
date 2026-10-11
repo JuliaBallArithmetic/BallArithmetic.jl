@@ -237,10 +237,16 @@ function _vbd_solve(Bc::Matrix{CT}; sep::Real = -1, maxsteps::Integer = 6,
         while k <= length(sizes)
             lo, hi = pos, pos + sizes[k] - 1
             if hi < n
+                # `solve_sylvester_oracle` and not `LinearAlgebra.sylvester`: the latter has no
+                # method for BigFloat and recursed until StackOverflowError, which the bare
+                # `catch` here took for an ill-posed pair, so that for BigFloat input no block was
+                # ever decoupled. The oracle solves in Float64 for other types, which is enough
+                # for a candidate.
                 V = try
-                    sylvester(A[lo:hi, lo:hi], -A[(hi + 1):n, (hi + 1):n],
-                        A[lo:hi, (hi + 1):n])
-                catch
+                    solve_sylvester_oracle(A[lo:hi, lo:hi], A[lo:hi, (hi + 1):n],
+                        A[(hi + 1):n, (hi + 1):n])
+                catch err
+                    err isa Union{LAPACKException, SingularException} || rethrow()
                     nothing            # ill-posed pair: merge below, or leave the strip coupled
                 end
                 if V === nothing || !all(isfinite, V) || opnorm(V) > xmax

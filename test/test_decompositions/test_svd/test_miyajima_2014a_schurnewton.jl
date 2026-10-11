@@ -250,3 +250,24 @@ end
             BallMatrix(randn(3, 3)), BallMatrix(randn(4, 4)))
     end
 end
+
+@testset "the block refinement solves its Sylvester equations for BigFloat input" begin
+    # LinearAlgebra.sylvester has no BigFloat method and overflowed the stack; the error was
+    # taken for an ill-posed pair, so the :block mode merged every pair of blocks
+    using Random
+    rng = MersenneTwister(20261011)
+    A = Matrix(Diagonal([1.0, 1.1, 5.0, 5.2, 9.0])) + 0.3 * triu(randn(rng, 5, 5), 1)
+    Wf, clf = BallArithmetic._vbd_solve(ComplexF64.(A); sep = 0.5, mode = :block)
+    Wb, clb = BallArithmetic._vbd_solve(Complex{BigFloat}.(A); sep = 0.5, mode = :block)
+    @test sort(length.(clb)) == sort(length.(clf)) == [1, 2, 2]
+    # the frame decouples the blocks of the midpoint: the off-block part of W⁻¹AW is small
+    M = Wb \ (Complex{BigFloat}.(A) * Wb)
+    off = copy(M)
+    for c in clb
+        off[c, c] .= 0
+    end
+    @test Float64(opnorm(off, Inf)) < 1e-10
+    X = BallArithmetic.solve_sylvester_oracle(Complex{BigFloat}.(A[1:2, 1:2]),
+        Complex{BigFloat}.(A[1:2, 3:5]), Complex{BigFloat}.(A[3:5, 3:5]))
+    @test Float64(opnorm(A[1:2, 1:2] * X - X * A[3:5, 3:5] + A[1:2, 3:5], Inf)) < 1e-12
+end
