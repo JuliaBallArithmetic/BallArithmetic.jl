@@ -11,18 +11,17 @@
 """
     GEVInvariantSubspace
 
-One certified deflating (invariant) subspace of the pencil `Ax = λBx`, returned
-by [`gev_invariant_subspaces`](@ref).
+One cluster of the block diagonalisation of the pencil `A x = λ B x`, returned by
+[`gev_invariant_subspaces`](@ref).
 
 # Fields
-- `indices`: the cluster's column range in the certified basis
-- `basis`: `W[:, indices]` — the columns of the VBD basis that **span** the
-  subspace.
-- `block`: the certified block `Λ_CC` (a `BallMatrix`); its spectrum is the
-  cluster's eigenvalues, so `dim = length(indices)` counts them with multiplicity
-- `discs`: the β-inflated Gershgorin discs of the cluster
-- `residual`: rigorous bound on `‖A·basis − B·basis·block‖₂`, the deflating-
-  subspace residual whose smallness certifies the subspace
+- `indices`: the columns of the cluster in the basis `W`;
+- `basis`: `W[:, indices]`, an approximate basis of the deflating subspace of the cluster. It is
+  not an enclosure of that subspace: no bound of the distance between the two is computed;
+- `block`: the diagonal block `Λ_CC` of the transformed matrix, a `BallMatrix`;
+- `discs`: the discs of the cluster from [`miyajima2014a_schurnewton`](@ref);
+- `residual`: an upper bound of `‖A basis − B basis block‖₂`, valid for every `A` and `B` in the
+  given balls.
 """
 struct GEVInvariantSubspace{MT, BT, IT, RT}
     indices::UnitRange{Int}
@@ -38,34 +37,21 @@ dim(s::GEVInvariantSubspace) = length(s.indices)
 """
     gev_invariant_subspaces(A::BallMatrix, B::BallMatrix)
 
-Enclose **all** eigenvalues and deflating (invariant) subspaces of the pencil
-`Ax = λBx`, one entry per certified cluster.
+For each cluster `C` of the block diagonalisation [`miyajima2014a_schurnewton`](@ref)`(A, B)` of
+the pencil `A x = λ B x`: the columns `W[:, C]` of its basis, the diagonal block `Λ_CC`, the discs
+of the cluster, and an upper bound of the residual `‖A W[:, C] − B W[:, C] Λ_CC‖₂`. One
+[`GEVInvariantSubspace`](@ref) per cluster.
 
-The subspaces are produced by the certified basis `W` of
-[`miyajima2014a_schurnewton`](@ref)`(A, B)`: cluster `C` spans `W[:, C]`. Since
-`Y·B·W = I + R₂` gives `W⁻¹(B⁻¹A)W = (I+R₂)⁻¹Ã = M`, the basis block-diagonalises
-`B⁻¹A`, so each `W[:, C]` spans a deflating subspace of the pencil and carries
-exactly `length(C)` eigenvalues (with multiplicity) — the ones enclosed by the
-cluster's β-inflated discs.
+What is verified is the residual: it is evaluated in ball arithmetic on the given balls, so it
+holds for every `A` and `B` in them. The columns `W[:, C]` are an approximate basis of the
+deflating subspace. An enclosure of the subspace itself, which is what Section 3.3 of the paper
+below gives (Lemmas 3.9 and 3.10, Theorem 3.15), is not computed here.
 
-What makes it rigorous is the residual `‖A·W[:, C] − B·W[:, C]·Λ_CC‖₂`, evaluated
-in ball arithmetic against the *input balls*, so input uncertainty and every
-rounding error are included. This is the cluster restriction of Miyajima's `R₁`,
-before pre-multiplication by `Y`.
+# Reference
 
-This is the invariant-subspace enclosure of Miyajima (2014) §3.3 obtained through
-the Rump–Miyajima Schur–Newton frame, so it needs neither the Brouwer fixed point
-on `ℂ^{n×k}` nor the parameter matrices of Lemmas 3.9–3.10 and Theorem 3.15.
-`B` is assumed neither Hermitian nor positive definite; `‖R₂‖_∞ < 1` proves its
-nonsingularity.
-
-# Example
-```julia
-A = BallMatrix(randn(6, 6));  B = BallMatrix(Matrix(randn(6, 6)' * randn(6, 6) + 6I))
-subs = gev_invariant_subspaces(A, B)
-subs[1].basis        # spans the first deflating subspace
-subs[1].residual     # rigorous ‖A·W_C − B·W_C·Λ_C‖₂
-```
+S. Miyajima, "Fast enclosure for all eigenvalues and invariant subspaces in generalized
+eigenvalue problems", SIAM Journal on Matrix Analysis and Applications 35 (2014), 1205-1225,
+doi 10.1137/140953150.
 """
 function gev_invariant_subspaces(A::BallMatrix{T, NT}, B::BallMatrix) where {T, NT}
     size(A) == size(B) ||

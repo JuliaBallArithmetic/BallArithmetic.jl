@@ -239,7 +239,12 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       Lange and Rump) is left to do.
     - **Removed on 2026-10-11:** `krawczyk_sylvester`, a stub that verified nothing; the
       verified routine is `sylvester_miyajima_enclosure`.
-    - **No source found yet:** `gev_invariant_subspaces`.
+    - **`gev_invariant_subspaces`: decision pending.** It returns, for each cluster, columns of
+      the Schur-Newton basis and a verified bound of the residual `‖A W_C − B W_C Λ_CC‖₂`; its
+      docstring used to call this the enclosure of the invariant subspace of Section 3.3 of
+      Miyajima (2014, SIAM J. Matrix Anal. Appl. 35, in the library as `Miyajima2014a`), which
+      it is not, and now says what is verified. The enclosure of the subspace is Algorithm 2
+      of that paper (Lemmas 3.9, 3.10, Theorem 3.15): to implement, or the routine to remove.
 13. Step 5: citations and `docs/src/refs.bib`.
 14. `setrounding` blocks that remain: BigFloat `upper_bound_L1_opnorm` and
     `upper_bound_L_inf_opnorm`, `block_enclosure`, `_vbd_block_data`, and those inside
