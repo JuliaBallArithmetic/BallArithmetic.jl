@@ -152,20 +152,7 @@ function oishi_2023_sigma_min_bound(G::BallMatrix{T}, m::Int) where {T}
     C_A_inv_norm = collatz_upper_bound_L2_opnorm(A_inv_T_CT)
 
     # Compute D_d⁻¹ norm (diagonal inverse)
-    Dd_inv_norm = setrounding(T, RoundUp) do
-        max_inv = zero(T)
-        for i in 1:length(Dd_diag)
-            d_i = Dd_diag[i]
-            r_i = D_rad[i, i]
-            # Lower bound on |d_i|
-            d_lower = abs(d_i) - r_i
-            if d_lower ≤ zero(T)
-                return T(Inf)  # Diagonal element could be zero
-            end
-            max_inv = max(max_inv, one(T) / d_lower)
-        end
-        max_inv
-    end
+    Dd_inv_norm = _inverse_diagonal_norm(Dd_diag, D_rad)
 
     if !isfinite(Dd_inv_norm)
         return Oishi2023Result{T}(
@@ -211,22 +198,13 @@ function oishi_2023_sigma_min_bound(G::BallMatrix{T}, m::Int) where {T}
     end
 
     # Compute the bound from Theorem 1 (Equation 12)
-    G_inv_upper = setrounding(T, RoundUp) do
-        # Numerator: max{‖A⁻¹‖₂, ‖D_d⁻¹‖₂/(1 - schur_contraction)}
-        term1 = A_inv_norm
-        term2 = Dd_inv_norm / (one(T) - schur_contraction)
-        numerator = max(term1, term2)
-
-        # Denominator: (1 - ‖A⁻¹B‖₂)(1 - ‖CA⁻¹‖₂)
-        denominator = (one(T) - A_inv_B_norm) * (one(T) - C_A_inv_norm)
-
-        numerator / denominator
-    end
+    # the denominators are rounded down and the quotients up
+    schur_term = div_up(Dd_inv_norm, sub_down(one(T), schur_contraction))
+    denominator = mul_down(sub_down(one(T), A_inv_B_norm), sub_down(one(T), C_A_inv_norm))
+    G_inv_upper = div_up(max(A_inv_norm, schur_term), denominator)
 
     # Lower bound on σ_min = 1/‖G⁻¹‖₂
-    sigma_min_lower = setrounding(T, RoundDown) do
-        one(T) / G_inv_upper
-    end
+    sigma_min_lower = div_down(one(T), G_inv_upper)
 
     return Oishi2023Result{T}(
         sigma_min_lower, G_inv_upper, A_inv_norm, A_inv_B_norm,
@@ -258,14 +236,10 @@ function _solve_ball_system(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
     A_inv_norm = svd_bound_L2_opnorm_inverse(A)
     R_norm = collatz_upper_bound_L2_opnorm(R)
 
-    error_bound = setrounding(T, RoundUp) do
-        A_inv_norm * R_norm
-    end
+    error_bound = mul_up(A_inv_norm, R_norm)
 
     # Return X with inflated radius
-    X_rad = setrounding(T, RoundUp) do
-        fill(error_bound, size(X_approx))
-    end
+    X_rad = fill(error_bound, size(X_approx))
 
     return BallMatrix(X_approx, X_rad)
 end
@@ -293,9 +267,7 @@ function _solve_ball_system_transpose(A::BallMatrix{T}, C::BallMatrix{T}) where 
     A_inv_norm = svd_bound_L2_opnorm_inverse(A)
     R_norm = collatz_upper_bound_L2_opnorm(R)
 
-    error_bound = setrounding(T, RoundUp) do
-        A_inv_norm * R_norm
-    end
+    error_bound = mul_up(A_inv_norm, R_norm)
 
     X_rad = fill(error_bound, size(CA_inv_approx))
 
@@ -312,57 +284,40 @@ function _diagonal_scale_left(d::Vector{T}, d_rad::AbstractMatrix{T},
                                M::BallMatrix{T}) where {T}
     m, n_cols = size(M)
     length(d) == m || throw(DimensionMismatch("d must have length equal to rows of M"))
-
-    M_mid = mid(M)
-    M_rad = rad(M)
-
+    M_mid, M_rad = mid(M), rad(M)
     result_mid = similar(M_mid)
     result_rad = similar(M_rad)
-
     for i in 1:m
-        d_i = d[i]
-        r_i = d_rad[i, i]
-
-        # Interval for 1/d[i]
-        d_lower = abs(d_i) - r_i
-        d_upper = abs(d_i) + r_i
-
-        if d_lower ≤ zero(T)
-            # Cannot bound the inverse
-            for j in 1:n_cols
-                result_mid[i, j] = zero(T)
-                result_rad[i, j] = T(Inf)
-            end
-        else
-            # 1/d is in [1/d_upper, 1/d_lower] if d > 0
-            # or [-1/d_lower, -1/d_upper] if d < 0
-            inv_lower = setrounding(T, RoundDown) do
-                one(T) / d_upper
-            end
-            inv_upper = setrounding(T, RoundUp) do
-                one(T) / d_lower
-            end
-            # Derive midpoint and radius from rigorous bounds
-            s = sign(d_i)
-            inv_mid = s * (inv_lower + inv_upper) / 2
-            inv_rad = setrounding(T, RoundUp) do
-                (inv_upper - inv_lower) / 2
-            end
-
-            for j in 1:n_cols
-                m_ij = M_mid[i, j]
-                r_ij = M_rad[i, j]
-
-                # (inv_mid ± inv_rad) * (m_ij ± r_ij)
-                result_mid[i, j] = inv_mid * m_ij
-                result_rad[i, j] = setrounding(T, RoundUp) do
-                    abs(inv_mid) * r_ij + inv_rad * abs(m_ij) + inv_rad * r_ij
-                end
-            end
+        if sub_down(abs(d[i]), d_rad[i, i]) ≤ zero(T)
+            # the diagonal entry may vanish: no bound of the inverse
+            result_mid[i, :] .= zero(T)
+            result_rad[i, :] .= T(Inf)
+            continue
+        end
+        # the product of balls accounts for the rounding of the midpoint
+        dinv = inv(Ball(d[i], d_rad[i, i]))
+        for j in 1:n_cols
+            x = dinv * Ball(M_mid[i, j], M_rad[i, j])
+            result_mid[i, j], result_rad[i, j] = mid(x), rad(x)
         end
     end
-
     return BallMatrix(result_mid, result_rad)
+end
+
+"""
+    _inverse_diagonal_norm(d, d_rad)
+
+An upper bound of `max_i 1/|x_i|` over `|x_i − d[i]| ≤ d_rad[i, i]`, the 2-norm of the inverse of
+the diagonal matrix; `Inf` where an entry may vanish. The lower bound of `|x_i|` is rounded down.
+"""
+function _inverse_diagonal_norm(d::Vector{T}, d_rad::AbstractMatrix{T}) where {T}
+    bound = zero(T)
+    for i in eachindex(d)
+        lower = sub_down(abs(d[i]), d_rad[i, i])
+        lower ≤ zero(T) && return T(Inf)
+        bound = max(bound, div_up(one(T), lower))
+    end
+    return bound
 end
 
 """
@@ -402,41 +357,26 @@ Compute ψ(μ) from Lemma 1.2 of Rump-Oishi 2024.
 For a block triangular matrix H = [I, -N; 0, I] with ‖N‖ = μ, this computes
 the exact value of ‖H‖ = ‖H⁻¹‖.
 
-The formula is:
-    α = √(½(1 + 1/√(1 + 4/μ²)))
-    ψ(μ) = √(1 + 2αμ√(1-α²) + α²μ²)
+The paper's formula (5) is
 
-This replaces the weaker bound 1/(1-μ) used in Oishi 2023, and works for
-any μ ≥ 0 (no restriction μ < 1).
+    α = √(½(1 + 1/√(1 + 4/μ²))),      ψ(μ) = √(1 + 2αμ√(1-α²) + α²μ²).
+
+It is evaluated here in the equal form `ψ(μ) = (μ + √(μ² + 4))/2`: `β = α²` solves
+`β² − β + 1/(4 + μ²) = 0` (the proof of Lemma 1.2), so `α√(1-α²) = 1/√(4 + μ²)` and, with
+`t = μ/√(μ² + 4)`, `β = (1 + t)/2`, whence `ψ² = 1 + 2t + μ²(1 + t)/2 = ((μ + √(μ² + 4))/2)²`.
+Formula (5) is the maximum over `α` of the quantity (6), so an `α` carrying a rounding error
+gives a value below `ψ`; the closed form has no such step.
+
+This replaces the weaker bound 1/(1-μ) used in Oishi 2023, and works for any μ ≥ 0. By (10) of
+the paper an upper bound of `‖N‖` may be passed for `μ`.
 
 # Returns
-ψ(μ) as an upper bound (computed with directed rounding).
+An upper bound of ψ(μ).
 """
 function psi_schur_factor(μ::T) where {T<:AbstractFloat}
-    if μ ≤ zero(T)
-        return one(T)
-    end
-
-    setrounding(T, RoundUp) do
-        # α = √(½(1 + 1/√(1 + 4/μ²)))
-        μ_sq = μ * μ
-        inner = one(T) + T(4) / μ_sq
-        sqrt_inner = sqrt(inner)
-        α_sq = T(0.5) * (one(T) + one(T) / sqrt_inner)
-        α = sqrt(α_sq)
-
-        # ψ(μ) = √(1 + 2αμ√(1-α²) + α²μ²)
-        one_minus_α_sq = one(T) - α_sq
-        # Guard against numerical issues (α ∈ (0,1) so this should be positive)
-        if one_minus_α_sq < zero(T)
-            one_minus_α_sq = zero(T)
-        end
-        sqrt_term = sqrt(one_minus_α_sq)
-        αμ = α * μ
-
-        psi_sq = one(T) + T(2) * αμ * sqrt_term + αμ * αμ
-        sqrt(psi_sq)
-    end
+    μ ≤ zero(T) && return one(T)
+    # ψ(μ) = (μ + √(μ² + 4))/2, increasing in μ, every operation rounded up
+    return add_up(μ, sqrt_up(add_up(mul_up(μ, μ), T(4)))) / 2
 end
 
 """
@@ -449,9 +389,7 @@ This is a cheap bound useful for the fast γ estimate in Rump-Oishi 2024.
 function pi_norm(M::BallMatrix{T}) where {T}
     norm1 = upper_bound_L1_opnorm(M)
     norminf = upper_bound_L_inf_opnorm(M)
-    setrounding(T, RoundUp) do
-        sqrt(norm1 * norminf)
-    end
+    return sqrt_up(mul_up(norm1, norminf))
 end
 
 """
@@ -499,9 +437,7 @@ function _fast_gamma_bound(A::BallMatrix{T}, B::BallMatrix{T}, C::BallMatrix{T},
     end
 
     # γ = π(Dd⁻¹Df) + π(Dd⁻¹C) · π(A⁻¹B)
-    γ = setrounding(T, RoundUp) do
-        pi_Dd_inv_Df + pi_Dd_inv_C * pi_A_inv_B
-    end
+    γ = add_up(pi_Dd_inv_Df, mul_up(pi_Dd_inv_C, pi_A_inv_B))
 
     return (γ, A_inv_B)
 end
@@ -587,19 +523,7 @@ function rump_oishi_2024_sigma_min_bound(G::BallMatrix{T}, m::Int;
     end
 
     # Compute ‖Dd⁻¹‖ (maximum of 1/|d_i|)
-    Dd_inv_norm = setrounding(T, RoundUp) do
-        max_inv = zero(T)
-        for i in 1:length(Dd_diag)
-            d_i = Dd_diag[i]
-            r_i = D_rad[i, i]
-            d_lower = abs(d_i) - r_i
-            if d_lower ≤ zero(T)
-                return T(Inf)
-            end
-            max_inv = max(max_inv, one(T) / d_lower)
-        end
-        max_inv
-    end
+    Dd_inv_norm = _inverse_diagonal_norm(Dd_diag, D_rad)
 
     if !isfinite(Dd_inv_norm)
         return RumpOishi2024Result{T}(
@@ -616,9 +540,7 @@ function rump_oishi_2024_sigma_min_bound(G::BallMatrix{T}, m::Int;
         γ, A_inv_B_computed = _fast_gamma_bound(A, B, C, Dd_diag, D_rad, Df)
         if γ < one(T)
             # Fast bound succeeded! Check if max term is ‖A⁻¹‖
-            schur_term = setrounding(T, RoundUp) do
-                Dd_inv_norm / (one(T) - γ)
-            end
+            schur_term = div_up(Dd_inv_norm, sub_down(one(T), γ))
             if schur_term ≤ A_inv_norm
                 # The maximum is ‖A⁻¹‖, so we can use the fast γ bound
                 used_fast_gamma = true
@@ -666,20 +588,11 @@ function rump_oishi_2024_sigma_min_bound(G::BallMatrix{T}, m::Int;
     psi_C_A_inv = psi_schur_factor(C_A_inv_norm)
 
     # Compute the bound from Theorem 1.3
-    G_inv_upper = setrounding(T, RoundUp) do
-        # max{‖A⁻¹‖, ‖Dd⁻¹‖/(1 - schur_contraction)}
-        term1 = A_inv_norm
-        term2 = Dd_inv_norm / (one(T) - schur_contraction)
-        max_term = max(term1, term2)
-
-        # Multiply by ψ factors
-        max_term * psi_A_inv_B * psi_C_A_inv
-    end
+    schur_term = div_up(Dd_inv_norm, sub_down(one(T), schur_contraction))
+    G_inv_upper = mul_up(mul_up(max(A_inv_norm, schur_term), psi_A_inv_B), psi_C_A_inv)
 
     # Lower bound on σ_min = 1/‖G⁻¹‖₂
-    sigma_min_lower = setrounding(T, RoundDown) do
-        one(T) / G_inv_upper
-    end
+    sigma_min_lower = div_down(one(T), G_inv_upper)
 
     return RumpOishi2024Result{T}(
         sigma_min_lower, G_inv_upper, A_inv_norm, psi_A_inv_B,

@@ -410,3 +410,56 @@ end
     end
 
 end
+
+@testset "σ_min bounds of the Schur complement: rounding" begin
+    rng = MersenneTwister(20261011)
+
+    @testset "ψ is an upper bound and equals formula (5)" begin
+        for μ in (1e-300, 1e-8, 0.3, 1.0, 7.5, 1e8, 1e150, rand(rng, 200)...)
+            exact, formula5 = setprecision(BigFloat, 512) do
+                m = big(μ)
+                α = sqrt((1 + 1 / sqrt(1 + 4 / m^2)) / 2)
+                (m + sqrt(m^2 + 4)) / 2, sqrt(1 + 2α * m * sqrt(1 - α^2) + α^2 * m^2)
+            end
+            ψ = BallArithmetic.psi_schur_factor(μ)
+            @test ψ >= exact
+            @test ψ <= exact * (1 + 1e-14)
+            @test abs(exact - formula5) <= 1e-100 * exact
+        end
+    end
+
+    @testset "a diagonal entry that may be below its midpoint" begin
+        G = BallMatrix([2.0 0.0; 0.0 1.0], [0.0 0.0; 0.0 1e-17])
+        for r in (oishi_2023_sigma_min_bound(G, 1), rump_oishi_2024_sigma_min_bound(G, 1))
+            @test !r.verified || r.sigma_min_lower < 1.0
+        end
+    end
+
+    @testset "the diagonal scaling contains the quotients" begin
+        d = randn(rng, 6) .+ 3.0
+        drad = Matrix(Diagonal(fill(1e-10, 6)))
+        M = BallMatrix(randn(rng, 6, 5), fill(1e-12, 6, 5))
+        S = BallArithmetic._diagonal_scale_left(d, drad, M)
+        for sd in (-1, 1), sm in (-1, 1)
+            Q = setprecision(BigFloat, 512) do
+                (big.(mid(M)) .+ sm .* big.(rad(M))) ./ (big.(d) .+ sd * big(1e-10))
+            end
+            @test all(abs.(Q .- mid(S)) .<= rad(S))
+        end
+    end
+
+    @testset "the bound is below σ_min of sampled members" begin
+        for n in (8, 20), m in (2, 5)
+            Gm = Matrix(Diagonal(collect(1.0:n))) .+ 0.05 .* randn(rng, n, n)
+            G = BallMatrix(Gm, fill(1e-12, n, n))
+            for r in (oishi_2023_sigma_min_bound(G, m), rump_oishi_2024_sigma_min_bound(G, m),
+                rump_oishi_2024_sigma_min_bound(G, m; try_fast_gamma = false))
+                r.verified || continue
+                for _ in 1:5
+                    member = big.(Gm) .+ big(1e-12) .* rand(rng, (-1, 1), n, n)
+                    @test r.sigma_min_lower <= minimum(svdvals(Float64.(member))) * (1 + 1e-10)
+                end
+            end
+        end
+    end
+end

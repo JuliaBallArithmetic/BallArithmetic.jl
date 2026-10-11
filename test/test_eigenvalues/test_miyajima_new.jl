@@ -250,6 +250,22 @@ end
     @test 2.5 < sep < 3.5
 end
 
+@testset "sep_clusters is a lower bound of the distance" begin
+    rng = MersenneTwister(20261011)
+    exact_gap(a, b) = setprecision(BigFloat, 512) do
+        abs(Complex{BigFloat}(mid(a)) - Complex{BigFloat}(mid(b))) - BigFloat(rad(a)) -
+        BigFloat(rad(b))
+    end
+    for S in (Float64, ComplexF64), _ in 1:5000
+        ints = [Ball(randn(rng, S), abs(randn(rng)) * 10.0^rand(rng, -16:-1)) for _ in 1:4]
+        sep = BallArithmetic.sep_clusters(ints, 1:1, 2:2)
+        @test sep == 0 || sep <= exact_gap(ints[1], ints[2])
+        # clusters of two balls each: no pair of members is closer than the bound
+        sep2 = BallArithmetic.sep_clusters(ints, 1:2, 3:4)
+        @test sep2 == 0 || all(sep2 <= exact_gap(ints[i], ints[j]) for i in 1:2, j in 3:4)
+    end
+end
+
 @testset "Block Schur - the similarity it certifies" begin
     # Q⁻¹AQ = T + S with ‖S‖ ≤ perturbation_norm: checked at 512 bits for the midpoints
     for (A, herm) in (([4.0 1.0 0.2 0.1; 0.3 3.0 0.5 0.2; 0.1 0.2 -1.0 0.4; 0.05 0.1 0.3 -2.0], false),

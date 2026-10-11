@@ -464,30 +464,20 @@ function overlap_components(balls::AbstractVector{Ball{T, CT}}) where {T, CT}
     return components
 end
 
+"""
+    sep_clusters(ints, compA, compB)
+
+A lower bound of the distance between the union of the balls `ints[compA]` and the union of the
+balls `ints[compB]`, zero where it cannot be shown positive. Each union is enclosed in one ball
+by [`ball_hull`](@ref), and for two balls with centres `c_A`, `c_B` and radii `r_A`, `r_B` the
+distance is `|c_A − c_B| − r_A − r_B`, evaluated here from below with [`dist_down`](@ref) and
+downward subtractions.
+"""
 function sep_clusters(ints, compA::UnitRange{Int}, compB::UnitRange{Int})
     hullA = reduce(ball_hull, ints[compA])
     hullB = reduce(ball_hull, ints[compB])
     T = radtype(typeof(hullA))
-
-    cA, cB = mid(hullA), mid(hullB)
-    rA, rB = rad(hullA), rad(hullB)
-
-    # Rigorous lower bound on the distance between centres.
-    distance_down = setrounding(T, RoundDown) do
-        diff = cA - cB
-        hypot(abs(real(diff)), abs(imag(diff)))
-    end
-
-    # Rigorous upper bound on the sum of the hull radii.
-    radii_up = setrounding(T, RoundUp) do
-        rA + rB
-    end
-
-    # Rigorous lower bound on the gap.
-    gap = setrounding(T, RoundDown) do
-        distance_down - radii_up
-    end
-
+    gap = sub_down(sub_down(dist_down(mid(hullA), mid(hullB)), rad(hullA)), rad(hullB))
     return gap <= zero(T) ? zero(T) : gap
 end
 
