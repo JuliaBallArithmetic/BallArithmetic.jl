@@ -1,8 +1,6 @@
-# Verified LU Decomposition with Rigorous Error Bounds
-# Based on Section 3 of Rump & Ogita (2024) "Verified Error Bounds for Matrix Decompositions"
-#
-# Key technique: Precondition A to get I+E, compute verified LU of perturbed identity,
-# then transform back to get verified bounds for original factors.
+# The exported LU decomposition with error bounds, and what the exported decompositions share:
+# the working arithmetic selected by `use_bigfloat` and `precision_bits`, the input as a ball
+# matrix in it, and the relative residual of an enclosure. The method is in `rump_ogita_2024.jl`.
 
 # Helper to get appropriate BigFloat type (handles Complex)
 _bigfloat_type(::Type{T}) where {T <: Real} = BigFloat
@@ -24,24 +22,81 @@ function _to_working(v::AbstractVector{T}, use_bigfloat::Bool) where {T}
     use_bigfloat ? _to_bigfloat(v) : convert.(T <: Complex ? ComplexF64 : Float64, v)
 end
 
+# Runs `f` in the working arithmetic of the exported decompositions: Float64, or BigFloat at
+# `precision_bits`.
+_decomposition_arithmetic(f, use_bigfloat::Bool, precision_bits::Integer) =
+    use_bigfloat ? setprecision(f, BigFloat, precision_bits) : f()
+
+# The input as a ball matrix in the working arithmetic; called inside
+# `_decomposition_arithmetic`. An entry with more digits than the working precision is rounded
+# to nearest and the rounding error, which is computed exactly at the precision of the entry and
+# then rounded up, goes into the radius, so that the ball contains the input.
+function _decomposition_input(A::AbstractMatrix{S}, use_bigfloat::Bool) where {S}
+    use_bigfloat || return BallMatrix(Matrix{S <: Complex ? ComplexF64 : Float64}(A))
+    p = precision(BigFloat)
+    nearest(x::Real) = BigFloat(x; precision = p)
+    function excess(x::Real, c::BigFloat)
+        px = precision(x)
+        px <= p && return BigFloat(0; precision = p)
+        d = setprecision(() -> abs(BigFloat(x) - c), BigFloat, px)
+        return BigFloat(d, RoundUp; precision = p)
+    end
+    c = Matrix{S <: Complex ? Complex{BigFloat} : BigFloat}(undef, size(A))
+    r = Matrix{BigFloat}(undef, size(A))
+    for i in eachindex(A)
+        x = A[i]
+        if S <: Complex
+            cr, ci = nearest(real(x)), nearest(imag(x))
+            c[i] = complex(cr, ci)
+            r[i] = add_up(excess(real(x), cr), excess(imag(x), ci))
+        else
+            c[i] = nearest(x)
+            r[i] = excess(x, c[i])
+        end
+    end
+    return BallMatrix(c, r)
+end
+
+# What a failed verification returns: nothing is enclosed.
+_unverified_ball(::BallMatrix{T, CT}, m::Integer, n::Integer) where {T, CT} =
+    BallMatrix(fill(CT(NaN), m, n), fill(T(Inf), m, n))
+
+# An upper bound of ‖R̃‖_∞ / ‖Ã‖_∞ over the matrices R̃ of the ball R and Ã of the ball A.
+function _relative_residual_bound(R::BallMatrix{T}, A::BallMatrix{T}) where {T}
+    num = T(upper_bound_L_inf_opnorm(R))
+    Am, Ar = mid(A), rad(A)
+    den = zero(T)
+    for i in axes(Am, 1)
+        s = zero(T)
+        for j in axes(Am, 2)
+            s = add_down(s, max(sub_down(abs_down(Am[i, j]), Ar[i, j]), zero(T)))
+        end
+        den = max(den, s)
+    end
+    return den > 0 ? div_up(num, den) : T(Inf)
+end
+
 """
     VerifiedLUResult{LM, UM, RT}
 
-Result from verified LU decomposition with rigorous error bounds.
+Result of [`verified_lu`](@ref).
 
 # Fields
-- `L::LM`: Lower triangular factor with unit diagonal (rigorous enclosure as BallMatrix)
-- `U::UM`: Upper triangular factor (rigorous enclosure as BallMatrix)
-- `p::Vector{Int}`: Row permutation vector
-- `success::Bool`: Whether verification succeeded
-- `residual_norm::RT`: Bound on ‖LU - A(p,:)‖ / ‖A‖
+- `L::LM`: ball matrix containing the unit lower triangular (trapezoidal) factor
+- `U::UM`: ball matrix containing the upper triangular (trapezoidal) factor
+- `p::Vector{Int}`: row permutation
+- `success::Bool`: whether the verification succeeded; when `false` the radii are infinite and
+  nothing is proved
+- `residual_norm::RT`: an upper bound of `‖L̃Ũ − A[p, q]‖_∞ / ‖A‖_∞` over all `L̃ ∈ L`, `Ũ ∈ U`
+- `q::Vector{Int}`: column permutation, the identity unless the matrix has more columns than rows
 
-# Mathematical Guarantee
-For any L̃ ∈ L, Ũ ∈ U: L̃Ũ = A[p,:] (the permuted input matrix).
+# Statement
+When `success` is `true`, `A[p, q]` has a unique decomposition `LU` with `L` unit lower and `U`
+upper triangular, and these factors lie in the ball matrices `L` and `U`.
 
-# References
-- [RumpOgita2024](@cite) Rump & Ogita, "Verified Error Bounds for Matrix Decompositions",
-  Section 3: LU decomposition.
+# Reference
+S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
+Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 3.
 """
 struct VerifiedLUResult{LM <: BallMatrix, UM <: BallMatrix, RT <: Real}
     L::LM
@@ -49,7 +104,10 @@ struct VerifiedLUResult{LM <: BallMatrix, UM <: BallMatrix, RT <: Real}
     p::Vector{Int}
     success::Bool
     residual_norm::RT
+    q::Vector{Int}
 end
+VerifiedLUResult(L, U, p, success, residual_norm) =
+    VerifiedLUResult(L, U, p, success, residual_norm, collect(1:size(U, 2)))
 
 """
     _lu_perturbed_identity(E::AbstractMatrix{T}; E_rad=nothing, precision_bits::Int=256, use_bigfloat::Bool=true) where T
@@ -355,241 +413,53 @@ function _lu_perturbed_identity(E::AbstractMatrix{T};
 end
 
 """
-    _strict_lower_triangular(A::AbstractMatrix)
+    verified_lu(A::AbstractMatrix; precision_bits = 256, use_bigfloat = true)
 
-Extract strictly lower triangular part of A (below diagonal).
-"""
-function _strict_lower_triangular(A::AbstractMatrix{T}) where {T}
-    m, n = size(A)
-    L = zeros(T, m, n)
-    for j in 1:min(m - 1, n)
-        for i in (j + 1):m
-            L[i, j] = A[i, j]
-        end
-    end
-    return L
-end
-
-"""
-    _upper_triangular(A::AbstractMatrix)
-
-Extract upper triangular part of A (including diagonal).
-"""
-function _upper_triangular(A::AbstractMatrix{T}) where {T}
-    m, n = size(A)
-    U = zeros(T, m, n)
-    for j in 1:n
-        for i in 1:min(j, m)
-            U[i, j] = A[i, j]
-        end
-    end
-    return U
-end
-
-"""
-    verified_lu(A::AbstractMatrix{T}; precision_bits::Int=256, use_double_precision::Bool=true, use_bigfloat::Bool=true) where T
-
-Compute verified LU decomposition with rigorous error bounds.
-
-# Algorithm (Rump & Ogita 2024, Section 3.2)
-
-1. Compute approximate LU with partial pivoting: A[p,:] ≈ L̃Ũ
-2. Compute preconditioners: X_L ≈ L̃⁻¹, X_U ≈ Ũ⁻¹
-3. Form perturbed identity: I_E = X_L · A · X_U
-4. Verify LU of I_E using [`_lu_perturbed_identity`](@ref)
-5. Transform back: L = X_L⁻¹ · L_E, U = U_E · X_U⁻¹
+Inclusions of the factors of the LU decomposition of the `m × n` matrix `A`, by Section 3 of
+Rump and Ogita (2024); the method is described at [`_rumpogita2024_lu`](@ref). Returns a
+[`VerifiedLUResult`](@ref): when `success` is `true`, `A[p, q] = LU` with `L` of size
+`m × min(m, n)` unit lower triangular and `U` of size `min(m, n) × n` upper triangular, both in
+the ball matrices returned. `p` comes from partial pivoting; `q` is the identity for `m ≥ n`, and
+for `m < n` the column permutation of Section 3.4 of the paper.
 
 # Arguments
-- `A`: Input matrix (m × n)
-- `precision_bits`: BigFloat precision for rigorous computation (default: 256, ignored if use_bigfloat=false)
-- `use_double_precision`: Use double-precision products for I_E (default: true)
-- `use_bigfloat`: If true, use BigFloat for high precision; if false, use Float64 (faster but less precise)
-
-# Returns
-[`VerifiedLUResult`](@ref) containing rigorous enclosures of L, U and permutation.
+- `use_bigfloat`: with `true`, the default, the computation runs in BigFloat at `precision_bits`
+  and the factors are enclosed to about that precision; with `false` it runs in Float64 and the
+  radii are of the order of the rounding unit times the size of the factors. A BigFloat input is
+  always treated in BigFloat.
+- `precision_bits`: the BigFloat precision. A BigFloat input with more digits is rounded to it
+  and the rounding is enclosed.
+- `use_double_precision`: kept for compatibility; it has no effect.
 
 # Example
 ```julia
 A = randn(100, 100)
-result = verified_lu(A)  # Uses BigFloat by default
-result_fast = verified_lu(A; use_bigfloat=false)  # Uses Float64 (faster)
-@assert result.success
-# L and U are BallMatrix enclosures
+r = verified_lu(A; use_bigfloat = false)
+r.success      # A[r.p, r.q] = L U with L in r.L and U in r.U
 ```
 
-# References
-- [RumpOgita2024](@cite) Rump & Ogita, Section 3: LU decomposition
+# Reference
+S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
+Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 3.
 """
-function verified_lu(A::AbstractMatrix{T};
+function verified_lu(A::AbstractMatrix{S};
         precision_bits::Int = 256,
         use_double_precision::Bool = true,
-        use_bigfloat::Bool = true) where {T <: Union{
+        use_bigfloat::Bool = true) where {S <: Union{
         Float64, ComplexF64, BigFloat, Complex{BigFloat}}}
-    if real(T) === BigFloat
-        use_bigfloat = true
+    bigfloat = use_bigfloat || real(S) === BigFloat
+    return _decomposition_arithmetic(bigfloat, precision_bits) do
+        Ab = _decomposition_input(A, bigfloat)
+        T = eltype(rad(Ab))
+        m, n = size(Ab)
+        k = min(m, n)
+        r = _rumpogita2024_lu(Ab)
+        r === nothing && return VerifiedLUResult(_unverified_ball(Ab, m, k),
+            _unverified_ball(Ab, k, n), collect(1:m), false, T(Inf), collect(1:n))
+        Apq = BallMatrix(mid(Ab)[r.p, r.q], rad(Ab)[r.p, r.q])
+        residual_norm = _relative_residual_bound(r.L * r.U - Apq, Apq)
+        return VerifiedLUResult(r.L, r.U, r.p, true, residual_norm, r.q)
     end
-    m, n = size(A)
-
-    # Step 1: Compute approximate LU with partial pivoting
-    F = lu(A, RowMaximum())  # Partial pivoting
-    L_approx = F.L
-    U_approx = F.U
-    p = F.p
-
-    # Permute A
-    A_perm = A[p, :]
-
-    # Step 2: Compute approximate preconditioners
-    # X_L ≈ L̃⁻¹ (left inverse for m ≥ n, or inverse of square part)
-    # X_U ≈ Ũ⁻¹ (right inverse)
-    mn = min(m, n)
-
-    if m >= n
-        X_L = inv(L_approx[1:n, 1:n])
-        X_L_full = vcat(X_L, -L_approx[(n + 1):m, 1:n] * X_L)
-    else
-        X_L = inv(L_approx)
-    end
-
-    X_U = m >= n ? inv(U_approx) : inv(U_approx[1:m, 1:m])
-
-    # Step 3: Form perturbed identity I_E = X_L · A_perm · X_U
-    # Use higher precision for this product if requested
-    if use_double_precision
-        I_E = _double_precision_product(X_L, A_perm, X_U)
-    else
-        if m >= n
-            I_E = X_L_full * A_perm * X_U
-        else
-            I_E = X_L * A_perm[1:m, 1:m] * X_U
-        end
-    end
-
-    # E = I_E - I
-    E = I_E - I
-
-    # Step 4: Verify LU of I + E
-    L_E_data, U_E_data, _, _, success = _lu_perturbed_identity(
-        E; precision_bits = precision_bits, use_bigfloat = use_bigfloat)
-
-    # Get working type for this computation
-    WT = _working_type(T, use_bigfloat)
-    RWT = real(WT)
-
-    if !success
-        # Return failure result
-        L_ball = BallMatrix(_to_working(L_approx, use_bigfloat), fill(RWT(Inf), m, mn))
-        U_ball = BallMatrix(_to_working(U_approx, use_bigfloat), fill(RWT(Inf), mn, n))
-        return VerifiedLUResult(L_ball, U_ball, p, false, RWT(Inf))
-    end
-
-    L_offset_mid, L_offset_rad = L_E_data
-    U_offset_mid, U_offset_rad = U_E_data
-
-    # Step 5: Transform back to get L and U
-    # L = X_L⁻¹ · L_E = L̃ · L_E (approximately)
-    # U = U_E · X_U⁻¹ = U_E · Ũ (approximately)
-
-    old_prec = precision(BigFloat)
-    if use_bigfloat
-        setprecision(BigFloat, precision_bits)
-    end
-
-    try
-        # For the improved formula (equation 3.8): L = A · X_U · U_E⁻¹
-        # This gives better accuracy for L
-
-        # Convert to working precision
-        A_perm_w = _to_working(A_perm, use_bigfloat)
-        L_approx_w = _to_working(L_approx, use_bigfloat)
-        U_approx_w = _to_working(U_approx, use_bigfloat)
-
-        # Build L_E and U_E as ball matrices (as perturbations of identity)
-        # L_E = I + L_offset
-        L_E_mid = Matrix{WT}(I, m, mn) + L_offset_mid
-        U_E_mid = (m >= n ? Matrix{WT}(I, n, n) : Matrix{WT}(I, m, n)[1:m, 1:n]) +
-                  U_offset_mid
-
-        # Compute L = L̃ · L_E with error propagation
-        # and U = U_E · Ũ with error propagation
-        if m >= n
-            L_mid = L_approx_w * L_E_mid
-            U_mid = U_E_mid * U_approx_w
-        else
-            L_mid = L_approx_w * L_E_mid
-            # For m < n, U is m × n
-            U_mid = hcat(U_E_mid * U_approx_w[1:m, 1:m],
-                L_E_mid \ (_to_working(X_L, use_bigfloat) * A_perm_w[:, (m + 1):n]))
-        end
-
-        # Propagate error bounds
-        # Error in L: |ΔL| ≤ |L̃| · |ΔL_E| + O(ε²)
-        L_rad = abs.(L_approx_w) * L_offset_rad
-
-        # Error in U: |ΔU| ≤ |ΔU_E| · |Ũ| + O(ε²)
-        if m >= n
-            U_rad = U_offset_rad * abs.(U_approx_w)
-        else
-            U_rad_left = U_offset_rad * abs.(U_approx_w[1:m, 1:m])
-
-            # Error in U_right from solving L_E * U_right = X_L * A_right
-            # Per Rump-Ogita 2024 Section 3.4: propagate error through triangular solve
-            # U_right_mid is already computed, error bound:
-            # |ΔU_right| ≤ |L_E^{-1}| * |ΔL_E| * |U_right| + triangular solve error
-            #
-            # Using Neumann bound for |L_E^{-1}|: since L_E = I + L_offset with L_offset
-            # strictly lower triangular, ‖L_offset‖ < 1 implies |L_E^{-1}| ≤ 1/(1 - ‖L_offset‖)
-            L_offset_norm = setrounding(RWT, RoundUp) do
-                opnorm(L_offset_rad, Inf)  # Upper bound on ‖L_offset‖_∞
-            end
-
-            if L_offset_norm < one(RWT)
-                U_right_mid = U_mid[:, (m + 1):n]
-                L_E_inv_bound = setrounding(RWT, RoundUp) do
-                    one(RWT) / (one(RWT) - L_offset_norm)
-                end
-                # Error propagation: |L_E^{-1}| * |L_offset_rad| * |U_right|
-                U_rad_right = setrounding(RWT, RoundUp) do
-                    L_E_inv_bound .* (L_offset_rad * abs.(U_right_mid))
-                end
-            else
-                # Fallback: conservative bound using Frobenius norm of residual
-                # This path should rarely be taken for well-conditioned problems
-                @warn "LU rectangular case: L_offset_norm >= 1, using conservative bounds"
-                U_right_mid = U_mid[:, (m + 1):n]
-                U_rad_right = setrounding(RWT, RoundUp) do
-                    fill(opnorm(L_offset_rad, Inf), m, n - m) .* abs.(U_right_mid)
-                end
-            end
-            U_rad = hcat(U_rad_left, U_rad_right)
-        end
-
-        # Build ball matrices
-        L_ball = BallMatrix(L_mid, L_rad)
-        U_ball = BallMatrix(U_mid, U_rad)
-
-        # Compute rigorous residual norm bound using Miyajima products
-        residual_norm = _rigorous_relative_residual_norm(L_mid, U_mid, A_perm_w)
-
-        return VerifiedLUResult(L_ball, U_ball, p, true, residual_norm)
-
-    finally
-        if use_bigfloat
-            setprecision(BigFloat, old_prec)
-        end
-    end
-end
-
-"""
-    _double_precision_product(X_L, A, X_U)
-
-Compute X_L · A · X_U using compensated (double-double) arithmetic for better accuracy.
-Falls back to standard arithmetic if DoubleFloats is not available.
-"""
-function _double_precision_product(X_L::AbstractMatrix, A::AbstractMatrix, X_U::AbstractMatrix)
-    # Default implementation: standard floating-point
-    # This will be overridden in DoubleFloatsExt for better accuracy
-    return X_L * A * X_U
 end
 
 # Stub for Double64 extension

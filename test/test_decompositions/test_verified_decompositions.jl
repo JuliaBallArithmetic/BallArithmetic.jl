@@ -227,7 +227,6 @@ end
             @test opnorm(Q_mid * R_mid - A, Inf) / opnorm(A, Inf) < 1e-12
         end
 
-        # NOTE: Complex QR decomposition has a known bug in BigFloat conversion.
         @testset "Complex QR" begin
             m, n = 6, 4
             Q_full = Matrix(qr(randn(ComplexF64, m, m)).Q)
@@ -239,15 +238,11 @@ end
 
             A = Q_true * R_true
 
-            try
-                result = verified_qr(A)
-                @test result.success
-                Q_mid = mid(result.Q)
-                R_mid = mid(result.R)
-                @test opnorm(Q_mid * R_mid - A, Inf) / opnorm(A, Inf) < 1e-11
-            catch e
-                @test_broken false
-            end
+            result = verified_qr(A)
+            @test result.success
+            Q_mid = mid(result.Q)
+            R_mid = mid(result.R)
+            @test opnorm(Q_mid * R_mid - A, Inf) / opnorm(A, Inf) < 1e-11
         end
     end
 
@@ -799,6 +794,159 @@ end
 
             # At least one should succeed
             @test result_lu.success || result_qr.success
+        end
+    end
+
+    #==========================================================================#
+    # The exported routines against factors computed at 1024 bits. Every entry of the factor
+    # must lie in its ball, with no tolerance.
+    @testset "Enclosures contain the factors" begin
+        Random.seed!(20261011)
+        inside(ref, B) = all(abs.(big.(mid(B)) .- ref) .<= big.(rad(B)))
+        modes = (((; use_bigfloat = false), 1e-9), ((;), 1e-60), ((; precision_bits = 128), 1e-30))
+
+        @testset "LU, $elt, $m × $n" for elt in (Float64, ComplexF64),
+            (m, n) in ((6, 6), (9, 5), (5, 9))
+
+            A = randn(elt, m, n)
+            for (kw, tol) in modes
+                r = verified_lu(A; kw...)
+                @test r.success
+                @test r.residual_norm < tol
+                @test maximum(rad(r.L)) < tol && maximum(rad(r.U)) < tol
+                setprecision(BigFloat, 1024) do
+                    k = min(m, n)
+                    Apq = big.(A)[r.p, r.q]
+                    F = lu(Apq[1:k, 1:k], NoPivot())
+                    L = m > n ? vcat(Matrix(F.L), Apq[(k + 1):m, :] / F.U) : Matrix(F.L)
+                    U = m < n ? hcat(Matrix(F.U), F.L \ Apq[:, (k + 1):n]) : Matrix(F.U)
+                    @test inside(L, r.L)
+                    @test inside(U, r.U)
+                end
+            end
+        end
+
+        @testset "Cholesky, $elt" for elt in (Float64, ComplexF64)
+            B = randn(elt, 7, 7)
+            A = B' * B + I
+            A = (A + A') / 2
+            for (kw, tol) in modes
+                r = verified_cholesky(A; kw...)
+                @test r.success
+                @test r.residual_norm < tol
+                @test maximum(rad(r.G)) < tol
+                setprecision(BigFloat, 1024) do
+                    @test inside(Matrix(cholesky(Hermitian(big.(A))).U), r.G)
+                end
+            end
+        end
+
+        @testset "Cholesky of the Hermitian part" begin
+            B = randn(6, 6)
+            A = B' * B + I
+            A[1, 2] += 1e-3
+            r = @test_logs (:warn,) verified_cholesky(A; use_bigfloat = false)
+            @test r.success
+            setprecision(BigFloat, 1024) do
+                H = (big.(A) + big.(A)') / 2
+                @test inside(Matrix(cholesky(Hermitian(H)).U), r.G)
+            end
+        end
+
+        @testset "Cholesky declines an indefinite matrix" begin
+            r = verified_cholesky([1.0 2.0; 2.0 1.0]; use_bigfloat = false)
+            @test !r.success
+            @test all(isinf, rad(r.G))
+        end
+
+        @testset "QR, $elt, $m × $n" for elt in (Float64, ComplexF64), (m, n) in ((6, 6), (9, 5))
+            A = randn(elt, m, n)
+            for (kw, tol) in modes
+                r = verified_qr(A; kw...)
+                @test r.success
+                @test r.residual_norm < tol
+                @test r.orthogonality_defect < tol
+                setprecision(BigFloat, 1024) do
+                    # R is the Cholesky factor of A*A, and Q = A R⁻¹
+                    Ab = big.(A)
+                    R = Matrix(cholesky(Hermitian(Ab' * Ab)).U)
+                    @test inside(R, r.R)
+                    @test inside(Ab / R, r.Q)
+                end
+            end
+        end
+
+        @testset "QR, full and wide" begin
+            A = randn(8, 5)
+            r = verified_qr(A; compute_full_Q = true, use_bigfloat = false)
+            @test r.success
+            @test size(r.Q) == (8, 8) && size(r.R) == (8, 5)
+            @test r.orthogonality_defect < 1e-9
+            W = randn(4, 7)
+            r = verified_qr(W; use_bigfloat = false)
+            @test r.success
+            @test size(r.Q) == (4, 4) && size(r.R) == (4, 7)
+            @test r.residual_norm < 1e-9
+        end
+
+        @testset "Polar, $elt" for elt in (Float64, ComplexF64)
+            A = randn(elt, 7, 5)
+            for (kw, tol) in (((; use_bigfloat = false), 1e-7), ((;), 1e-55))
+                r = verified_polar(A; kw...)
+                @test r.success && r.is_right
+                @test r.residual_norm < tol
+                setprecision(BigFloat, 1024) do
+                    Ab = big.(A)
+                    E = eigen(Hermitian(Ab' * Ab))
+                    P = E.vectors * Diagonal(sqrt.(E.values)) * E.vectors'
+                    @test inside(P, r.P)
+                    @test inside(Ab / P, r.Q)
+                end
+                # the left decomposition of the adjoint
+                l = verified_polar(Matrix(A'); right = false, kw...)
+                @test l.success && !l.is_right
+                @test size(l.Q) == (5, 7) && size(l.P) == (5, 5)
+                @test l.residual_norm < tol
+                setprecision(BigFloat, 1024) do
+                    Ab = big.(A)
+                    E = eigen(Hermitian(Ab' * Ab))
+                    P = E.vectors * Diagonal(sqrt.(E.values)) * E.vectors'
+                    @test inside(P, l.P)
+                    @test inside(Matrix((Ab / P)'), l.Q)
+                end
+            end
+            @test_throws DimensionMismatch verified_polar(randn(elt, 3, 5))
+            @test_throws DimensionMismatch verified_polar(randn(elt, 5, 3); right = false)
+        end
+
+        @testset "A BigFloat input with more digits than precision_bits" begin
+            A = setprecision(BigFloat, 512) do
+                B = [big(1) / 3 big(2) / 7; big(1) / 5 big(4) / 9]
+                B' * B + I
+            end
+            r = verified_cholesky(A; precision_bits = 128)
+            @test r.success
+            @test precision(mid(r.G)[1, 1]) == 128
+            setprecision(BigFloat, 1024) do
+                @test inside(Matrix(cholesky(Hermitian(A)).U), r.G)
+            end
+            l = verified_lu(A; precision_bits = 128)
+            @test l.success
+            setprecision(BigFloat, 1024) do
+                F = lu(A[l.p, :], NoPivot())
+                @test inside(Matrix(F.L), l.L)
+                @test inside(Matrix(F.U), l.U)
+            end
+        end
+
+        @testset "A singular matrix is declined" begin
+            A = [1.0 2.0; 2.0 4.0]
+            l = verified_lu(A; use_bigfloat = false)
+            @test !l.success && all(isinf, rad(l.U))
+            q = verified_qr(A; use_bigfloat = false)
+            @test !q.success && all(isinf, rad(q.Q))
+            p = verified_polar(A; use_bigfloat = false)
+            @test !p.success && all(isinf, rad(p.P))
         end
     end
 

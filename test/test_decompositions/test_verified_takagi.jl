@@ -37,7 +37,7 @@ using BallArithmetic
         # Verify it's complex symmetric (not Hermitian)
         @test norm(A - transpose(A)) < 1e-12
 
-        result = verified_takagi(A; method=:real_compound)
+        result = verified_takagi(A)
 
         @test result.success
         @test result.residual_norm < 1e-8
@@ -47,16 +47,6 @@ using BallArithmetic
         Σ_mid = mid.(result.Σ)
         A_reconstructed = U_mid * Diagonal(Σ_mid) * transpose(U_mid)
         @test norm(A_reconstructed - A) / norm(A) < 1e-8
-    end
-
-    # NOTE: svd and svd_simplified methods have a bug - _gram_schmidt_bigfloat is not defined
-    # These tests are skipped until the bug is fixed
-    @testset "verified_takagi with svd method" begin
-        @test_broken false  # Method :svd needs _gram_schmidt_bigfloat function
-    end
-
-    @testset "verified_takagi with svd_simplified method" begin
-        @test_broken false  # Method :svd_simplified needs _gram_schmidt_bigfloat function
     end
 
     @testset "verified_takagi rejects non-symmetric" begin
@@ -69,11 +59,10 @@ using BallArithmetic
         @test result isa BallArithmetic.VerifiedTakagiResult
     end
 
-    @testset "verified_takagi invalid method" begin
-        n = 2
+    @testset "verified_takagi has one method" begin
+        # the SVD-based variants were removed; the keyword went with them
         A = [1.0+0im 0.5+0im; 0.5+0im 1.0+0im]
-
-        @test_throws ArgumentError verified_takagi(A; method=:invalid)
+        @test_throws MethodError verified_takagi(A; method=:svd)
     end
 
     @testset "verified_takagi with real symmetric" begin
@@ -98,7 +87,7 @@ using BallArithmetic
         D = Diagonal(ComplexF64.([3.0, 2.0im, 1.0+1.0im]))
         A = Matrix(D)
 
-        result = verified_takagi(A; method=:real_compound)
+        result = verified_takagi(A)
 
         @test result.success
 
@@ -112,13 +101,12 @@ using BallArithmetic
         n = 3
         A = Complex.(Matrix(1.0I, n, n))
 
+        # a multiple singular value: the decomposition is not unique and nothing is certified
         result = verified_takagi(A)
 
-        @test result.success
-
-        # All Takagi values should be 1
-        Σ_mid = mid.(result.Σ)
-        @test all(abs.(Σ_mid .- 1.0) .< 1e-8)
+        @test !result.success
+        @test all(isinf, rad(result.U))
+        @test all(b -> isinf(rad(b)), result.Σ)
     end
 
     @testset "verified_takagi precision setting" begin
@@ -147,26 +135,34 @@ using BallArithmetic
         @test_throws DimensionMismatch verified_takagi(A)
     end
 
-    @testset "_verified_takagi_real_compound internal" begin
-        n = 3
-        Q = Matrix(qr(randn(ComplexF64, n, n)).Q)
-        Σ_true = [3.0, 2.0, 1.0]
-        A = Q * Diagonal(Σ_true) * transpose(Q)
-        A = (A + transpose(A)) / 2  # Ensure symmetric
-
-        result = BallArithmetic._verified_takagi_real_compound(A; precision_bits=256)
-
-        @test result.success
-        @test result.residual_norm < 1e-8
+    @testset "the factors computed at higher precision lie in the enclosure" begin
+        for n in (3, 8), (kw, tol) in (((; use_bigfloat = false), 1e-9), ((;), 1e-60))
+            B = randn(ComplexF64, n, n)
+            A = B + transpose(B)
+            r = verified_takagi(A; kw...)
+            @test r.success
+            @test r.residual_norm < tol
+            setprecision(BigFloat, 1024) do
+                Ab = big.(A)
+                # the singular values, and A ū = σ u for each column u of the midpoint, up to
+                # the radius: |A conj(u) − σ u| ≤ (‖A‖ + σ) √n ρ for a column within ρ entrywise
+                σ = sqrt.(sort(real.(eigvals(Hermitian(Ab' * Ab))); rev = true))
+                @test all(abs.(σ .- big.(mid.(r.Σ))) .<= big.(rad.(r.Σ)))
+                U, ρ = big.(mid(r.U)), big.(rad(r.U))
+                for k in 1:n
+                    defect = norm(Ab * conj.(U[:, k]) - σ[k] * U[:, k])
+                    @test defect <= (opnorm(Ab, 2) + σ[k]) * sqrt(big(n)) * maximum(ρ[:, k]) * 2
+                end
+            end
+        end
     end
 
-    # NOTE: svd and svd_simplified internal methods have a bug - _gram_schmidt_bigfloat is not defined
-    @testset "_verified_takagi_svd internal" begin
-        @test_broken false  # Needs _gram_schmidt_bigfloat function
-    end
-
-    @testset "_verified_takagi_svd_simplified internal" begin
-        @test_broken false  # Needs _gram_schmidt_bigfloat function
+    @testset "the symmetric part of a non-symmetric input" begin
+        A = [2.0+1im 0.5; 0.25 1.0-1im]
+        r = @test_logs (:warn,) verified_takagi(A; use_bigfloat = false)
+        @test r.success
+        S = (A + transpose(A)) / 2
+        @test maximum(abs.(svdvals(S) .- mid.(r.Σ))) < 1e-12
     end
 
     @testset "verified_takagi unitarity of U" begin

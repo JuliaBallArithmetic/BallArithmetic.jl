@@ -128,8 +128,12 @@ end
     end
 
     @testset "verified_qr complex" begin
-        # NOTE: Complex verified_qr has a pre-existing bug with maximum on Complex{BigFloat}
-        @test_broken false  # Complex QR needs fix for maximum() on complex matrices
+        A = randn(ComplexF64, 8, 8)
+        result = verified_qr(A)
+
+        @test result.success
+        @test 0 <= result.residual_norm < 1e-60
+        @test 0 <= result.orthogonality_defect < 1e-60
     end
 
     @testset "verified_cholesky produces rigorous residual" begin
@@ -145,8 +149,13 @@ end
     end
 
     @testset "verified_cholesky complex Hermitian" begin
-        # NOTE: Complex verified_cholesky has a pre-existing bug with BallMatrix radius types
-        @test_broken false  # Complex Cholesky needs fix for BallMatrix radius type
+        B = randn(ComplexF64, 8, 8)
+        A = B * B' + I
+        A = (A + A') / 2
+        result = verified_cholesky(A)
+
+        @test result.success
+        @test 0 <= result.residual_norm < 1e-60
     end
 
     @testset "verified_lu Float64-only mode" begin

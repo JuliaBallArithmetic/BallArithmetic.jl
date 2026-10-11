@@ -171,11 +171,11 @@ result_qr = verified_qr(A)
 # Cholesky (for symmetric positive definite)
 A_spd = A'A + 100I
 result_chol = verified_cholesky(A_spd)
-# result_chol.L is the lower Cholesky factor
+# result_chol.G encloses the upper triangular factor, A_spd = G'G
 
-# Polar decomposition A = UH
+# Polar decomposition A = QP
 result_polar = verified_polar(A)
-# result_polar.U (unitary), result_polar.H (Hermitian positive semidefinite)
+# result_polar.Q (unitary), result_polar.P (Hermitian positive definite)
 
 # Takagi factorization (for complex symmetric)
 A_symm = A + transpose(A)

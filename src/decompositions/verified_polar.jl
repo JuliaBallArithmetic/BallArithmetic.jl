@@ -1,31 +1,29 @@
-# Verified Polar Decomposition with Rigorous Error Bounds
-# Based on Section 7 of Rump & Ogita (2024) "Verified Error Bounds for Matrix Decompositions"
-#
-# For A ∈ ℂ^{n×n}, compute verified bounds for Q (unitary) and P (positive semidefinite)
-# such that A = QP (right polar) or A = PQ (left polar).
-# Note: _bigfloat_type and _to_bigfloat are defined in verified_lu.jl
+# The exported polar decomposition with error bounds. The method is in `rump_ogita_2024.jl`; the
+# working arithmetic and the residual are shared with `verified_lu.jl`.
 
 """
     VerifiedPolarResult{QM, PM, RT}
 
-Result from verified polar decomposition with rigorous error bounds.
+Result of [`verified_polar`](@ref).
 
 # Fields
-- `Q::QM`: Unitary factor (rigorous enclosure as BallMatrix)
-- `P::PM`: Positive semidefinite Hermitian factor (rigorous enclosure as BallMatrix)
-- `is_right::Bool`: True for A = QP (right polar), false for A = PQ (left polar)
-- `success::Bool`: Whether verification succeeded
-- `residual_norm::RT`: Bound on ‖QP - A‖ / ‖A‖ (or ‖PQ - A‖)
+- `Q::QM`: ball matrix containing the factor with orthonormal columns (rows, for the left
+  decomposition)
+- `P::PM`: ball matrix containing the Hermitian positive definite factor
+- `is_right::Bool`: `true` for `A = QP`, `false` for `A = PQ`
+- `success::Bool`: whether the verification succeeded; when `false` the radii are infinite and
+  nothing is proved
+- `residual_norm::RT`: an upper bound of `‖Q̃P̃ − A‖_∞ / ‖A‖_∞` (of `‖P̃Q̃ − A‖_∞ / ‖A‖_∞` for
+  the left decomposition) over all `Q̃ ∈ Q`, `P̃ ∈ P`
 
-# Mathematical Guarantee
-For any Q̃ ∈ Q, P̃ ∈ P:
-- Q̃^H Q̃ = I (unitary)
-- P̃ = P̃^H ≥ 0 (positive semidefinite Hermitian)
-- Q̃P̃ = A (right polar) or P̃Q̃ = A (left polar)
+# Statement
+When `success` is `true`, `A` has full rank and `A = QP` (or `A = PQ`) with `P` Hermitian
+positive definite and `Q` with orthonormal columns (rows), `Q` and `P` in the ball matrices
+returned.
 
-# References
-- [RumpOgita2024](@cite) Rump & Ogita, "Verified Error Bounds for Matrix Decompositions",
-  Section 7: Polar decomposition (derived from SVD).
+# Reference
+S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
+Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 7.
 """
 struct VerifiedPolarResult{QM<:BallMatrix, PM<:BallMatrix, RT<:Real}
     Q::QM
@@ -36,204 +34,62 @@ struct VerifiedPolarResult{QM<:BallMatrix, PM<:BallMatrix, RT<:Real}
 end
 
 """
-    verified_polar(A::AbstractMatrix{T}; precision_bits::Int=256,
-                   right::Bool=true,
-                   use_svd::Bool=true,
-                   use_bigfloat::Bool=true) where T
+    verified_polar(A::AbstractMatrix; right = true, kappa = 0, precision_bits = 256,
+                   use_bigfloat = true)
 
-Compute polar decomposition with heuristic error bounds.
+Inclusions of the factors of the polar decomposition of the `m × n` matrix `A`, by Section 7 of
+Rump and Ogita (2024), from the inclusions of the singular value decomposition of Rump and Lange
+(2023); the method is described at [`_rumpogita2024_polar`](@ref). Returns a
+[`VerifiedPolarResult`](@ref).
 
-!!! warning
-    The error bounds on Q and P are approximate (heuristic `2×SVD residual`),
-    not rigorously certified.  A proper analysis would require the perturbation
-    theory of Nakatsukasa & Higham (2013).  Use the residual norm returned in the
-    result to judge quality.
-
-For A = UΣV^H (SVD), the polar decomposition is:
-- Right polar: A = QP where Q = UV^H (unitary), P = VΣV^H (positive semidefinite)
-- Left polar: A = PQ where P = UΣU^H, Q = UV^H
-
-# Algorithm
-
-1. Compute verified SVD: A = UΣV^H using existing verified SVD methods
-2. For right polar:
-   - Q = UV^H
-   - P = VΣV^H
-3. For left polar:
-   - P = UΣU^H
-   - Q = UV^H
+With `right = true`, which needs `m ≥ n`, the decomposition is `A = QP` with `Q` of size `m × n`
+with orthonormal columns and `P` of size `n × n` Hermitian positive definite. With
+`right = false`, which needs `m ≤ n`, it is `A = PQ` with `P` of size `m × m` and `Q` of size
+`m × n` with orthonormal rows, obtained from the right decomposition of `A*`. `success` is
+`false` when a singular value is not separated from zero.
 
 # Arguments
-- `A`: Input square matrix
-- `precision_bits`: BigFloat precision (default: 256, ignored if use_bigfloat=false)
-- `right`: If true, compute A = QP; if false, compute A = PQ (default: true)
-- `use_svd`: Use SVD-based method (default: true; alternative methods not yet implemented)
-- `use_bigfloat`: If true, use BigFloat for high precision; if false, use Float64 (faster)
-
-# Returns
-[`VerifiedPolarResult`](@ref) containing rigorous enclosures of Q and P.
+- `kappa`: the clustering threshold of [`verifysvdall`](@ref).
+- `use_bigfloat`: with `true`, the default, the computation runs in BigFloat at `precision_bits`;
+  with `false` it runs in Float64. A BigFloat input is always treated in BigFloat.
+- `precision_bits`: the BigFloat precision. A BigFloat input with more digits is rounded to it
+  and the rounding is enclosed.
 
 # Example
 ```julia
 A = randn(ComplexF64, 50, 50)
-result = verified_polar(A)  # Uses BigFloat by default
-result_fast = verified_polar(A; use_bigfloat=false)  # Uses Float64 (faster)
-@assert result.success
-# Q is unitary, P is positive semidefinite
-# A ≈ Q * P
+r = verified_polar(A; use_bigfloat = false)
+r.success      # A = Q P with Q in r.Q and P in r.P
 ```
 
-# References
-- [RumpOgita2024](@cite) Rump & Ogita, Section 7
-- Horn & Johnson, Matrix Analysis, Chapter 7
+# Reference
+S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
+Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 7; S. M. Rump and M. Lange,
+*Fast computation of error bounds for all eigenpairs of a Hermitian and all singular pairs of a
+rectangular matrix with emphasis on eigen- and singular value clusters*, J. Comput. Appl. Math.
+**434** (2023), 115332, doi 10.1016/j.cam.2023.115332.
 """
-function verified_polar(A::AbstractMatrix{T};
+function verified_polar(A::AbstractMatrix{S};
                         precision_bits::Int=256,
                         right::Bool=true,
-                        use_svd::Bool=true,
-                        use_bigfloat::Bool=true) where T<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}
-    if real(T) === BigFloat
-        use_bigfloat = true
+                        kappa::Real=0,
+                        use_bigfloat::Bool=true) where S<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}
+    m, n = size(A)
+    (right ? m >= n : m <= n) || throw(DimensionMismatch(
+        "verified_polar: A = QP needs at least as many rows as columns, A = PQ at most as many"))
+    bigfloat = use_bigfloat || real(S) === BigFloat
+    return _decomposition_arithmetic(bigfloat, precision_bits) do
+        Ab = _decomposition_input(A, bigfloat)
+        T = eltype(rad(Ab))
+        k = right ? n : m
+        r = _rumpogita2024_polar(right ? Ab : _ball_adjoint(Ab); kappa)
+        r === nothing && return VerifiedPolarResult(_unverified_ball(Ab, m, n),
+            _unverified_ball(Ab, k, k), right, false, T(Inf))
+        Q = right ? r.Q : _ball_adjoint(r.Q)
+        Ac = BallMatrix(Matrix{eltype(mid(Q))}(mid(Ab)), rad(Ab))
+        residual_norm = _relative_residual_bound((right ? Q * r.P : r.P * Q) - Ac, Ac)
+        return VerifiedPolarResult(Q, r.P, right, true, residual_norm)
     end
-    n = size(A, 1)
-    size(A, 1) == size(A, 2) || throw(DimensionMismatch("A must be square for polar decomposition"))
-
-    if !use_svd
-        throw(ArgumentError("Only SVD-based polar decomposition is currently implemented"))
-    end
-
-    # Get working type for this computation
-    WT = _working_type(T, use_bigfloat)
-    RWT = real(WT)
-
-    # Step 1: Compute SVD A = U Σ V^H
-    # For BigFloat input, use svd_bigfloat (GLA) for full-precision SVD
-    F = real(T) === BigFloat ? svd_bigfloat(A) : svd(A)
-    U_approx = F.U
-    σ_approx = F.S
-    V_approx = F.Vt'  # V, not V^H
-
-    # Refine SVD to high precision using Ogita's method
-    # (This uses the existing ogita_svd_refine infrastructure)
-    old_prec = precision(BigFloat)
-    if use_bigfloat
-        setprecision(BigFloat, precision_bits)
-    end
-
-    try
-        # Convert to working precision
-        A_w = _to_working(A, use_bigfloat)
-        U_w = _to_working(U_approx, use_bigfloat)
-        σ_w = convert.(RWT, σ_approx)  # σ is always real
-        V_w = _to_working(V_approx, use_bigfloat)
-
-        # Refine SVD (simple Newton-like iteration)
-        # Skip for BigFloat input — GLA SVD is already high quality (~10⁻⁷⁴ residual)
-        if real(T) !== BigFloat
-            for _ in 1:3
-                # Improve V: V_new from A^H U = V Σ
-                AHU = A_w' * U_w
-                for j in 1:n
-                    if σ_w[j] > eps(RWT)
-                        V_w[:, j] = AHU[:, j] / σ_w[j]
-                    end
-                end
-                # Re-orthogonalize V
-                V_w, _ = _gram_schmidt_working(V_w)
-
-                # Improve U: U_new from A V = U Σ
-                AV = A_w * V_w
-                for j in 1:n
-                    if σ_w[j] > eps(RWT)
-                        U_w[:, j] = AV[:, j] / σ_w[j]
-                    end
-                end
-                # Re-orthogonalize U
-                U_w, _ = _gram_schmidt_working(U_w)
-
-                # Update singular values
-                for j in 1:n
-                    σ_w[j] = real(U_w[:, j]' * A_w * V_w[:, j])
-                end
-            end
-        end
-
-        # Compute error bounds on SVD
-        # Residual: A - U Σ V^H
-        Σ_mat = Diagonal(σ_w)
-        SVD_residual = A_w - U_w * Σ_mat * V_w'
-        svd_error = maximum(abs.(SVD_residual))
-
-        # Step 2: Compute polar factors
-        # Q = U V^H
-        Q_mid = U_w * V_w'
-
-        # Heuristic error bound on Q from SVD residual (not a rigorous certificate)
-        # |ΔQ| ≤ |ΔU| |V^H| + |U| |ΔV^H| ≈ 2 * svd_error / σ_min
-        Q_rad = fill(2 * svd_error / minimum(σ_w[σ_w .> eps(RWT)]), n, n)
-
-        if right
-            # P = V Σ V^H
-            P_mid = V_w * Σ_mat * V_w'
-            # Symmetrize
-            P_mid = (P_mid + P_mid') / 2
-
-            # Heuristic error bound on P (not a rigorous certificate)
-            P_rad = fill(2 * svd_error, n, n)
-        else
-            # P = U Σ U^H
-            P_mid = U_w * Σ_mat * U_w'
-            # Symmetrize
-            P_mid = (P_mid + P_mid') / 2
-
-            # Heuristic error bound on P (not a rigorous certificate)
-            P_rad = fill(2 * svd_error, n, n)
-        end
-
-        Q_ball = BallMatrix(Q_mid, Q_rad)
-        P_ball = BallMatrix(P_mid, P_rad)
-
-        # Compute residual
-        if right
-            QP = Q_mid * P_mid
-        else
-            QP = P_mid * Q_mid
-        end
-        residual = QP - A_w
-        residual_norm = maximum(abs.(residual)) / maximum(abs.(A_w))
-
-        return VerifiedPolarResult(Q_ball, P_ball, right, true, residual_norm)
-
-    finally
-        if use_bigfloat
-            setprecision(BigFloat, old_prec)
-        end
-    end
-end
-
-"""
-    _gram_schmidt_working(V::Matrix{T}) where T
-
-Modified Gram-Schmidt orthogonalization for matrices (works with Float64 or BigFloat).
-Returns orthonormalized V and the R factor.
-"""
-function _gram_schmidt_working(V::Matrix{T}) where T
-    n = size(V, 2)
-    Q = copy(V)
-    R = zeros(T, n, n)
-
-    for j in 1:n
-        for i in 1:(j-1)
-            R[i, j] = Q[:, i]' * Q[:, j]
-            Q[:, j] -= R[i, j] * Q[:, i]
-        end
-        R[j, j] = sqrt(real(Q[:, j]' * Q[:, j]))
-        if abs(R[j, j]) > eps(real(T))
-            Q[:, j] /= R[j, j]
-        end
-    end
-
-    return Q, R
 end
 
 # Stub for Double64 extension
@@ -246,7 +102,7 @@ function verified_polar_double64 end
 
 # Stub for MultiFloat extension
 """
-    verified_polar_multifloat(A; precision_bits=256, right=true, float_type=Float64x4)
+    verified_polar_multifloat(A; precision_bits=256, float_type=Float64x4, right=true)
 
 Fast verified polar decomposition using MultiFloat oracle. Requires MultiFloats.jl.
 """
