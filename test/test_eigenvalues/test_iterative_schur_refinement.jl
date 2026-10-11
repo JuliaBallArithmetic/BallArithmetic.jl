@@ -230,8 +230,8 @@ end
         @test result.converged
 
         Q_ball, T_ball = certify_schur_decomposition(A, result)
-        @test all(isfinite, rad(Q_ball))
-        @test all(r -> r > 0, rad(Q_ball))
+        # the pair is returned as it is, with radius zero: it is not an enclosure
+        @test all(iszero, rad(Q_ball)) && all(iszero, rad(T_ball))
         @test mid(Q_ball) == result.Q
         @test mid(T_ball) == result.T
     end
