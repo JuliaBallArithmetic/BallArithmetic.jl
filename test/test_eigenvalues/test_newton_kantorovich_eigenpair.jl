@@ -53,8 +53,8 @@ end
         end
 
         @testset "one pair, u computed, complex eigenvalue of a real matrix" begin
-            rng = MersenneTwister(12)
-            M = randn(rng, 6, 6)
+            # a rotation block gives the pair ±i up to the coupling
+            M = [0.0 -1.0 0.3 0.0; 1.0 0.0 0.0 0.2; 0.1 0.0 2.0 0.5; 0.0 0.4 0.0 -3.0]
             E = eigen(M)
             i = findfirst(λ -> abs(imag(λ)) > 1e-3, E.values)
             @test i !== nothing
