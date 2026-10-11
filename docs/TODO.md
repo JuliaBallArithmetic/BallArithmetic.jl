@@ -218,9 +218,9 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       with `converged = true`; from the unperturbed factors all return about 1e-16. Nothing in
       `src` calls them. Sources now in `references/` (`ab1b9f8`): Higham (1986), Nakatsukasa,
       Bai and Gygi (2010), Yamamoto, Nakatsukasa, Yanagisawa and Fukaya (2015), Carson and
-      Higham (2017), Ogita and Aishima (2020), and Terao, Ozaki and Ogita (2020, the accepted
-      manuscript, supplied by Isaia). Not obtained: Martin, Peters and Wilkinson (1966,
-      Springer) and the books of Higham and of Wilkinson. To do: read each routine against its source and implement it as
+      Higham (2017), Ogita and Aishima (2020), Terao, Ozaki and Ogita (2020, the accepted
+      manuscript) and Martin, Peters and Wilkinson (1966), the last two supplied by Isaia. Not
+      obtained: the books of Higham and of Wilkinson. To do: read each routine against its source and implement it as
       stated there, or remove it; the Double64 and MultiFloat variants in `ext/` follow.
     - **No source found yet:** `verified_linear_solve_hmatrix` (cites Minamihata 2015, not in
       the library), `krawczyk_sylvester` (a stub; the Sylvester enclosures are now those of Miyajima 2013),

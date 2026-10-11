@@ -1,7 +1,7 @@
 # Iterative Refinement Methods for Matrix Decompositions
 #
-# References (bibliographic details checked on Crossref on 2026-10-11; [1] to [4], [6] and [7]
-# are in `references/`):
+# References (bibliographic details checked on Crossref on 2026-10-11; all seven are in
+# `references/`):
 # [1] N. J. Higham, "Computing the polar decomposition, with applications",
 #     SIAM J. Sci. Stat. Comput. 7(4) (1986) 1160-1174, doi 10.1137/0907079.
 # [2] Y. Nakatsukasa, Z. Bai and F. Gygi, "Optimizing Halley's iteration for computing the
@@ -16,7 +16,6 @@
 # [5] R. S. Martin, G. Peters and J. H. Wilkinson, "Iterative refinement of the solution of a
 #     positive definite system of equations", Numer. Math. 8 (1966) 203-216,
 #     doi 10.1007/BF02162558. (This file used to give 1971 and the DOI of another paper.)
-#     Not obtained.
 # [6] T. Terao, K. Ozaki and T. Ogita, "LU-Cholesky QR algorithms for thin QR decomposition",
 #     Parallel Comput. 92 (2020) 102571, doi 10.1016/j.parco.2019.102571. (Cited below as
 #     "T. Fukaya et al." with a SIAM DOI that does not resolve.) The accepted manuscript is in
