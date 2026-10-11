@@ -1,13 +1,18 @@
 """
     adaptive_ogita_svd.jl
 
-Adaptive precision SVD with Ogita's iterative refinement.
+Adaptive precision SVD with the iterative refinement of
 
-Based on Rump & Ogita (2024), this implements an adaptive algorithm that:
+    T. Ogita and K. Aishima, "Iterative refinement for singular value decomposition based on
+    matrix multiplication", J. Comput. Appl. Math. 369 (2020) 112512,
+
+Algorithm 1 (RefSVD), which is stated there for a real `m × n` matrix with `m ≥ n`, simple
+singular values and full `m × m` and `n × n` factors. The driver `adaptive_ogita_svd`, which
+alternates that refinement with a certification at increasing precision, is ours:
 1. Starts with low precision (Float64)
 2. Computes rigorous SVD bounds
-3. If bounds are not tight enough, refines using Ogita's iterative method
-4. Automatically increases precision as needed
+3. If bounds are not tight enough, refines the factors by Algorithm 1 at twice the precision
+4. Certifies again at that precision, and repeats
 """
 
 """
@@ -182,6 +187,32 @@ function _ogita_svd_refine_impl(A::AbstractMatrix{T}, U, Σ, V,
                                 max_iterations::Int,
                                 check_convergence::Bool) where {T<:Union{AbstractFloat, Complex{<:AbstractFloat}}}
     m, n = size(A)
+    if m < n
+        # the paper's reduction: the decomposition of A* has the factors exchanged
+        r = _ogita_svd_refine_impl(Matrix(A'), V, Σ, U, max_iterations, check_convergence)
+        return OgitaSVDRefinementResult(r.V, r.Σ, r.U, r.iterations, r.precision_used,
+            r.residual_norm, r.converged)
+    end
+    thin = size(U, 2) < m
+    if thin
+        # Algorithm 1 needs the full m × m factor (Remark 3 of the paper: it does not work for
+        # the thin decomposition). The columns are completed by an approximately orthonormal
+        # basis of the complement, which the refinement then corrects with the rest.
+        Uc = convert.(T, U)
+        U = hcat(Uc, Matrix(qr(Uc).Q)[:, (size(Uc, 2) + 1):m])
+    end
+    r = _ogita_refsvd(A, U, Σ, V, max_iterations, check_convergence)
+    thin || return r
+    return OgitaSVDRefinementResult(r.U[:, 1:n], r.Σ, r.V, r.iterations, r.precision_used,
+        r.residual_norm, r.converged)
+end
+
+# Algorithm 1 for m ≥ n with a full m × m factor U. For complex data the transposes of the paper
+# are conjugate transposes, as (26) to (28) with F* and G*.
+function _ogita_refsvd(A::AbstractMatrix{T}, U, Σ, V,
+                       max_iterations::Int,
+                       check_convergence::Bool) where {T<:Union{AbstractFloat, Complex{<:AbstractFloat}}}
+    m, n = size(A)
     min_dim = min(m, n)
     RT = real(T)  # Real type for singular values
 
@@ -255,7 +286,7 @@ function _ogita_svd_refine_impl(A::AbstractMatrix{T}, U, Σ, V,
             for i in 1:n
                 for j in (n+1):m
                     if abs(σ_tilde[i]) > eps(RT)
-                        F_tilde[i,j] = -T_matrix[j,i] / σ_tilde[i]
+                        F_tilde[i,j] = -conj(T_matrix[j,i]) / σ_tilde[i]
                     end
                 end
             end
@@ -265,7 +296,7 @@ function _ogita_svd_refine_impl(A::AbstractMatrix{T}, U, Σ, V,
         if m > n
             for i in (n+1):m
                 for j in 1:n
-                    F_tilde[i,j] = R[i,j] - F_tilde[j,i]
+                    F_tilde[i,j] = R[i,j] - conj(F_tilde[j,i])
                 end
             end
         end
@@ -324,7 +355,7 @@ function _ogita_svd_refine_impl(A::AbstractMatrix{T}, U, Σ, V,
     precision_used = T == Float64 ? 53 : precision(BigFloat)
 
     # Compute final residual norm for diagnostics (only once at the end)
-    residual_norm = _spectral_norm_bound(A - U_curr * Diagonal(Σ_curr) * V_curr')
+    residual_norm = _spectral_norm_bound(A - U_curr[:, 1:n] * Diagonal(Σ_curr) * V_curr')
 
     return OgitaSVDRefinementResult(
         U_curr, Diagonal(Σ_curr), V_curr,
@@ -386,7 +417,7 @@ function adaptive_ogita_svd(A::BallMatrix{T};
 
     # Start with Float64 precision
     current_precision = 53  # Float64 precision in bits
-    A_working = T == Float64 ? A : BallMatrix(convert.(Float64, mid(A)), convert.(Float64, rad(A)))
+    A_working = T == Float64 ? A : _convert_to_precision(A, 53)
 
     # Initial computation
     result = rigorous_svd(A_working; method, apply_vbd)
@@ -411,37 +442,39 @@ function adaptive_ogita_svd(A::BallMatrix{T};
 
         @info "Refining SVD at precision $(current_precision) bits (step $refinement_step/$max_refinement_iterations)"
 
-        # Convert to higher precision
-        A_high = _convert_to_precision(A, current_precision)
+        result = setprecision(BigFloat, current_precision) do
+            # Convert to higher precision
+            A_high = _convert_to_precision(A, current_precision)
 
-        # Extract current SVD for refinement
-        U_curr = mid(result.U)
-        Σ_curr = [mid(σ) for σ in result.singular_values]
-        V_curr = mid(result.V)
+            # Extract current SVD for refinement
+            U_curr = mid(result.U)
+            Σ_curr = [mid(σ) for σ in result.singular_values]
+            V_curr = mid(result.V)
 
-        # Apply Ogita refinement
-        refined = ogita_svd_refine(
-            mid(A_high), U_curr, Σ_curr, V_curr;
-            max_iterations=10,
-            precision_bits=current_precision
-        )
+            # Apply Ogita refinement
+            refined = ogita_svd_refine(
+                mid(A_high), U_curr, Σ_curr, V_curr;
+                max_iterations=10,
+                precision_bits=current_precision
+            )
 
-        total_iterations += refined.iterations
+            total_iterations += refined.iterations
 
-        if !refined.converged
-            @warn "Ogita refinement did not converge at precision $(current_precision) bits"
+            if !refined.converged
+                @warn "Ogita refinement did not converge at precision $(current_precision) bits"
+            end
+
+            # Certify the refined SVD
+            # Create synthetic SVD for certification
+            Σ_refined = isa(refined.Σ, Diagonal) ? diag(refined.Σ) : refined.Σ
+            svd_refined = (U=refined.U,
+                          S=Σ_refined,
+                          V=refined.V,
+                          Vt=refined.V')
+
+            # Certify with rigorous bounds, at the precision of this level
+            _certify_svd(A_high, svd_refined, method; apply_vbd)
         end
-
-        # Certify the refined SVD
-        # Create synthetic SVD for certification
-        Σ_refined = isa(refined.Σ, Diagonal) ? diag(refined.Σ) : refined.Σ
-        svd_refined = (U=refined.U,
-                      S=Σ_refined,
-                      V=refined.V,
-                      Vt=refined.V')
-
-        # Certify with rigorous bounds
-        result = _certify_svd(A_high, svd_refined, method; apply_vbd)
 
         # Check new radius
         max_radius = maximum(rad.(result.singular_values))
@@ -478,18 +511,12 @@ Convert a ball matrix to specified precision.
 """
 function _convert_to_precision(A::BallMatrix{T}, precision_bits::Int) where {T}
     if precision_bits <= 53
-        # Float64
-        return BallMatrix(convert.(Float64, mid(A)), convert.(Float64, rad(A)))
-    else
-        # BigFloat with specified precision
-        old_prec = precision(BigFloat)
-        setprecision(BigFloat, precision_bits)
-        try
-            A_high = BallMatrix(convert.(BigFloat, mid(A)), convert.(BigFloat, rad(A)))
-            return A_high
-        finally
-            setprecision(BigFloat, old_prec)
-        end
+        return BallMatrix(convert.(eltype(mid(A)) <: Complex ? ComplexF64 : Float64, mid(A)),
+            convert.(Float64, rad(A)))
+    end
+    return setprecision(BigFloat, precision_bits) do
+        CT = eltype(mid(A)) <: Complex ? Complex{BigFloat} : BigFloat
+        BallMatrix(convert.(CT, mid(A)), convert.(BigFloat, rad(A)))
     end
 end
 

@@ -159,3 +159,62 @@ using LinearAlgebra
 end
 
 println("All adaptive Ogita SVD tests passed!")
+
+@testset "Ogita-Aishima refinement and the adaptive driver on every shape" begin
+    rng = MersenneTwister(20261011)
+    @testset "refinement, $S, $(m)×$(n), full = $full" for S in (Float64, ComplexF64),
+        (m, n) in ((6, 6), (8, 5), (5, 8)), full in (true, false)
+
+        A = randn(rng, S, m, n)
+        F = svd(A; full)
+        r = ogita_svd_refine(A, F.U, F.S, F.V; max_iterations = 3, precision_bits = 256)
+        @test size(r.U) == size(F.U) && size(r.V) == size(F.V)
+        k = min(m, n)
+        res, orthU, orthV = setprecision(BigFloat, 256) do
+            Ab = Complex{BigFloat}.(A)
+            Float64(maximum(abs, Ab - r.U[:, 1:k] * r.Σ * r.V[:, 1:k]')),
+            Float64(maximum(abs, r.U' * r.U - I)), Float64(maximum(abs, r.V' * r.V - I))
+        end
+        @test res < 1e-45 && orthU < 1e-45 && orthV < 1e-45
+    end
+
+    @testset "driver, $S, $(m)×$(n)" for S in (Float64, ComplexF64),
+        (m, n) in ((6, 6), (8, 5), (5, 8))
+
+        A = randn(rng, S, m, n)
+        r = Base.CoreLogging.with_logger(Base.CoreLogging.NullLogger()) do
+            adaptive_ogita_svd(BallMatrix(A); tolerance = 1e-25)
+        end
+        σ = r.rigorous_result.singular_values
+        @test r.tolerance_achieved && length(σ) == min(m, n)
+        @test maximum(rad.(σ)) <= 1e-25
+        # each level works at the precision it records
+        @test r.precision_levels[1] == 53 && r.final_precision == r.precision_levels[end]
+        @test precision(mid(σ[1])) == r.final_precision
+        # the enclosures contain the singular values, here the square roots of the eigenvalues
+        # of A*A computed at 1024 bits from the certified midpoints' neighbourhood
+        exact = setprecision(BigFloat, 1024) do
+            Ab = Complex{BigFloat}.(A)
+            G = m >= n ? Ab' * Ab : Ab * Ab'
+            # Newton correction of each σ² as a root of det(G − t I) is avoided: check instead
+            # that G − (σ ± rad)² I changes inertia, by the signs of the LDL pivots
+            function negatives(t)
+                M = G - t * I
+                c = 0
+                for j in 1:size(M, 1)
+                    d = real(M[j, j])
+                    d < 0 && (c += 1)
+                    for i in (j + 1):size(M, 1)
+                        f = M[i, j] / d
+                        M[i, (j + 1):end] .-= f .* M[j, (j + 1):end]
+                    end
+                end
+                c
+            end
+            [(negatives((BigFloat(mid(s)) - BigFloat(rad(s)))^2),
+                 negatives((BigFloat(mid(s)) + BigFloat(rad(s)))^2)) for s in σ]
+        end
+        # between the two ends of each enclosure at least one eigenvalue of G is crossed
+        @test all(hi > lo for (lo, hi) in exact)
+    end
+end
