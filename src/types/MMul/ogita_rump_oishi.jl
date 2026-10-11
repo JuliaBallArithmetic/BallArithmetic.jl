@@ -198,8 +198,22 @@ function _accurate_midpoint!(mC::Matrix{S}, mA::AbstractMatrix{S},
 end
 
 # ---------------------------------------------------------------------------------------------
-# Sums of products of point matrices, to twice the working precision: what Rump's `prodK` does
-# for k = 2, in the two forms Rump and Ogita (2024) use.
+# Sums of products of point matrices, to twice the working precision, in the two forms in which
+# Rump and Ogita (2024) call INTLAB's `prodK` with k = 2: one output with an error matrix, and
+# the unevaluated sum of two matrices.
+#
+# The algorithm is not that of `prodK`. By M. Lange and S. M. Rump, "Accurate floating-point
+# matrix residuals" (manuscript; `prodK` is in INTLAB from Version 14), `prodK` splits each
+# factor into k + 1 matrices at absolute splitting points, chosen from the Euclidean norms of the
+# rows and columns so that the products of the leading parts are exact in any order of
+# evaluation, and forms them with level-3 BLAS: 6 matrix products for k = 2, "as if" in
+# (k/2 + 1)-fold precision, with unevaluated sums of matrices as input and as output. Here every
+# entry is one Dot2 accumulation of Ogita, Rump and Oishi (2005), some ten operations for each
+# product with a fused multiply-add and no BLAS, and the bound is the a priori γ² one. On
+# nighthawk, 16 threads, for RA − I with R = inv(A), cond(A) = 1e12, n = 1000
+# (`probe_prodk_accuracy.jl`): 0.19 s against 0.002 s for the floating-point `R*A - I`, median
+# error 1.5e-22 against 2.0e-7, median bound 5.7e-16; the ordinary ball product had median
+# radius 1.3e-5. The scheme of Lange and Rump is not implemented.
 # ---------------------------------------------------------------------------------------------
 
 # The signed real pairs whose compensated sums are the real and the imaginary part of
@@ -238,7 +252,7 @@ end
 unevaluated sum of two matrices: `|Σ_t sgn_t A_t B_t − P1 − P2| ≤ R` entrywise. `P1` is the
 floating-point value and `P2` the accumulated error terms of [`compensated_terms2`](@ref), so
 that a further product with the pair keeps twice the working precision; this is the output of
-Rump's `prodK(..., 'OutputTerms', 2)` for `k = 2`.
+the role of `prodK(..., 'OutputTerms', 2)` with `k = 2` in Rump and Ogita (2024).
 
 `R = κ(γ_{N+1}² Σ_t |A_t||B_t| + 5N eta)`, `N` the number of products in a part of an entry,
 `κ = 1` for real data and `3/2 ≥ √2` for complex, where the bound holds for the real and for the
@@ -273,8 +287,8 @@ end
     _accurate_product_sum(terms) -> BallMatrix
 
 A ball matrix containing `Σ_t sgn_t A_t B_t` for `terms` an iterable of `(A_t, B_t, sgn_t)`, point
-matrices, the midpoint accumulated to twice the working precision and rounded once: Rump's
-`[R, E] = prodK(...)` for `k = 2`. The radius is that of `_accuracy_term` with `Σ_t |A_t||B_t|`.
+matrices, the midpoint accumulated to twice the working precision and rounded once: the role
+of `[R, E] = prodK(...)` with `k = 2` in Rump and Ogita (2024). The radius is that of `_accuracy_term` with `Σ_t |A_t||B_t|`.
 """
 function _accurate_product_sum(terms)
     P1, P2, _ = _two_term_product_sum(terms)

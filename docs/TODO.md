@@ -103,8 +103,25 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       (errors near 1e-31 against radii near 1e-47 and 1e-62; for `lu_gla` 5.5e-17 against
       9.7e-77); the three polar variants had no entry outside; for the QR variants and
       `cholesky_gla` the midpoints differ from the reference by order one, so the probe compared
-      different normalisations and says nothing. To decide: remove them, or give the
-      Rump and Ogita routines an approximate factorisation computed in the extended type.
+      different normalisations and says nothing. Left as they are for the moment (Isaia,
+      2026-10-11).
+    - **The products in doubled precision are not `prodK`.** Rump and Ogita (2024) compute their
+      products with INTLAB's `prodK`, `k = 2`, which is the scheme of M. Lange and S. M. Rump,
+      "Accurate floating-point matrix residuals" (manuscript, in `~/Library/ToBeProcessed`): each
+      factor split into `k + 1` matrices at absolute splitting points taken from the Euclidean
+      norms of rows and columns, the products of the leading parts exact, all formed by level-3
+      BLAS (6 matrix products for `k = 2`), unevaluated sums of matrices as input and output.
+      Ours (`_two_term_product_sum`, `_accurate_product_sum`) is one Dot2 accumulation of Ogita,
+      Rump and Oishi (2005) for each entry, with the a priori `γ²` bound. On nighthawk, 16
+      threads, `RA − I` with `R = inv(A)`, `cond(A) = 1e12`, 2000 sampled entries against exact
+      values (`probe_prodk_accuracy.jl`, `probe_prodk_accuracy2.jl`): no entry outside either
+      bound in any run (Float64 n = 200, 1000, 2000; ComplexF64 n = 200, 1000; cond 1e2, 1e6,
+      1e15 at n = 1000; BigFloat n = 100 and complex n = 60 at 256 bits). At n = 1000: 0.19 s
+      against 0.002 s for the floating-point product, median error 1.5e-22 against 2.0e-7, median
+      bound 5.7e-16, median radius of the ordinary ball product 1.3e-5. The paper's Table 4
+      gives, for its own matrices at n = 1000 and `k = 2`, a time ratio 7.3 and errors 1.7e-24
+      against 3.1e-12. Not implemented: the scheme of Lange and Rump, `k` other than 2, more
+      than two output terms.
     - **Fixed:** `krawczyk_linear_system` is `verifylss` (`6751cf7`); RigorousInvariantMeasures
       calls it. `is_M_matrix` follows Definition 5.4 of Varga (2004) with its sign conditions,
       and `is_H_matrix` is the test on the comparison matrix (`2383207`). Sections 3.1 and 3.2

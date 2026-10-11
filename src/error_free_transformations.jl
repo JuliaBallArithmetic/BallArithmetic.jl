@@ -2,7 +2,7 @@
 #
 # A floating-point operation is "error-free" when the rounding it commits is itself representable,
 # so that the exact result is the sum of two floats. These are the primitives behind compensated
-# arithmetic, behind Rump's `prodK`, and behind the accurate matrix products of
+# arithmetic and behind the accurate matrix products of
 #
 #   T. Ogita, S. M. Rump and S. Oishi, "Accurate sum and dot product",
 #   SIAM J. Sci. Comput. 26(6):1955-1988, 2005.
@@ -67,8 +67,10 @@ One entry of a sum of matrix products `sum_t sgn_t * A_t[i,:] * B_t[:,j]`, accum
 error-free transformations so that the result carries about twice the working precision. `pairs`
 is an iterable of `(A, B, sgn)`.
 
-This is the kernel of Rump's `prodK`. It returns the accurate value only; a certified bound on it
-is the Ogita-Rump-Oishi one,
+This is Algorithm 5.3 (Dot2) of Ogita, Rump and Oishi (2005) applied to a sum of products. It
+stands here where the papers of Rump call INTLAB's `prodK` with `k = 2`; `prodK` itself is a
+different algorithm, see `src/types/MMul/ogita_rump_oishi.jl`. It returns the accurate value
+only; a certified bound on it is the Ogita-Rump-Oishi one,
 
     |result - exact| <= u |exact| + gamma_N^2 sum |a_i| |b_i|,    gamma_N = N u / (1 - N u),
 

@@ -135,7 +135,7 @@ function Base.show(io::IO, r::VerifyEigAllResult)
 end
 
 # ---------------------------------------------------------------------------------------------
-# The accurate residual: Rump's `prodK`
+# The accurate residual, in the place of INTLAB's `prodK`
 # ---------------------------------------------------------------------------------------------
 #
 # Built on the error-free transformations of `src/error_free_transformations.jl`, which carry the
@@ -145,11 +145,12 @@ end
 Enclosure of `B*W - W*X` with `B` a ball matrix and `W`, `X` floating point, by compensated
 accumulation with error-free transformations and the Ogita-Rump-Oishi bound.
 
-This is Rump's `prodK`, called in his Algorithm `transform` as `prodK(B, W, -W, X)` and
-described there as computing "an accurate approximation of the residual `BW - WX` using
-error-free transformations", with a second output giving the radius. The paper attributes
-`prodK` to no numbered reference; it is a routine of his in INTLAB. The parts have their own
-provenance: `two_sum` is Knuth's, `two_product` and the splitting are Dekker's and Veltkamp's,
+It stands where Rump's Algorithm `transform` calls `prodK(B, W, -W, X)`, described there as
+computing "an accurate approximation of the residual `BW - WX` using error-free
+transformations", with a second output giving the radius. The paper attributes `prodK` to no
+numbered reference; it is a routine of INTLAB, whose algorithm (a splitting of the factors and
+level-3 BLAS products, M. Lange and S. M. Rump, "Accurate floating-point matrix residuals",
+manuscript) is not the one used here. The parts used here have their own provenance: `two_sum` is Knuth's, `two_product` and the splitting are Dekker's and Veltkamp's,
 and the error bound is
 
     @Article{OgitaRumpOishi2005,
