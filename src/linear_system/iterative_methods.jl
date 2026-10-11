@@ -1,344 +1,214 @@
+# Iterative enclosures of the solution set of a square interval linear system, after
+#
+#   J. Horáček, Interval linear and nonlinear systems, doctoral thesis, Charles University,
+#   Prague, 2019, Section 5.7: the initial enclosures of Proposition 5.14 and (5.4), the
+#   stopping criterion of Section 5.7.2, the Jacobi method (Algorithm 5.15) and the
+#   Gauss-Seidel method (Algorithm 5.17).
+#
+# The solution set of A x = b is Σ = {x : A x = b for some A ∈ A, b ∈ b}. The systems are real.
+# Not implemented: extended interval arithmetic for a diagonal entry that contains zero, which
+# the thesis mentions; such a component is left as it is.
+
+function _require_real_system(A::BallMatrix, b::BallVector, name)
+    n = size(A, 1)
+    (n == size(A, 2) && length(b) == n) ||
+        throw(DimensionMismatch("$name: A must be square and b of the same order"))
+    (eltype(mid(A)) <: Real && eltype(mid(b)) <: Real) ||
+        throw(ArgumentError("$name is for real interval systems"))
+    return n
+end
+
+# C ≈ mid(A)⁻¹ in floating point, or nothing where the inverse is not finite
+function _midpoint_inverse(A::BallMatrix)
+    C = try
+        inv(mid(A))
+    catch
+        return nothing
+    end
+    return all(isfinite, C) ? C : nothing
+end
+
 """
-    iterative_methods.jl
+    interval_initial_enclosure(A::BallMatrix, b::BallVector; C = inv(mid(A)), method = :auto)
+        -> BallVector or nothing
 
-Iterative interval methods for solving linear systems Ax = b.
-Implements Gauss-Seidel and Jacobi interval iteration methods.
+A box that contains the solution set of the square interval system `A x = b`, by Section 5.7.1
+of Horáček (2019), with `C` a real matrix (any; the default is the floating-point inverse of
+the midpoint):
 
-# References
-- Horáček, J. (2012), "Interval linear and nonlinear systems", PhD thesis
-- Neumaier, A. (1990), "Interval Methods for Systems of Equations"
-- Alefeld, G., Herzberger, J. (1983), "Introduction to Interval Computations"
+- `method = :proposition`, Proposition 5.14: if `⟨CA⟩u ≥ v > 0` for some `u ≥ 0`, then
+  `Σ ⊆ ‖Cb‖_v [−u, u]`, with `‖x‖_v = max_i |x_i|/v_i`. `u` is an approximate solution of
+  `⟨CA⟩u = e` and `v` a lower bound of `⟨CA⟩u`, as the thesis suggests.
+- `method = :norm`, formula (5.4): if `‖I − CA‖_∞ < 1`, then
+  `Σ ⊆ ‖Cb‖_∞/(1 − ‖I − CA‖_∞) [−e, e]`.
+- `method = :auto`: the first, and the second where the first does not apply.
+
+`CA` and `Cb` are formed in ball arithmetic and every bound is rounded outwards. Returns
+`nothing` where the condition of the method is not established.
 """
-
-using LinearAlgebra
+function interval_initial_enclosure(A::BallMatrix{T}, b::BallVector{T};
+        C = nothing, method::Symbol = :auto) where {T}
+    n = _require_real_system(A, b, "interval_initial_enclosure")
+    method in (:auto, :proposition, :norm) ||
+        throw(ArgumentError("method must be :auto, :proposition or :norm"))
+    C === nothing && (C = _midpoint_inverse(A))
+    C === nothing && return nothing
+    bC = BallMatrix(Matrix{T}(C))
+    CA, Cb = bC * A, bC * b
+    magCb = add_up.(abs.(mid(Cb)), rad(Cb))
+    all(isfinite, magCb) || return nothing
+    if method != :norm
+        mig = diagonal_abs_lower_bound(CA)
+        mag = upper_abs(CA)
+        comparison = -mag
+        for i in 1:n
+            comparison[i, i] = mig[i]
+        end
+        u = try
+            comparison \ ones(T, n)
+        catch
+            fill(T(NaN), n)
+        end
+        if all(x -> isfinite(x) && x >= 0, u)
+            v = Vector{T}(undef, n)
+            for i in 1:n
+                s = zero(T)
+                for j in 1:n
+                    j == i || (s = add_up(s, mul_up(mag[i, j], u[j])))
+                end
+                v[i] = sub_down(mul_down(mig[i], u[i]), s)
+            end
+            if all(>(0), v)
+                κ = maximum(div_up(magCb[i], v[i]) for i in 1:n)
+                return BallVector(zeros(T, n), mul_up.(κ, u))
+            end
+        end
+        method == :proposition && return nothing
+    end
+    q = upper_bound_L_inf_opnorm(CA - I)
+    q < 1 || return nothing
+    return BallVector(zeros(T, n), fill(div_up(maximum(magCb), sub_down(one(T), q)), n))
+end
 
 """
     IterativeResult{T, VT}
 
-Result from iterative interval linear system solver.
+Result of [`interval_jacobi`](@ref) and [`interval_gauss_seidel`](@ref).
 
 # Fields
-- `solution::VT`: Enclosure of the solution set
-- `converged::Bool`: Whether the iteration converged
-- `iterations::Int`: Number of iterations performed
-- `final_width::T`: Maximum width of final solution components
-- `convergence_rate::T`: Observed convergence rate (ratio of successive widths)
+- `solution`: a box containing the part of the solution set that lies in the initial box
+- `converged`: whether the stopping criterion of Section 5.7.2 was met within `max_iterations`
+- `iterations`: number of sweeps
+- `final_width`: the largest radius of `solution`
+- `convergence_rate`: the ratio of the largest radii of the last two iterates
+- `empty`: `true` when an intersection was empty, which proves that the solution set does not
+  meet the initial box; `solution` is then the last nonempty iterate and is not an enclosure
 """
 struct IterativeResult{T, VT}
-    """Enclosure of the solution set."""
     solution::VT
-    """Whether iteration converged."""
     converged::Bool
-    """Number of iterations performed."""
     iterations::Int
-    """Maximum width of final solution."""
     final_width::T
-    """Convergence rate."""
     convergence_rate::T
+    empty::Bool
 end
 
-"""
-    interval_gauss_seidel(A::BallMatrix{T}, b::BallVector{T};
-                          x0::Union{Nothing, BallVector{T}}=nothing,
-                          max_iterations::Int=100,
-                          tol::T=T(1e-10),
-                          use_epsilon_inflation::Bool=true,
-                          ϵ::T=T(1e-15),
-                          r::T=T(0.001)) where {T}
-
-Solve Ax = b using interval Gauss-Seidel iteration.
-
-# Algorithm
-The Gauss-Seidel method updates each component x_i using:
-
-    x_i^(k+1) = (b_i - Σ_{j<i} a_{ij}x_j^(k+1) - Σ_{j>i} a_{ij}x_j^(k)) / a_{ii}
-
-where updated components x_j^(k+1) for j < i are used immediately.
-
-# Arguments
-- `A`: Coefficient ball matrix (n×n)
-- `b`: Right-hand side ball vector (n)
-- `x0`: Initial enclosure (computed if not provided)
-- `max_iterations`: Maximum number of iterations
-- `tol`: Convergence tolerance (maximum component width)
-- `use_epsilon_inflation`: Apply ε-inflation before intersection
-- `ϵ`: Absolute inflation factor
-- `r`: Relative inflation factor
-
-# Returns
-`IterativeResult` with solution enclosure and convergence information.
-
-# Example
-```julia
-A = BallMatrix([3.0 1.0; 1.0 2.0], fill(1e-10, 2, 2))
-b = BallVector([5.0, 4.0], fill(1e-10, 2))
-
-result = interval_gauss_seidel(A, b)
-
-if result.converged
-    println("Solution: ", result.solution)
-    println("Iterations: ", result.iterations)
-end
-```
-
-# Notes
-- Generally converges faster than Jacobi method
-- Converges for strictly diagonally dominant matrices
-- Uses most recent updates immediately (sequential updates)
-- ε-inflation helps ensure non-empty intersection
-"""
-function interval_gauss_seidel(A::BallMatrix{T}, b::BallVector{T};
-                                x0::Union{Nothing, BallVector{T}}=nothing,
-                                max_iterations::Int=100,
-                                tol::T=T(1e-10),
-                                use_epsilon_inflation::Bool=true,
-                                ϵ::T=T(1e-15),
-                                r::T=T(0.001)) where {T}
-    n = size(A, 1)
-
-    # Check diagonal elements are non-zero
-    for i in 1:n
-        a_ii = A[i, i]
-        if 0.0 ∈ a_ii
-            error("Gauss-Seidel: Zero on diagonal at position $i")
-        end
+# The common iteration: y_i = (b_i − Σ_{j≠i} a_ij x_j)/a_ii, then x_i ∩ y_i; Gauss-Seidel uses the
+# components already updated in the sweep.
+function _interval_splitting_iteration(A::BallMatrix{T}, b::BallVector{T}, x0, C,
+        max_iterations::Int, tol, gauss_seidel::Bool, name) where {T}
+    n = _require_real_system(A, b, name)
+    if C !== nothing
+        bC = BallMatrix(Matrix{T}(C))
+        A, b = bC * A, bC * b
     end
-
-    # Initialize with point solution if not provided
     if x0 === nothing
-        # Use approximate inverse for initial guess
-        A_mid = mid(A)
-        b_mid = mid(b)
-        x_approx = A_mid \ b_mid
-        # Start with wide initial enclosure
-        x0 = BallVector(x_approx, abs.(x_approx) .+ T(1.0))
+        x0 = interval_initial_enclosure(A, b)
+        x0 === nothing && return IterativeResult(BallVector(zeros(T, n), fill(T(Inf), n)),
+            false, 0, T(Inf), T(NaN), false)
     end
-
-    x = copy(x0)
-    prev_width = maximum(rad(x))
-    convergence_rate = T(1.0)
-
+    length(x0) == n || throw(DimensionMismatch("$name: x0 must have length $n"))
+    if tol === nothing
+        # (5.5): ε ≈ min wid(A_ij) × 10⁻⁵, with a floor for point matrices
+        w = minimum(rad(A))
+        tol = w > 0 ? 2 * w * T(1e-5) : sqrt(eps(T)) * max(one(T), maximum(abs, mid(x0)))
+    end
+    x = [x0[i] for i in 1:n]
+    divisible = [sub_down(abs(mid(A)[i, i]), rad(A)[i, i]) > 0 for i in 1:n]
+    rate = T(NaN)
+    width = maximum(rad, x)
     for iter in 1:max_iterations
-        x_new = similar(x)
-
-        # Gauss-Seidel update: use x_new[j] for j < i, x[j] for j ≥ i
+        old = copy(x)
         for i in 1:n
-            # Compute b_i - Σ_{j<i} a_{ij}x_new[j] - Σ_{j>i} a_{ij}x[j]
-            rhs = b[i]
-
-            # Use updated values for j < i
-            for j in 1:(i-1)
-                rhs = rhs - A[i, j] * x_new[j]
-            end
-
-            # Use old values for j > i
-            for j in (i+1):n
-                rhs = rhs - A[i, j] * x[j]
-            end
-
-            # Divide by diagonal element
-            x_new_i = rhs / A[i, i]
-
-            # Apply ε-inflation if requested
-            if use_epsilon_inflation
-                x_new_i_inflated = Ball(mid(x_new_i), rad(x_new_i) * (1 + r) + ϵ)
-            else
-                x_new_i_inflated = x_new_i
-            end
-
-            # Intersect with previous value
-            x_new[i] = intersect_ball(x_new_i_inflated, x[i])
-
-            # Check if intersection is empty
-            if rad(x_new[i]) < 0
-                @warn "Gauss-Seidel: Empty intersection at component $i, iteration $iter"
-                return IterativeResult(
-                    x, false, iter, T(Inf), convergence_rate
-                )
-            end
-        end
-
-        # Check convergence
-        current_width = maximum(rad(x_new))
-
-        if current_width < tol
-            return IterativeResult(
-                x_new, true, iter, current_width, convergence_rate
-            )
-        end
-
-        # Check if width is increasing (divergence)
-        if iter > 1 && current_width > prev_width * 1.1
-            @warn "Gauss-Seidel: Width increasing, may be diverging"
-            return IterativeResult(
-                x_new, false, iter, current_width, convergence_rate
-            )
-        end
-
-        # Update convergence rate
-        if prev_width > 0
-            convergence_rate = current_width / prev_width
-        end
-
-        x = x_new
-        prev_width = current_width
-    end
-
-    # Max iterations reached
-    final_width = maximum(rad(x))
-    return IterativeResult(
-        x, false, max_iterations, final_width, convergence_rate
-    )
-end
-
-"""
-    interval_jacobi(A::BallMatrix{T}, b::BallVector{T};
-                    x0::Union{Nothing, BallVector{T}}=nothing,
-                    max_iterations::Int=100,
-                    tol::T=T(1e-10),
-                    use_epsilon_inflation::Bool=true,
-                    ϵ::T=T(1e-15),
-                    r::T=T(0.001)) where {T}
-
-Solve Ax = b using interval Jacobi iteration.
-
-# Algorithm
-The Jacobi method updates all components simultaneously:
-
-    x_i^(k+1) = (b_i - Σ_{j≠i} a_{ij}x_j^(k)) / a_{ii}
-
-# Arguments
-- `A`: Coefficient ball matrix (n×n)
-- `b`: Right-hand side ball vector (n)
-- `x0`: Initial enclosure (computed if not provided)
-- `max_iterations`: Maximum number of iterations
-- `tol`: Convergence tolerance (maximum component width)
-- `use_epsilon_inflation`: Apply ε-inflation before intersection
-- `ϵ`: Absolute inflation factor
-- `r`: Relative inflation factor
-
-# Returns
-`IterativeResult` with solution enclosure and convergence information.
-
-# Example
-```julia
-A = BallMatrix([4.0 1.0; 1.0 3.0], fill(1e-10, 2, 2))
-b = BallVector([7.0, 6.0], fill(1e-10, 2))
-
-result = interval_jacobi(A, b)
-
-if result.converged
-    println("Solution: ", result.solution)
-    println("Convergence rate: ", result.convergence_rate)
-end
-```
-
-# Notes
-- Easily parallelizable (all updates independent)
-- Converges for strictly diagonally dominant matrices
-- Generally slower than Gauss-Seidel but more parallelizable
-- All components updated simultaneously (parallel updates)
-"""
-function interval_jacobi(A::BallMatrix{T}, b::BallVector{T};
-                         x0::Union{Nothing, BallVector{T}}=nothing,
-                         max_iterations::Int=100,
-                         tol::T=T(1e-10),
-                         use_epsilon_inflation::Bool=true,
-                         ϵ::T=T(1e-15),
-                         r::T=T(0.001)) where {T}
-    n = size(A, 1)
-
-    # Check diagonal elements are non-zero
-    for i in 1:n
-        a_ii = A[i, i]
-        if 0.0 ∈ a_ii
-            error("Jacobi: Zero on diagonal at position $i")
-        end
-    end
-
-    # Initialize with point solution if not provided
-    if x0 === nothing
-        # Use approximate inverse for initial guess
-        A_mid = mid(A)
-        b_mid = mid(b)
-        x_approx = A_mid \ b_mid
-        # Start with wide initial enclosure
-        x0 = BallVector(x_approx, abs.(x_approx) .+ T(1.0))
-    end
-
-    x = copy(x0)
-    prev_width = maximum(rad(x))
-    convergence_rate = T(1.0)
-
-    for iter in 1:max_iterations
-        x_new = similar(x)
-
-        # Jacobi update: all components use old values
-        for i in 1:n
-            # Compute b_i - Σ_{j≠i} a_{ij}x[j]
-            rhs = b[i]
-
+            divisible[i] || continue
+            s = b[i]
             for j in 1:n
-                if j != i
-                    rhs = rhs - A[i, j] * x[j]
-                end
+                j == i && continue
+                s = s - A[i, j] * (gauss_seidel ? x[j] : old[j])
             end
-
-            # Divide by diagonal element
-            x_new_i = rhs / A[i, i]
-
-            # Apply ε-inflation if requested
-            if use_epsilon_inflation
-                x_new_i_inflated = Ball(mid(x_new_i), rad(x_new_i) * (1 + r) + ϵ)
-            else
-                x_new_i_inflated = x_new_i
+            y = intersect_ball(s / A[i, i], old[i])
+            if y === nothing
+                return IterativeResult(BallVector(mid.(old), rad.(old)), false, iter, width,
+                    rate, true)
             end
-
-            # Intersect with previous value
-            x_new[i] = intersect_ball(x_new_i_inflated, x[i])
-
-            # Check if intersection is empty
-            if rad(x_new[i]) < 0
-                @warn "Jacobi: Empty intersection at component $i, iteration $iter"
-                return IterativeResult(
-                    x, false, iter, T(Inf), convergence_rate
-                )
-            end
+            x[i] = y
         end
-
-        # Check convergence
-        current_width = maximum(rad(x_new))
-
-        if current_width < tol
-            return IterativeResult(
-                x_new, true, iter, current_width, convergence_rate
-            )
+        new_width = maximum(rad, x)
+        rate = width > 0 ? new_width / width : T(NaN)
+        width = new_width
+        if all(abs(inf(old[i]) - inf(x[i])) < tol && abs(sup(old[i]) - sup(x[i])) < tol
+               for i in 1:n)
+            return IterativeResult(BallVector(mid.(x), rad.(x)), true, iter, width, rate, false)
         end
-
-        # Check if width is increasing (divergence)
-        if iter > 1 && current_width > prev_width * 1.1
-            @warn "Jacobi: Width increasing, may be diverging"
-            return IterativeResult(
-                x_new, false, iter, current_width, convergence_rate
-            )
-        end
-
-        # Update convergence rate
-        if prev_width > 0
-            convergence_rate = current_width / prev_width
-        end
-
-        x = x_new
-        prev_width = current_width
     end
-
-    # Max iterations reached
-    final_width = maximum(rad(x))
-    return IterativeResult(
-        x, false, max_iterations, final_width, convergence_rate
-    )
+    return IterativeResult(BallVector(mid.(x), rad.(x)), false, max_iterations, width, rate,
+        false)
 end
 
-# Export functions
+"""
+    interval_jacobi(A::BallMatrix, b::BallVector; x0 = nothing, preconditioner = nothing,
+        max_iterations = 20, tol = nothing) -> IterativeResult
+
+Algorithm 5.15 of Horáček (2019), the Jacobi method for a real square interval system
+`A x = b`: from a box `x⁽⁰⁾` containing the solution set,
+
+    y_i⁽ᵏ⁺¹⁾ = (b_i − Σ_{j≠i} a_ij x_j⁽ᵏ⁾)/a_ii,        x⁽ᵏ⁺¹⁾ = x⁽ᵏ⁾ ∩ y⁽ᵏ⁺¹⁾,
+
+until the stopping criterion of Section 5.7.2: both ends of every component move by less than
+`tol`, or `max_iterations` sweeps (the thesis uses 20). `tol = nothing` takes (5.5),
+`min_ij wid(A_ij) × 10⁻⁵`.
+
+- `x0`: the initial box. When it contains the solution set, so does the result; when it
+  contains only a part of it, the result contains that part. `nothing` takes
+  [`interval_initial_enclosure`](@ref), and where that gives none the result has infinite
+  radii and `converged = false`.
+- `preconditioner`: a real matrix `C`; the iteration is then applied to `(CA) x = Cb`, formed in
+  ball arithmetic, whose solution set contains that of the original system (Section 5.4).
+
+A diagonal entry that contains zero leaves its component unchanged. An empty intersection is
+reported in the field `empty`.
+"""
+function interval_jacobi(A::BallMatrix{T}, b::BallVector{T}; x0 = nothing,
+        preconditioner = nothing, max_iterations::Int = 20, tol = nothing) where {T}
+    return _interval_splitting_iteration(A, b, x0, preconditioner, max_iterations, tol, false,
+        "interval_jacobi")
+end
+
+"""
+    interval_gauss_seidel(A::BallMatrix, b::BallVector; x0 = nothing, preconditioner = nothing,
+        max_iterations = 20, tol = nothing) -> IterativeResult
+
+Algorithm 5.17 of Horáček (2019), the Gauss-Seidel method: the Jacobi method
+([`interval_jacobi`](@ref), with the same arguments and the same statement) in which each
+component uses the components already updated in the sweep,
+
+    y_i⁽ᵏ⁺¹⁾ = (b_i − Σ_{j<i} a_ij x_j⁽ᵏ⁺¹⁾ − Σ_{j>i} a_ij x_j⁽ᵏ⁾)/a_ii.
+"""
+function interval_gauss_seidel(A::BallMatrix{T}, b::BallVector{T}; x0 = nothing,
+        preconditioner = nothing, max_iterations::Int = 20, tol = nothing) where {T}
+    return _interval_splitting_iteration(A, b, x0, preconditioner, max_iterations, tol, true,
+        "interval_gauss_seidel")
+end
+
 export IterativeResult
-export interval_gauss_seidel, interval_jacobi
+export interval_initial_enclosure, interval_gauss_seidel, interval_jacobi

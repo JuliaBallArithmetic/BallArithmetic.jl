@@ -27,45 +27,88 @@ using Random
 # For reliable interval linear system solving, use direct methods like:
 # - interval_gaussian_elimination()
 # - krawczyk_linear_system()
+# The hull of the solution set of a regular real interval system is the hull of the solutions of
+# its vertex systems, which are computed here in rational arithmetic.
+function _vertex_solutions(Ac, AΔ, bc, bΔ)
+    n = size(Ac, 1)
+    C, D, c, d = Rational{BigInt}.(Ac), Rational{BigInt}.(AΔ), Rational{BigInt}.(bc),
+        Rational{BigInt}.(bΔ)
+    sols = Vector{Vector{Rational{BigInt}}}()
+    for mask in 0:(2^(n * n + n) - 1)
+        V = [C[i, j] + (isodd(mask >> ((j - 1) * n + i - 1)) ? D[i, j] : -D[i, j])
+             for i in 1:n, j in 1:n]
+        r = [c[i] + (isodd(mask >> (n * n + i - 1)) ? d[i] : -d[i]) for i in 1:n]
+        push!(sols, V \ r)
+    end
+    return sols
+end
+_contains_all(x, sols) = all(
+    all(big(mid(x)[i]) - big(rad(x)[i]) <= s[i] <= big(mid(x)[i]) + big(rad(x)[i])
+        for i in eachindex(s)) for s in sols)
+_hull_radius(sols) = maximum(
+    Float64((maximum(s[i] for s in sols) - minimum(s[i] for s in sols)) / 2)
+    for i in eachindex(sols[1]))
+
 @testset "Iterative Methods" begin
+    rng = MersenneTwister(20261011)
+    @testset "initial enclosure, Jacobi and Gauss-Seidel contain the solution set" begin
+        counts = Dict(:initial => 0, :jacobi => 0, :gs => 0, :jacobi_pre => 0, :gs_pre => 0)
+        for n in (2, 3), _ in 1:(n == 2 ? 150 : 12)
+            Ac = randn(rng, n, n) + 4I
+            AΔ = rand(rng, n, n) .* 10.0^rand(rng, -4:-1)
+            bc = randn(rng, n)
+            bΔ = rand(rng, n) .* 10.0^rand(rng, -4:-1)
+            A, b = BallMatrix(Ac, AΔ), BallVector(bc, bΔ)
+            is_regular(A).is_regular || continue
+            sols = _vertex_solutions(Ac, AΔ, bc, bΔ)
+            for method in (:proposition, :norm, :auto)
+                x0 = interval_initial_enclosure(A, b; method)
+                x0 === nothing && continue
+                counts[:initial] += 1
+                @test _contains_all(x0, sols)
+            end
+            C = inv(Ac)
+            for (key, f, pre) in ((:jacobi, interval_jacobi, nothing),
+                (:gs, interval_gauss_seidel, nothing), (:jacobi_pre, interval_jacobi, C),
+                (:gs_pre, interval_gauss_seidel, C))
+                r = f(A, b; preconditioner = pre)
+                isfinite(r.final_width) || continue
+                counts[key] += 1
+                @test !r.empty
+                @test _contains_all(r.solution, sols)
+                @test r.final_width == maximum(rad(r.solution))
+            end
+        end
+        @test all(>(0), values(counts))
+    end
+
     @testset "Gauss-Seidel Method" begin
-        # Diagonally dominant system - would converge in point arithmetic
         A = BallMatrix([5.0 1.0; 1.0 5.0], fill(0.001, 2, 2))
         b = BallVector([6.0, 6.0], fill(0.001, 2))
-
-        result = interval_gauss_seidel(A, b, max_iterations=100, tol=1e-6)
-
-        if result.converged
-            @test result.iterations <= 100
-            @test maximum(rad(result.solution)) < 1.0
-
-            # Check solution satisfies Oettli-Prager
-            x_c = mid(result.solution)
-            A_c = mid(A)
-            b_c = mid(b)
-            residual = A_c * x_c - b_c
-            @test norm(residual) < 0.5
-        else
-            # KNOWN LIMITATION: Interval wrapping effect prevents convergence
-            # even for well-conditioned systems. This is expected behavior.
-            @test_broken result.converged
-        end
+        result = interval_gauss_seidel(A, b)
+        @test result.converged && result.iterations <= 20
+        sols = _vertex_solutions(mid(A), rad(A), mid(b), rad(b))
+        @test _contains_all(result.solution, sols)
+        # an M-matrix: without preconditioning the method returns the hull (Section 5.7.4)
+        @test result.final_width <= _hull_radius(sols) * (1 + 1e-3) + 1e-12
     end
 
     @testset "Jacobi Method" begin
-        # Strongly diagonally dominant system
         A = BallMatrix([6.0 1.0; 1.0 6.0], fill(0.001, 2, 2))
         b = BallVector([7.0, 7.0], fill(0.001, 2))
+        result = interval_jacobi(A, b)
+        @test result.converged && result.iterations <= 20
+        @test _contains_all(result.solution, _vertex_solutions(mid(A), rad(A), mid(b), rad(b)))
+    end
 
-        result = interval_jacobi(A, b, max_iterations=100, tol=1e-6)
-
-        if result.converged
-            @test result.iterations <= 100
-            @test result.convergence_rate < 1.0
-        else
-            # KNOWN LIMITATION: Same wrapping effect as Gauss-Seidel
-            @test_broken result.converged
-        end
+    @testset "a box that misses the solution set" begin
+        A = BallMatrix([5.0 1.0; 1.0 5.0], fill(0.001, 2, 2))
+        b = BallVector([6.0, 6.0], fill(0.001, 2))
+        far = BallVector([10.0, 10.0], [0.5, 0.5])
+        @test interval_gauss_seidel(A, b; x0 = far).empty
+        @test interval_jacobi(A, b; x0 = far).empty
+        @test_throws ArgumentError interval_jacobi(BallMatrix(randn(ComplexF64, 2, 2)),
+            BallVector(randn(ComplexF64, 2)))
     end
 end
 
@@ -110,17 +153,41 @@ end
 end
 
 @testset "HBR Method" begin
-    @testset "Small System with Tight Bounds" begin
-        A = BallMatrix([2.0 1.0; 1.0 2.0], fill(0.1, 2, 2))
-        b = BallVector([3.0, 3.0], fill(0.1, 2))
+    rng = MersenneTwister(20261012)
+    @testset "Theorem 5.12 contains the solution set" begin
+        solved = Dict(:preconditioned => 0, :simple => 0)
+        for n in (2, 3), _ in 1:(n == 2 ? 150 : 12)
+            Ac = randn(rng, n, n) + 4I
+            AΔ = rand(rng, n, n) .* 10.0^rand(rng, -4:-1)
+            bc = randn(rng, n)
+            bΔ = rand(rng, n) .* 10.0^rand(rng, -4:-1)
+            A, b = BallMatrix(Ac, AΔ), BallVector(bc, bΔ)
+            is_regular(A).is_regular || continue
+            sols = _vertex_solutions(Ac, AΔ, bc, bΔ)
+            for (key, r) in ((:preconditioned, hbr_method(A, b)), (:simple, hbr_method_simple(A, b)))
+                r.success || continue
+                solved[key] += 1
+                @test _contains_all(r.solution, sols)
+            end
+        end
+        @test all(>(0), values(solved))
+    end
 
-        result = hbr_method(A, b)
+    @testset "a diagonal midpoint gives the hull" begin
+        A = BallMatrix([4.0 0.0; 0.0 5.0], [0.1 0.2; 0.3 0.1])
+        b = BallVector([1.0, 2.0], [0.1, 0.1])
+        r = hbr_method_simple(A, b)
+        sols = _vertex_solutions(mid(A), rad(A), mid(b), rad(b))
+        @test r.success && _contains_all(r.solution, sols)
+        @test maximum(rad(r.solution)) <= _hull_radius(sols) * (1 + 1e-10)
+    end
 
-        @test result.success
-        @test result.num_systems_solved == 4  # 2n systems
-
-        # HBR should give tighter bounds than other methods
-        @test maximum(rad(result.solution)) < 0.5
+    @testset "the radius of b is used, and failure is reported" begin
+        r = hbr_method(BallMatrix(fill(1.0, 1, 1)), BallVector([3.0], [0.1]))
+        @test r.success && rad(r.solution)[1] >= 0.1
+        notH = BallMatrix([1.0 2.0; 2.0 1.0], fill(0.5, 2, 2))
+        @test !hbr_method_simple(notH, BallVector([1.0, 1.0])).success
+        @test all(isinf, rad(hbr_method_simple(notH, BallVector([1.0, 1.0])).solution))
     end
 end
 
@@ -163,6 +230,28 @@ end
         prec = compute_preconditioner(A)
 
         @test is_well_preconditioned(A, prec, threshold=0.5)
+    end
+
+    @testset "the quality check is a bound over the whole ball" begin
+        rng = MersenneTwister(20261013)
+        for _ in 1:200
+            Ac = randn(rng, 3, 3) + 3I
+            AΔ = rand(rng, 3, 3) .* 0.2
+            A = BallMatrix(Ac, AΔ)
+            prec = compute_preconditioner(A; check_conditioning = false)
+            C = prec.preconditioner
+            # the largest ‖I − C Ã‖_∞ over the vertex matrices, in floating point
+            worst = maximum(opnorm(I - C * (Ac + AΔ .* [isodd(m >> (k - 1)) ? 1 : -1
+                                                        for k in LinearIndices(Ac)]), Inf)
+            for m in 0:(2^9 - 1))
+            for t in (0.3, 0.5, 0.9)
+                is_well_preconditioned(A, prec; threshold = t) && @test worst < t * (1 + 1e-12)
+            end
+        end
+        A = BallMatrix([5.0 1.0; 1.0 4.0], fill(0.1, 2, 2))
+        prec = compute_preconditioner(A)
+        @test rad(apply_preconditioner(prec, A)) != zeros(2, 2)
+        @test apply_preconditioner(prec, BallVector([1.0, 2.0])) isa BallVector
     end
 end
 
@@ -447,18 +536,10 @@ end
         @test prec.success
 
         # 3. Solve with Gauss-Seidel
-        gs_result = interval_gauss_seidel(A, b, max_iterations=100)
-
-        if gs_result.converged
-            @test length(gs_result.solution) == 3
-
-            # 4. Verify solution satisfies system
-            x_c = mid(gs_result.solution)
-            A_c = mid(A)
-            b_c = mid(b)
-            residual = A_c * x_c - b_c
-            @test norm(residual) < 0.2
-        end
+        gs_result = interval_gauss_seidel(A, b)
+        @test gs_result.converged
+        @test _contains_all(gs_result.solution,
+            _vertex_solutions(mid(A), rad(A), mid(b), rad(b)))
     end
 
     @testset "Method Comparison" begin
@@ -467,30 +548,16 @@ end
         A = BallMatrix([5.0 1.0; 1.0 5.0], fill(0.01, 2, 2))
         b = BallVector([6.0, 6.0], fill(0.01, 2))
 
-        # Iterative methods (may fail due to interval wrapping)
-        result_gs = interval_gauss_seidel(A, b, max_iterations=100)
-        result_jacobi = interval_jacobi(A, b, max_iterations=100)
-
-        # Direct method (reliable for regular matrices)
+        result_gs = interval_gauss_seidel(A, b)
+        result_jacobi = interval_jacobi(A, b)
         result_ge = interval_gaussian_elimination(A, b)
-
-        # Gaussian elimination should always succeed for regular matrices
-        @test result_ge.success
-
-        # KNOWN LIMITATION: Iterative methods often fail for interval systems
-        # due to wrapping effect, even when direct methods succeed easily.
-        # This demonstrates why direct methods are recommended.
-        if !result_gs.converged
-            @test_broken result_gs.converged
-        end
-        if !result_jacobi.converged
-            @test_broken result_jacobi.converged
-        end
-
-        # When iterative methods do converge, solutions should match
-        if result_gs.converged && result_ge.success
-            diff = maximum(abs.(mid(result_gs.solution) - mid(result_ge.solution)))
-            @test diff < 0.5
+        result_hbr = hbr_method(A, b)
+        @test result_ge.success && result_gs.converged && result_jacobi.converged &&
+              result_hbr.success
+        sols = _vertex_solutions(mid(A), rad(A), mid(b), rad(b))
+        for x in (result_gs.solution, result_jacobi.solution, result_ge.solution,
+            result_hbr.solution)
+            @test _contains_all(x, sols)
         end
     end
 end

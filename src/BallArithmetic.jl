@@ -232,7 +232,7 @@ export is_regular_gaussian_elimination
 
 include("linear_system/iterative_methods.jl")
 export IterativeResult
-export interval_gauss_seidel, interval_jacobi
+export interval_initial_enclosure, interval_gauss_seidel, interval_jacobi
 
 include("linear_system/hbr_method.jl")
 export HBRResult

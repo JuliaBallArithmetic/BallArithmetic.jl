@@ -5,7 +5,7 @@ Preconditioning strategies for interval linear systems.
 Provides various methods to compute approximate inverses C ≈ A^(-1).
 
 # References
-- Horáček, J. (2012), "Interval linear and nonlinear systems", PhD thesis
+- J. Horáček, Interval linear and nonlinear systems, doctoral thesis, Charles University, Prague, 2019, Sections 5.4 and 8.4.6
 - Neumaier, A. (1990), "Interval Methods for Systems of Equations"
 """
 
@@ -231,53 +231,32 @@ function apply_preconditioner(prec::PreconditionerResult{T}, M::Matrix{T}) where
 end
 
 """
-    is_well_preconditioned(A::BallMatrix{T}, prec::PreconditionerResult{T};
-                          threshold::T=T(0.5)) where {T}
+    apply_preconditioner(prec::PreconditionerResult, A::BallMatrix) -> BallMatrix
+    apply_preconditioner(prec::PreconditionerResult, b::BallVector) -> BallVector
 
-Check if preconditioner is effective.
-
-A good preconditioner should make ‖I - CA‖ small (ideally < 0.5).
-
-# Arguments
-- `A`: Original interval matrix
-- `prec`: Preconditioner result
-- `threshold`: Threshold for ‖I - CA‖ (default 0.5)
-
-# Returns
-`true` if ‖I - CA‖ < threshold
-
-# Example
-```julia
-A = BallMatrix([3.0 1.0; 1.0 2.0], fill(0.1, 2, 2))
-prec = compute_preconditioner(A)
-
-if is_well_preconditioned(A, prec)
-    println("Good preconditioner")
-end
-```
+The preconditioned data `C A` and `C b` of Section 5.4 of Horáček (2019), formed in ball
+arithmetic with `C = prec.preconditioner`, so that the solution set of `(CA) x = Cb` contains
+that of `A x = b` whatever the accuracy of `C`.
 """
-function is_well_preconditioned(A::BallMatrix{T}, prec::PreconditionerResult{T};
-                               threshold::T=T(0.5)) where {T}
-    # Compute I - CA using interval arithmetic
-    C = prec.preconditioner
-    A_mid = mid(A)
-    A_rad = rad(A)
+apply_preconditioner(prec::PreconditionerResult, A::BallMatrix) =
+    BallMatrix(prec.preconditioner) * A
+apply_preconditioner(prec::PreconditionerResult, b::BallVector) =
+    BallMatrix(prec.preconditioner) * b
 
-    # I - CA_mid
-    I_minus_CA_mid = I - C * A_mid
+"""
+    is_well_preconditioned(A::BallMatrix, prec::PreconditionerResult; threshold = 0.5) -> Bool
 
-    # Radius part: |C| * A_rad
-    CA_rad = abs.(C) * A_rad
-
-    # Norm of interval matrix [I - CA] (round up for rigorous upper bound)
-    total_norm = setrounding(T, RoundUp) do
-        opnorm(I_minus_CA_mid, Inf) + opnorm(CA_rad, Inf)
-    end
-
-    return total_norm < threshold
+`true` when `‖I − C A‖_∞ < threshold` is proved for every matrix `A` of the ball, with
+`C = prec.preconditioner`: the product is formed in ball arithmetic and its norm bounded from
+above. With `threshold ≤ 1` this makes `CA` strictly diagonally dominant (Example 4.25 of
+Horáček (2019)) and gives the initial enclosure (5.4). `false` means that the bound was not
+established.
+"""
+function is_well_preconditioned(A::BallMatrix{T}, prec::PreconditionerResult;
+        threshold::Real = 0.5) where {T}
+    return upper_bound_L_inf_opnorm(BallMatrix(prec.preconditioner) * A - I) < threshold
 end
 
-# Export functions
 export PreconditionerType, MidpointInverse, LUFactorization, LDLTFactorization, IdentityPreconditioner
 export PreconditionerResult
 export compute_preconditioner, apply_preconditioner, is_well_preconditioned
