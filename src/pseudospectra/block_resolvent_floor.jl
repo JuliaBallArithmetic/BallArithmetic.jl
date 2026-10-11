@@ -74,8 +74,7 @@ end
 """
     block_resolvent_floor(r::VerifyEigAllResult) -> BlockResolventFloor
 
-The same bound from a result of [`verifyeigall`](@ref) with one of the methods of Rump (2022),
-with the frame `W := S`, the similarity the algorithm ended with, and the blocks on its clusters.
+The same bound from a result of [`verifyeigall`](@ref), with the frame `W := S`, the similarity the algorithm ended with, and the blocks on its clusters.
 
 `S` is a product of floating-point matrices, contained in the ball matrix `r.similarity`, and
 `r.transformed` is a ball matrix containing `M = S⁻¹AS`, so the quantities of the bound are read from it and no residual is formed:
@@ -88,6 +87,10 @@ The bound uses the enclosure of `S⁻¹AS` and a partition, and neither the self
 nor `r.spectrum_covered`: it holds whether or not the clusters are certified. When the
 transformation failed, `r.transformed` is `A` and the frame is the identity.
 
+For `method = :miyajima2014a` the matrix `r.transformed` is the one of
+[`_miyajima2014a_alg1`](@ref). For a result of the pencil `A x = λ B x` it contains `S⁻¹B⁻¹AS`,
+and the bound is then a lower bound of `σ_min(B⁻¹A − zI)`.
+
 S. M. Rump, *Verified error bounds for all eigenvalues and eigenvectors of a matrix*,
 SIAM J. Matrix Anal. Appl. **43**(4):1736-1754, 2022, doi 10.1137/21M1451440, for the enclosure of
 `S⁻¹AS`; the bound is the one of the method above.
@@ -96,8 +99,8 @@ function block_resolvent_floor(r::VerifyEigAllResult{T, CT}) where {T, CT}
     M = r.transformed
     n = size(M, 1)
     n > 0 || throw(ArgumentError(
-        "block_resolvent_floor: the result carries no transformed matrix; it comes from a " *
-        "method other than those of Rump (2022)"))
+        "block_resolvent_floor: the result carries no transformed matrix; the method did " *
+        "not prove its basis nonsingular"))
     Mm, Mr = mid(M), rad(M)
     Nm, Nr = copy(Mm), copy(Mr)
     for cl in r.clusters

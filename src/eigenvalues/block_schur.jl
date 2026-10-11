@@ -162,16 +162,8 @@ function rigorous_block_schur(A::BallMatrix{RT, NT};
                         div_up(projected_residual_norm, sub_down(one(RT), inverse_defect_norm)) :
                         RT(Inf)
 
-    # S̃ and the residual V = (I + R₂)S̃ − R₁: ‖S − S̃‖_p ≤ ‖V‖_p/(1 − ‖R₂‖_p) for p = 2 and ∞,
-    # each of which bounds every entry of S − S̃
-    S_approx = (I + mid(R2)) \ mid(R1)
-    V = (I_ball + R2) * BallMatrix(S_approx) - R1
-    perturbation_error = RT(Inf)
-    inverse_defect_norm < 1 && (perturbation_error = div_up(collatz_upper_bound_L2_opnorm(V),
-        sub_down(one(RT), inverse_defect_norm)))
-    defect_inf = upper_bound_L_inf_opnorm(R2)
-    defect_inf < 1 && (perturbation_error = min(perturbation_error,
-        div_up(upper_bound_L_inf_opnorm(V), sub_down(one(RT), defect_inf))))
+    # S̃ and the bound of every entry of S − S̃, from the residual of the solve
+    S_approx, perturbation_error = _residual_controlled_perturbation(R1, R2)
     similar = isfinite(perturbation_error) ?
               T + BallMatrix(S_approx, fill(perturbation_error, n, n)) :
               BallMatrix(mid(T), fill(RT(Inf), n, n))

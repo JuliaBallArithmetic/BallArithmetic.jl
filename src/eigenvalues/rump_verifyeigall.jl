@@ -94,8 +94,10 @@ Outcome of [`verifyeigall`](@ref).
 - `similarity::BallMatrix`, `transformed::BallMatrix`: a ball matrix containing the similarity `S`
   the algorithm ended with (`W`, multiplied by the transformations of the recursion of step 6 when
   it ran) and the ball matrix containing `S⁻¹BS` to which Theorem 2.2 was applied, for every matrix
-  `B` of the input. When the transformation failed they are the identity and `B`; when the result
-  comes from another method they are empty. [`block_resolvent_floor`](@ref) reads them.
+  `B` of the input. When the transformation failed they are the identity and `B`. For
+  `:miyajima2014a` they are `X̃` and a ball matrix containing `X̃⁻¹B⁻¹AX̃` (`X̃⁻¹AX̃` for one
+  matrix), empty when the method did not prove its basis nonsingular.
+  [`block_resolvent_floor`](@ref) reads them.
 """
 struct VerifyEigAllResult{T, CT}
     clusters::Vector{Vector{Int}}

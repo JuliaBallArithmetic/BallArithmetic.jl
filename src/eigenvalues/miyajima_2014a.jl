@@ -310,6 +310,26 @@ function _miyajima2014a_alg2(G::_Miyajima2014aDiscs{T, CT}, A::BallMatrix{T}, B:
     return rho, subspace, block
 end
 
+# The perturbation of the two-residual device, enclosed through a computed solution. With
+# S = (I + R₂)⁻¹R₁, S̃ a floating-point solution of (I + R₂)S̃ = R₁ and V = (I + R₂)S̃ − R₁,
+#
+#     S − S̃ = −(I + R₂)⁻¹V,        ‖S − S̃‖_p ≤ ‖V‖_p / (1 − ‖R₂‖_p)   when ‖R₂‖_p < 1,
+#
+# for p = 2 and p = ∞, and an entry of a matrix is at most its norm in either. Returns `(S̃, e)`
+# with `e` an upper bound of every entry of |S − S̃|, for every R₁ and R₂ of the two balls; `e` is
+# `Inf` when neither norm of R₂ is proved below one. This is the lemma "Residual control of S" of
+# I. Nisoli, *Enclosure of eigenvalues via approximate diagonalization* (unpublished note, 2026).
+function _residual_controlled_perturbation(R1::BallMatrix{T}, R2::BallMatrix{T}) where {T}
+    St = (I + mid(R2)) \ mid(R1)
+    V = (R2 + I) * BallMatrix(St) - R1
+    e = T(Inf)
+    for nrm in (upper_bound_L2_opnorm, upper_bound_L_inf_opnorm)
+        d = nrm(R2)
+        d < 1 && (e = min(e, div_up(T(nrm(V)), sub_down(one(T), T(d)))))
+    end
+    return St, e
+end
+
 """
     _miyajima2014a_alg1(A::BallMatrix, B::BallMatrix) -> VerifyEigAllResult
 
@@ -333,6 +353,12 @@ the block `Λ ∈ ⟨λ̃I_k, V ᵀP̄̄_ε⟩`.
 Where Algorithm 2 declines, `radii[i]` falls back to the smallest disc about `λ̃` containing the
 union of the cluster's Gershgorin discs, which is still a rigorous enclosure of those `k`
 eigenvalues, while `subspaces[i]` and `blocks[i]` carry `Inf`, since no subspace was proved.
+
+The result also carries `similarity`, the matrix `X̃`, and `transformed`, a ball matrix containing
+`X̃⁻¹B⁻¹AX̃ = D̃ + S`. Here `S = (I + R₂)⁻¹R₁` with the paper's two residuals
+`R₁ = Y(AX̃ − BX̃D̃)` and `R₂ = YBX̃ − I`, and it is enclosed through a floating-point solution of
+`(I + R₂)S̃ = R₁` and the residual of that solve. This is an addition to the paper's algorithm,
+which works with the norms of the rows of `R₁`; the discs and the clusters above do not use it.
 
 # Reference
 
@@ -390,6 +416,10 @@ function _miyajima2014a_alg1(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
         end
     end
 
+    St, e = _residual_controlled_perturbation(G.R, G.YBXt - I)
+    transformed = isfinite(e) ?
+                  BallMatrix(Matrix{CT}(Diagonal(G.lambdas))) +
+                  BallMatrix(Matrix{CT}(St), fill(e, n, n)) : BallMatrix(zeros(CT, 0, 0))
     return VerifyEigAllResult(clusters, collect(certified), centers, radii, subspaces, blocks,
-        G.Xt, true, 0, G.tinf)
+        G.Xt, true, 0, G.tinf, CT[], T[], BallMatrix(Matrix{CT}(G.Xt)), transformed)
 end

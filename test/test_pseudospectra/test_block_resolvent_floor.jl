@@ -56,7 +56,7 @@ using Test
 
     @testset "from verifyeigall, $name, $method" for (name, A) in gallery,
         method in (:rump2022a, :rump2022aneumann, :rump2022adiscclusters, :rump2022aschur,
-            :rump2022aschurstep6)
+            :rump2022aschurstep6, :miyajima2014a)
 
         r = verifyeigall(BallMatrix(A); method)
         f = block_resolvent_floor(r)
@@ -104,8 +104,24 @@ using Test
         @test g.kappa == Inf
         @test sigma_min_floor(g, 0.7 + 12im; near = true) == 0
         @test resolvent_bound(g, 0.7 + 12im) == Inf
-        m = verifyeigall(BallMatrix(randn(5, 5)); method = :miyajima2014a)
-        @test_throws ArgumentError block_resolvent_floor(m)
+        # a pencil: the transformed matrix is the one of B⁻¹A, and so is the bound
+        rng = MersenneTwister(20261011)
+        A5, B5 = randn(rng, 5, 5), I + 0.1 * randn(rng, 5, 5)
+        m = verifyeigall(BallMatrix(A5), BallMatrix(B5))
+        h = block_resolvent_floor(m)
+        C5 = B5 \ A5
+        Mp = setprecision(BigFloat, 512) do
+            X = Complex{BigFloat}.(mid(m.similarity))
+            X \ ((big.(B5) \ big.(A5)) * X)
+        end
+        @test all(abs.(Mp - mid(m.transformed)) .≤ rad(m.transformed) .* (1 + 1e-12))
+        positive = 0
+        for z in grid(0.0 + 0im, 6.0, 9)
+            fl = sigma_min_floor(h, z; near = true)
+            @test 0 ≤ fl ≤ σtrue(C5, z) * (1 + 1e-10)
+            positive += fl > 0
+        end
+        @test positive > 0
     end
 
     @testset "one non-normal block: what the block singular values buy" begin
