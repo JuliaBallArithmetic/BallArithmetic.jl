@@ -260,7 +260,9 @@ end
     # every condition was exercised on the positive side
     @test all(>(0), proved_regular)
     @info "regularity proved by $(proved_regular), singularity by $(proved_singular), of 800"
-    @test all(>(0), proved_singular[[1, 2, 4]])
+    # condition 1 needs σ_max(A_c) ≤ σ_min(A_Δ), which these samples do not produce; it is
+    # exercised on a matrix built for it below
+    @test all(>(0), proved_singular[[2, 3, 4]])
 
     # Examples 4.36 and 4.39 of the thesis
     A36 = BallMatrix([1.0 1.0; -1.0 1.0], [1.0 0.0; 0.0 1.0])
