@@ -260,6 +260,10 @@ imaginary part: the bound of `compensated_terms2`, with the underflow term of
 `_accuracy_term`.
 """
 function _two_term_product_sum(terms)
+    # Float32 and Float64: the splitting scheme of Lange and Rump, on the BLAS (`lange_rump.jl`);
+    # it declines where its conditions fail, and other types have no BLAS to gain from
+    lr = _lange_rump_two_terms(terms)
+    lr === nothing || return lr
     S = promote_type((promote_type(eltype(A), eltype(B)) for (A, B, _) in terms)...)
     T = real(S)
     re, im_ = _real_pairs(terms, T)
@@ -287,13 +291,26 @@ end
     _accurate_product_sum(terms) -> BallMatrix
 
 A ball matrix containing `Σ_t sgn_t A_t B_t` for `terms` an iterable of `(A_t, B_t, sgn_t)`, point
-matrices, the midpoint accumulated to twice the working precision and rounded once: the role
-of `[R, E] = prodK(...)` with `k = 2` in Rump and Ogita (2024). The radius is that of `_accuracy_term` with `Σ_t |A_t||B_t|`.
+matrices: the two terms of [`_two_term_product_sum`](@ref) added, the radius its bound plus the
+rounding of that addition. The role of `[R, E] = prodK(...)` with `k = 2` in Rump and Ogita (2024).
 """
 function _accurate_product_sum(terms)
-    P1, P2, _ = _two_term_product_sum(terms)
-    M = P1 .+ P2
-    T = real(eltype(M))
-    absprod, N = _abs_products(terms, T)
-    return BallMatrix(M, _accuracy_term(_modulus_up(M), absprod, N, T, eltype(M) <: Complex))
+    P1, P2, R = _two_term_product_sum(terms)
+    M = similar(P1)
+    rad = similar(R)
+    @inbounds for i in eachindex(M, R)
+        M[i], rad[i] = _rounded_sum(P1[i], P2[i], R[i])
+    end
+    return BallMatrix(M, rad)
+end
+
+# fl(a + b) and r plus the rounding of that sum, which `two_sum` gives exactly
+@inline function _rounded_sum(a::T, b::T, r::T) where {T <: AbstractFloat}
+    s, e = two_sum(a, b)
+    return s, add_up(r, abs(e))
+end
+@inline function _rounded_sum(a::Complex{T}, b::Complex{T}, r::T) where {T <: AbstractFloat}
+    sr, er = two_sum(real(a), real(b))
+    si, ei = two_sum(imag(a), imag(b))
+    return complex(sr, si), add_up(r, add_up(abs(er), abs(ei)))
 end
