@@ -89,16 +89,26 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     - **To fix, having users or callers:** `miyajima_spectral_projectors` (StatisticalPeriodicity),
       `evbox` and `gevbox` (SelfConsistentExperiments), `sep_clusters`, the two `σ_min` bounds of
       `oishi_2023_schur.jl`, `adaptive_ogita_svd`.
-    - **Proposed for removal, not decided:** `hbr_method`, `interval_shaving`,
-      `verified_linear_solve_hmatrix`, `interval_gauss_seidel`, `interval_jacobi`,
-      `is_well_preconditioned`, `interval_least_squares`, `subsquares_method`,
-      `krawczyk_sylvester`, `rigorous_symmetric_eigen_bigfloat`, `gev_invariant_subspaces`,
-      `qi_intervals`, `qi_sqrt_intervals`, `det_gershgorin`, `det_hadamard`, `is_regular*`,
-      `is_singular_sufficient_condition`, `is_M_matrix`, `refine_polar_qdwh`, `refine_cholesky`,
-      `refine_lu`, `refine_takagi`, and the `:backward`, `:hybrid`, `:psi` methods of
-      `rump_oishi_2024_triangular_bound`. No use of them was found outside the kernel in the
-      working trees on nighthawk; other machines were not checked. For each, whether a paper in
-      the library gives the algorithm should be checked before it is removed.
+    - **Implement from the thesis, do not remove** (decided 2026-10-11): the routines of
+      `src/linear_system` and `src/matrix_properties` that cite J. Horáček, *Interval linear and
+      nonlinear systems* (the thesis is in `references/`, in twelve parts, dated 2019 where the
+      files say 2012): `hbr_method` (the audit names Theorem 5.12), `interval_shaving`
+      (Chapter 5), `interval_gauss_seidel`, `interval_jacobi`, `is_well_preconditioned` and the
+      preconditioners, `interval_least_squares` and `subsquares_method` (Chapter 6),
+      `det_gershgorin` and `det_hadamard` (Chapters 7 and 8), `is_regular*` and
+      `is_singular_sufficient_condition` (Chapter 11, Theorems 11.12 and 11.13). Each is to be
+      read against its chapter and implemented as stated there.
+    - **Sources to check before deciding:** `qi_intervals` and `qi_sqrt_intervals` against Qi
+      (1984), which is in the library, the audit having found the interval `B_{n+1}` of its
+      Theorem 2 missing; the `:backward`, `:hybrid` and `:psi` methods of
+      `rump_oishi_2024_triangular_bound` against Rump and Oishi (2024), in the library;
+      `refine_polar_qdwh`, `refine_cholesky`, `refine_lu`, `refine_takagi`,
+      `rigorous_symmetric_eigen_bigfloat` against Ogita and Aishima and Bujanović, Kressner and
+      Schröder (2022), in `references/`.
+    - **No source found yet:** `verified_linear_solve_hmatrix` (cites Minamihata 2015, not in
+      the library), `is_M_matrix` (the audit: it tests an H-matrix condition),
+      `krawczyk_sylvester` (a stub; the Sylvester enclosures are now those of Miyajima 2013),
+      `gev_invariant_subspaces`.
 13. Step 5: citations and `docs/src/refs.bib`.
 14. `setrounding` blocks that remain: BigFloat `upper_bound_L1_opnorm` and
     `upper_bound_L_inf_opnorm`, `block_enclosure`, `_vbd_block_data`, and those inside
