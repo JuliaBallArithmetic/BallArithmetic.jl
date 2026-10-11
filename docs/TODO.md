@@ -341,3 +341,36 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       literature only and has none yet for Rump and Ogita (2024). Script and list:
       `zbmath_citing.py`, `zbmath_citing.bemtivi.tsv`, kept in `~/scratch` on nighthawk with
       the other probes.
+
+18. **Return types, audited on 2026-10-12** at `ad2ffb2` (`audit_return_types.jl` and its
+    output `audit_return_types.nighthawk.txt`, in `~/scratch` on nighthawk: every exported
+    struct with its declared field types, and the return type that inference gives for each
+    exported function on `Float64` arguments of nine shapes). Nothing was changed.
+    - **Fields that are not concrete:** 28 fields in 13 of the 55 exported structs. Most are
+      declared `BallMatrix{T, CT}`, `BallMatrix` or `BallVector{T}`, which leave the array
+      parameters of `BallArray` free: `VerifyEigAllResult` (`subspaces`, `blocks`,
+      `similarity`, `transformed`), `VerifySvdAllResult` (`U`, `V`),
+      `SchurSpectralProjectorResult`, `SpectralCoefficientResult`, `RigorousBlockSchurResult`,
+      `SVDFrameFloor`, `BlockResolventFloor`, `AlmostInvariantBasis`,
+      `VerifiedLinearSystemResult`. The others: `Enclosure.λ::Any`,
+      `PreconditionerResult.factorization::Any`, `PolyRange.diag::NamedTuple`,
+      `SylvesterResolventResult.X` and `.R` (`Union{Nothing, …}`).
+    - **Return type not inferred as concrete:** 47 calls of 39 functions out of 212 exported.
+      `Any`: `verifyeigall(A, B)`, `rump_oishi_2024_triangular_bound`, `compute_beta_bound`.
+      `Union{Float64, BigFloat}`: `upper_bound_L2_opnorm`, `collatz_upper_bound_L2_opnorm`,
+      `sigma_min_upper`, `similarity_condition_number`. Untyped `Vector`: `evbox`, `gevbox`,
+      `svdbox`. `Union{Nothing, BallVector}`: `interval_initial_enclosure`. A result type with
+      free parameters: the linear-system and decomposition routines.
+    - **The field that says whether the computation succeeded has five names:** `success`
+      (12 structs), `converged` (5), `verified` (5), `certified` (2), and `spectrum_covered`,
+      `is_regular` on their own.
+    - **Failure is reported in different ways:** infinite radii, empty vectors, a `0 × 0`
+      matrix (`VerifyEigAllResult.transformed`), `nothing`, a message string (`GEVResult`,
+      `MiyajimaGEVResult`, `failure_reason`).
+    - **Fields that carry nothing:** `DeterminantResult.computation_time` (zero, not
+      measured) and `.tight` (always `false`); `RegularityResult.is_definitive` (always
+      `false`).
+    - **`Float64` written in:** `GEVResult`, `Enclosure` (which also has `radiuses`).
+    - **Pairs with nearly the same fields:** `SchurGershgorinResult` and
+      `Miyajima2014aSchurNewtonResult`; `Oishi2023Result` and `RumpOishi2024Result`.
+
