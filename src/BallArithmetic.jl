@@ -101,7 +101,6 @@ include("eigenvalues/miyajima/gev_miyajima_procedures.jl")
 include("eigenvalues/rump_lange_2023.jl")
 export RigorousGeneralizedEigenvaluesResult, RigorousEigenvaluesResult,
        rigorous_generalized_eigenvalues, rigorous_eigenvalues, gevbox, evbox
-include("decompositions/svd/singular_gerschgorin.jl")
 include("decompositions/svd/rump_2011.jl")
 include("decompositions/svd/miyajima_2014.jl")
 include("error_free_transformations.jl")

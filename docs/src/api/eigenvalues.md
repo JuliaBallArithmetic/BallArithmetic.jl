@@ -115,9 +115,3 @@ compute_eigenspace_projector
 compute_schur_projector
 ```
 
-## Singular Value Intervals
-
-```@docs
-qi_intervals
-qi_sqrt_intervals
-```

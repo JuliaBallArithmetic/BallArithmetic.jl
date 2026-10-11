@@ -162,10 +162,9 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       `det_gershgorin` and `det_hadamard` (Chapters 7 and 8), `is_regular*` and
       `is_singular_sufficient_condition` (Chapter 11, Theorems 11.12 and 11.13). Each is to be
       read against its chapter and implemented as stated there.
-    - **`qi_intervals`, `qi_sqrt_intervals`:** Qi (1984) is a singular value enclosure theorem
-      that was tried and found not effective (Isaia, 2026-10-11), and the audit found the
-      interval `B_{n+1}` of its Theorem 2 missing for non-square input. Candidate for removal;
-      not removed.
+    - **`qi_intervals`, `qi_sqrt_intervals`, removed** (2026-10-11, at Isaia's word) with their
+      rebalanced variants: Qi (1984) was tried and found not effective, and the audit found the
+      interval `B_{n+1}` of its Theorem 2 missing for non-square input.
     - **Sources to check before deciding:** the `:backward`, `:hybrid` and `:psi` methods of
       `rump_oishi_2024_triangular_bound` against Rump and Oishi (2024), in the library;
       `refine_polar_qdwh`, `refine_cholesky`, `refine_lu`, `refine_takagi`,

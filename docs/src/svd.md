@@ -34,5 +34,3 @@ Low-level functions for computing rigorous bounds on singular values:
 - [`svdbox`](@ref) - Box enclosure for singular values
 - [`collatz_upper_bound_L2_opnorm`](@ref) - Collatz bound for L2 operator norm
 - [`upper_bound_L2_opnorm`](@ref) - Upper bound on L2 operator norm
-- [`qi_intervals`](@ref) - Qi's singular value intervals
-- [`qi_sqrt_intervals`](@ref) - Qi's intervals with square root bounds
