@@ -196,3 +196,90 @@ function _accurate_midpoint!(mC::Matrix{S}, mA::AbstractMatrix{S},
     end
     return mC
 end
+
+# ---------------------------------------------------------------------------------------------
+# Sums of products of point matrices, to twice the working precision: what Rump's `prodK` does
+# for k = 2, in the two forms Rump and Ogita (2024) use.
+# ---------------------------------------------------------------------------------------------
+
+# The signed real pairs whose compensated sums are the real and the imaginary part of
+# Σ_t sgn_t A_t B_t, the A_t and B_t real or complex point matrices.
+function _real_pairs(terms, ::Type{T}) where {T}
+    re = Tuple{Matrix{T}, Matrix{T}, T}[]
+    im_ = Tuple{Matrix{T}, Matrix{T}, T}[]
+    for (A, B, sgn) in terms
+        Ar, Br = Matrix{T}(real.(A)), Matrix{T}(real.(B))
+        push!(re, (Ar, Br, T(sgn)))
+        if eltype(A) <: Complex || eltype(B) <: Complex
+            Ai, Bi = Matrix{T}(imag.(A)), Matrix{T}(imag.(B))
+            push!(re, (Ai, Bi, -T(sgn)))
+            push!(im_, (Ar, Bi, T(sgn)))
+            push!(im_, (Ai, Br, T(sgn)))
+        end
+    end
+    return re, im_
+end
+
+# Σ_t |A_t||B_t|, rounded up, and the number of products in the real or the imaginary part of an
+# entry, whichever is larger.
+function _abs_products(terms, ::Type{T}) where {T}
+    absprod = setrounding(T, RoundUp) do
+        sum(_modulus_up(Matrix(A)) * _modulus_up(Matrix(B)) for (A, B, _) in terms)
+    end
+    N = sum((eltype(A) <: Complex || eltype(B) <: Complex ? 2 : 1) * size(A, 2)
+    for (A, B, _) in terms)
+    return absprod, N
+end
+
+"""
+    _two_term_product_sum(terms) -> (P1, P2, R)
+
+`Σ_t sgn_t A_t B_t` for `terms` an iterable of `(A_t, B_t, sgn_t)`, point matrices, as an
+unevaluated sum of two matrices: `|Σ_t sgn_t A_t B_t − P1 − P2| ≤ R` entrywise. `P1` is the
+floating-point value and `P2` the accumulated error terms of [`compensated_terms2`](@ref), so
+that a further product with the pair keeps twice the working precision; this is the output of
+Rump's `prodK(..., 'OutputTerms', 2)` for `k = 2`.
+
+`R = κ(γ_{N+1}² Σ_t |A_t||B_t| + 5N eta)`, `N` the number of products in a part of an entry,
+`κ = 1` for real data and `3/2 ≥ √2` for complex, where the bound holds for the real and for the
+imaginary part: the bound of `compensated_terms2`, with the underflow term of
+`_accuracy_term`.
+"""
+function _two_term_product_sum(terms)
+    S = promote_type((promote_type(eltype(A), eltype(B)) for (A, B, _) in terms)...)
+    T = real(S)
+    re, im_ = _real_pairs(terms, T)
+    m, n = size(first(terms)[1], 1), size(first(terms)[2], 2)
+    P1, P2 = Matrix{S}(undef, m, n), Matrix{S}(undef, m, n)
+    Base.Threads.@threads for j in 1:n
+        for i in 1:m
+            s, e = compensated_terms2(re, i, j)
+            if S <: Complex
+                si, ei = compensated_terms2(im_, i, j)
+                @inbounds P1[i, j], P2[i, j] = complex(s, si), complex(e, ei)
+            else
+                @inbounds P1[i, j], P2[i, j] = s, e
+            end
+        end
+    end
+    absprod, N = _abs_products(terms, T)
+    g = gamma_bound(N + 1, T)
+    κ = S <: Complex ? T(3) / T(2) : one(T)
+    R = mul_up.(κ, add_up.(mul_up.(mul_up(g, g), absprod), mul_up(T(5 * N), subnormal_min(T))))
+    return P1, P2, R
+end
+
+"""
+    _accurate_product_sum(terms) -> BallMatrix
+
+A ball matrix containing `Σ_t sgn_t A_t B_t` for `terms` an iterable of `(A_t, B_t, sgn_t)`, point
+matrices, the midpoint accumulated to twice the working precision and rounded once: Rump's
+`[R, E] = prodK(...)` for `k = 2`. The radius is that of `_accuracy_term` with `Σ_t |A_t||B_t|`.
+"""
+function _accurate_product_sum(terms)
+    P1, P2, _ = _two_term_product_sum(terms)
+    M = P1 .+ P2
+    T = real(eltype(M))
+    absprod, N = _abs_products(terms, T)
+    return BallMatrix(M, _accuracy_term(_modulus_up(M), absprod, N, T, eltype(M) <: Complex))
+end

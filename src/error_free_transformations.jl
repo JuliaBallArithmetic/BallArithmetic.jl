@@ -17,7 +17,7 @@
 # rounding-mode route depends on the BLAS honouring `setrounding`, which threaded and GPU
 # implementations need not do.
 
-export two_sum, two_product, split_veltkamp, compensated_terms, gamma_bound
+export two_sum, two_product, split_veltkamp, compensated_terms, compensated_terms2, gamma_bound
 
 """
     two_product(a, b) -> (x, y)
@@ -75,6 +75,28 @@ is the Ogita-Rump-Oishi one,
 with `N` the number of products summed, and the absolute products evaluated separately.
 """
 @inline function compensated_terms(pairs, i::Integer, j::Integer)
+    s, e = compensated_terms2(pairs, i, j)
+    return s + e
+end
+
+"""
+    compensated_terms2(pairs, i, j) -> (s, e)
+
+The two terms of [`compensated_terms`](@ref) before they are added: `s` is the floating-point sum
+of the products and `e` the accumulated sum of the errors of the products and of the additions,
+so that `s + e`, unevaluated, is the entry to about twice the working precision.
+
+With `N` the number of products and `Σ` the sum of their moduli, barring underflow,
+
+    |s + e − exact| ≤ γ_N γ_{N+1} Σ ≤ γ_{N+1}² Σ.
+
+Proof. `two_product` and `two_sum` are exact, so `exact = s + Σ_k (ep_k + es_k)` with `ep_k`, `es_k`
+the two errors of step `k`. `e` is the floating-point sum of the `N` numbers `fl(ep_k + es_k)`, one
+rounding each and `N − 1` additions, so `|e − Σ_k (ep_k + es_k)| ≤ γ_N Σ_k |ep_k + es_k|`. And
+`|ep_k| ≤ u(1 + u)|a_k b_k|`, `|es_k| ≤ u|s_k| ≤ u(1 + u)^k Σ_{i ≤ k}|p_i|`, whence
+`Σ_k |ep_k + es_k| ≤ (N + 1)u(1 + u)^{N+1} Σ ≤ γ_{N+1} Σ`.
+"""
+@inline function compensated_terms2(pairs, i::Integer, j::Integer)
     # The accumulators take the working type from the data. With `s = 0.0` the first `two_sum`
     # promoted and threw on a BigFloat input, so the routine was Float64 only in practice.
     T = promote_type(eltype(first(pairs)[1]), eltype(first(pairs)[2]))
@@ -87,7 +109,7 @@ with `N` the number of products summed, and the absolute products evaluated sepa
             e += ep + es
         end
     end
-    return s + e
+    return s, e
 end
 
 """
