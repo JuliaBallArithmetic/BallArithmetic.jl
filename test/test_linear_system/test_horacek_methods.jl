@@ -259,7 +259,7 @@ end
     end
     # every condition was exercised on the positive side
     @test all(>(0), proved_regular)
-    @info "regularity proved / singularity proved, by condition" proved_regular proved_singular
+    @info "regularity proved by $(proved_regular), singularity by $(proved_singular), of 800"
     @test all(>(0), proved_singular[[1, 2, 4]])
 
     # Examples 4.36 and 4.39 of the thesis
