@@ -150,9 +150,20 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       calls it. `is_M_matrix` follows Definition 5.4 of Varga (2004) with its sign conditions,
       and `is_H_matrix` is the test on the comparison matrix (`2383207`). Sections 3.1 and 3.2
       of Rump and Ogita (2024) are in (`b698f68`, `5dcdfc0`).
-    - **To fix, having users or callers:** `miyajima_spectral_projectors` (StatisticalPeriodicity),
-      `evbox` and `gevbox` (SelfConsistentExperiments), `sep_clusters`, the two `σ_min` bounds of
-      `oishi_2023_schur.jl`, `adaptive_ogita_svd`.
+    - **Fixed on 2026-10-11** (`7604ab4`, `1c58184`): `sep_clusters` (the distance from below),
+      the two `σ_min` bounds of `oishi_2023_schur.jl` (rounding; `ψ` in closed form), the
+      docstrings of `evbox`, `gevbox` and the two routines behind them (the union of the balls
+      contains the eigenvalues, a single ball need not; this rests on the audit's reading of
+      Miyajima 2012, which was not reread).
+    - **Removed on 2026-10-11, at Isaia's word:** `miyajima_spectral_projectors` (both methods),
+      `RigorousSpectralProjectorsResult`, `compute_invariant_subspace_basis`,
+      `verify_projector_properties`, `projector_condition_number`, and the field `projector` of
+      `gev_invariant_subspaces`. The spectral projector of a matrix is
+      `compute_spectral_projector_schur`, by the resolvent on a contour as in the Gauss paper
+      (arXiv:2602.19435). StatisticalPeriodicity was named as a user of the removed routine and
+      was not checked. There is no projector for a pencil now; it would need a bound of
+      `(zB − A)⁻¹` on a contour.
+    - **To fix, having users or callers:** `adaptive_ogita_svd`.
     - **Implement from the thesis, do not remove** (decided 2026-10-11): the routines of
       `src/linear_system` and `src/matrix_properties` that cite J. Horáček, *Interval linear and
       nonlinear systems* (the thesis is in `references/`, in twelve parts, dated 2019 where the

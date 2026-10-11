@@ -65,16 +65,6 @@ svd_cache_stats
 set_svd_cache!
 ```
 
-## Spectral Projectors
-
-```@docs
-RigorousSpectralProjectorsResult
-miyajima_spectral_projectors
-compute_invariant_subspace_basis
-verify_projector_properties
-projector_condition_number
-```
-
 ## Block Schur Decomposition
 
 ```@docs

@@ -232,45 +232,6 @@ end
         end
     end
 
-    @testset "projectors derived from the bases" begin
-        n = 5
-        Ac = randn(n, n)
-        Bc = randn(n, n)
-        Bc = Matrix(Bc'Bc + n * I)
-        subs = gev_invariant_subspaces(BallMatrix(Ac), BallMatrix(Bc))
-
-        for s in subs
-            P = s.projector
-            @test P !== nothing
-            @test upper_bound_L2_opnorm(P * P - P) < 1e-8      # idempotent
-        end
-        Psum = sum(s.projector for s in subs)
-        @test upper_bound_L2_opnorm(Psum -
-                                    BallMatrix(Matrix{ComplexF64}(I, n, n))) < 1e-8
-
-        # projectors = false skips them
-        cheap = gev_invariant_subspaces(BallMatrix(Ac), BallMatrix(Bc);
-            projectors = false)
-        @test all(s -> s.projector === nothing, cheap)
-        @test length(cheap) == length(subs)
-    end
-
-    @testset "miyajima_spectral_projectors on a pencil" begin
-        n = 5
-        Ac = randn(n, n)
-        Bc = randn(n, n)
-        Bc = Matrix(Bc'Bc + n * I)
-        res = miyajima_spectral_projectors(BallMatrix(Ac), BallMatrix(Bc))
-
-        @test res.idempotency_defect < 1e-8
-        @test res.orthogonality_defect < 1e-8
-        @test res.resolution_defect < 1e-8
-        @test res.invariance_defect < 1e-8
-
-        @test_throws DimensionMismatch miyajima_spectral_projectors(
-            BallMatrix(randn(3, 3)), BallMatrix(randn(4, 4)))
-    end
-
     @testset "B neither symmetric nor definite" begin
         Ac = [4.0 1.0 0.0; -2.0 3.0 1.0; 0.0 1.0 5.0]
         Bc = [2.0 0.5 0.0; -0.3 2.0 0.4; 0.0 0.1 3.0]

@@ -121,11 +121,8 @@ export SchurGershgorinResult, RigorousSVDResult, schur_gershgorin_enclosure, rig
 export PrecisionCascadeSVDResult, ogita_svd_cascade
 export svd_bigfloat, ogita_svd_cascade_gla
 export ogita_svd_refine_fast, ogita_svd_refine_hybrid
-include("eigenvalues/spectral_projectors.jl")
+include("eigenvalues/gev_invariant_subspaces.jl")
 include("eigenvalues/block_schur.jl")
-export RigorousSpectralProjectorsResult, miyajima_spectral_projectors,
-       compute_invariant_subspace_basis, verify_projector_properties,
-       projector_condition_number
 export GEVInvariantSubspace, gev_invariant_subspaces
 export RigorousBlockSchurResult, rigorous_block_schur, extract_cluster_block,
        verify_block_schur_properties, estimate_block_separation

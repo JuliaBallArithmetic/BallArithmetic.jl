@@ -145,7 +145,7 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
         @test length(rbig.clusters) == n
     end
 
-    @testset "consumer integration (block Schur + spectral projectors)" begin
+    @testset "consumer integration (block Schur)" begin
         J = [3.0 1 0; 0 3 1; 0 0 3]
         P = [1.0 0.5 0.2; 0 1 0.5; 0 0 1]
         A = BallMatrix(P * J * inv(P))
@@ -154,9 +154,6 @@ enclosed(λ, discs) = any(abs(λ - mid(d)) <= rad(d) for d in discs)
         # residual for the non-unitary basis (the old adjoint version inflated it).
         bs = rigorous_block_schur(A; vbd_method = :schur_newton)
         @test bs.projected_residual_norm < 1e-8
-
-        sp = miyajima_spectral_projectors(A; vbd_method = :schur_newton)
-        @test sp.idempotency_defect < 1e-8
 
         # :njd is accepted as a deprecated synonym (same result)
         bs2 = rigorous_block_schur(A; vbd_method = :njd)

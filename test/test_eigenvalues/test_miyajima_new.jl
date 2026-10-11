@@ -31,137 +31,6 @@ using BallArithmetic
     @test YZ_error < result.coupling_bound
 end
 
-@testset "Spectral Projectors - Basic Properties" begin
-    # Create matrix with two clusters using radii to create overlap
-    # Following pattern from test_svd.jl line 192-195
-    A_mid = Matrix(Diagonal([1.0, 10.0, 1.1]))
-    A_rad = zeros(size(A_mid))
-    A_rad[1, 3] = A_rad[3, 1] = 0.3  # Create overlap between 1.0 and 1.1
-    A = BallMatrix(A_mid, A_rad)
-
-    result = miyajima_spectral_projectors(A; hermitian=true)
-
-    # Should have 2 clusters: {1.0, 1.1} and {10.0}
-    @test length(result) == 2
-    @test length(result.clusters) == 2
-
-    # One cluster should have size 2 (the clustered pair)
-    cluster_sizes = [length(cluster) for cluster in result.clusters]
-    @test 2 in cluster_sizes
-    @test 1 in cluster_sizes
-
-    # Verify structural defects are small (not affected by radii)
-    @test result.idempotency_defect < 1e-10
-    @test result.orthogonality_defect < 1e-10
-    @test result.resolution_defect < 1e-10
-
-    # Invariance defect scales with matrix radii - should be O(radius)
-    # With radius 0.6 total, defect can be up to ~1.0
-    @test result.invariance_defect < 1.0
-
-    # Test verify function with relaxed tolerance for invariance
-    @test result.idempotency_defect < 1e-9
-    @test result.orthogonality_defect < 1e-9
-    @test result.resolution_defect < 1e-9
-end
-
-@testset "Spectral Projectors - Idempotency" begin
-    # Hermitian matrix with 3 distinct eigenvalues
-    A = BallMatrix(Diagonal([1.0, 2.0, 3.0]))
-
-    result = miyajima_spectral_projectors(A; hermitian=true)
-
-    # Should have 3 isolated eigenvalues
-    @test length(result) == 3
-
-    # Verify P_k^2 ≈ P_k for each projector
-    for P in result.projectors
-        P_squared = P * P
-        defect = collatz_upper_bound_L2_opnorm(P_squared - P)
-        @test defect < 1e-10
-    end
-end
-
-@testset "Spectral Projectors - Orthogonality" begin
-    A = BallMatrix([1.0 0.1; 0.1 5.0])
-
-    result = miyajima_spectral_projectors(A; hermitian=true)
-
-    # Two well-separated eigenvalues
-    @test length(result) == 2
-
-    P1 = result.projectors[1]
-    P2 = result.projectors[2]
-
-    # Verify P1 * P2 ≈ 0
-    product = P1 * P2
-    norm_product = collatz_upper_bound_L2_opnorm(product)
-    @test norm_product < 1e-10
-
-    # Verify P2 * P1 ≈ 0
-    product_rev = P2 * P1
-    norm_product_rev = collatz_upper_bound_L2_opnorm(product_rev)
-    @test norm_product_rev < 1e-10
-end
-
-@testset "Spectral Projectors - Resolution of Identity" begin
-    A = BallMatrix(Diagonal([1.0, 1.1, 5.0]))
-
-    result = miyajima_spectral_projectors(A; hermitian=true)
-
-    # Sum all projectors
-    P_sum = sum(result.projectors)
-
-    # Should equal identity
-    I_ball = BallMatrix(Matrix{Float64}(I, 3, 3))
-    defect = collatz_upper_bound_L2_opnorm(P_sum - I_ball)
-    @test defect < 1e-10
-
-    # Also check via result structure
-    @test result.resolution_defect < 1e-10
-end
-
-@testset "Spectral Projectors - Invariant Subspaces" begin
-    # Create matrix with known invariant subspaces using radii for clustering
-    A_mid = Matrix(Diagonal([2.0, 10.0, 2.1]))
-    A_rad = zeros(size(A_mid))
-    A_rad[1, 3] = A_rad[3, 1] = 0.2  # Create overlap between 2.0 and 2.1
-    A = BallMatrix(A_mid, A_rad)
-
-    result = miyajima_spectral_projectors(A; hermitian=true, verify_invariance=true)
-
-    # Should identify 2 clusters: {2.0, 2.1} and {10.0}
-    @test length(result) == 2
-
-    # Invariance defect scales with matrix radii (here 0.4 total)
-    # For interval matrices, this is expected and reasonable
-    @test result.invariance_defect < 1.0
-
-    # Find the cluster with size 2
-    cluster_idx = findfirst(c -> length(c) == 2, result.clusters)
-    @test cluster_idx !== nothing
-
-    # Extract invariant subspace basis for the 2D cluster
-    V_2d = compute_invariant_subspace_basis(result, cluster_idx)
-    @test size(V_2d, 2) == 2  # 2D subspace
-end
-
-@testset "Spectral Projectors - Condition Number" begin
-    # Well-separated clusters
-    A_good = BallMatrix(Diagonal([1.0, 10.0]))
-    result_good = miyajima_spectral_projectors(A_good; hermitian=true)
-
-    # Close clusters
-    A_bad = BallMatrix(Diagonal([1.0, 1.01]))
-    result_bad = miyajima_spectral_projectors(A_bad; hermitian=true)
-
-    # Condition numbers should reflect separation
-    κ_good = projector_condition_number(result_good, 1)
-    κ_bad = projector_condition_number(result_bad, 1)
-
-    @test κ_bad > κ_good  # Worse conditioning for close eigenvalues
-end
-
 @testset "Block Schur - Basic Decomposition" begin
     A = BallMatrix([2.0 0.1; 0.1 5.0])
 
@@ -306,7 +175,7 @@ end
     @test !isdefined(BallArithmetic, :refine_off_diagonal_block)
 end
 
-@testset "Integration: VBD → Projectors → Block Schur" begin
+@testset "Integration: VBD → Block Schur" begin
     # Test complete workflow with matrix designed to create 2 clusters
     A_mid = Matrix(Diagonal([1.0, 10.0, 1.2, 3.0, 15.0, 3.3]))
     A_rad = zeros(size(A_mid))
@@ -318,24 +187,12 @@ end
     vbd = schur_gershgorin_enclosure(A; hermitian=true)
     @test length(vbd.clusters) >= 2
 
-    # Step 2: Projectors
-    proj = miyajima_spectral_projectors(A; hermitian=true)
-    @test length(proj.projectors) >= 2
-
-    # Step 3: Block Schur
+    # Step 2: Block Schur
     schur = rigorous_block_schur(A; hermitian=true)
     @test length(schur.clusters) >= 2
 
-    # Verify consistency - all three methods should identify the same clusters
-    @test vbd.clusters == proj.clusters == schur.clusters
-
-    # Verify projectors are related to Schur decomposition
-    # P_k = Q[:, cluster_k] * Q[:, cluster_k]'
-    for k in 1:length(schur.clusters)
-        V_k = compute_invariant_subspace_basis(proj, k)
-        # Check that V_k spans the same space as Q[:, cluster_k]
-        @test size(V_k, 2) == length(schur.clusters[k])
-    end
+    # both identify the same clusters
+    @test vbd.clusters == schur.clusters
 end
 
 @testset "BigFloat Support" begin
@@ -346,10 +203,6 @@ end
         # VBD
         vbd = schur_gershgorin_enclosure(A_big; hermitian=true)
         @test vbd.remainder_norm < BigFloat(1e-30)
-
-        # Projectors
-        proj = miyajima_spectral_projectors(A_big; hermitian=true)
-        @test proj.idempotency_defect < BigFloat(1e-30)
 
         # Block Schur
         schur = rigorous_block_schur(A_big; hermitian=true)
@@ -366,11 +219,6 @@ end
     vbd = schur_gershgorin_enclosure(A_complex; hermitian=true)
     @test length(vbd.clusters) == 2
 
-    # Projectors
-    proj = miyajima_spectral_projectors(A_complex; hermitian=true)
-    @test length(proj) == 2
-    @test verify_projector_properties(proj; tol=1e-9)
-
     # Block Schur
     schur = rigorous_block_schur(A_complex; hermitian=true)
     @test verify_block_schur_properties(schur; tol=1e-9)
@@ -383,10 +231,6 @@ end
     # VBD (using Schur form)
     vbd = schur_gershgorin_enclosure(A; hermitian=false)
     @test vbd.remainder_norm >= 0
-
-    # Projectors
-    proj = miyajima_spectral_projectors(A; hermitian=false)
-    @test length(proj) >= 1
 
     # Block Schur
     schur = rigorous_block_schur(A; hermitian=false)

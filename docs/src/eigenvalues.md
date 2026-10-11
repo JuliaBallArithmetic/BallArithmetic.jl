@@ -43,10 +43,9 @@ following Ref. [MiyajimaSylvester2013](@cite).
 
 ## Spectral Projectors
 
-Computation of spectral projectors for eigenvalue clustering,
-following Ref. [Miyajima2014a](@cite).
+The spectral projector of a matrix for a group of eigenvalues, from an approximate Schur pair
+and a bound of the resolvent on a contour around the group.
 
-- [`miyajima_spectral_projectors`](@ref) - Main spectral projector computation
 - [`compute_spectral_projector_schur`](@ref) - Schur-based projector
 - [`compute_spectral_projector_hermitian`](@ref) - Hermitian case
 
@@ -59,7 +58,6 @@ following Ref. [Miyajima2014a](@cite).
 
 ### Result Types
 
-- [`RigorousSpectralProjectorsResult`](@ref) - Spectral projector result
 - [`SchurSpectralProjectorResult`](@ref) - Schur-based result
 
 ## Block Schur Decomposition
