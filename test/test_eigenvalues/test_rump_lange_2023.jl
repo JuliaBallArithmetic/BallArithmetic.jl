@@ -172,7 +172,7 @@ end
     end
     @testset "$m × $n, $S" for (m, n) in ((6, 6), (30, 12), (12, 30), (5, 1)), S in (Float64, ComplexF64)
         p = min(m, n)
-        A = withsv(m, n, collect(range(3.0, 0.5; length = p)), S)
+        A = withsv(m, n, p == 1 ? [3.0] : collect(range(3.0, 0.5; length = p)), S)
         r = verifysvdall(BallMatrix(A))
         @test r isa VerifySvdAllResult
         @test size(r.U) == (m, p) && size(r.V) == (n, p)
