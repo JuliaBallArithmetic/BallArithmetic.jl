@@ -16,6 +16,10 @@ using Test
 using BallArithmetic
 using LinearAlgebra
 using Random
+try
+    @eval using MultiFloats          # the cascade lives in the MultiFloats extension
+catch
+end
 
 # Tests for core functionality that doesn't require extensions
 @testset "Ogita SVD Core Iteration" begin

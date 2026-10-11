@@ -157,6 +157,7 @@ include("decompositions/verified_cholesky.jl")
 include("decompositions/verified_qr.jl")
 include("decompositions/verified_polar.jl")
 include("decompositions/verified_takagi.jl")
+include("decompositions/polar_iterations.jl")
 
 # GLA-based decomposition stubs (implemented in GenericLinearAlgebraExt)
 """
@@ -201,7 +202,6 @@ function verified_polar_gla end
 
 export verified_lu_gla, verified_qr_gla, verified_cholesky_gla, verified_svd_gla,
        verified_polar_gla
-include("decompositions/iterative_refinement.jl")
 include("pseudospectra/rigorous_contour.jl")
 include("pseudospectra/block_resolvent_floor.jl")
 include("pseudospectra/svd_frame_floor.jl")
