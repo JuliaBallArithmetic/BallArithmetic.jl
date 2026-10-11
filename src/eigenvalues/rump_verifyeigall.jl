@@ -1010,9 +1010,9 @@ end
 S. M. Rump, *Verified error bounds for all eigenvalues and eigenvectors of a matrix*,
 SIAM J. Matrix Anal. Appl. **43**(4):1736-1754, 2022, doi 10.1137/21M1451440.
 """
-function verifyeigall(B::BallMatrix; method::Union{Nothing, Symbol} = nothing,
+function verifyeigall(B::BallMatrix{T}; method::Union{Nothing, Symbol} = nothing,
         fallback::Union{Nothing, Symbol} = method === nothing ? :rump2022aschurstep6 : nothing,
-        kwargs...)
+        kwargs...)::VerifyEigAllResult{T, Complex{T}} where {T}
     size(B, 1) == size(B, 2) ||
         throw(ArgumentError("verifyeigall expects a square matrix"))
     method === nothing && (method = :rump2022a)

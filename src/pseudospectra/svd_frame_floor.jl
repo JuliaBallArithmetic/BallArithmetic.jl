@@ -53,13 +53,13 @@ diagonal part of the term linear in `z` kept in the Gershgorin centre and with t
 of the computed decomposition from an exact one carried by the radii of `H`, `K`, `G` in place of
 a separate term; the argument is the one above.
 """
-function svd_frame_floor(A::BallMatrix{T}) where {T}
+function svd_frame_floor(A::BallMatrix{T, NT}) where {T, NT}
     size(A, 1) == size(A, 2) || throw(ArgumentError("svd_frame_floor: A must be square"))
     V = BallMatrix(Matrix(svd(Matrix(mid(A))).V))
     AV = A * V
     G = V' * V
     ρ = upper_bound_L2_opnorm(G - I)
-    return SVDFrameFloor{T, eltype(mid(G))}(AV' * AV, V' * AV, G, ρ < 1 ? add_up(one(T), T(ρ)) : T(Inf))
+    return SVDFrameFloor{T, NT}(AV' * AV, V' * AV, G, ρ < 1 ? add_up(one(T), T(ρ)) : T(Inf))
 end
 
 """

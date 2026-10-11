@@ -52,7 +52,7 @@ function _collatz_quotient_up(mulM, n::Integer, ::Type{RT}, iterates::Integer) w
     n == 0 && return zero(RT)
     x = ones(RT, n)
     for _ in 1:iterates
-        y = mulM(x)
+        y = mulM(x)::Vector{RT}
         smax = maximum(y)
         (isfinite(smax) && smax > 0) || break
         x = max.(y ./ smax, eps(RT))
