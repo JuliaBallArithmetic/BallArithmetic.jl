@@ -253,6 +253,19 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     `A` taken as `G(zI − A)`, `R⁻ᴴ[G(zI − A)]R⁻¹ = L(zI − A)L⁻¹`, so Theorem 1 would bound the
     singular values of the Gram-conjugated shifted matrix, hence the resolvent norm in the
     `G`-norm, from residuals formed with `G` and `G(zI − A)` alone, where `gram_transform`
-    needs a verified Cholesky factor and a verified inverse of it. The experiment: Theorem 1
-    against the present route on one Gram-weighted matrix of the paper, for the radius and
-    the time.
+    needs a verified Cholesky factor and a verified inverse of it.
+    Run on 2026-10-11 (`probe_gram_terao.jl`, nighthawk, `d3de23d`, 16 threads): random `A`,
+    `G = Q diag(1 … 1/κ) Qᵀ`, lower bounds of `σ_min(L(zI − A)L⁻¹)` at `z = 1.5` and
+    `z = 0.3 + 0.2i`, n = 50, 100, 200, κ = 1e2, 1e6, 1e10; exact values at 512 bits for
+    n ≤ 100. Four routes: ours with the BigFloat factor, ours with the Float64 factor,
+    Theorem 1 with ball products, Theorem 1 with the products in doubled precision
+    (`_two_term_product_sum`). Set-up of ours with the BigFloat factor: 0.9 to 13 s at n = 50,
+    6 to 7 s at n = 100, 46 to 47 s at n = 200, once for all `z`; with the Float64 factor
+    0.3 s at n = 200; Theorem 1 has no set-up. Per `z`, all four take 0.07 to 0.14 s at
+    n = 200. At n = 100: κ = 1e2, all four agree with the exact value to the seven digits
+    printed; κ = 1e6, `z = 0.3 + 0.2i` (exact 6.598093e-5): 6.598093e-5, 0 (no bound),
+    6.565845e-5, 6.598087e-5; κ = 1e10, `z = 0.3 + 0.2i` (exact 3.638601e-6): 3.638377e-6, 0, 0,
+    3.286427e-6. At n = 200, κ = 1e10, `z = 0.3 + 0.2i`: 5.887949e-7, 0, 0, 0. The defects of
+    Theorem 1 at n = 100: `δ` 1.3e-10, 3.0e-7, 1.5e-3 with ball products and 5.7e-14, 9.6e-11,
+    5.0e-7 in doubled precision, for κ = 1e2, 1e6, 1e10. Not run: the matrices of the paper,
+    sparse input, Theorems 2 to 4, the upper bounds of Theorem 1 and its other singular values.
