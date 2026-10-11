@@ -45,8 +45,10 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
 
 7. **`transform_defect` above one on an accepted transformation.** On the 24-fold Jordan block
    under an orthogonal similarity `verifyeigall` returned `transform_defect = 1.5455` with the
-   transformation accepted; the docstring of the field says it "must be below one". Which of the
-   two is wrong was not looked into.
+   transformation accepted. The field is `spectral_radius_bound` of `verifylss`, an upper bound
+   of `‖I − RA‖₂`, while the acceptance is the inclusion test of Algorithm 10.7, which can hold
+   when that norm bound is not below one; the sentence "must be below one" in the docstring of
+   `VerifyEigAllResult` is the part to correct.
 
 8. **Effect of the fallback on callers.** `poly_range` and the counts of the companion package
    call `verifyeigall` without a method, so they now receive the fallback's result where the
@@ -71,9 +73,32 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
 
 ## Left from the audit of 2026-10-10
 
-12. Step 4: `verified_lu`, `verified_qr`, `hbr_method`, `shaving`, `rump_lange_2023`, the Qi
-    intervals, the bounds of the smallest singular value, `verified_gev`, regularity and
-    determinant, the extensions, the `krawczyk_sylvester` stub: fix or unexport.
+12. Step 4, as decided on 2026-10-11.
+    - **Implement from the paper, do not remove:** `verified_lu`, `verified_qr`,
+      `verified_cholesky`, `verified_polar`, `verified_takagi`, the Schur decomposition and
+      their extended-precision variants, from Rump and Ogita (2024); the PDF is in
+      `~/Library/ToBeProcessed` on nighthawk. `src/decompositions/rump_ogita_2024.jl` owns the
+      paper. Done: Algorithm 3.2 (`b698f68`). To do, in the paper's order: Section 3.2 (square
+      LU, with the product `X_L(A X_U)` in two-fold precision and (3.8)), 3.3 and 3.4
+      (rectangular LU), 4 (Cholesky), 5 (QR, Lemma 5.1), 6 (eigendecomposition), 7 (singular
+      value and polar decomposition, which rests on Rump and Lange (2023)), 8 (Schur), 9
+      (Takagi); each checked against the paper's tables. `rump_lange_2023` likewise from its
+      paper, which is in the library and in `references/`.
+    - **Fixed:** `krawczyk_linear_system` is `verifylss` (`6751cf7`); RigorousInvariantMeasures
+      calls it.
+    - **To fix, having users or callers:** `miyajima_spectral_projectors` (StatisticalPeriodicity),
+      `evbox` and `gevbox` (SelfConsistentExperiments), `sep_clusters`, the two `σ_min` bounds of
+      `oishi_2023_schur.jl`, `adaptive_ogita_svd`.
+    - **Proposed for removal, not decided:** `hbr_method`, `interval_shaving`,
+      `verified_linear_solve_hmatrix`, `interval_gauss_seidel`, `interval_jacobi`,
+      `is_well_preconditioned`, `interval_least_squares`, `subsquares_method`,
+      `krawczyk_sylvester`, `rigorous_symmetric_eigen_bigfloat`, `gev_invariant_subspaces`,
+      `qi_intervals`, `qi_sqrt_intervals`, `det_gershgorin`, `det_hadamard`, `is_regular*`,
+      `is_singular_sufficient_condition`, `is_M_matrix`, `refine_polar_qdwh`, `refine_cholesky`,
+      `refine_lu`, `refine_takagi`, and the `:backward`, `:hybrid`, `:psi` methods of
+      `rump_oishi_2024_triangular_bound`. No use of them was found outside the kernel in the
+      working trees on nighthawk; other machines were not checked. For each, whether a paper in
+      the library gives the algorithm should be checked before it is removed.
 13. Step 5: citations and `docs/src/refs.bib`.
 14. `setrounding` blocks that remain: BigFloat `upper_bound_L1_opnorm` and
     `upper_bound_L_inf_opnorm`, `block_enclosure`, `_vbd_block_data`, and those inside
