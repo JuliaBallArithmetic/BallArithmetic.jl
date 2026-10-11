@@ -445,36 +445,6 @@ end
         end
     end
 
-    @testset "rigorous_symmetric_eigen_bigfloat" begin
-        old_prec = precision(BigFloat)
-        try
-            setprecision(BigFloat, 256)
-
-            n = 5
-            # Create symmetric ball matrix
-            A_mid = randn(n, n)
-            A_mid = (A_mid + A_mid') / 2  # Symmetrize
-            A_radius = fill(1e-10, n, n)
-            A = BallMatrix(A_mid, A_radius)
-
-            Q_ball, λ_ball, result = rigorous_symmetric_eigen_bigfloat(A; target_precision=256)
-
-            @test Q_ball isa BallMatrix
-            @test λ_ball isa Vector{<:Ball}
-            @test size(mid(Q_ball)) == (n, n)
-            @test length(λ_ball) == n
-
-            # Check that radii are reasonable
-            @test all(x -> x >= 0 && isfinite(x), rad(Q_ball))
-            @test all(x -> rad(x) >= 0 && isfinite(rad(x)), λ_ball)
-
-            # Verify convergence
-            @test result.converged || Float64(result.residual_norm) < 1e-20
-        finally
-            setprecision(BigFloat, old_prec)
-        end
-    end
-
     @testset "Different precision levels for symmetric" begin
         old_prec = precision(BigFloat)
         try

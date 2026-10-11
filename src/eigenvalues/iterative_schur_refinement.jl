@@ -998,89 +998,10 @@ function _refine_symmetric_eigen_impl(A::AbstractMatrix, Q0::Matrix, λ0::Abstra
     )
 end
 
-"""
-    rigorous_symmetric_eigen_bigfloat(A::BallMatrix{T};
-                                       target_precision::Int=256,
-                                       max_iterations::Int=20) where T
-
-Compute rigorous symmetric eigenvalue decomposition with BigFloat precision.
-
-This is the symmetric/Hermitian analog of [`rigorous_schur_bigfloat`](@ref), using the
-RefSyEv algorithm which is specialized for symmetric matrices and handles multiple
-eigenvalues gracefully.
-
-# Arguments
-- `A::BallMatrix`: Input symmetric ball matrix
-- `target_precision`: Target BigFloat precision in bits (default: 256)
-- `max_iterations`: Maximum refinement iterations (default: 20)
-
-# Returns
-A tuple `(Q_ball, λ_ball, result)` where:
-- `Q_ball::BallMatrix{BigFloat}`: Rigorous enclosure of eigenvector matrix
-- `λ_ball::Vector{Ball{BigFloat}}`: Rigorous enclosures of eigenvalues
-- `result::SymmetricEigenRefinementResult`: Refinement diagnostics
-
-# Example
-```julia
-# Create symmetric ball matrix
-A_mid = randn(10, 10); A_mid = A_mid + A_mid'
-A = BallMatrix(A_mid, fill(1e-10, 10, 10))
-
-Q, λ, result = rigorous_symmetric_eigen_bigfloat(A; target_precision=256)
-@show result.converged
-```
-
-# References
-- [OgitaAishima2018](@cite) Ogita, T. & Aishima, K., "Iterative refinement for symmetric
-  eigenvalue decomposition", Japan J. Indust. Appl. Math. 35, 1007–1035 (2018).
-"""
-function rigorous_symmetric_eigen_bigfloat(A::BallMatrix{T, NT};
-                                            target_precision::Int=256,
-                                            max_iterations::Int=20) where {T, NT}
-    n = size(A, 1)
-
-    # Step 1: Compute approximate eigen decomposition in Float64
-    A_center = convert.(Float64, mid(A))
-    # Symmetrize to ensure exact symmetry
-    A_sym = (A_center + A_center') / 2
-    F = eigen(Symmetric(A_sym))
-    Q0, λ0 = F.vectors, F.values
-
-    # Step 2: Refine to BigFloat precision using RefSyEv
-    result = refine_symmetric_eigen(A_sym, Q0, λ0;
-                                    target_precision=target_precision,
-                                    max_iterations=max_iterations)
-
-    if !result.converged
-        @warn "Symmetric eigenvalue refinement did not converge. Residual: $(result.residual_norm)"
-    end
-
-    # Step 3: Certify with rigorous error bounds
-    old_prec = precision(BigFloat)
-    setprecision(BigFloat, target_precision)
-
-    try
-        # Convert input uncertainties to BigFloat
-        A_rad_big = convert.(BigFloat, rad(A))
-
-        # Compute rigorous error bounds
-        backward_error = result.residual_norm
-        Q_error = result.orthogonality_defect
-
-        # Build ball matrices with certified errors
-        input_rad_norm = upper_bound_L2_opnorm(BallMatrix(A_rad_big))
-        Q_rad = fill(Q_error + input_rad_norm, n, n)
-        Q_ball = BallMatrix(result.Q, Q_rad)
-
-        # Eigenvalue errors: perturbation theory gives |λ - λ̂| ≤ ‖E‖ for symmetric
-        λ_rad = fill(backward_error * maximum(abs.(result.λ)) + input_rad_norm, n)
-        λ_ball = [Ball(result.λ[i], λ_rad[i]) for i in 1:n]
-
-        return Q_ball, λ_ball, result
-    finally
-        setprecision(BigFloat, old_prec)
-    end
-end
+# `rigorous_symmetric_eigen_bigfloat` was removed on 2026-10-11: it gave every entry of the
+# eigenvector matrix the radius "orthogonality defect plus norm of rad(A)", with no eigenvalue
+# gap. Verified eigenvalues and bases of invariant subspaces of a Hermitian ball matrix, at any
+# precision, are `verifyeigall(A; method = :rumplange2023)`.
 
 #==============================================================================#
 # Stub functions for Double64 extension (DoubleFloatsExt)
@@ -1144,7 +1065,7 @@ function refine_symmetric_eigen_multifloat end
 # Export functions
 export SchurRefinementResult, refine_schur_decomposition, rigorous_schur_bigfloat, certify_schur_decomposition
 export newton_schulz_orthogonalize!, solve_triangular_matrix_equation
-export SymmetricEigenRefinementResult, refine_symmetric_eigen, rigorous_symmetric_eigen_bigfloat
+export SymmetricEigenRefinementResult, refine_symmetric_eigen
 export refine_schur_double64, refine_schur_hybrid
 export refine_symmetric_eigen_double64, refine_symmetric_eigen_hybrid
 export refine_schur_multifloat, refine_symmetric_eigen_multifloat

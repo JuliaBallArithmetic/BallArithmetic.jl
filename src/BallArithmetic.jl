@@ -139,8 +139,7 @@ export SchurSpectralProjectorResult, compute_spectral_projector_schur,
 include("eigenvalues/iterative_schur_refinement.jl")
 export SchurRefinementResult, refine_schur_decomposition, rigorous_schur_bigfloat,
        newton_schulz_orthogonalize!
-export SymmetricEigenRefinementResult, refine_symmetric_eigen,
-       rigorous_symmetric_eigen_bigfloat
+export SymmetricEigenRefinementResult, refine_symmetric_eigen
 export refine_schur_double64, refine_schur_hybrid, refine_schur_multifloat
 export refine_symmetric_eigen_double64, refine_symmetric_eigen_hybrid,
        refine_symmetric_eigen_multifloat
