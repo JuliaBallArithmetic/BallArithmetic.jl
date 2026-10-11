@@ -259,7 +259,8 @@ end
     end
     # every condition was exercised on the positive side
     @test all(>(0), proved_regular)
-    @test all(>(0), proved_singular)
+    @info "regularity proved / singularity proved, by condition" proved_regular proved_singular
+    @test all(>(0), proved_singular[[1, 2, 4]])
 
     # Examples 4.36 and 4.39 of the thesis
     A36 = BallMatrix([1.0 1.0; -1.0 1.0], [1.0 0.0; 0.0 1.0])
@@ -271,7 +272,12 @@ end
     # each condition of Theorem 11.13 on a matrix built for it
     Z = BallMatrix(zeros(3, 3), Matrix(1.0I, 3, 3))
     @test is_singular_sufficient_condition(Z; conditions = (1,))
-    @test is_singular_sufficient_condition(Z; conditions = (3,))
+    # condition 3 asks for an inverse that is nonnegative entrywise; an enclosure can show that
+    # only where the entries are positive. Here A_Δ − |A_c| = [2 -1; -1 2]/3, with inverse
+    # [2 1; 1 2], and the interval matrix contains [1/3 1/3; 1/3 1/3].
+    A3 = BallMatrix([0.0 1/3; 1/3 0.0], [2/3 0.0; 0.0 2/3])
+    @test is_singular_sufficient_condition(A3; conditions = (3,))
+    @test !is_singular_sufficient_condition(Z; conditions = (3,))    # the inverse is I, with zeros
     @test is_singular_sufficient_condition(Z; conditions = (4,))
     @test is_singular_sufficient_condition(BallMatrix(Matrix(1.0I, 3, 3), Matrix(1.5I, 3, 3));
         conditions = (2,))

@@ -209,7 +209,8 @@ which does not mean that the matrix is regular. How each is evaluated:
 2. with an enclosure of `A_c⁻¹` by [`verifylss`](@ref), the moduli of its entries bounded from
    below and the products with `A_Δ` rounded down;
 3. with an enclosure of the inverse of the ball matrix `A_Δ − |A_c|` (the subtraction is
-   rounded) by `verifylss`, all of whose lower ends must be nonnegative;
+   rounded) by `verifylss`, all of whose lower ends must be nonnegative; an inverse with an
+   entry equal to zero is therefore not recognised;
 4. with enclosures of the eigenvalues of the symmetric ball matrix `A_Δᵀ A_Δ − A_cᵀ A_c` by
    `verifyeigall(...; method = :rumplange2023)`, all of whose lower ends must be nonnegative.
 """
