@@ -199,7 +199,7 @@ function _ogita_svd_refine_impl(A::AbstractMatrix{T}, U, Σ, V,
         # the thin decomposition). The columns are completed by an approximately orthonormal
         # basis of the complement, which the refinement then corrects with the rest.
         Uc = convert.(T, U)
-        U = hcat(Uc, Matrix(qr(Uc).Q)[:, (size(Uc, 2) + 1):m])
+        U = hcat(Uc, (qr(Uc).Q * Matrix{T}(I, m, m))[:, (size(Uc, 2) + 1):m])
     end
     r = _ogita_refsvd(A, U, Σ, V, max_iterations, check_convergence)
     thin || return r
