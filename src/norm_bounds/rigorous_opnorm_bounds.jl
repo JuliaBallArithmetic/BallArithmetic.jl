@@ -57,9 +57,10 @@ function _collatz_quotient_up(mulM, n::Integer, ::Type{RT}, iterates::Integer) w
         (isfinite(smax) && smax > 0) || break
         x = max.(y ./ smax, eps(RT))
     end
+    # the assertion gives the compiler the type that the closure hides from it
     y = setrounding(RT, RoundUp) do
         mulM(x)
-    end
+    end::Vector{RT}
     lam = zero(RT)
     for i in 1:n
         q = div_up(y[i], x[i])
@@ -232,16 +233,13 @@ Returns a rigorous upper bound on the ℓ²-norm of the inverse of the
 ball matrix `A` using the rigorous enclosure for the singular values
 implemented in svd/svd.jl
 """
-function svd_bound_L2_opnorm_inverse(A::BallMatrix)
+function svd_bound_L2_opnorm_inverse(A::BallMatrix{T}) where {T}
     σ = svdbox(A)
-
-    if in(0, σ[end])
-        return +Inf
-    end
-
-    inv_inf = Ball(1.0) / σ[end]
-
-    return @up inv_inf.c + inv_inf.r
+    isempty(σ) && return zero(T)
+    # the lower end of the smallest singular value, rounded down; no bound when it is not positive
+    lo = inf(σ[end])
+    lo > 0 || return T(Inf)
+    return div_up(one(T), lo)
 end
 
 using LinearAlgebra

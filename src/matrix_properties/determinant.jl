@@ -24,7 +24,8 @@ struct DeterminantResult{BT <: Ball}
     method::Symbol
 end
 
-_unbounded_determinant(::Type{T}) where {T} = Ball(zero(T), T(Inf))
+# the ball that says nothing, with midpoint of type CT (real or complex)
+_unbounded_determinant(::Type{CT}) where {CT} = Ball(zero(CT), real(CT)(Inf))
 
 """
     det_hadamard(A::BallMatrix) -> DeterminantResult
@@ -159,12 +160,12 @@ function det_cramer(A::BallMatrix{T}) where {T}
         sol = try
             verifylss(M, BallVector(e1))
         catch
-            return DeterminantResult(_unbounded_determinant(T), :cramer)
+            return DeterminantResult(_unbounded_determinant(CT), :cramer)
         end
-        sol.certified || return DeterminantResult(_unbounded_determinant(T), :cramer)
+        sol.certified || return DeterminantResult(_unbounded_determinant(CT), :cramer)
         x1 = sol.solution[1]
         sub_down(abs_down(mid(x1)), rad(x1)) > 0 ||
-            return DeterminantResult(_unbounded_determinant(T), :cramer)
+            return DeterminantResult(_unbounded_determinant(CT), :cramer)
         det = det / x1
         M = M[2:m, 2:m]
     end
@@ -207,12 +208,16 @@ An enclosure of the determinant of the interval matrix `A` by
 - `:hadamard`: [`det_hadamard`](@ref);
 - `:cramer`: [`det_cramer`](@ref);
 - `:cofactor`: [`det_cofactor`](@ref);
-- `:auto`: the cofactor expansion for orders up to three, Gaussian elimination above.
+- `:auto`: the cofactor expansion for orders up to three; above, Gaussian elimination for a
+  real matrix and `:cramer` for a complex one, the elimination being for real matrices.
 """
 function interval_det(A::BallMatrix{T}; method::Symbol = :auto) where {T}
     n = size(A, 1)
     n == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
-    method == :auto && (method = n <= 3 ? :cofactor : :gaussian_elimination)
+    if method == :auto
+        method = n <= 3 ? :cofactor :
+                 eltype(mid(A)) <: Real ? :gaussian_elimination : :cramer
+    end
     if method == :hadamard
         return det_hadamard(A)
     elseif method == :gershgorin

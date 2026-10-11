@@ -30,7 +30,7 @@ end
 
 """
     interval_initial_enclosure(A::BallMatrix, b::BallVector; C = inv(mid(A)), method = :auto)
-        -> BallVector or nothing
+        -> BallVector
 
 A box that contains the solution set of the square interval system `A x = b`, by Section 5.7.1
 of Horáček (2019), with `C` a real matrix (any; the default is the floating-point inverse of
@@ -43,20 +43,21 @@ the midpoint):
   `Σ ⊆ ‖Cb‖_∞/(1 − ‖I − CA‖_∞) [−e, e]`.
 - `method = :auto`: the first, and the second where the first does not apply.
 
-`CA` and `Cb` are formed in ball arithmetic and every bound is rounded outwards. Returns
-`nothing` where the condition of the method is not established.
+`CA` and `Cb` are formed in ball arithmetic and every bound is rounded outwards. Where
+the condition of the method is not established the box returned has infinite radii.
 """
 function interval_initial_enclosure(A::BallMatrix{T}, b::BallVector{T};
-        C = nothing, method::Symbol = :auto) where {T}
+        C = nothing, method::Symbol = :auto)::DenseBallVector{T, T} where {T}
     n = _require_real_system(A, b, "interval_initial_enclosure")
+    unbounded = BallVector(zeros(T, n), fill(T(Inf), n))
     method in (:auto, :proposition, :norm) ||
         throw(ArgumentError("method must be :auto, :proposition or :norm"))
     C === nothing && (C = _midpoint_inverse(A))
-    C === nothing && return nothing
+    C === nothing && return unbounded
     bC = BallMatrix(Matrix{T}(C))
     CA, Cb = bC * A, bC * b
     magCb = add_up.(abs.(mid(Cb)), rad(Cb))
-    all(isfinite, magCb) || return nothing
+    all(isfinite, magCb) || return unbounded
     if method != :norm
         mig = diagonal_abs_lower_bound(CA)
         mag = upper_abs(CA)
@@ -83,10 +84,10 @@ function interval_initial_enclosure(A::BallMatrix{T}, b::BallVector{T};
                 return BallVector(zeros(T, n), mul_up.(κ, u))
             end
         end
-        method == :proposition && return nothing
+        method == :proposition && return unbounded
     end
     q = upper_bound_L_inf_opnorm(CA - I)
-    q < 1 || return nothing
+    q < 1 || return unbounded
     return BallVector(zeros(T, n), fill(div_up(maximum(magCb), sub_down(one(T), q)), n))
 end
 
@@ -134,8 +135,7 @@ function _interval_splitting_iteration(A::BallMatrix{T}, b::BallVector{T}, x0, C
     end
     if x0 === nothing
         x0 = interval_initial_enclosure(A, b)
-        x0 === nothing && return IterativeResult(BallVector(zeros(T, n), fill(T(Inf), n)),
-            false, 0, T(Inf), T(NaN), false)
+        all(isfinite, rad(x0)) || return IterativeResult(x0, false, 0, T(Inf), T(NaN), false)
     end
     length(x0) == n || throw(DimensionMismatch("$name: x0 must have length $n"))
     if tol === nothing
@@ -194,7 +194,8 @@ A diagonal entry that contains zero leaves its component unchanged. An empty int
 reported in the field `empty`.
 """
 function interval_jacobi(A::BallMatrix{T}, b::BallVector{T}; x0 = nothing,
-        preconditioner = nothing, max_iterations::Int = 20, tol = nothing) where {T}
+        preconditioner = nothing, max_iterations::Int = 20,
+        tol = nothing)::IterativeResult{T, DenseBallVector{T, T}} where {T}
     return _interval_splitting_iteration(A, b, x0, preconditioner, max_iterations, tol, false,
         "interval_jacobi")
 end
@@ -210,7 +211,8 @@ component uses the components already updated in the sweep,
     y_i⁽ᵏ⁺¹⁾ = (b_i − Σ_{j<i} a_ij x_j⁽ᵏ⁺¹⁾ − Σ_{j>i} a_ij x_j⁽ᵏ⁾)/a_ii.
 """
 function interval_gauss_seidel(A::BallMatrix{T}, b::BallVector{T}; x0 = nothing,
-        preconditioner = nothing, max_iterations::Int = 20, tol = nothing) where {T}
+        preconditioner = nothing, max_iterations::Int = 20,
+        tol = nothing)::IterativeResult{T, DenseBallVector{T, T}} where {T}
     return _interval_splitting_iteration(A, b, x0, preconditioner, max_iterations, tol, true,
         "interval_gauss_seidel")
 end

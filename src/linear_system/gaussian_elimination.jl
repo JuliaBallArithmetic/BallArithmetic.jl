@@ -92,6 +92,8 @@ function interval_gaussian_elimination(A::BallMatrix{T}, b::BallVector{T};
                                         pivoting::Symbol=:partial,
                                         store_factors::Bool=false) where {T}
     n = size(A, 1)
+    (eltype(mid(A)) <: Real && eltype(mid(b)) <: Real) ||
+        throw(ArgumentError("interval_gaussian_elimination is for real interval systems"))
 
     # Copy A and b (will be modified)
     U = copy(A)
@@ -228,6 +230,8 @@ println("det(A) ∈ ", det_enclosure)
 """
 function interval_gaussian_elimination_det(A::BallMatrix{T}) where {T}
     n = size(A, 1)
+    eltype(mid(A)) <: Real ||
+        throw(ArgumentError("interval_gaussian_elimination_det is for real interval matrices"))
 
     # Dummy right-hand side (not needed for determinant)
     b = BallVector(zeros(T, n), zeros(T, n))

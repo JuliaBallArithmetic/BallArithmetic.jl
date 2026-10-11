@@ -45,7 +45,8 @@ by [`verifylss`](@ref), as the thesis suggests with the ε-inflation method; `α
 are replaced by upper bounds, which enlarges the box, since the quotient grows with both.
 `certified` is `false` where one of these steps fails.
 """
-function hbr_method(A::BallMatrix{T}, b::BallVector{T}; preconditioner = nothing) where {T}
+function hbr_method(A::BallMatrix{T}, b::BallVector{T};
+        preconditioner = nothing)::HBRResult{DenseBallVector{T, T}} where {T}
     n = _require_real_system(A, b, "hbr_method")
     C = preconditioner === nothing ? _midpoint_inverse(A) : preconditioner
     C === nothing && return _hbr_failure(T, n)
@@ -59,7 +60,8 @@ end
 Theorem 5.12 of Horáček (2019) applied to `A x = b` without preconditioning; `A` must then be
 an H-matrix itself. See [`hbr_method`](@ref).
 """
-function hbr_method_simple(A::BallMatrix{T}, b::BallVector{T}) where {T}
+function hbr_method_simple(A::BallMatrix{T},
+        b::BallVector{T})::HBRResult{DenseBallVector{T, T}} where {T}
     _require_real_system(A, b, "hbr_method_simple")
     return _hbr_theorem_5_12(A, b)
 end

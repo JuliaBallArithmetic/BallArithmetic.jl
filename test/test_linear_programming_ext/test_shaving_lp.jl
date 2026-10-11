@@ -35,7 +35,7 @@ using JuMP, HiGHS
             A, b = BallMatrix(Ac, AΔ), BallVector(bc, bΔ)
             is_regular(A).is_regular || continue
             x0 = interval_initial_enclosure(A, b)
-            x0 === nothing && continue
+            all(isfinite, rad(x0)) || continue
             sols = vertex_solutions(Ac, AΔ, bc, bΔ)
             for (passes, improvements) in ((1, 0), (1, 3), (2, 3))
                 r = interval_shaving(A, b, x0; passes, improvements)

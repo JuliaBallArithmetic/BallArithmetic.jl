@@ -63,7 +63,7 @@ _hull_radius(sols) = maximum(
             sols = _vertex_solutions(Ac, AΔ, bc, bΔ)
             for method in (:proposition, :norm, :auto)
                 x0 = interval_initial_enclosure(A, b; method)
-                x0 === nothing && continue
+                all(isfinite, rad(x0)) || continue
                 counts[:initial] += 1
                 @test _contains_all(x0, sols)
             end

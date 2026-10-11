@@ -1058,7 +1058,8 @@ cannot. `B⁻¹A` is formed by none of them. `:rump2022aneumann` is not implemen
 No fallback is run. The keywords `maxiter`, `inflate` and `maxlevels` are those of the Rump
 methods for one matrix; `:miyajima2014a` takes none.
 """
-function verifyeigall(A::BallMatrix, B::BallMatrix; method::Symbol = :miyajima2014a, kwargs...)
+function verifyeigall(A::BallMatrix{T}, B::BallMatrix{T}; method::Symbol = :miyajima2014a,
+        kwargs...)::VerifyEigAllResult{T, Complex{T}} where {T}
     size(A) == size(B) ||
         throw(DimensionMismatch("verifyeigall: A is $(size(A)) and B is $(size(B))"))
     size(A, 1) == size(A, 2) ||

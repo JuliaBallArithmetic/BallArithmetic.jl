@@ -72,7 +72,9 @@ function krawczyk_linear_system(A::BallMatrix{T}, b::BallVector{T};
         a = add_up(abs_up(m), ρ)
         acc = add_up(acc, mul_up(a, a))
     end
-    return KrawczykResult(x, sol.certified, sol.iterations, sqrt_up(acc), sol.spectral_radius_bound)
+    NT = promote_type(eltype(mid(A)), eltype(mid(b)))
+    return KrawczykResult(x, sol.certified, sol.iterations, sqrt_up(acc),
+        sol.spectral_radius_bound)::KrawczykResult{T, DenseBallVector{T, NT}}
 end
 
 # `krawczyk_sylvester` was removed on 2026-10-11: it threw on complex input and its contraction

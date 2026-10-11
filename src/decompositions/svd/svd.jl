@@ -290,7 +290,7 @@ For the singular vectors, the residual and the block refinement as well as the v
 S. Miyajima, *Verified bounds for all the singular values of matrix*, Japan J. Indust. Appl.
 Math. **31** (2014) 513-539, doi 10.1007/s13160-014-0145-5.
 """
-function svdbox(A::BallMatrix{T}; method::Symbol = :auto) where {T}
+function svdbox(A::BallMatrix{T}; method::Symbol = :auto)::Vector{Ball{T, T}} where {T}
     method === :auto && (method = _svd_auto_theorem(A))
     method === :miyajima2014_thm10 && return _miyajima2014_thm10(A)
     method === :miyajima2014_thm10_weyl && return _miyajima2014_thm10_weyl(A)

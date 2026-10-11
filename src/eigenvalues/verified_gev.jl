@@ -144,14 +144,10 @@ function compute_beta_bound(B::BallMatrix{T}) where {T}
     nY = upper_bound_L2_opnorm(BallMatrix(Y))
 
     # ‖B⁻¹‖₂ ≤ ‖Y‖₂ / (1 - ‖R‖₂): numerator up, denominator down.
-    denom = setrounding(T, RoundDown) do
-        one(T) - nR
-    end
+    denom = sub_down(one(T), T(nR))
     denom > 0 || return T(Inf)
 
-    return setrounding(T, RoundUp) do
-        sqrt(nY / denom)
-    end
+    return sqrt_up(div_up(T(nY), denom))
 end
 
 """

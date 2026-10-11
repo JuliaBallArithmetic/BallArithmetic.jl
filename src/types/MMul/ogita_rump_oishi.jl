@@ -152,16 +152,16 @@ function mmul_ogita_rump_oishi_2005(A::BallMatrix{T, S}, B::BallMatrix{T, S}) wh
     absA, absB = _modulus_up(mA), _modulus_up(mB)
     absprod = setrounding(T, RoundUp) do
         absA * absB
-    end
+    end::Matrix{T}
     # N summands per entry: k for a real product, 2k for a complex one, whose real and imaginary
     # parts are each a difference or sum of two real dot products of length k
     N = S <: Complex ? 2k : k
-    rC = _accuracy_term(_modulus_up(mC), absprod, N, T, S <: Complex)
+    acc = _accuracy_term(_modulus_up(mC), absprod, N, T, S <: Complex)
 
-    # the interval part, as in MMul4
+    # the interval part, as in MMul4; the assertion gives the compiler the type the closure hides
     rC = setrounding(T, RoundUp) do
-        rC .+ absA * rB .+ rA * (absB .+ rB)
-    end
+        acc .+ absA * rB .+ rA * (absB .+ rB)
+    end::Matrix{T}
     return BallMatrix(mC, rC)
 end
 

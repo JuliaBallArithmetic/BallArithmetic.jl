@@ -151,7 +151,8 @@ A subsquare for which the solver gives no enclosure is skipped. `certified` is `
 gives one.
 """
 function subsquares_method(A::BallMatrix{T}, b::BallVector{T}; selection::Symbol = :covering,
-        k::Int = 10, overlap = nothing, solver::Symbol = :hbr, rng = nothing) where {T}
+        k::Int = 10, overlap = nothing, solver::Symbol = :hbr,
+        rng = nothing)::OverdeterminedResult{DenseBallVector{T, T}} where {T}
     m, n = _require_overdetermined(A, b, "subsquares_method")
     overlap === nothing && (overlap = round(Int, n / 3))
     box = nothing
@@ -190,7 +191,8 @@ An empty intersection proves that the system has no solution (`unsolvable = true
 is `false` when no initial box is found.
 """
 function multi_jacobi_method(A::BallMatrix{T}, b::BallVector{T}; x0 = nothing,
-        overlap = nothing, max_iterations::Int = 20, tol = nothing, rng = nothing) where {T}
+        overlap = nothing, max_iterations::Int = 20, tol = nothing,
+        rng = nothing)::OverdeterminedResult{DenseBallVector{T, T}} where {T}
     m, n = _require_overdetermined(A, b, "multi_jacobi_method")
     overlap === nothing && (overlap = round(Int, n / 3))
     systems = Tuple{BallMatrix{T, T}, BallVector{T, T}}[]
@@ -253,7 +255,8 @@ the system has no solution.
 `certified` is `false` when the solver gives no enclosure.
 """
 function interval_least_squares(A::BallMatrix{T}, b::BallVector{T};
-        method::Symbol = :supersquare, solver::Symbol = :verifylss) where {T}
+        method::Symbol = :supersquare,
+        solver::Symbol = :verifylss)::OverdeterminedResult{DenseBallVector{T, T}} where {T}
     m, n = _require_overdetermined(A, b, "interval_least_squares")
     if method == :supersquare
         Mc, Mr = zeros(T, m + n, m + n), zeros(T, m + n, m + n)

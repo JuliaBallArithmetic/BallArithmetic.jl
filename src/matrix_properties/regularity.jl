@@ -55,7 +55,7 @@ The thesis states the theorem for real interval matrices. For a complex ball mat
 condition still implies regularity, since `σ_min(A_c + E) ≥ σ_min(A_c) − ‖E‖₂` and
 `‖E‖₂ ≤ ‖A_Δ‖₂` for `|E| ≤ A_Δ`; the second is weaker than the first.
 """
-function is_regular_sufficient_condition(A::BallMatrix{T}; condition::Integer = 1) where {T}
+function is_regular_sufficient_condition(A::BallMatrix{T}; condition::Integer = 1)::RegularityResult{T} where {T}
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
     condition in (1, 2) || throw(ArgumentError("condition must be 1 or 2"))
     b = _inverse_norm_or_inf(mid(A), T)
@@ -86,7 +86,7 @@ arithmetic and its spectral radius by [`collatz_upper_bound`](@ref); the `certif
 bound, and regularity is proved when it is below one. With `R = A_c⁻¹` the condition is
 `ϱ(|A_c⁻¹| A_Δ) < 1`, strong regularity (Theorem 4.33 of the thesis).
 """
-function is_regular_spectral_radius(A::BallMatrix{T}; R = nothing) where {T}
+function is_regular_spectral_radius(A::BallMatrix{T}; R = nothing)::RegularityResult{T} where {T}
     n = size(A, 1)
     n == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
     Ac = mid(A)
@@ -133,7 +133,7 @@ with `mig` and `mag` the smallest and the largest modulus over an entry. Such a 
 H-matrix and therefore regular (Section 4.5 of the thesis). The `certificate` is a lower bound
 of the smallest difference of the two sides over the rows.
 """
-function is_regular_diagonal_dominance(A::BallMatrix{T}) where {T}
+function is_regular_diagonal_dominance(A::BallMatrix{T})::RegularityResult{T} where {T}
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
     margin = _row_dominance_margin(A)
     return RegularityResult(margin > 0, :diagonal_dominance, margin)
@@ -148,7 +148,7 @@ the rows this is strict diagonal dominance ([`is_regular_diagonal_dominance`](@r
 columns it is the same condition on the transpose. The `certificate` is the larger of the two
 margins.
 """
-function is_regular_gershgorin(A::BallMatrix{T}) where {T}
+function is_regular_gershgorin(A::BallMatrix{T})::RegularityResult{T} where {T}
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
     At = BallMatrix(Matrix(transpose(mid(A))), Matrix(transpose(rad(A))))
     margin = max(_row_dominance_margin(A), _row_dominance_margin(At))
@@ -166,7 +166,7 @@ is regular, Section 4.4 of Horáček (2019)); the others are the routines of thi
 function is_regular(A::BallMatrix{T};
         methods::Vector{Symbol} = [:diagonal_dominance, :gershgorin, :h_matrix,
             :sufficient_condition, :spectral_radius],
-        verbose::Bool = false) where {T}
+        verbose::Bool = false)::RegularityResult{T} where {T}
     last_result = RegularityResult(false, :none, T(NaN))
     for method in methods
         result = if method == :sufficient_condition
