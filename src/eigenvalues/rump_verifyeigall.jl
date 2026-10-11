@@ -1021,7 +1021,7 @@ visible in the name rather than buried in a docstring:
 | `:rump2022aschur` | [`_rump2022a_schur`](@ref) | Theorem 2.2 in the frame of a Schur decomposition in place of the eigenvector matrix of the paper's step 1, without the recursion of step 6; a deviation, named for it |
 | `:rump2022aschurstep6` | [`_rump2022a_schur_step6`](@ref) | the Schur frame followed by the recursion of step 6 on the columns left uncertified; a deviation, named for it |
 | `:rump2022aconditioned` | [`_rump2022a_conditioned`](@ref) | the eigenvector frame when its condition number is at most `kappa_max`, the Schur frame otherwise, and the same rule in the recursion of step 6; a deviation, named for it |
-| `:rumplange2023` | [`_rumplange2023`](@ref) | Algorithm `verifyeigall` of Rump and Lange (2023) for a Hermitian matrix: residual bounds, clusters, refinement by Rayleigh quotients, orthonormal bases of the invariant subspaces; the statements are for the Hermitian matrices of the ball, and it takes no keywords |
+| `:rumplange2023` | [`_rumplange2023`](@ref) | Algorithm `verifyeigall` of Rump and Lange (2023) for a Hermitian matrix: residual bounds, clusters, refinement by Rayleigh quotients, orthonormal bases of the invariant subspaces; the statements are for the Hermitian matrices of the ball; its one keyword is the clustering threshold `kappa` |
 | `:miyajima2014a` | [`_miyajima2014a_alg1`](@ref) | Algorithms 1 and 2 of Miyajima (2014): Gershgorin discs on the pencil transformed by an approximate generalised eigendecomposition, each cluster certified by Brouwer's theorem on a Newton operator |
 
 The Neumann variant is kept because it does not need the solve to

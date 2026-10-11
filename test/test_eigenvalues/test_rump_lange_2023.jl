@@ -59,6 +59,17 @@ end
         @test maximum((r.hi .- r.lo) ./ max.(abs.(r.lo), abs.(r.hi))) < 1e-11
         @test maximum(rad(r.vectors)) < 1e-10
     end
+    @testset "the threshold kappa, $S" for S in (Float64, ComplexF64)
+        # Tables 7 and 8 of the paper: two tenfold clusters of width 1e-11
+        d = vcat(0.1 .+ 1e-11 .* randn(rng, 10), 0.2 .+ 1e-11 .* randn(rng, 10),
+            range(0.3, 1.0; length = 10), range(-1.0, -0.3; length = 10))
+        A = hermitian(d, S)
+        r = BallArithmetic._rumplange2023_eig(BallMatrix(A); kappa = 1e-8)
+        @test sort(length.(r.clusters)) == vcat(fill(1, 20), [10, 10])
+        check(A, r)
+        @test maximum(rad(r.vectors)) < 1e-9
+        @test_throws ArgumentError BallArithmetic._rumplange2023_eig(BallMatrix(A); kappa = -1)
+    end
     @testset "clusters, $S" for S in (Float64, ComplexF64)
         # two tenfold clusters of width 1e-11, as in the paper's Table 3, and separated ones
         d = vcat(0.1 .+ 1e-11 .* randn(rng, 10), 0.2 .+ 1e-11 .* randn(rng, 10),
@@ -101,8 +112,15 @@ end
             @test all(abs.(mid(res)) .<= rad(res))
         end
         @test all(l -> any(j -> abs(l - r.gershgorin_centers[j]) <= r.gershgorin_radii[j], 1:6), λ)
-        # the block resolvent floor of a Hermitian matrix: the distance to the spectrum
-        f = block_resolvent_floor(r)
+        # the pair at distance 1e-12 is separated, into two eigenvectors known to about 1e-3
+        @test all(length(v) == 1 for v in r.clusters)
+        @test 1e-6 < maximum(rad(r.similarity)) < 1e-1
+        # with the threshold it is one cluster with a narrow invariant subspace, and the block
+        # resolvent floor of a Hermitian matrix is then the distance to the spectrum
+        k = verifyeigall(BallMatrix(A); method = :rumplange2023, kappa = 1e-8)
+        @test sort(length.(k.clusters)) == [1, 1, 1, 1, 2]
+        @test maximum(rad(k.similarity)) < 1e-12
+        f = block_resolvent_floor(k)
         @test f.kappa < 1 + 1e-8
         for z in (0.7 + 0.3im, -5.0 + 0im, 3.5 + 2.0im)
             truth = minimum(svdvals(A - z * I))

@@ -92,6 +92,17 @@ function _rumplange2023_components(adj::AbstractMatrix{Bool})
     return sort(collect(values(groups)); by = first)
 end
 
+# The relation of the clustering: intervals i and j are related when they intersect or, with the
+# threshold κ of Section 6, are closer than κ relative to their ends,
+#     dist = (Linf − κ|Linf| ≤ Linf') & (Lsup + κ|Lsup| ≥ Linf'),   symmetrised.
+# The ends are moved outward in the rounding, which can only relate more.
+function _rumplange2023_relation(lo::Vector{T}, hi::Vector{T}, κ::T) where {T}
+    n = length(lo)
+    near(i, j) = sub_down(lo[i], mul_up(κ, abs(lo[i]))) <= lo[j] &&
+                 add_up(hi[i], mul_up(κ, abs(hi[i]))) >= lo[j]
+    return Bool[near(i, j) || near(j, i) for i in 1:n, j in 1:n]
+end
+
 # the distance, rounded down, from the point c to the interval [lo, hi]; negative inside it
 _point_interval_gap(c::T, lo::T, hi::T) where {T} = max(sub_down(lo, c), sub_down(c, hi))
 
@@ -104,7 +115,8 @@ _interval_gap(lo1::T, hi1::T, lo2::T, hi2::T) where {T} =
 # ---------------------------------------------------------------------------------------------
 
 """
-    _rumplange2023_eig(A::BallMatrix) -> (; lo, hi, clusters, vectors, basis, centers, radii)
+    _rumplange2023_eig(A::BallMatrix; kappa = 0)
+        -> (; lo, hi, clusters, vectors, basis, centers, radii)
 
 Algorithm `verifyeigall` of Rump and Lange (2023) for a Hermitian matrix, with the refinement
 `refineeig` of its Section 5 and the eigenvector bounds of its Section 6. For every Hermitian
@@ -127,7 +139,10 @@ matrix `Ã` of the ball `A`:
    precision, and `λ̃_j` is the midpoint of the enclosure (Section 5).
 2. `E ∋ ÃX̃ − X̃Λ̃`, and `δ_j = ‖E e_j‖/‖x̃_j‖`, so that `λ̃_j ± δ_j` holds an eigenvalue
    (Theorem 4.1 with `k = 1`).
-3. The intervals are grouped into the connected components of "these two intersect". For a
+3. The intervals are grouped into the connected components of "these two intersect", or, with
+   the threshold `kappa > 0` of Section 6, "these two are closer than `kappa` relative to their
+   ends": eigenvalues that the algorithm could separate are then kept as one cluster, whose
+   invariant subspace is enclosed much more tightly than the single eigenvectors would be. For a
    component `μ` with more than one index, `δ_j` is replaced for `j ∈ μ` by
    `‖E(:, μ)‖/σ_min(X̃(:, μ))` (Theorem 4.1 with `k = |μ|`), the intervals keeping their own
    midpoints, and the grouping is repeated until the partition no longer changes.
@@ -157,9 +172,11 @@ S. M. Rump and M. Lange, *Fast computation of error bounds for all eigenpairs of
 all singular pairs of a rectangular matrix with emphasis on eigen- and singular value clusters*,
 J. Comput. Appl. Math. **434** (2023) 115332, doi 10.1016/j.cam.2023.115332, Sections 3 to 6.
 """
-function _rumplange2023_eig(A::BallMatrix{T}) where {T}
+function _rumplange2023_eig(A::BallMatrix{T}; kappa::Real = 0) where {T}
     n = size(A, 1)
     n == size(A, 2) || throw(ArgumentError("_rumplange2023_eig: A must be square"))
+    kappa >= 0 || throw(ArgumentError("_rumplange2023_eig: kappa must be nonnegative"))
+    κ = T(kappa)
     Am, Ar = Matrix(mid(A)), rad(A)
     S = eltype(Am)
     Xs = Matrix{S}(eigen(Hermitian((Am' + Am) / 2)).vectors)
@@ -190,7 +207,7 @@ function _rumplange2023_eig(A::BallMatrix{T}) where {T}
     lo, hi = sub_down.(lam, delta), add_up.(lam, delta)
     for _ in 1:(n + 1)
         lo, hi = sub_down.(lam, delta), add_up.(lam, delta)
-        new = _rumplange2023_components(Bool[lo[i] <= hi[j] && lo[j] <= hi[i] for i in 1:n, j in 1:n])
+        new = _rumplange2023_components(_rumplange2023_relation(lo, hi, κ))
         new == clusters && break
         clusters = new
         for v in clusters
@@ -202,7 +219,7 @@ function _rumplange2023_eig(A::BallMatrix{T}) where {T}
         end
     end
     lo, hi = sub_down.(lam, delta), add_up.(lam, delta)
-    final = _rumplange2023_components(Bool[lo[i] <= hi[j] && lo[j] <= hi[i] for i in 1:n, j in 1:n])
+    final = _rumplange2023_components(_rumplange2023_relation(lo, hi, κ))
     if final != clusters                  # the grouping did not settle: one cluster of everything
         clusters = [collect(1:n)]
         s = _rumplange2023_singmin(Xs)
@@ -256,7 +273,7 @@ _rumplange2023_eig_failed(Xs::Matrix{S}, ::Type{T}) where {S, T} = (n = size(Xs,
     radii = fill(T(Inf), n)))
 
 """
-    _rumplange2023(A::BallMatrix) -> VerifyEigAllResult
+    _rumplange2023(A::BallMatrix; kappa = 0) -> VerifyEigAllResult
 
 [`_rumplange2023_eig`](@ref) with its result in the fields of a [`VerifyEigAllResult`](@ref);
 reached through [`verifyeigall`](@ref) with `method = :rumplange2023`. The statements are for
@@ -274,8 +291,8 @@ the Hermitian matrices of the ball `A`.
 - `similarity` contains the unitary matrix `Q` made of those bases, and `transformed` the matrix
   `Q*AQ`: block diagonal on the clusters, exact zeros elsewhere.
 """
-function _rumplange2023(A::BallMatrix{T}) where {T}
-    r = _rumplange2023_eig(A)
+function _rumplange2023(A::BallMatrix{T}; kappa::Real = 0) where {T}
+    r = _rumplange2023_eig(A; kappa)
     n = size(A, 1)
     CT = complex(T)
     m = length(r.clusters)
@@ -416,11 +433,7 @@ function verifysvdall(A::BallMatrix{T}; kappa::Real = 0) where {T}
     delta = T[div_up(normG[j], sqrt_down(y2lo[j])) for j in 1:n]
 
     bounds() = (max.(zero(T), sub_down.(sig, delta)), add_up.(sig, delta))
-    function relation(lo, hi)
-        near(i, j) = sub_down(lo[i], mul_up(κ, abs(lo[i]))) <= lo[j] &&
-                     add_up(hi[i], mul_up(κ, abs(hi[i]))) >= lo[j]
-        return Bool[near(i, j) || near(j, i) for i in 1:n, j in 1:n]
-    end
+    relation(lo, hi) = _rumplange2023_relation(lo, hi, κ)
     function cluster_delta!(v)
         s = _rumplange2023_singmin(Ys[:, v])
         a, b = T(collatz_upper_bound_L2_opnorm(E[:, v])), T(collatz_upper_bound_L2_opnorm(F[:, v]))
