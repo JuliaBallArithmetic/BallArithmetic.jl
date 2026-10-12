@@ -411,7 +411,7 @@ A tuple (γ, A_inv_B) where A_inv_B is the computed A⁻¹B (reused later).
 Returns (Inf, nothing) if computation fails.
 """
 function _fast_gamma_bound(A::BallMatrix{T}, B::BallMatrix{T}, C::BallMatrix{T},
-                           Dd_diag::Vector{T}, D_rad::AbstractMatrix{T},
+                           Dd_diag::Vector{<:Union{T, Complex{T}}}, D_rad::AbstractMatrix{T},
                            Df::BallMatrix{T}) where {T}
     # Compute Dd⁻¹Df using diagonal scaling
     Dd_inv_Df = _diagonal_scale_left(Dd_diag, D_rad, Df)
