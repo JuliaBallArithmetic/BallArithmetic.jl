@@ -199,7 +199,8 @@ end
             ref = sum(Rational{BigInt}.(x) .* Rational{BigInt}.(y))
             @test Rational{BigInt}(res) - Rational{BigInt}(err) <= ref <=
                   Rational{BigInt}(res) + Rational{BigInt}(err)
-            @test err <= 4 * eps(T) * abs(res) + floatmin(T)
+            # err is eps|res| and a term of order k eps² Σ|xᵢyᵢ|; the last entry makes res small
+            @test err <= eps(T) * (abs(res) + eps(T) * k * sum(abs.(x .* y))) + 4 * floatmin(T)
         end
         @test_throws DimensionMismatch BA._dot2err_ogita_rump_oishi_2005(randn(3), randn(4))
     end
