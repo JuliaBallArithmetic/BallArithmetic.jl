@@ -811,3 +811,31 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     Not looked at: `interval_fft` in RIM says FFTW computes the midpoints, and the default
     method of `fft(::BallVector)` is now the package's own transform; the compat entry
     `BallArithmetic = "0.3, 0.4"`; GKWExperiments.
+
+40. **The `hermitian` keywords, 2026-10-12** (after Isaia's remark that a ball matrix with
+    positive radii is an open set of matrices and cannot be Hermitian).
+    - `schur_gershgorin_enclosure(A; hermitian = true)` and `rigorous_block_schur(A; hermitian =
+      true)` returned real intervals for a ball matrix under a docstring that states the
+      spectrum of every matrix of the ball. `hermitian_keyword_cases.jl` on nighthawk at
+      96dff9d: for the ball of centre `[1 0; 0 1+1e-8]` and radius `1e-6` both returned
+      `1 ± 2.0e-6` and `1.00000001 ± 2.0e-6`; the matrix `[1 1e-6; −1e-6 1+1e-8]` of that ball
+      has the eigenvalues `1.000000005 ± 1.0e-6 i`. Now (c99e81f): a `BallMatrix` gives discs of
+      the complex plane and has no keyword; `Hermitian(M)`, or `Symmetric(M)` with `M` real,
+      for a point matrix gives real intervals. The singular value routines, which need real
+      intervals for the products `S*S`, call the unexported
+      `_schur_gershgorin_hermitian_members`, whose statement is about the Hermitian matrices
+      contained in the ball only.
+    - `certify_eigenpairs(B; hermitian = true)` threw a `MethodError` for a complex Hermitian
+      `B`; corrected. The keyword there selects the eigendecomposition the approximations come
+      from; the certification is for every matrix of the ball.
+    - Read, not changed: `compute_spectral_projector_hermitian` (the Hermitian midpoint gives
+      the approximate basis; the statement is the general one).
+    - **Open:** in `riesz_projections.jl` the keyword `hermitian` of `project_onto_eigenspace`,
+      `compute_eigenspace_projector` and `verified_project_onto_eigenspace` means that the
+      projection is the orthogonal one onto the span of the chosen columns, and
+      `verified_project_onto_eigenspace(...; hermitian = false)` throws "not yet implemented":
+      an exposed option that is not implemented, and a keyword whose name says something
+      else than what it does.
+    - Dependents: GKWExperiments calls `rigorous_block_schur(A; hermitian = hermitian)`
+      (`src/EigenspaceCertification.jl:249`) and exports `miyajima_vbd`; its compat entry is
+      `BallArithmetic = "0.1.1"`. Not run.
