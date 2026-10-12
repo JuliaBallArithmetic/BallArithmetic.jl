@@ -99,16 +99,20 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       `probe_rewire_decompositions.jl`). RigorousInvariantMeasures calls `verified_cholesky`
       with `use_bigfloat = false` and reads `success` and `G`, which are unchanged; it was not
       rerun.
-    - **The extension variants, not rewired:** `verified_{lu,cholesky,qr,polar,takagi}_double64`,
-      `_multifloat` and `verified_{lu,cholesky,qr,polar}_gla` still run their own code on
-      `_lu_perturbed_identity`. `probe_extension_decompositions.jl` (n = 10, 40, real, factors at
-      2048 bits): `lu_double64`, `lu_multifloat`, `lu_gla`, `cholesky_double64` and
-      `cholesky_multifloat` return `success = true` with about half of the entries outside
-      (errors near 1e-31 against radii near 1e-47 and 1e-62; for `lu_gla` 5.5e-17 against
-      9.7e-77); the three polar variants had no entry outside; for the QR variants and
-      `cholesky_gla` the midpoints differ from the reference by order one, so the probe compared
-      different normalisations and says nothing. Left as they are for the moment (Isaia,
-      2026-10-11).
+    - **The extension variants, rewired on 2026-10-12** (`ad54a98`).
+      `verified_{lu,cholesky,qr,polar,takagi}_double64` and `_multifloat` are the routines
+      without the suffix in BigFloat with the keyword `oracle = Double64` (or a MultiFloat):
+      the approximate factorisation the method starts from is computed in that arithmetic,
+      and the verification is the one of Rump and Ogita, unchanged. The `_gla` names are the
+      BigFloat routines; `verified_svd_gla` is `verifysvdall` in BigFloat. Before, the
+      perturbed identity was formed in Double64 or MultiFloat arithmetic with no bound of its
+      rounding error, and five of the variants returned success with about half of the
+      entries outside (`probe_extension_decompositions.jl`). `_lu_perturbed_identity`, which
+      nothing calls any more, is removed with its 29 rounding-mode blocks; 2032 lines removed
+      in all. Test: `test_extension_variants.jl`, every factor against references at 2048
+      bits, real and complex, n = 6 and 15, Takagi at n = 4 and 9. None of the variants had a
+      test before. The polar and Takagi variants with a MultiFloat need a generic `svd` and
+      symmetric `eigen` for that type (GenericLinearAlgebra).
     - **The products in doubled precision, and `prodK`.** Rump and Ogita (2024) compute their
       products with INTLAB's `prodK`, `k = 2`, the scheme of M. Lange and S. M. Rump, "Accurate
       floating-point matrix residuals" (manuscript, in `~/Library/ToBeProcessed`).
