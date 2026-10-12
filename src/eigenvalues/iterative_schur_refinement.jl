@@ -413,7 +413,8 @@ function _bujanovicetal2023_order(Q0::Matrix, T0::Matrix, rng)
         wanted[desired[k]] = true
         sel = Bool[wanted[c] for c in cur]
         all(view(sel, 1:k)) && continue
-        T, Q, _ = ordschur(T, Q, sel)
+        F = ordschur(Schur(T, Q, diag(T)), sel)
+        T, Q = Matrix(F.T), Matrix(F.Z)
         cur = vcat(cur[sel], cur[.!sel])
     end
     return Q, T

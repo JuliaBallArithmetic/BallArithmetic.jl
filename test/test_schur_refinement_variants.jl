@@ -61,9 +61,9 @@ using MultiFloats
                 @test res < 1e-70
                 @test orth < 1e-70
                 # the eigenvalues are those of the input, as a set
-                d0 = sort(diag(F.T); by = z -> (real(z), imag(z)))
-                d1 = sort(ComplexF64.(diag(r.T)); by = z -> (real(z), imag(z)))
-                @test maximum(abs.(d0 .- d1)) < 1e-8
+                d0, d1 = diag(F.T), ComplexF64.(diag(r.T))
+                @test all(minimum(abs.(z .- d1)) < 1e-8 for z in d0)
+                @test all(minimum(abs.(z .- d0)) < 1e-8 for z in d1)
                 if method === :bujanovicetal2023unordered
                     # the order of the diagonal is kept
                     @test maximum(abs.(ComplexF64.(diag(r.T)) .- diag(F.T))) < 1e-8
@@ -83,12 +83,15 @@ using MultiFloats
 
         @testset "line 1 of Algorithm 4: the reordering" begin
             for T in (Float64, ComplexF64), n in (5, 12)
-                A = T === Float64 ?
-                    Matrix(qr(randn(rng, n, n)).Q) * (triu(randn(rng, n, n), 1) +
-                                                      Diagonal(randn(rng, n))) :
+                # a real matrix with real eigenvalues, so that its real Schur form is triangular
+                A = T === Float64 ? triu(randn(rng, n, n), 1) + Diagonal(randn(rng, n)) :
                     randn(rng, T, n, n)
-                A = T === Float64 ? A * inv(Matrix(qr(randn(MersenneTwister(1), n, n)).Q)) : A
-                F = schur(T === Float64 ? triu(randn(rng, n, n), 1) + Diagonal(randn(rng, n)) : A)
+                if T === Float64
+                    Qo = Matrix(qr(randn(rng, n, n)).Q)
+                    A = Qo * A * Qo'
+                end
+                F = schur(A)
+                istriu(F.T) || continue
                 M = F.Z * F.T * F.Z'
                 g = MersenneTwister(77)
                 Q, Tr = BallArithmetic._bujanovicetal2023_order(F.Z, F.T, g)
@@ -100,9 +103,9 @@ using MultiFloats
                 proj = real.(diag(Tr) .* cis(-θ))
                 @test all(diff(proj) .>= -1e-10)
                 # the same eigenvalues
-                d0 = sort(complex(diag(F.T)); by = z -> (real(z), imag(z)))
-                d1 = sort(complex(diag(Tr)); by = z -> (real(z), imag(z)))
-                @test maximum(abs.(d0 .- d1)) < 1e-10
+                d0, d1 = complex(diag(F.T)), complex(diag(Tr))
+                @test all(minimum(abs.(z .- d1)) < 1e-10 for z in d0)
+                @test all(minimum(abs.(z .- d0)) < 1e-10 for z in d1)
             end
             @test_throws ArgumentError BallArithmetic._bujanovicetal2023_order(
                 big.([1.0 0.0; 0.0 1.0]), big.([1.0 2.0; 0.0 3.0]), nothing)
