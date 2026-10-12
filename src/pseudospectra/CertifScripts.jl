@@ -1284,7 +1284,9 @@ function _compute_schur_bigfloat_refined(A::BallMatrix{BigFloat}; polynomial = n
 
     # Step 2: Refine to BigFloat using iterative refinement
     target_precision = precision(BigFloat)
+    # the order of the eigenvalues of the Float64 Schur form is kept
     result = refine_schur_decomposition(A.c, S_f64.Z, S_f64.T;
+        method = :bujanovicetal2023unordered,
         target_precision = target_precision,
         max_iterations = 20)
 

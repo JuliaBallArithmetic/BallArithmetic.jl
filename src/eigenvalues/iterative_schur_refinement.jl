@@ -497,7 +497,7 @@ function _schur_refinement(method::Symbol, A, Q0, T0, max_iterations, tol; hp::T
 end
 
 """
-    refine_schur_decomposition(A, Q0, T0; method = :bujanovicetal2023unordered,
+    refine_schur_decomposition(A, Q0, T0; method = :bujanovicetal2023,
         target_precision = 256, max_iterations = 20, tol = 0, threshold = 1e-5, rng = nothing)
 
 Refines an approximate Schur decomposition `A ≈ Q0 T0 Q0ᴴ` computed in `Float64`, `T0` upper
@@ -514,10 +514,11 @@ visible in the name:
 | `:bujanovicetal2023truncated` | [`_bujanovicetal2023_alg4_truncated`](@ref) | the same with the modification of the paper's Example 4: the entries of `L` above `threshold` are set to zero |
 | `:bujanovicetal2023unordered` | [`_bujanovicetal2023_alg4_unordered`](@ref) | the iteration without the reordering, the order of the eigenvalues of `T0` being kept; a deviation, named for it |
 
-The default is the unordered one, because the callers in this package order the Schur form
-before refining it and rely on that order. The first two reorder the eigenvalues along a random
-line (`rng` gives the generator), so the diagonal of the result is in another order than that
-of `T0`, and they need `Q0`, `T0` in a LAPACK type.
+The default is the algorithm as published. It and the truncated one reorder the eigenvalues
+along a random line (`rng` gives the generator), so the diagonal of the result is in another
+order than that of `T0`, and they need `Q0`, `T0` in a LAPACK type. The callers in this package
+that order the Schur form before refining it and rely on that order pass
+`method = :bujanovicetal2023unordered`.
 
 `tol` is the tolerance of the stopping test, by default 100 rounding units of the target
 precision. A `T0` that is not upper triangular is an `ArgumentError`: for a real matrix with
@@ -538,7 +539,7 @@ Z. Bujanović, D. Kressner and C. Schröder, "Iterative refinement of Schur deco
 Numerical Algorithms 92 (2023), 247-267, doi 10.1007/s11075-022-01327-6.
 """
 function refine_schur_decomposition(A::AbstractMatrix, Q0::Matrix, T0::Matrix;
-                                    method::Symbol = :bujanovicetal2023unordered,
+                                    method::Symbol = :bujanovicetal2023,
                                     target_precision::Int=256,
                                     max_iterations::Int=20,
                                     tol::Real=0.0,
@@ -863,7 +864,9 @@ function rigorous_schur_bigfloat(A::BallMatrix{T, NT};
     end
 
     # Step 2: Refine to BigFloat precision
+    # the order of the eigenvalues of T0 is kept: the certification below refers to it
     result = refine_schur_decomposition(A_center, Q0, T0;
+                                        method=:bujanovicetal2023unordered,
                                         target_precision=target_precision,
                                         max_iterations=max_iterations)
 
