@@ -253,3 +253,33 @@ end
         end
     end
 end
+
+@testset "a matrix with radii: the precision is adapted on the midpoint" begin
+    rng = MersenneTwister(20261012)
+    for S in (Float64, ComplexF64), ε in (1e-8, 1e-3)
+        M = randn(rng, S, 5, 5) + 4I
+        R = fill(ε, 5, 5)
+        A = BallMatrix(M, R)
+        r = redirect_stderr(devnull) do
+            adaptive_ogita_svd(A; tolerance = 1e-25)
+        end
+        point = redirect_stderr(devnull) do
+            adaptive_ogita_svd(BallMatrix(M); tolerance = 1e-25)
+        end
+        # the levels are those of the midpoint, and the tolerance is met there
+        @test r.tolerance_achieved && r.precision_levels == point.precision_levels
+        @test r.radii_history[end] <= 1e-25
+        sv = r.rigorous_result.singular_values
+        # ‖R‖₂ = 5ε for this R; the radii of A cost that and no less than the spread they cause
+        @test all(rad(b) <= 5ε * (1 + 1e-6) + 1e-20 for b in sv)
+        # matrices of the ball
+        for _ in 1:20
+            E = R .* (S <: Complex ? cis.(2π .* rand(rng, 5, 5)) : rand(rng, (-1, 1), 5, 5))
+            σ = svdvals(Complex{BigFloat}.(M + E))
+            @test all(any(abs(x - mid(b)) <= rad(b) for b in sv) for x in σ)
+        end
+        # the rank-one perturbation ε·ones moves some singular value by a multiple of ε
+        @test maximum(rad, sv) >= ε / 10
+    end
+end
+

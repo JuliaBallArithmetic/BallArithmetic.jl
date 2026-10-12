@@ -381,9 +381,18 @@ Compute rigorous SVD bounds with adaptive precision using Ogita's refinement.
 4. If not satisfied, refine using Ogita's method with doubled precision
 5. Repeat until tolerance met or max precision reached
 
+# A matrix with non-zero radii
+The enclosures must contain the singular values of every matrix of the ball, so their radii cannot
+be brought below what the radii of `A` impose, at any precision. The precision is therefore adapted
+on the midpoint of `A`: `tolerance`, `radii_history` and `tolerance_achieved` are about the
+enclosures of the singular values of the midpoint. The factors found are then certified once
+against `A`, and `rigorous_result` is that certification: it holds for every matrix of the ball,
+and its radii exceed those of the midpoint by a bound of the 2-norm of the residual, which
+contains the radii of `A`.
+
 # Arguments
 - `A`: Input ball matrix
-- `tolerance`: Target tolerance for max(rad(σᵢ))
+- `tolerance`: Target tolerance for max(rad(σᵢ)), of the midpoint when `A` has radii
 - `method`: SVD certification method (MiyajimaM1 for Theorem 7, MiyajimaM4 for Theorem 11)
 - `apply_vbd`: Whether to apply verified block diagonalization
 - `max_precision_bits`: Maximum precision to use (bits)
@@ -409,6 +418,27 @@ function adaptive_ogita_svd(A::BallMatrix{T};
                            apply_vbd::Bool=true,
                            max_precision_bits::Int=1024,
                            max_refinement_iterations::Int=5) where {T}
+
+    # A matrix with radii: the precision is adapted on the midpoint, whose singular values can be
+    # enclosed as tightly as asked, and the factors found there are then certified once against
+    # the whole ball. In that certification the radii of `A` are in the residual U Σ Vᴴ − A, whose
+    # 2-norm bound is added to each enclosure, so they cost about ‖rad(A)‖₂ whatever the precision.
+    if any(!iszero, rad(A))
+        inner = adaptive_ogita_svd(BallMatrix(mid(A)); tolerance, method, apply_vbd,
+            max_precision_bits, max_refinement_iterations)
+        r0 = inner.rigorous_result
+        p = inner.final_precision
+        infloat64 = eltype(rad(r0.U)) === Float64
+        certify() = begin
+            V0 = mid(r0.V)
+            _certify_svd(infloat64 && T === Float64 ? A : _convert_to_precision(A, p),
+                (U = mid(r0.U), S = mid.(r0.singular_values), V = V0, Vt = V0'), method;
+                apply_vbd)
+        end
+        result = infloat64 ? certify() : setprecision(certify, BigFloat, p)
+        return AdaptiveSVDResult(result, inner.precision_levels, inner.radii_history,
+            inner.total_iterations, p, inner.tolerance_achieved)
+    end
 
     # Track adaptation history
     precision_levels = Int[]
