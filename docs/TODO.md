@@ -527,3 +527,20 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     squares of tiny radii having underflowed in the direct formula. Test: containment at 4096
     bits, in `test_arbnumerics_ext.jl`.
 
+31. **`fft` of a ball vector or matrix, 2026-10-12.** Read against Brisebarre, Muller and Picot
+    (ARITH 2023; in the library). Found: the bound of the paper is proved for the radix-2
+    transform of its Fig. 1 with the roots of unity rounded to nearest, and the midpoint was
+    computed by FFTW, another algorithm, for which the paper proves nothing; a length that is
+    not a power of two gave a warning and a result with the same radius formula; the constant
+    was written with `(1 + u)` where the paper's (4) has `(1 + u)ⁿ`, with `u` taken as `eps`
+    (twice the paper's unit roundoff), which made the value larger than the paper's except at
+    `n = 2`, where it was smaller by a relative `u²`. Now the midpoint is computed by the
+    algorithm of Fig. 1 (`_bmp_radix2_fft`), the constant is (4) with `u = eps/2`, bounded
+    through `e^S − 1 ≤ S/(1 − S/2)` so that rounding `1 + u` up does not double it, and a
+    length that is not a power of two is an `ArgumentError`. The bound along both dimensions
+    of a matrix is derived in the docstring from the paper's bound in the Euclidean norm.
+    `probe_fft_timing.jl` on nighthawk, one thread, complex `Float64`, second call: 0.9 ms
+    against 0.72 ms for FFTW at `N = 2¹⁶`, 33 ms against 8.3 ms at `N = 2²⁰`; the first call
+    at a size builds the roots in BigFloat (0.09 s and 1.3 s). RigorousInvariantMeasures calls
+    this through its `interval_fft`; its tests were not run against this change.
+
