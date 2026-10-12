@@ -429,3 +429,17 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     symmetric matrix, which has no method, so the option failed on every input and fell back
     to LU with a warning. It now uses `bunchkaufman`.
 
+24. **Exported functions with no test, 2026-10-12.** A search of the test directory for each of
+    the 282 exported names found fifteen functions mentioned nowhere: `upper_bound_norm`,
+    `ball_horner`, `pi_norm`, `compensated_terms2`, `inclusion_discs`, `det_cofactor`,
+    `schur_sylvester_midpoint`, `clear_svd_cache!`, `set_svd_cache!`, `svd_cache_stats`,
+    `ogita_iterations_for_precision`, `_certify_svd`, and three refinements in the MultiFloats
+    extension (`ogita_svd_refine_multifloat`, `refine_schur_multifloat`,
+    `refine_symmetric_eigen_multifloat`). The first eleven are now tested in
+    `test_exported_primitives.jl`. `upper_bound_norm` computed `‖c‖ + ‖r‖` with
+    `LinearAlgebra.norm` under the rounding mode; `probe_upper_bound_norm.jl` found it below
+    the exact norm in none of 172,000 vectors of radius zero; it is now the norm of `|c| + r`
+    by the directed operations, for `p = 1, 2, Inf`. Left without a test: `_certify_svd` (an
+    exported name with an underscore, called by the companion packages) and the three
+    MultiFloat refinements.
+

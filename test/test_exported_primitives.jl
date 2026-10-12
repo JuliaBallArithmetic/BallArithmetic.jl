@@ -5,6 +5,7 @@ using Test
 using BallArithmetic
 using LinearAlgebra
 using Random
+using GenericLinearAlgebra
 
 @testset "exported primitives" begin
     setprecision(BigFloat, 512) do
@@ -88,12 +89,15 @@ using Random
         @testset "inclusion_discs and eigencount_outside" begin
             D = Diagonal([3.0, 2.0, 0.5, -0.1])
             Q = Matrix(qr(randn(rng, 4, 4)).Q)
-            r = verifyeigall(BallMatrix(Q * D * Q'))
+            M = Q * D * Q'
+            M = (M + M') / 2
+            r = verifyeigall(BallMatrix(M))
             ctr, rad_, cnt, ok = inclusion_discs(r)
             @test ok
             @test sum(cnt) == 4
-            for λ in diag(D)
-                @test any(abs(λ - ctr[i]) <= rad_[i] for i in eachindex(ctr))
+            # the eigenvalues of the matrix as stored, which are those of D up to rounding
+            for λ in eigvals(Hermitian(big.(M)))
+                @test any(abs(λ - big(ctr[i])) <= big(rad_[i]) for i in eachindex(ctr))
             end
             @test eigencount_outside(r, 1.0) == (2, true)
             @test eigencount_outside(r, 0.3) == (3, true)
