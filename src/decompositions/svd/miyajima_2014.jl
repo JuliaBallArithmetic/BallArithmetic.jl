@@ -117,14 +117,8 @@ function _miyajima2014_thm4(A::BallMatrix{T}) where {T}
     (normF < 1 && normG < 1) || return [Ball(S[i], T(Inf)) for i in 1:q]
     mx = max(normF, normG)
     return [_ball_from_bounds(
-                setrounding(T, RoundDown) do
-                    S[i] - (setrounding(T, RoundUp) do
-                        S[i] * mx + normE
-                    end)
-                end,
-                setrounding(T, RoundUp) do
-                    S[i] + S[i] * mx + normE
-                end, T) for i in 1:q]
+                sub_down(S[i], add_up(mul_up(S[i], mx), normE)),
+                add_up(add_up(S[i], mul_up(S[i], mx)), normE), T) for i in 1:q]
 end
 
 """
@@ -160,19 +154,10 @@ function _miyajima2014_thm7(A::BallMatrix{T}) where {T}
     normF = upper_bound_L2_opnorm(Vh' * Vh - I)
     normG = upper_bound_L2_opnorm(Uh' * Uh - I)
     (normF < 1 && normG < 1) || return [Ball(S[i], T(Inf)) for i in 1:q]
-    fac_lo = setrounding(T, RoundDown) do
-        sqrt((one(T) - normF) * (one(T) - normG))
-    end
-    fac_hi = setrounding(T, RoundUp) do
-        sqrt((one(T) + normF) * (one(T) + normG))
-    end
-    return [_ball_from_bounds(
-                setrounding(T, RoundDown) do
-                    S[i] * fac_lo - normE
-                end,
-                setrounding(T, RoundUp) do
-                    S[i] * fac_hi + normE
-                end, T) for i in 1:q]
+    fac_lo = sqrt_down(mul_down(sub_down(one(T), normF), sub_down(one(T), normG)))
+    fac_hi = sqrt_up(mul_up(add_up(one(T), normF), add_up(one(T), normG)))
+    return [_ball_from_bounds(sub_down(mul_down(S[i], fac_lo), normE),
+                add_up(mul_up(S[i], fac_hi), normE), T) for i in 1:q]
 end
 
 """
@@ -227,14 +212,11 @@ function _miyajima2014_thm11(A::BallMatrix{T}) where {T}
     Dr = T[rad(H)[i, i] for i in 1:k]
     absH = upper_abs(H)
     # f_i: the Gershgorin row sums of the OFF-diagonal part, and ||Ehat||_inf is the largest
-    f = setrounding(T, RoundUp) do
-        T[sum(absH[i, j] for j in 1:k if j != i; init = zero(T)) for i in 1:k]
-    end
+    f = T[foldl(add_up, (absH[i, j] for j in 1:k if j != i); init = zero(T)) for i in 1:k]
     normEinf = isempty(f) ? zero(T) : maximum(f)
     # ||Ehat e_i||_2^2 over the i-th column, off the diagonal
-    colsq = setrounding(T, RoundUp) do
-        T[sum(absH[j, i]^2 for j in 1:k if j != i; init = zero(T)) for i in 1:k]
-    end
+    colsq = T[foldl((acc, x) -> add_up(acc, mul_up(x, x)), (absH[j, i] for j in 1:k if j != i);
+                  init = zero(T)) for i in 1:k]
 
     # the connected components of the intervals <Dhat_ii, f_i>, with the distance bounded BELOW
     # and the radii above, so a singleton component is proved isolated
@@ -244,11 +226,7 @@ function _miyajima2014_thm11(A::BallMatrix{T}) where {T}
     end;
     x)
     for i in 1:k, j in (i + 1):k
-        overlap = setrounding(T, RoundDown) do
-            abs(Dm[i] - Dm[j]) - Dr[i] - Dr[j]
-        end <= setrounding(T, RoundUp) do
-            f[i] + f[j]
-        end
+        overlap = sub_down(sub_down(dist_down(Dm[i], Dm[j]), Dr[i]), Dr[j]) <= add_up(f[i], f[j])
         if overlap
             a, b = find(i), find(j)
             a != b && (parent[a] = b)
@@ -268,48 +246,32 @@ function _miyajima2014_thm11(A::BallMatrix{T}) where {T}
             rho = T(Inf)
             for j in 1:k
                 j == i && continue
-                rho = min(rho, setrounding(T, RoundDown) do
-                    abs(Dm[i] - Dm[j]) - Dr[i] - Dr[j] - f[j]
-                end)
+                rho = min(rho,
+                    sub_down(sub_down(sub_down(dist_down(Dm[i], Dm[j]), Dr[i]), Dr[j]), f[j]))
             end
             h = f[i]
             if rho > 0
-                g = setrounding(T, RoundUp) do
-                    colsq[i] / rho
-                end
+                g = div_up(colsq[i], rho)
                 h = min(h, g)
             end
-            lo2[i] = setrounding(T, RoundDown) do
-                Dm[i] - Dr[i] - h
-            end
-            hi2[i] = setrounding(T, RoundUp) do
-                Dm[i] + Dr[i] + h
-            end
+            lo2[i] = sub_down(sub_down(Dm[i], Dr[i]), h)
+            hi2[i] = add_up(add_up(Dm[i], Dr[i]), h)
         else
             # clustered: the union of the cluster's intervals, intersected with the Weyl bound
-            lo2[i] = setrounding(T, RoundDown) do
-                max(minimum(Dm[j] - Dr[j] - f[j] for j in cl), Dm[i] - Dr[i] - normEinf)
-            end
-            hi2[i] = setrounding(T, RoundUp) do
-                min(maximum(Dm[j] + Dr[j] + f[j] for j in cl), Dm[i] + Dr[i] + normEinf)
-            end
+            lo2[i] = max(minimum(sub_down(sub_down(Dm[j], Dr[j]), f[j]) for j in cl),
+                sub_down(sub_down(Dm[i], Dr[i]), normEinf))
+            hi2[i] = min(maximum(add_up(add_up(Dm[j], Dr[j]), f[j]) for j in cl),
+                add_up(add_up(Dm[i], Dr[i]), normEinf))
         end
     end
 
     out = Vector{Ball{T, T}}(undef, q)
     for i in 1:q
-        s2lo = setrounding(T, RoundDown) do
-            max(lo2[i] / (one(T) + normF), zero(T))
-        end
-        s2hi = setrounding(T, RoundUp) do
-            max(hi2[i], zero(T)) / (one(T) - normF)
-        end
-        out[i] = _ball_from_bounds(setrounding(T, RoundDown) do
-                sqrt(s2lo)
-            end,
-            setrounding(T, RoundUp) do
-                sqrt(s2hi)
-            end, T)
+        # a lower bound of the quotient needs the denominator rounded up, and an upper bound
+        # needs it rounded down
+        s2lo = lo2[i] > 0 ? div_down(lo2[i], add_up(one(T), normF)) : zero(T)
+        s2hi = div_up(max(hi2[i], zero(T)), sub_down(one(T), normF))
+        out[i] = _ball_from_bounds(sqrt_down(s2lo), sqrt_up(s2hi), T)
     end
     return out
 end
@@ -375,23 +337,12 @@ them, share one copy of the formula.
 function _miyajima2014_thm10_bounds(S, normR, normF, normG, tall::Bool, ::Type{T}) where {T}
     # the frame that is square carries the inverse, so the two cases exchange F and G
     num, den = tall ? (normG, normF) : (normF, normG)
-    rho = setrounding(T, RoundUp) do
-        normR / (setrounding(T, RoundDown) do
-            sqrt(one(T) - den)
-        end)
-    end
-    fac_lo = setrounding(T, RoundDown) do
-        sqrt((one(T) - num) / (one(T) + den))
-    end
-    fac_hi = setrounding(T, RoundUp) do
-        sqrt((one(T) + num) / (one(T) - den))
-    end
-    lo = setrounding(T, RoundDown) do
-        [s * fac_lo - rho for s in S]
-    end
-    hi = setrounding(T, RoundUp) do
-        [s * fac_hi + rho for s in S]
-    end
+    rho = div_up(normR, sqrt_down(sub_down(one(T), den)))
+    # a lower bound of a quotient needs the denominator rounded up, an upper bound rounded down
+    fac_lo = sqrt_down(div_down(sub_down(one(T), num), add_up(one(T), den)))
+    fac_hi = sqrt_up(div_up(add_up(one(T), num), sub_down(one(T), den)))
+    lo = [sub_down(mul_down(s, fac_lo), rho) for s in S]
+    hi = [add_up(mul_up(s, fac_hi), rho) for s in S]
     return lo, hi
 end
 

@@ -56,9 +56,7 @@ using LinearAlgebra
 function _ball_from_bounds(lo::T, hi::T, ::Type{T}) where {T}
     isfinite(lo) && isfinite(hi) || return Ball(zero(T), T(Inf))
     mid_ = (lo + hi) / 2
-    rad_ = setrounding(T, RoundUp) do
-        max(hi - mid_, mid_ - lo)
-    end
+    rad_ = max(sub_up(hi, mid_), sub_up(mid_, lo))
     return Ball(mid_, rad_)
 end
 
@@ -96,7 +94,10 @@ function _rump2011_thm3_1(A::BallMatrix{T}) where {T}
     (alpha < 1 && beta < 1) || return [Ball(F.S[i], T(Inf)) for i in 1:n]
 
     Sig = Ub' * A * Vb                       # Sigma = U^H A V
-    D = T[abs(mid(Sig)[i, i]) for i in 1:n]
+    D = T[abs(mid(Sig)[i, i]) for i in 1:n]            # for the ordering only
+    # |D_ii| of a complex entry is not exact: a lower and an upper bound of it
+    Dlo = T[abs_down(mid(Sig)[i, i]) for i in 1:n]
+    Dhi = T[abs_up(mid(Sig)[i, i]) for i in 1:n]
     Dr = T[rad(Sig)[i, i] for i in 1:n]
     # E is Sigma off the diagonal; the diagonal radius of Sigma is charged to |D_ii| instead
     Em = copy(mid(Sig))
@@ -107,18 +108,17 @@ function _rump2011_thm3_1(A::BallMatrix{T}) where {T}
     end
     normE = upper_bound_L2_opnorm(BallMatrix(Em, Er))
 
-    den_lo = setrounding(T, RoundUp) do
-        sqrt((one(T) + alpha) * (one(T) + beta))
-    end
-    den_hi = setrounding(T, RoundDown) do
-        sqrt((one(T) - alpha) * (one(T) - beta))
-    end
+    # √((1+α)(1+β)) from above and from below, and √((1−α)(1−β)) from below
+    den_lo = sqrt_up(mul_up(add_up(one(T), alpha), add_up(one(T), beta)))
+    den_lo_below = sqrt_down(mul_down(add_down(one(T), alpha), add_down(one(T), beta)))
+    den_hi = sqrt_down(mul_down(sub_down(one(T), alpha), sub_down(one(T), beta)))
     ord = sortperm(D; rev = true)
-    return [_ball_from_bounds(
-                setrounding(T, RoundDown) do
-                    (D[p] - Dr[p] - normE) / den_lo
-                end,
-                setrounding(T, RoundUp) do
-                    (D[p] + Dr[p] + normE) / den_hi
-                end, T) for p in ord]
+    return [begin
+                num_lo = sub_down(sub_down(Dlo[p], Dr[p]), normE)
+                num_hi = add_up(add_up(Dhi[p], Dr[p]), normE)
+                # a lower bound of num/√((1+α)(1+β)): the denominator from above when the
+                # numerator is non-negative, from below when it is negative
+                _ball_from_bounds(div_down(num_lo, num_lo >= 0 ? den_lo : den_lo_below),
+                    div_up(num_hi, den_hi), T)
+            end for p in ord]
 end

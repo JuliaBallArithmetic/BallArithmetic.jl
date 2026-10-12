@@ -416,10 +416,8 @@ function _certify_svd_impl(A::BallMatrix{T}, U_in, S_in, V_in, Vt_in, method::SV
     end
 
     midpoints = (svdbounds_down + svdbounds_up) / 2
-    radii = setrounding(T, RoundUp) do
-        [max(svdbounds_up[i] - midpoints[i], midpoints[i] - svdbounds_down[i])
-         for i in 1:length(midpoints)]
-    end
+    radii = [max(sub_up(svdbounds_up[i], midpoints[i]), sub_up(midpoints[i], svdbounds_down[i]))
+             for i in 1:length(midpoints)]
 
     singular_values = [Ball(midpoints[i], radii[i]) for i in 1:length(midpoints)]
     Σ = _diagonal_ball_matrix(singular_values)
@@ -455,23 +453,15 @@ These are tighter than Rump's original formulas.
 function _compute_svd_bounds(::MiyajimaM1, S::Vector, normE, normF, normG, ::Type{T}) where {T}
     # For lower bound: σ * sqrt((1-F)(1-G)) - E
     # Need sqrt_factor_down ≤ sqrt((1-F)(1-G))
-    sqrt_factor_down = setrounding(T, RoundDown) do
-        sqrt((one(T) - normF) * (one(T) - normG))
-    end
+    sqrt_factor_down = sqrt_down(mul_down(sub_down(one(T), normF), sub_down(one(T), normG)))
 
     # For upper bound: σ * sqrt((1+F)(1+G)) + E
     # Need sqrt_factor_up ≥ sqrt((1+F)(1+G))
-    sqrt_factor_up = setrounding(T, RoundUp) do
-        sqrt((one(T) + normF) * (one(T) + normG))
-    end
+    sqrt_factor_up = sqrt_up(mul_up(add_up(one(T), normF), add_up(one(T), normG)))
 
-    svdbounds_down = setrounding(T, RoundDown) do
-        [σ * sqrt_factor_down - normE for σ in S]
-    end
+    svdbounds_down = [sub_down(mul_down(σ, sqrt_factor_down), normE) for σ in S]
 
-    svdbounds_up = setrounding(T, RoundUp) do
-        [σ * sqrt_factor_up + normE for σ in S]
-    end
+    svdbounds_up = [add_up(mul_up(σ, sqrt_factor_up), normE) for σ in S]
 
     return svdbounds_down, svdbounds_up
 end
