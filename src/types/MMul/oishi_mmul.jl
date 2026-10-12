@@ -13,8 +13,9 @@ Promotion follows `T = promote_type(float(real(eltype(F))), float(real(eltype(G)
 For mathematical correctness, `T` must honor `setrounding` (e.g., `BigFloat`).
 
 Reference:
-- “Fast enclosure of matrix eigenvalues and singular values via rounding mode controlled
-  computation,” *Linear Algebra and its Applications* **324** (2001), 133–146.
+- S. Oishi, “Fast enclosure of matrix eigenvalues and singular values via rounding mode controlled
+  computation,” *Linear Algebra and its Applications* **324** (2001), 133–146,
+  doi 10.1016/S0024-3795(00)00272-X.
 """
 function _oishi_MMul_up_lo(F::AbstractMatrix{<:Complex}, G::AbstractMatrix{<:Complex})
     size(F, 2) == size(G, 1) || throw(DimensionMismatch("size(F,2) must equal size(G,1)"))
@@ -67,8 +68,9 @@ This implements the ball conversion step used with the Oishi–Rump
 rounding-mode controlled product and the Miyajima 2010 procedures.
 
 Reference:
-- “Fast enclosure of matrix eigenvalues and singular values via rounding mode controlled
-  computation,” *Linear Algebra and its Applications* **324** (2001), 133–146.
+- S. Oishi, “Fast enclosure of matrix eigenvalues and singular values via rounding mode controlled
+  computation,” *Linear Algebra and its Applications* **324** (2001), 133–146,
+  doi 10.1016/S0024-3795(00)00272-X.
 
 See also [`_ccrprod`](@ref) and [`_ccrprod_prime`](@ref).
 """
@@ -423,8 +425,9 @@ via the Oishi–Rump rounding-mode controlled method. Internally calls
 to convert them into a `BallMatrix`.
 
 Reference:
-- “Fast enclosure of matrix eigenvalues and singular values via rounding mode controlled
-  computation,” *Linear Algebra and its Applications* **324** (2001), 133–146.
+- S. Oishi, “Fast enclosure of matrix eigenvalues and singular values via rounding mode controlled
+  computation,” *Linear Algebra and its Applications* **324** (2001), 133–146,
+  doi 10.1016/S0024-3795(00)00272-X.
 """
 function oishi_MMul(F, G)
     Hrl, Hru, Hil, Hiu, T = _oishi_MMul_up_lo(F, G)
