@@ -95,6 +95,7 @@ using Test
     include("test_decompositions/test_verified_takagi.jl")
     include("test_decompositions/test_extension_variants.jl")
     include("test_exported_primitives.jl")
+    include("test_fft/test_ball_fft.jl")
     include("test_schur_refinement_variants.jl")
     include("test_decompositions/test_rigorous_residual.jl")
 

@@ -260,6 +260,7 @@ export VerifiedLinearSystemResult, verified_linear_solve_hmatrix
 include("pseudospectra/sylvester_resolvent_bound.jl")
 include("pseudospectra/CertifScripts.jl")
 include("polynomials/poly_range.jl")
+include("fft/ball_fft.jl")
 include("linear_system/triangular_eigenvectors.jl")
 include("linear_system/sylvester.jl")
 
