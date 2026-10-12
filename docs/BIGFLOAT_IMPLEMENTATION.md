@@ -427,7 +427,7 @@ function certify_with_adaptive_svd(T_z, svd_nearby, threshold)
                                max_iterations=2, precision_bits=53)
 
     # Certify and check enclosure quality
-    result = _certify_svd(BallMatrix(T_z), refined, MiyajimaM4())
+    result = certify_svd(BallMatrix(T_z), refined, MiyajimaM4())
     max_rad = maximum(rad.(result.singular_values))
 
     if max_rad < threshold
@@ -462,7 +462,7 @@ function choose_svd_strategy(T, center, radius, num_samples)
 
     # Compare to full SVD
     svd_test = svd(T_test)
-    result_ogita = _certify_svd(BallMatrix(T_test), refined, MiyajimaM4())
+    result_ogita = certify_svd(BallMatrix(T_test), refined, MiyajimaM4())
     result_full = rigorous_svd(BallMatrix(T_test); method=MiyajimaM4())
 
     rad_ogita = maximum(rad.(result_ogita.singular_values))
@@ -507,7 +507,7 @@ function certify_arc_sequential(T, center, radius, angles)
             end
         end
 
-        result = _certify_svd(BallMatrix(T_z), svd_curr, MiyajimaM4())
+        result = certify_svd(BallMatrix(T_z), svd_curr, MiyajimaM4())
         push!(results, result)
         svd_prev = svd_curr
     end
@@ -599,7 +599,7 @@ function certify_bigfloat_circle(T_bf::Matrix{Complex{BigFloat}}, center, radius
         refined = ogita_svd_refine(T_z, center_svd.U, diag(center_svd.Σ), center_svd.V;
                                     max_iterations=3, precision_bits=256)
 
-        result = _certify_svd(BallMatrix(T_z), refined, MiyajimaM4())
+        result = certify_svd(BallMatrix(T_z), refined, MiyajimaM4())
         push!(results, result)
     end
 
@@ -683,7 +683,7 @@ function _evaluate_sample_with_ogita(T::BallMatrix{ET}, z::Number, idx::Int;
             # Success - use refined SVD for certification
             Σ_vec = isa(refined.Σ, Diagonal) ? diag(refined.Σ) : refined.Σ
             svd_result = (U=refined.U, S=Σ_vec, V=refined.V, Vt=refined.V')
-            Σ = _certify_svd(BallMatrix(T_shifted), svd_result, MiyajimaM4())
+            Σ = certify_svd(BallMatrix(T_shifted), svd_result, MiyajimaM4())
 
             # Update cache
             _last_svd[] = (U=refined.U, S=Σ_vec, V=refined.V)
@@ -776,7 +776,7 @@ function run_certification_with_ogita_fallback(A, circle; η=0.5, ...)
     refined = ogita_svd_refine(T_test, svd_center.U, svd_center.S, svd_center.V;
                                max_iterations=2, precision_bits=53)
 
-    result_ogita = _certify_svd(BallMatrix(T_test), refined, MiyajimaM4())
+    result_ogita = certify_svd(BallMatrix(T_test), refined, MiyajimaM4())
     result_full = rigorous_svd(BallMatrix(T_test); method=MiyajimaM4())
 
     rad_ratio = maximum(rad.(result_ogita.singular_values)) /

@@ -389,7 +389,7 @@ function parametric_resolvent_bound(precomp::SylvesterResolventResult{RT}, T::Ab
                 svd_warm_start.V; max_iterations = 2, precision_bits = precision(RT),
                 check_convergence = false)
             Σ_vec = refined.Σ isa Diagonal ? diag(refined.Σ) : refined.Σ
-            _certify_svd(A_ball, SVD(Matrix(refined.U), Vector(Σ_vec), Matrix(refined.V')),
+            certify_svd(A_ball, SVD(Matrix(refined.U), Vector(Σ_vec), Matrix(refined.V')),
                 method; apply_vbd = true)
         else
             rigorous_svd(A_ball; method)

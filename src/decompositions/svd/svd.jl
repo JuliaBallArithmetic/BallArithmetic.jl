@@ -184,7 +184,7 @@ function rigorous_svd(A::BallMatrix{T}; method::SVDMethod = MiyajimaAuto(), appl
 
     # Standard path for Float64/Float32
     svdA = svd(A.c)
-    return _certify_svd(A, svdA, method; apply_vbd)
+    return certify_svd(A, svdA, method; apply_vbd)
 end
 
 """
@@ -249,7 +249,7 @@ function _rigorous_svd_bigfloat(A::BallMatrix{BigFloat}, method::SVDMethod;
         set_svd_cache!(svd_result.U, svd_result.S, svd_result.V, A_hash)
     end
 
-    return _certify_svd(A, svd_result, method; apply_vbd)
+    return certify_svd(A, svd_result, method; apply_vbd)
 end
 
 """
@@ -356,12 +356,27 @@ function _resolve_svd_method(::MiyajimaAuto, A::BallMatrix)
     return iszero(rad(A)) ? MiyajimaM3() : MiyajimaM1()
 end
 
-function _certify_svd(A::BallMatrix{T}, svdA::SVD, method::SVDMethod; apply_vbd::Bool = true) where {T}
+"""
+    certify_svd(A::BallMatrix, svdA, method::SVDMethod; apply_vbd = true) -> RigorousSVDResult
+
+Enclosures of the singular values of every matrix in `A` from an approximate singular value
+decomposition `svdA` that the caller supplies: an `SVD` object or a named tuple
+`(U, S, V, Vt)`, in any precision. This is the certification step of [`rigorous_svd`](@ref),
+which computes the approximate decomposition itself; it is called directly where the
+approximation comes from elsewhere, a refinement in higher precision or the decomposition of a
+nearby matrix.
+
+The residual `U Σ Vᵀ − A` and the defects `VᵀV − I`, `UᵀU − I` are enclosed in ball arithmetic
+and the bounds of `method` applied to their norms (see [`rigorous_svd`](@ref) for the methods
+and their references). Where one of the two defects is not below 1 the singular values are
+returned with infinite radius.
+"""
+function certify_svd(A::BallMatrix{T}, svdA::SVD, method::SVDMethod; apply_vbd::Bool = true) where {T}
     return _certify_svd_impl(A, svdA.U, svdA.S, svdA.V, svdA.Vt, method; apply_vbd)
 end
 
 # Method for NamedTuple (used by Ogita refinement)
-function _certify_svd(A::BallMatrix{T}, svdA::NamedTuple{(:U, :S, :V, :Vt)}, method::SVDMethod; apply_vbd::Bool = true) where {T}
+function certify_svd(A::BallMatrix{T}, svdA::NamedTuple{(:U, :S, :V, :Vt)}, method::SVDMethod; apply_vbd::Bool = true) where {T}
     return _certify_svd_impl(A, svdA.U, svdA.S, svdA.V, svdA.Vt, method; apply_vbd)
 end
 

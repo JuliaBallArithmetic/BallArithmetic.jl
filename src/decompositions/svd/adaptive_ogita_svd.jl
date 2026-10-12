@@ -516,7 +516,7 @@ function adaptive_ogita_svd(A::BallMatrix{T};
                           Vt=refined.V')
 
             # Certify with rigorous bounds, at the precision of this level
-            _certify_svd(A_high, svd_refined, method; apply_vbd)
+            certify_svd(A_high, svd_refined, method; apply_vbd)
         end
 
         # Check new radius

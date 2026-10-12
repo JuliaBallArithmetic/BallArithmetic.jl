@@ -31,7 +31,7 @@ end
 
 # the ball for σ_min(T − zI) over the disc of centre c and radius r, from the approximate SVD K
 function _disc_bound(T, c, r, K, svd_method, apply_vbd)
-    return _certify_svd(BallMatrix(T) - Ball(c, r) * I, K, svd_method; apply_vbd)[end]
+    return certify_svd(BallMatrix(T) - Ball(c, r) * I, K, svd_method; apply_vbd)[end]
 end
 
 # consecutive discs overlap, and the last overlaps the first: distances rounded up, sums down

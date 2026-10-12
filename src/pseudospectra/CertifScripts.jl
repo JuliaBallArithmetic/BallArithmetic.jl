@@ -12,7 +12,7 @@ using ..BallArithmetic: Ball, BallMatrix, svdbox, svd_bound_L2_opnorm,
                         backward_substitution, forward_substitution,
                         refine_schur_decomposition,
                         ogita_svd_refine, OgitaSVDRefinementResult,
-                        rigorous_svd, _certify_svd, MiyajimaM1,
+                        rigorous_svd, certify_svd, MiyajimaM1,
 # Parametric framework
                         SylvesterResolventResult, ParametricResolventResult,
                         ResolventBoundConfig, SVDWarmStart,
@@ -332,7 +332,7 @@ function _evaluate_sample_with_ogita_cache(T::BallMatrix{ET}, z::Number, idx::In
                     # Miyajima (2014) is applied with.
                     T_ball = T - Ball(z_converted, zero(RT)) * LinearAlgebra.I
                     svd_refined = (U = refined.U, S = Σ_vec, V = refined.V, Vt = refined.V')
-                    Σ = _certify_svd(T_ball, svd_refined, MiyajimaM1(); apply_vbd = false)
+                    Σ = certify_svd(T_ball, svd_refined, MiyajimaM1(); apply_vbd = false)
 
                     # Update cache with refined SVD
                     _last_svd_U[] = refined.U
@@ -1661,7 +1661,7 @@ function _evaluate_sample_ogita_bigfloat(T_matrix::BallMatrix{ET}, z::Number, id
         # The matrix certified is the ball T − zI, with the radius of T and the rounding of the
         # shift; the refined SVD is the approximation the certificate is computed with.
         T_shifted_ball = T_matrix - Ball(z_converted, zero(RT)) * I
-        result = _certify_svd(T_shifted_ball, svd_refined, MiyajimaM1(); apply_vbd = true)
+        result = certify_svd(T_shifted_ball, svd_refined, MiyajimaM1(); apply_vbd = true)
         Σ = result.singular_values
 
     end
