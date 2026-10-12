@@ -150,19 +150,34 @@ A_arb = ArbReal[ArbReal("1.1") ArbReal("2.2"); ArbReal("3.3") ArbReal("4.4")]
 A_ball = BallMatrix(A_arb)
 ```
 
-### FFTW.jl Extension
+### Discrete Fourier transform, and the FFTW.jl extension
 
-Rigorous FFT with a priori error bounds following Higham (1996):
+`ball_fft` is in the package and needs no extension. It computes the transform of the midpoints
+by the radix-2 algorithm of Brisebarre, Muller and Picot (ARITH 2023), for sizes that are powers
+of two, and its radii are the a priori bound that paper proves for that algorithm.
+
+```julia
+using BallArithmetic
+
+v = BallVector(randn(ComplexF64, 1024), fill(1e-12, 1024))
+y = ball_fft(v)            # every transform of a vector in v is in y
+```
+
+With FFTW.jl loaded, `fft(v)` on a ball vector or matrix is `ball_fft(v)`, and a second method
+takes the midpoint from FFTW:
 
 ```julia
 using BallArithmetic, FFTW
 
-A = BallMatrix(randn(64, 64))
-F = fft(A)  # Returns BallMatrix with rigorous error bounds
-
-v = BallVector(randn(128))
-f = fft(v)  # Returns BallVector with rigorous error bounds
+y = fft(v)                                         # the same as ball_fft(v)
+z = fft(v; method = :brisebarreetal2023fftw)       # midpoint by FFTW, the same radius
 ```
+
+**The second method is not a verified enclosure.** The bound is proved for the radix-2 algorithm
+with correctly rounded roots of unity, and FFTW uses other algorithms. We are auditing the FFTW
+source to find which bound holds for what it computes; that work is in progress and not
+published. Until it is, the radius of this method is a hypothesis, and results that must be
+rigorous should use `ball_fft`.
 
 ### Distributed.jl Extension
 

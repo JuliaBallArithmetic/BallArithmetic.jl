@@ -544,3 +544,14 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     at a size builds the roots in BigFloat (0.09 s and 1.3 s). RigorousInvariantMeasures calls
     this through its `interval_fft`; its tests were not run against this change.
 
+32. **`ball_fft` in the package, 2026-10-12** (Isaia: keep FFTW as an extension, move the
+    transform in). `src/fft/ball_fft.jl` has the radix-2 transform and the bound, with the
+    methods `:brisebarreetal2023` and `:brisebarreetal2023fftw` (midpoint by FFTW, the radius
+    as a hypothesis; needs the extension). The roots of unity of order 2¹⁶ for Float64 and
+    Float32 are computed at precompilation and serve every smaller power of two.
+    The audit of FFTW (log of 2026-09-04) and the note on the split-radix bound are in
+    private repositories and are not on the arXiv; they are not copied or cited here (Isaia,
+    2026-10-12). The README says that the audit is in progress and that the FFTW method is
+    not a verified enclosure. To do when the audit is public: evaluate the bound that holds
+    for FFTW's algorithms, with its roots, in place of the radix-2 constant, and cite it.
+

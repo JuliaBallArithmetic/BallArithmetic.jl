@@ -178,15 +178,11 @@ Each algorithm is named for the paper it implements, a deviation being visible i
 | `:brisebarreetal2023` | the midpoint by the radix-2 algorithm of the paper's Fig. 1, with the roots of unity rounded to nearest and the complex product formed without a fused multiply-add: the algorithm the bound is proved for |
 | `:brisebarreetal2023fftw` | the midpoint by FFTW, with the same radius: a hypothesis, not a theorem (see below). Needs `using FFTW` |
 
-Why the bound is not known to hold for FFTW. An audit of the FFTW source and of an installed
-library (I. Nisoli, `fftw-audit`, log of 2026-09-04) found that on a power of two FFTW never
-chose radix 2: the plans were Cooley-Tukey steps of radix 8 to 64, or of a size near the square
-root, over straight-line codelets that are conjugate-pair split-radix transforms; and that its
-roots of unity in double precision are within 1.13 units of roundoff of the exact ones, not
-rounded to nearest. The paper's proof is for the radix-2 step with correctly rounded roots. A
-bound for the split-radix transform, with a larger constant, is in I. Nisoli, "A rounding error
-bound for the split-radix fast Fourier transform" (note, 2026); it is not what is evaluated
-here.
+Why the bound is not known to hold for FFTW. The paper's proof is for the radix-2 step with
+the roots of unity rounded to nearest, and FFTW chooses among other algorithms and computes its
+roots in its own way. An audit of the FFTW source, to find which bound holds for what it
+computes, is in progress and not published; until it is, the radius of this method is a
+hypothesis.
 
 The paper's analysis excludes underflow and overflow; an output that is not finite is an
 `ArgumentError`, and underflow is not detected. A length that is not a power of two is an
