@@ -644,8 +644,13 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     products that stay under a rounding mode in those files go through `_product_up`,
     beside `_product_down_up`. `proceduresMiyajima2010.jl` is removed: its two functions
     `_encR1ci` and `_encR1ccr` used a type `T` that is not defined in them, and nothing
-    called them. Not checked: the formula of `bdd_R2` against Miyajima's paper; its bounds
-    2 and 3 are products formed in round-to-nearest, which the γ terms are meant to cover.
+    called them. `bdd_R2` was then checked against the paper: it is inequality (8)
+    of Corollary 1 of Miyajima (2010), with `eps` for the unit roundoff and γₙ for γₙ₋₁, both
+    larger. The two terms that the corollary states as exact quantities,
+    `‖(|Y_r| + |Y_i|) Z_r e‖_∞` and `‖|Y| |Z_c| e‖_∞`, were products formed in round-to-nearest
+    with no account of their rounding; the γ terms of (8) pay for the product `Y Z_c` only.
+    They are evaluated with every operation rounded up. The two functions removed were the
+    paper's Procedures 1 and 2 for the enclosure of R₁.
     RoundingEmulator exports the ten scalar operations and no `setrounding` (read in its
     source, version 0.2.1), so a matrix product cannot be converted in the same way: to
     decide (Isaia), whether the default `*` moves from `MMul4` to the error-free route

@@ -31,6 +31,28 @@ using BallArithmetic
     @test YZ_error < result.coupling_bound
 end
 
+@testset "bdd_R2: inequality (8) of Miyajima (2010) is above ‖Y Z̃ − I‖_∞ on the ball" begin
+    rng = MersenneTwister(20261012)
+    setprecision(BigFloat, 512) do
+        for S in (Float64, ComplexF64), n in (3, 12), ε in (0.0, 1e-13, 1e-6)
+            Zc = randn(rng, S, n, n) + 3I
+            Zr = fill(ε, n, n) .* rand(rng, n, n)
+            Y = inv(Zc)
+            b = BallArithmetic.bdd_R2(Y, BallMatrix(Zc, Zr))
+            @test b isa Float64 && isfinite(b)
+            worst = big(0.0)
+            for _ in 1:20
+                E = Zr .* (S <: Complex ? cis.(2π .* rand(rng, n, n)) : rand(rng, (-1, 1), n, n))
+                R = Complex{BigFloat}.(Y) * (Complex{BigFloat}.(Zc) + Complex{BigFloat}.(E)) - I
+                worst = max(worst, opnorm(R, Inf))
+            end
+            @test worst <= b
+            # the two terms the corollary states exactly: evaluated above their exact values
+            ε > 0 && @test b >= opnorm((abs.(real.(big.(Y))) + abs.(imag.(big.(Y)))) * big.(Zr), Inf)
+        end
+    end
+end
+
 @testset "Block Schur - Basic Decomposition" begin
     A = BallMatrix([2.0 0.1; 0.1 5.0])
 

@@ -19,15 +19,24 @@ _up_bound_Linf_norm(v::AbstractVector{T}) where {T} =
 """
     bdd_R2(Y::AbstractMatrix, Z::BallMatrix)
 
-Compute rigorous bound for the residual R₂ = ‖Y * Z - I‖∞ where Y is a
-floating-point matrix and Z is a ball matrix. This follows the error analysis
-from Miyajima's algorithm for computing bounds on the coupling defect in
-generalized eigenvalue problems.
+An upper bound of `‖Y Z̃ − I‖_∞` over the matrices `Z̃` of the ball `Z = ⟨Z_c, Z_r⟩`, for a
+floating-point matrix `Y`: inequality (8) of Corollary 1 of
 
-The bound accounts for:
-- The midpoint residual ‖Y * mid(Z) - I‖∞
-- The radius contribution from interval arithmetic
-- Floating-point rounding errors with Higham-style γ factors
+    S. Miyajima, Fast enclosure for all eigenvalues in generalized eigenvalue problems,
+    J. Comput. Appl. Math. 233 (2010) 2994-3004, doi 10.1016/j.cam.2009.11.048,
+
+    ‖R₂‖_∞ ≤ ‖fl(Y Z_c − I)‖_∞ + ‖(|Y_r| + |Y_i|) Z_r e‖_∞ + γ′ₙ₋₁ ‖|Y| |Z_c| e‖_∞
+              + u (‖fl(Y Z_c)‖_∞ + 1) + 4 n² (1 + γₙ₋₁) u̲,
+
+with `Y_r`, `Y_i` the real and imaginary parts of `Y`, `e` the vector of ones, `u` the unit
+roundoff, `u̲` the underflow unit, `γₙ = n u/(1 − n u)` and `γ′ₙ₋₁ = √5 u + γₙ₋₁ (1 + √5 u)`. The
+one product `Y Z_c` is formed in round-to-nearest, as the corollary asks, and its rounding is
+what the last three terms pay for; it holds in the presence of underflow.
+
+Differences from the paper, all on the side of a larger bound: `eps` is used for `u`, which is
+twice the unit roundoff, and `γₙ` for `γₙ₋₁`. The two terms that the corollary states as exact
+quantities, `‖(|Y_r| + |Y_i|) Z_r e‖_∞` and `‖|Y| |Z_c| e‖_∞`, are evaluated with every operation
+rounded up.
 """
 function bdd_R2(Y::AbstractMatrix{T}, Z::BallMatrix{RT, NT}) where {T, RT, NT}
     n = size(Y, 2)
@@ -45,15 +54,16 @@ function bdd_R2(Y::AbstractMatrix{T}, Z::BallMatrix{RT, NT}) where {T, RT, NT}
     # Bound 1: ‖Y * mid(Z) - I‖∞
     bd1 = _up_bound_Linf_opnorm(YZc - I)
 
-    # Bound 2: Contribution from radius in ball arithmetic (real part)
-    e = ones(WT, n)
-    vr = abs.(real.(Y)) * (Zr * e)
-    vi = abs.(imag.(Y)) * (Zr * e)
-    bd2 = _up_bound_Linf_norm(vr + vi)
+    # an upper bound of ‖M w‖_∞ for a non-negative matrix M and a non-negative vector w
+    matvec_norm_up(M, w) = maximum(
+        foldl((acc, j) -> add_up(acc, mul_up(WT(M[i, j]), WT(w[j]))), axes(M, 2); init = zero(WT))
+        for i in axes(M, 1); init = zero(WT))
 
-    # Bound 3: Mixed contribution from midpoint and radius
-    vc = abs.(Y) * (abs.(Zc) * e)
-    bd3 = _up_bound_Linf_norm(vc)
+    # Bound 2: ‖(|Y_r| + |Y_i|) Z_r e‖_∞, the contribution of the radius
+    bd2 = matvec_norm_up(add_up.(abs.(real.(Y)), abs.(imag.(Y))), _rowsums_up(Zr))
+
+    # Bound 3: ‖|Y| |Z_c| e‖_∞
+    bd3 = matvec_norm_up(abs_up.(Y), _rowsums_up(abs_up.(Zc)))
 
     # Bound 4: Norm of YZc for error analysis
     bd4 = _up_bound_Linf_opnorm(YZc)
