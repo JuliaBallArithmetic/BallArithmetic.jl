@@ -85,10 +85,8 @@ function BallArithmetic.ogita_svd_refine_multifloat(
 
     if certify_with_bigfloat
         # Final certification with BigFloat for rigorous error bound
-        old_precision = Base.precision(BigFloat)
-        setprecision(BigFloat, bigfloat_precision)
-
-        try
+        # a scoped setting: a global one has no effect inside a caller's scoped block
+        return setprecision(BigFloat, bigfloat_precision) do
             # Convert refined SVD to BigFloat
             if T <: Complex
                 U_bf = convert.(Complex{BigFloat}, result_mf.U)
@@ -113,8 +111,6 @@ function BallArithmetic.ogita_svd_refine_multifloat(
                 residual_norm,
                 true
             )
-        finally
-            setprecision(BigFloat, old_precision)
         end
     else
         # Return MultiFloats result directly
@@ -328,10 +324,8 @@ function BallArithmetic.refine_symmetric_eigen_multifloat(
     end
 
     if certify
-        old_precision = Base.precision(BigFloat)
-        setprecision(BigFloat, bigfloat_precision)
-
-        try
+        # a scoped setting: a global one has no effect inside a caller's scoped block
+        return setprecision(BigFloat, bigfloat_precision) do
             if T <: Complex
                 Q_bf = convert.(Complex{BigFloat}, Q_curr)
                 A_bf = convert.(Complex{BigFloat}, A)
@@ -348,8 +342,6 @@ function BallArithmetic.refine_symmetric_eigen_multifloat(
             orthogonality_defect = _frobenius_norm(I_bf - Q_bf' * Q_bf)
 
             return SymmetricEigenRefinementResult(Q_bf, λ_bf, max_iterations, residual_norm, orthogonality_defect, true)
-        finally
-            setprecision(BigFloat, old_precision)
         end
     else
         Λ = Diagonal(λ_curr)

@@ -154,14 +154,10 @@ function ogita_svd_refine(A::AbstractMatrix{T}, U, Σ, V;
         V_high = convert.(Complex{BigFloat}, V)
 
         # Set precision
-        old_precision = precision(BigFloat)
-        setprecision(BigFloat, precision_bits)
-
-        try
+        # a scoped setting: a global one has no effect inside a caller's scoped block
+        return setprecision(BigFloat, precision_bits) do
             result = _ogita_svd_refine_impl(A_high, U_high, Σ_high, V_high, iterations_to_run, check_convergence)
             return result
-        finally
-            setprecision(BigFloat, old_precision)
         end
     else
         return _ogita_svd_refine_impl(A, U, Σ, V, iterations_to_run, check_convergence)

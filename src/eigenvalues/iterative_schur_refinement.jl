@@ -458,13 +458,9 @@ function refine_schur_decomposition(A::AbstractMatrix, Q0::Matrix, T0::Matrix;
     size(T0) == (n, n) || throw(DimensionMismatch("T0 must be n×n"))
 
     # Set precision for BigFloat
-    old_prec = precision(BigFloat)
-    setprecision(BigFloat, target_precision)
-
-    try
+    # a scoped setting: a global one has no effect inside a caller's scoped block
+    return setprecision(BigFloat, target_precision) do
         return _refine_schur_impl(A, Q0, T0, max_iterations, tol)
-    finally
-        setprecision(BigFloat, old_prec)
     end
 end
 
@@ -885,13 +881,9 @@ function refine_symmetric_eigen(A::AbstractMatrix, Q0::Matrix, λ0::AbstractVect
     length(λ0) == n || throw(DimensionMismatch("λ0 must have length n"))
 
     # Set precision for BigFloat
-    old_prec = precision(BigFloat)
-    setprecision(BigFloat, target_precision)
-
-    try
+    # a scoped setting: a global one has no effect inside a caller's scoped block
+    return setprecision(BigFloat, target_precision) do
         return _refine_symmetric_eigen_impl(A, Q0, λ0, max_iterations, tol)
-    finally
-        setprecision(BigFloat, old_prec)
     end
 end
 

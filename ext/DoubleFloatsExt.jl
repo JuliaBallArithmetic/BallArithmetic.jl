@@ -68,10 +68,8 @@ function BallArithmetic.ogita_svd_refine_fast(
 
     if certify_with_bigfloat
         # Final certification with BigFloat for rigorous error bound
-        old_precision = precision(BigFloat)
-        setprecision(BigFloat, bigfloat_precision)
-
-        try
+        # a scoped setting: a global one has no effect inside a caller's scoped block
+        return setprecision(BigFloat, bigfloat_precision) do
             # Convert refined SVD to BigFloat
             if T <: Complex
                 U_bf = convert.(Complex{BigFloat}, result_d64.U)
@@ -96,8 +94,6 @@ function BallArithmetic.ogita_svd_refine_fast(
                 residual_norm,
                 true
             )
-        finally
-            setprecision(BigFloat, old_precision)
         end
     else
         # Return Double64 result directly (no rigorous certification)
@@ -157,10 +153,8 @@ function BallArithmetic.ogita_svd_refine_hybrid(
     result_d64 = _ogita_svd_refine_impl(A_d64, U_d64, Σ_d64, V_d64, d64_iterations, false)
 
     # Phase 2: Polish and certify in BigFloat
-    old_precision = precision(BigFloat)
-    setprecision(BigFloat, precision_bits)
-
-    try
+    # a scoped setting: a global one has no effect inside a caller's scoped block
+    return setprecision(BigFloat, precision_bits) do
         if T <: Complex
             A_bf = convert.(Complex{BigFloat}, A)
             U_bf = convert.(Complex{BigFloat}, result_d64.U)
@@ -188,8 +182,6 @@ function BallArithmetic.ogita_svd_refine_hybrid(
             residual_norm,
             true
         )
-    finally
-        setprecision(BigFloat, old_precision)
     end
 end
 
@@ -292,10 +284,8 @@ function BallArithmetic.refine_symmetric_eigen_double64(
     end
 
     if certify_with_bigfloat
-        old_precision = precision(BigFloat)
-        setprecision(BigFloat, bigfloat_precision)
-
-        try
+        # a scoped setting: a global one has no effect inside a caller's scoped block
+        return setprecision(BigFloat, bigfloat_precision) do
             if T <: Complex
                 Q_bf = convert.(Complex{BigFloat}, Q_curr)
                 A_bf = convert.(Complex{BigFloat}, A)
@@ -316,8 +306,6 @@ function BallArithmetic.refine_symmetric_eigen_double64(
             return BallArithmetic.SymmetricEigenRefinementResult(
                 Q_bf, λ_bf, max_iterations, residual_norm, orthogonality_defect, true
             )
-        finally
-            setprecision(BigFloat, old_precision)
         end
     else
         Λ = Diagonal(λ_curr)
@@ -351,10 +339,8 @@ function BallArithmetic.refine_symmetric_eigen_hybrid(
         max_iterations=d64_iterations, certify_with_bigfloat=false)
 
     # Phase 2: Polish and certify in BigFloat
-    old_precision = precision(BigFloat)
-    setprecision(BigFloat, precision_bits)
-
-    try
+    # a scoped setting: a global one has no effect inside a caller's scoped block
+    return setprecision(BigFloat, precision_bits) do
         if T <: Complex
             A_bf = convert.(Complex{BigFloat}, A)
             Q_bf = convert.(Complex{BigFloat}, d64_result.Q)
@@ -374,8 +360,6 @@ function BallArithmetic.refine_symmetric_eigen_hybrid(
             result_bf.orthogonality_defect,
             result_bf.converged
         )
-    finally
-        setprecision(BigFloat, old_precision)
     end
 end
 
@@ -429,10 +413,8 @@ function oishi_2023_solve_double64(A::AbstractMatrix{T}, B::AbstractMatrix{T};
     X_d64 = A_d64 \ B_d64
 
     # Phase 2: Certify with BigFloat
-    old_precision = precision(BigFloat)
-    setprecision(BigFloat, bigfloat_precision)
-
-    try
+    # a scoped setting: a global one has no effect inside a caller's scoped block
+    return setprecision(BigFloat, bigfloat_precision) do
         if T <: Complex
             A_bf = convert.(Complex{BigFloat}, A)
             B_bf = convert.(Complex{BigFloat}, B)
@@ -476,8 +458,6 @@ function oishi_2023_solve_double64(A::AbstractMatrix{T}, B::AbstractMatrix{T};
         X_rad = fill(error_bound, size(X_bf))
 
         return (BallArithmetic.BallMatrix(X_bf, X_rad), A_inv_norm_approx)
-    finally
-        setprecision(BigFloat, old_precision)
     end
 end
 
@@ -525,10 +505,8 @@ function oishi_2023_sigma_min_bound_fast(G::AbstractMatrix{T}, m::Int;
     # Now use the existing certification with BallMatrix operations
     G_ball = BallArithmetic.BallMatrix(G)
 
-    old_precision = precision(BigFloat)
-    setprecision(BigFloat, bigfloat_precision)
-
-    try
+    # a scoped setting: a global one has no effect inside a caller's scoped block
+    return setprecision(BigFloat, bigfloat_precision) do
         # Convert to BigFloat BallMatrix for rigorous certification
         G_bf = BallArithmetic.BallMatrix(
             convert.(BigFloat, BallArithmetic.mid(G_ball)),
@@ -538,8 +516,6 @@ function oishi_2023_sigma_min_bound_fast(G::AbstractMatrix{T}, m::Int;
         # Use the existing Oishi 2023 implementation
         # TODO: Pass pre-computed oracles to avoid recomputation
         return BallArithmetic.oishi_2023_sigma_min_bound(G_bf, m)
-    finally
-        setprecision(BigFloat, old_precision)
     end
 end
 
