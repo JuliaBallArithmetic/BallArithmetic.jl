@@ -64,28 +64,28 @@ end
         @test (Test.@inferred BallArithmetic.gevbox(A, BallMatrix(Matrix(1.0I, 2, 2)))) isa
               Vector{Ball{Float64, ComplexF64}}
 
-        # Hermitian and real symmetric: real intervals, for the Hermitian matrices of the ball
+        # a point matrix that is Hermitian or real symmetric by its type: real intervals
         for S in (Float64, ComplexF64), n in (3, 8)
             B = randn(rng, S, n, n)
             Hm = (B + B') / 2
-            A = BallMatrix(Hm, fill(1e-9, n, n))
-            for H in (S == Float64 ? (Hermitian(A), Symmetric(A), Hermitian(A, :L)) :
-                      (Hermitian(A), Hermitian(A, :L)))
-                v = BallArithmetic.evbox(H)
+            for H in (S == Float64 ? (Hermitian(Hm), Symmetric(Hm), Hermitian(Hm, :L)) :
+                      (Hermitian(Hm), Hermitian(Hm, :L)))
+                v = Test.@inferred BallArithmetic.evbox(H)
                 @test v isa Vector{Ball{Float64, Float64}}
-                for _ in 1:4
-                    D = randn(rng, S, n, n)
-                    D = 1e-9 .* (D + D') ./ (2 * maximum(abs, D))
-                    λ = eigvals(Hermitian(big.(Hm) + big.(D)))
-                    @test all(any(abs(l - mid(b)) <= rad(b) for b in v) for l in λ)
-                end
+                λ = eigvals(Hermitian(big.(Matrix(H))))
+                @test all(any(abs(l - mid(b)) <= rad(b) for b in v) for l in λ)
+                @test maximum(rad, v) < 1e-10
             end
-            # the lower triangle is not looked at for :U
-            A2 = BallMatrix(triu(Hm) + 7 .* tril(ones(S, n, n), -1), fill(1e-9, n, n))
-            @test all(any(abs(l - mid(b)) <= rad(b) for b in BallArithmetic.evbox(Hermitian(A2)))
+            # only the stored triangle is the matrix
+            M2 = triu(Hm) + 7 .* tril(ones(S, n, n), -1)
+            @test all(any(abs(l - mid(b)) <= rad(b) for b in BallArithmetic.evbox(Hermitian(M2)))
             for l in eigvals(Hermitian(big.(Hm))))
+            # a ball matrix is an open set of matrices and is not Hermitian: no such method
+            A = BallMatrix(Hm, fill(1e-9, n, n))
+            @test_throws MethodError BallArithmetic.evbox(Hermitian(A))
+            @test eltype(BallArithmetic.evbox(A)) == Ball{Float64, ComplexF64}
         end
-        # a complex symmetric matrix of balls is not Hermitian
-        @test_throws MethodError BallArithmetic.evbox(Symmetric(BallMatrix(ComplexF64[1 im; im 2])))
+        # a complex symmetric matrix is not Hermitian
+        @test_throws MethodError BallArithmetic.evbox(Symmetric(ComplexF64[1 im; im 2]))
     end
 end

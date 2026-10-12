@@ -181,7 +181,7 @@ end
 
 """
     rigorous_eigenvalues(A::BallMatrix)
-    rigorous_eigenvalues(A::Hermitian{<:Ball, <:BallMatrix})
+    rigorous_eigenvalues(H::Hermitian)
 
 Compute a set of balls whose union contains the eigenvalues of `A`, following
 Ref. [Miyajima2012](@cite).  The returned [`RigorousEigenvaluesResult`](@ref) exposes both the
@@ -198,9 +198,10 @@ The type of the argument decides the kind of ball:
 - for a `BallMatrix` the balls are discs of the complex plane, with complex centres, also when
   the matrix is real and the computed eigenvalues are real: matrices in the input ball may have
   complex eigenvalues, which lie in the discs;
-- for `Hermitian(A)`, or `Symmetric(A)` with `A` real, the statement is about the Hermitian
-  matrices whose stored triangle lies in the stored triangle of `A`; their eigenvalues are
-  real and the balls are real intervals.
+- for a point matrix that is Hermitian by its type, `Hermitian(M)` or `Symmetric(M)` with `M`
+  real, the eigenvalues are real and the balls are real intervals. There is no such method for
+  a ball matrix: with positive radii it is an open set of matrices, which contains matrices
+  that are not Hermitian.
 
 # References
 
@@ -214,34 +215,27 @@ function rigorous_eigenvalues(A::BallMatrix{T}) where {T}
     return _certify_eigenvalues(A, Eigen(Vector{CT}(F.values), Matrix{CT}(F.vectors)))
 end
 
-# A Hermitian matrix of balls, or a real symmetric one: the set of the Hermitian matrices whose
-# stored triangle lies in the stored triangle of the balls.
-const _HermitianBallMatrix = Union{Hermitian{<:Ball, <:BallMatrix},
-    Symmetric{<:Ball{T, T}, <:BallMatrix} where {T}}
+# A point matrix that is Hermitian by its type, or real symmetric. A ball matrix with positive
+# radii is an open set of matrices and contains matrices that are not Hermitian, so it has no
+# such method: it goes to the general one above.
+const _HermitianPointMatrix{T} = Union{
+    Hermitian{T, <:AbstractMatrix{T}}, Hermitian{Complex{T}, <:AbstractMatrix{Complex{T}}},
+    Symmetric{T, <:AbstractMatrix{T}}} where {T <: AbstractFloat}
 
-# The ball matrix that contains every matrix of that set: the stored triangle mirrored, with
-# conjugate midpoints, and on the diagonal the real part of the midpoint with the same radius
-# (a real number in a disc is at most the radius away from the real part of its centre).
-function _hermitian_ball_hull(H::_HermitianBallMatrix)
-    P = parent(H)
-    uplo = Symbol(H.uplo)
-    return BallMatrix(Matrix(Hermitian(mid(P), uplo)), Matrix(Symmetric(rad(P), uplo)))
-end
-
-function rigorous_eigenvalues(H::_HermitianBallMatrix)
-    A = _hermitian_ball_hull(H)
-    return _certify_eigenvalues(A, eigen(Hermitian(mid(A))))
+function rigorous_eigenvalues(H::_HermitianPointMatrix)
+    # the matrix the wrapper stands for, exactly: its stored triangle mirrored
+    return _certify_eigenvalues(BallMatrix(Matrix(H)), eigen(H))
 end
 
 """
     evbox(A::BallMatrix)
-    evbox(A::Hermitian{<:Ball, <:BallMatrix})
+    evbox(H::Hermitian)
 
 Backward-compatible wrapper returning only the vector of balls
 produced by [`rigorous_eigenvalues`](@ref): their union contains the eigenvalues, a single ball need
 not contain one.
 """
-evbox(A::Union{BallMatrix, _HermitianBallMatrix}) = rigorous_eigenvalues(A).eigenvalues
+evbox(A::Union{BallMatrix, _HermitianPointMatrix}) = rigorous_eigenvalues(A).eigenvalues
 
 function _certify_eigenvalues(A::BallMatrix{T}, gev::Eigen) where {T}
     X_mid = gev.vectors
