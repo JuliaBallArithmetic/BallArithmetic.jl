@@ -73,7 +73,8 @@ function verified_polar(A::AbstractMatrix{S};
                         precision_bits::Int=256,
                         right::Bool=true,
                         kappa::Real=0,
-                        use_bigfloat::Bool=true) where S<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}
+                        use_bigfloat::Bool=true,
+                        oracle::Union{Nothing, Type}=nothing) where S<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}
     m, n = size(A)
     (right ? m >= n : m <= n) || throw(DimensionMismatch(
         "verified_polar: A = QP needs at least as many rows as columns, A = PQ at most as many"))
@@ -82,7 +83,7 @@ function verified_polar(A::AbstractMatrix{S};
         Ab = _decomposition_input(A, bigfloat)
         T = eltype(rad(Ab))
         k = right ? n : m
-        r = _rumpogita2024_polar(right ? Ab : _ball_adjoint(Ab); kappa)
+        r = _rumpogita2024_polar(right ? Ab : _ball_adjoint(Ab); kappa, oracle)
         r === nothing && return VerifiedPolarResult(_unverified_ball(Ab, m, n),
             _unverified_ball(Ab, k, k), right, false, T(Inf))
         Q = right ? r.Q : _ball_adjoint(r.Q)
@@ -92,19 +93,28 @@ function verified_polar(A::AbstractMatrix{S};
     end
 end
 
-# Stub for Double64 extension
 """
-    verified_polar_double64(A; precision_bits=256, right=true)
+    verified_polar_double64(A; precision_bits = 256, right = true, kappa = 0)
 
-Fast verified polar decomposition using Double64 oracle. Requires DoubleFloats.jl.
+[`verified_polar`](@ref)`(A; precision_bits, right, kappa, use_bigfloat = true, oracle = Double64)`: the
+enclosure is computed in BigFloat, and the floating-point factorisation the method starts from
+in `Double64` (about 32 digits) in place of BigFloat.
+
+The verification is the one of the routine without the suffix and does not depend on the
+accuracy of the starting factorisation, which only decides how small the radii come out.
+Requires DoubleFloats.jl.
 """
 function verified_polar_double64 end
 
-# Stub for MultiFloat extension
 """
-    verified_polar_multifloat(A; precision_bits=256, float_type=Float64x4, right=true)
+    verified_polar_multifloat(A; precision = :x2, bigfloat_precision = 256, right = true, kappa = 0)
 
-Fast verified polar decomposition using MultiFloat oracle. Requires MultiFloats.jl.
+[`verified_polar`](@ref) in BigFloat at `bigfloat_precision`, with the floating-point factorisation
+the method starts from computed in a MultiFloat in place of BigFloat.
+
+`precision` is `:x2`, `:x4` or `:x8`. The verification is the one of the routine without the
+suffix. Requires MultiFloats.jl; for this routine also a generic
+singular value decomposition for the MultiFloat type, which GenericLinearAlgebra provides.
 """
 function verified_polar_multifloat end
 

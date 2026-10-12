@@ -118,6 +118,14 @@ function _triangular_ball(B::BallMatrix{T}, uplo::Symbol; unit::Bool = false) wh
     return BallMatrix(Bm, Br)
 end
 
+# The floating-point matrix X in the arithmetic of the "oracle": the number type in which the
+# approximate factorisation is computed (`Double64`, a `MultiFloat`, …). `nothing` means the
+# working arithmetic itself. The factors come back converted to the working arithmetic, and from
+# there on they are only approximations that the method verifies, so the type of the oracle has
+# no part in the proof; it decides how small the perturbed identity is.
+_oracle(::Nothing, X::AbstractMatrix) = X
+_oracle(::Type{O}, X::AbstractMatrix{S}) where {O, S} = Matrix{S <: Complex ? Complex{O} : O}(X)
+
 """
     _rumpogita2024_lu(A::BallMatrix) -> (; L, U, p, q) or nothing
 
@@ -159,18 +167,19 @@ paper leaves to the implementation, are enclosed through `X_U Ũ = I + F`, respe
 S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
 Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Sections 3.2, 3.3 and 3.4.
 """
-function _rumpogita2024_lu(A::BallMatrix{T}) where {T}
+function _rumpogita2024_lu(A::BallMatrix{T}; oracle = nothing) where {T}
     m, n = size(A)
     k = min(m, n)
     Am0 = Matrix(mid(A))
     S = eltype(Am0)
+    Ao = _oracle(oracle, Am0)
     # the permutations, from floating-point decompositions with partial pivoting
     q = collect(1:n)
     Fl = try
         if m < n
-            q = Vector{Int}(lu(permutedims(Am0)).p)
+            q = Vector{Int}(lu(permutedims(Ao)).p)
         end
-        lu(Am0[:, q])
+        lu(Ao[:, q])
     catch err
         err isa SingularException || rethrow()
         return nothing
@@ -179,15 +188,16 @@ function _rumpogita2024_lu(A::BallMatrix{T}) where {T}
     Am, Ar = Am0[p, q], rad(A)[p, q]
     # the floating-point factors of the leading square block
     Fs = try
-        lu(Am[1:k, 1:k], NoPivot())
+        lu(Ao[p, q][1:k, 1:k], NoPivot())
     catch err
         err isa Union{SingularException, ZeroPivotException} || rethrow()
         return nothing
     end
-    Lt, Ut = Matrix{S}(Fs.L), Matrix{S}(Fs.U)
+    Lo, Uo = Matrix(Fs.L), Matrix(Fs.U)
+    Lt, Ut = Matrix{S}(Lo), Matrix{S}(Uo)
     (all(isfinite, Lt) && all(isfinite, Ut) && all(!iszero, diag(Ut))) || return nothing
-    XL = Matrix{S}(inv(UnitLowerTriangular(Lt)))
-    XU = Matrix{S}(I / UpperTriangular(Ut))
+    XL = Matrix{S}(inv(UnitLowerTriangular(Lo)))
+    XU = Matrix{S}(I / UpperTriangular(Uo))
     (all(isfinite, XL) && all(isfinite, XU)) || return nothing
     Id = Matrix{T}(I, k, k)
     absXL, absXU = _modulus_up(XL), _modulus_up(XU)
@@ -283,18 +293,19 @@ two terms; Algorithm 3.2 encloses its factors, `I_E = L_E U_E`. `I_E` being Herm
 S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
 Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 4.
 """
-function _rumpogita2024_cholesky(A::BallMatrix{T}) where {T}
+function _rumpogita2024_cholesky(A::BallMatrix{T}; oracle = nothing) where {T}
     n = size(A, 1)
     n == size(A, 2) || throw(ArgumentError("_rumpogita2024_cholesky: A must be square"))
     Am, Ar = Matrix(mid(A)), rad(A)
     (Am == Am' && Ar == transpose(Ar)) || throw(ArgumentError(
         "_rumpogita2024_cholesky: the midpoint must be Hermitian and the radii symmetric"))
     S = eltype(Am)
-    C = cholesky(Hermitian(Am); check = false)
+    C = cholesky(Hermitian(_oracle(oracle, Am)); check = false)
     issuccess(C) || return nothing
-    Gt = Matrix{S}(C.U)
-    XG = Matrix{S}(I / UpperTriangular(Gt))
-    all(isfinite, XG) || return nothing
+    Go = Matrix(C.U)
+    Gt = Matrix{S}(Go)
+    XG = Matrix{S}(I / UpperTriangular(Go))
+    (all(isfinite, Gt) && all(isfinite, XG)) || return nothing
     Id = Matrix{T}(I, n, n)
     absXG = _modulus_up(XG)
     XGa = Matrix{S}(XG')
@@ -364,27 +375,28 @@ which bounds every entry of `Q₂ − Q̃₂`.
 S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
 Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 5 and Lemma 5.1.
 """
-function _rumpogita2024_qr(A::BallMatrix{T}; full::Bool = false) where {T}
+function _rumpogita2024_qr(A::BallMatrix{T}; full::Bool = false, oracle = nothing) where {T}
     m, n = size(A)
     if m < n
         Am, Ar = mid(A), rad(A)
-        r = _rumpogita2024_qr(BallMatrix(Am[:, 1:m], Ar[:, 1:m]); full = true)
+        r = _rumpogita2024_qr(BallMatrix(Am[:, 1:m], Ar[:, 1:m]); full = true, oracle)
         r === nothing && return nothing
         rest = _ball_adjoint(r.Q) * BallMatrix(Am[:, (m + 1):n], Ar[:, (m + 1):n])
         return (; Q = r.Q, R = BallMatrix(hcat(mid(r.R), mid(rest)), hcat(rad(r.R), rad(rest))))
     end
     Am, Ar = Matrix(mid(A)), rad(A)
     S = eltype(Am)
-    Fq = qr(Am)
-    Rt = Matrix{S}(Fq.R)
+    Fq = qr(_oracle(oracle, Am))
+    Ro = Matrix(Fq.R)
     for i in 1:n                      # a real positive diagonal for the approximate factor
-        d = Rt[i, i]
+        d = Ro[i, i]
         (isfinite(d) && !iszero(d)) || return nothing
-        Rt[i, :] .*= conj(d / abs(d))
-        Rt[i, i] = abs(d)
+        Ro[i, :] .*= conj(d / abs(d))
+        Ro[i, i] = abs(d)
     end
-    XR = Matrix{S}(I / UpperTriangular(Rt))
-    all(isfinite, XR) || return nothing
+    Rt = Matrix{S}(Ro)
+    XR = Matrix{S}(I / UpperTriangular(Ro))
+    (all(isfinite, Rt) && all(isfinite, XR)) || return nothing
     Id = Matrix{T}(I, n, n)
     absXR = _modulus_up(XR)
     up(f) = setrounding(f, T, RoundUp)
@@ -416,8 +428,11 @@ function _rumpogita2024_qr(A::BallMatrix{T}; full::Bool = false) where {T}
 
     # the orthogonal complement: system (5.1) and Lemma 5.1
     k = m - n
-    Q2t = Matrix{S}((Fq.Q * Matrix{S}(I, m, m))[:, (n + 1):m])
-    sv = svdvals(Rt)
+    Q2t = Matrix{S}((Fq.Q * Matrix{eltype(Ro)}(I, m, m))[:, (n + 1):m])
+    # α only scales the system below; with an oracle it is taken from a Float64 copy of R̃, the
+    # singular values of a matrix in the oracle's arithmetic not being available in general
+    sv = oracle === nothing ? svdvals(Rt) :
+         svdvals(Matrix{S <: Complex ? ComplexF64 : Float64}(Rt))
     α = T(sqrt(sv[1] * sv[end]))
     (isfinite(α) && α > 0) || return nothing
     N = Matrix{S}(α * Q2t')
@@ -536,10 +551,10 @@ S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM
 Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 7; and Rump and Lange (2023)
 for the singular value decomposition, see [`verifysvdall`](@ref).
 """
-function _rumpogita2024_polar(A::BallMatrix{T}; kappa::Real = 0) where {T}
+function _rumpogita2024_polar(A::BallMatrix{T}; kappa::Real = 0, oracle = nothing) where {T}
     m, n = size(A)
     m >= n || throw(ArgumentError("_rumpogita2024_polar: A must have at least as many rows as columns"))
-    r = verifysvdall(A; kappa)
+    r = verifysvdall(A; kappa, oracle)
     S = eltype(mid(r.V))
     lo = T[sub_down(mid(b), rad(b)) for b in r.values]
     hi = T[add_up(mid(b), rad(b)) for b in r.values]
@@ -589,7 +604,7 @@ of the norm of the error of `[x; y]`, hence of the modulus of each entry of `x +
 S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
 Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 9.
 """
-function _rumpogita2024_takagi(A::BallMatrix{T}) where {T}
+function _rumpogita2024_takagi(A::BallMatrix{T}; oracle = nothing) where {T}
     n = size(A, 1)
     n == size(A, 2) || throw(ArgumentError("_rumpogita2024_takagi: A must be square"))
     Am, Ar = Matrix(mid(A)), rad(A)
@@ -597,7 +612,7 @@ function _rumpogita2024_takagi(A::BallMatrix{T}) where {T}
         "_rumpogita2024_takagi: the midpoint must be symmetric (not Hermitian) and the radii symmetric"))
     E, F = Matrix{T}(real.(Am)), Matrix{T}(imag.(Am))
     M = BallMatrix([E F; F -E], [Ar Ar; Ar Ar])
-    r = _rumplange2023_eig(M)
+    r = _rumplange2023_eig(M; oracle)
     pos = [v[1] for v in r.clusters if length(v) == 1 && r.lo[v[1]] > 0]
     length(pos) == n || return nothing
     count(v -> length(v) == 1 && r.hi[v[1]] < 0, r.clusters) == n || return nothing

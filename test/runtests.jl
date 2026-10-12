@@ -94,6 +94,7 @@ using Test
     include("test_decompositions/test_verified_decompositions.jl")
     include("test_decompositions/test_rump_ogita_2024.jl")
     include("test_decompositions/test_verified_takagi.jl")
+    include("test_decompositions/test_extension_variants.jl")
     include("test_decompositions/test_rigorous_residual.jl")
 
     # Certification

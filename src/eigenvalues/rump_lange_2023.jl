@@ -172,14 +172,14 @@ S. M. Rump and M. Lange, *Fast computation of error bounds for all eigenpairs of
 all singular pairs of a rectangular matrix with emphasis on eigen- and singular value clusters*,
 J. Comput. Appl. Math. **434** (2023) 115332, doi 10.1016/j.cam.2023.115332, Sections 3 to 6.
 """
-function _rumplange2023_eig(A::BallMatrix{T}; kappa::Real = 0) where {T}
+function _rumplange2023_eig(A::BallMatrix{T}; kappa::Real = 0, oracle = nothing) where {T}
     n = size(A, 1)
     n == size(A, 2) || throw(ArgumentError("_rumplange2023_eig: A must be square"))
     kappa >= 0 || throw(ArgumentError("_rumplange2023_eig: kappa must be nonnegative"))
     κ = T(kappa)
     Am, Ar = Matrix(mid(A)), rad(A)
     S = eltype(Am)
-    Xs = Matrix{S}(eigen(Hermitian((Am' + Am) / 2)).vectors)
+    Xs = Matrix{S}(eigen(Hermitian(_oracle(oracle, (Am' + Am) / 2))).vectors)
     absX = _modulus_up(Xs)
     up(f) = setrounding(f, T, RoundUp)
 
@@ -393,17 +393,17 @@ S. M. Rump and M. Lange, *Fast computation of error bounds for all eigenpairs of
 all singular pairs of a rectangular matrix with emphasis on eigen- and singular value clusters*,
 J. Comput. Appl. Math. **434** (2023) 115332, doi 10.1016/j.cam.2023.115332, Section 7.
 """
-function verifysvdall(A::BallMatrix{T}; kappa::Real = 0) where {T}
+function verifysvdall(A::BallMatrix{T}; kappa::Real = 0, oracle = nothing) where {T}
     kappa >= 0 || throw(ArgumentError("verifysvdall: kappa must be nonnegative"))
     m, n = size(A)
     if m < n
-        r = verifysvdall(_ball_adjoint(A); kappa)
+        r = verifysvdall(_ball_adjoint(A); kappa, oracle)
         return VerifySvdAllResult(r.values, r.clusters, r.V, r.U)
     end
     Am, Ar = Matrix(mid(A)), rad(A)
     S = eltype(Am)
     κ = T(kappa)
-    Fs = svd(Am)
+    Fs = svd(_oracle(oracle, Am))
     Xs, Ys = Matrix{S}(Fs.U), Matrix{S}(Fs.V)
     absX, absY = _modulus_up(Xs), _modulus_up(Ys)
     up(f) = setrounding(f, T, RoundUp)

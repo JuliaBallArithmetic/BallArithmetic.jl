@@ -159,44 +159,45 @@ include("decompositions/verified_polar.jl")
 include("decompositions/verified_takagi.jl")
 include("decompositions/polar_iterations.jl")
 
-# GLA-based decomposition stubs (implemented in GenericLinearAlgebraExt)
+# The decompositions in BigFloat under their older names (methods in GenericLinearAlgebraExt)
 """
-    verified_lu_gla(A; precision_bits=256)
+    verified_lu_gla(A; precision_bits = 256)
 
-Verified LU using GenericLinearAlgebra's native BigFloat.
-Achieves residuals ~10⁻⁷⁴. Requires GenericLinearAlgebra.jl.
+[`verified_lu`](@ref)`(A; precision_bits, use_bigfloat = true)`, kept under this name.
+Requires GenericLinearAlgebra.jl.
 """
 function verified_lu_gla end
 
 """
-    verified_qr_gla(A; precision_bits=256)
+    verified_qr_gla(A; precision_bits = 256, compute_full_Q = false)
 
-Verified QR using GenericLinearAlgebra's native BigFloat.
-Achieves residuals ~10⁻⁷⁴. Requires GenericLinearAlgebra.jl.
+[`verified_qr`](@ref)`(A; precision_bits, compute_full_Q, use_bigfloat = true)`, kept under
+this name. Requires GenericLinearAlgebra.jl.
 """
 function verified_qr_gla end
 
 """
-    verified_cholesky_gla(A; precision_bits=256)
+    verified_cholesky_gla(A; precision_bits = 256)
 
-Verified Cholesky using GenericLinearAlgebra's native BigFloat.
-Achieves residuals ~10⁻⁷⁴. Requires GenericLinearAlgebra.jl.
+[`verified_cholesky`](@ref)`(A; precision_bits, use_bigfloat = true)`, kept under this name.
+Requires GenericLinearAlgebra.jl.
 """
 function verified_cholesky_gla end
 
 """
-    verified_svd_gla(A; precision_bits=256)
+    verified_svd_gla(A; precision_bits = 256, kappa = 0) -> VerifySvdAllResult
 
-Verified SVD using GenericLinearAlgebra's native BigFloat.
-Achieves residuals ~10⁻⁷⁴. Requires GenericLinearAlgebra.jl.
+[`verifysvdall`](@ref) on `A` in BigFloat at `precision_bits`: enclosures of all the singular
+values and of bases of the singular subspaces, by the method of Rump and Lange (2023).
+Requires GenericLinearAlgebra.jl.
 """
 function verified_svd_gla end
 
 """
-    verified_polar_gla(A; precision_bits=256, right=true)
+    verified_polar_gla(A; precision_bits = 256, right = true, kappa = 0)
 
-Verified polar decomposition using GenericLinearAlgebra's native BigFloat SVD.
-Achieves residuals ~10⁻⁷⁴. Requires GenericLinearAlgebra.jl.
+[`verified_polar`](@ref)`(A; precision_bits, right, kappa, use_bigfloat = true)`, kept under
+this name. Requires GenericLinearAlgebra.jl.
 """
 function verified_polar_gla end
 

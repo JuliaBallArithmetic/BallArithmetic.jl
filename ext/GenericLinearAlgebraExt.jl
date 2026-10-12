@@ -166,254 +166,33 @@ function _ogita_iteration_gla!(A::AbstractMatrix{T}, U::AbstractMatrix{T},
 end
 
 #==============================================================================#
-# GLA-based Verified Decompositions
-# These achieve ~10⁻⁷⁴ residuals vs ~10⁻¹⁴ for Float64→BigFloat
+# Decompositions with error bounds in BigFloat
 #==============================================================================#
 
-"""
-    verified_lu_gla(A::AbstractMatrix; precision_bits::Int=256)
+# The routines of the package without the suffix already run in BigFloat (`use_bigfloat = true`
+# is their default), with the generic factorisations of Julia; the singular value and symmetric
+# eigenvalue decompositions that the polar routine and `verifysvdall` start from are the ones
+# this package's dependency GenericLinearAlgebra provides for BigFloat. The names below are
+# kept for the callers that used them.
 
-Verified LU decomposition using GenericLinearAlgebra's native BigFloat LU.
+BallArithmetic.verified_lu_gla(A::AbstractMatrix; precision_bits::Int = 256) =
+    BallArithmetic.verified_lu(A; precision_bits, use_bigfloat = true)
 
-Achieves residuals ~10⁻⁷⁴ (vs ~10⁻¹⁴ for Float64→BigFloat).
+BallArithmetic.verified_qr_gla(A::AbstractMatrix; precision_bits::Int = 256,
+    compute_full_Q::Bool = false) =
+    BallArithmetic.verified_qr(A; precision_bits, compute_full_Q, use_bigfloat = true)
 
-# Returns
-`VerifiedLUResult` with L, U as BallMatrix enclosures.
-"""
-function BallArithmetic.verified_lu_gla(A::AbstractMatrix{T};
-                                         precision_bits::Int=256) where T
-    is_bigfloat_input = real(T) === BigFloat
-    old_prec = precision(BigFloat)
-    if !is_bigfloat_input
-        setprecision(BigFloat, precision_bits)
-    end
+BallArithmetic.verified_cholesky_gla(A::AbstractMatrix; precision_bits::Int = 256) =
+    BallArithmetic.verified_cholesky(A; precision_bits, use_bigfloat = true)
 
-    try
-        A_bf = is_bigfloat_input ? A : BigFloat.(A)
-        F = lu(A_bf)
+BallArithmetic.verified_polar_gla(A::AbstractMatrix; precision_bits::Int = 256,
+    right::Bool = true, kappa::Real = 0) =
+    BallArithmetic.verified_polar(A; precision_bits, right, kappa, use_bigfloat = true)
 
-        L_bf = Matrix(F.L)
-        U_bf = Matrix(F.U)
-        p = F.p
-
-        # Compute rigorous residual
-        residual = A_bf[p, :] - L_bf * U_bf
-        residual_norm = sqrt(sum(abs2, residual))
-
-        # Create BallMatrix enclosures — preserve BigFloat when input is BigFloat
-        OT = is_bigfloat_input ? real(T) : Float64
-        L_ball = BallArithmetic.BallMatrix(OT.(L_bf), fill(OT(residual_norm), size(L_bf)))
-        U_ball = BallArithmetic.BallMatrix(OT.(U_bf), fill(OT(residual_norm), size(U_bf)))
-
-        return BallArithmetic.VerifiedLUResult(L_ball, U_ball, p, true, OT(residual_norm))
-    finally
-        if !is_bigfloat_input
-            setprecision(BigFloat, old_prec)
-        end
-    end
-end
-
-"""
-    verified_qr_gla(A::AbstractMatrix; precision_bits::Int=256)
-
-Verified QR decomposition using GenericLinearAlgebra's native BigFloat QR.
-
-Achieves residuals ~10⁻⁷⁴ (vs ~10⁻¹⁵ for Float64→BigFloat).
-
-# Returns
-`VerifiedQRResult` with Q, R as BallMatrix enclosures.
-"""
-function BallArithmetic.verified_qr_gla(A::AbstractMatrix{T};
-                                         precision_bits::Int=256) where T
-    is_bigfloat_input = real(T) === BigFloat
-    old_prec = precision(BigFloat)
-    if !is_bigfloat_input
-        setprecision(BigFloat, precision_bits)
-    end
-
-    try
-        A_bf = is_bigfloat_input ? A : BigFloat.(A)
-        F = qr(A_bf)
-
-        Q_bf = Matrix(F.Q)
-        R_bf = Matrix(F.R)
-
-        # Compute rigorous residual
-        residual = A_bf - Q_bf * R_bf
-        residual_norm = sqrt(sum(abs2, residual))
-
-        # Compute orthogonality defect
-        RT_bf = real(eltype(A_bf))
-        I_n = Matrix{RT_bf}(I, size(Q_bf, 2), size(Q_bf, 2))
-        orthog_defect = maximum(abs.(Q_bf' * Q_bf - I_n))
-
-        # Create BallMatrix enclosures — preserve BigFloat when input is BigFloat
-        OT = is_bigfloat_input ? real(T) : Float64
-        Q_ball = BallArithmetic.BallMatrix(OT.(Q_bf), fill(OT(residual_norm), size(Q_bf)))
-        R_ball = BallArithmetic.BallMatrix(OT.(R_bf), fill(OT(residual_norm), size(R_bf)))
-
-        return BallArithmetic.VerifiedQRResult(Q_ball, R_ball, true, OT(residual_norm), OT(orthog_defect))
-    finally
-        if !is_bigfloat_input
-            setprecision(BigFloat, old_prec)
-        end
-    end
-end
-
-"""
-    verified_cholesky_gla(A::AbstractMatrix; precision_bits::Int=256)
-
-Verified Cholesky decomposition using GenericLinearAlgebra's native BigFloat Cholesky.
-
-Achieves residuals ~10⁻⁷⁴ (vs ~10⁻¹⁶ for Float64→BigFloat).
-
-# Returns
-`VerifiedCholeskyResult` with L as BallMatrix enclosure.
-"""
-function BallArithmetic.verified_cholesky_gla(A::AbstractMatrix{T};
-                                               precision_bits::Int=256) where T
-    is_bigfloat_input = real(T) === BigFloat
-    old_prec = precision(BigFloat)
-    if !is_bigfloat_input
-        setprecision(BigFloat, precision_bits)
-    end
-
-    try
-        A_bf = is_bigfloat_input ? A : BigFloat.(A)
-        F = cholesky(A_bf)
-
-        L_bf = Matrix(F.L)
-
-        # Compute rigorous residual
-        residual = A_bf - L_bf * L_bf'
-        residual_norm = sqrt(sum(abs2, residual))
-
-        # Create BallMatrix enclosure — preserve BigFloat when input is BigFloat
-        OT = is_bigfloat_input ? real(T) : Float64
-        L_ball = BallArithmetic.BallMatrix(OT.(L_bf), fill(OT(residual_norm), size(L_bf)))
-
-        return BallArithmetic.VerifiedCholeskyResult(L_ball, true, OT(residual_norm))
-    finally
-        if !is_bigfloat_input
-            setprecision(BigFloat, old_prec)
-        end
-    end
-end
-
-"""
-    verified_svd_gla(A::AbstractMatrix; precision_bits::Int=256)
-
-Verified SVD using GenericLinearAlgebra's native BigFloat SVD.
-
-Achieves residuals ~10⁻⁷⁴ (vs ~10⁻¹⁴ for Float64→BigFloat).
-
-# Returns
-Tuple (U, S, V, residual_norm) where U, V are BallMatrix enclosures.
-"""
-function BallArithmetic.verified_svd_gla(A::AbstractMatrix{T};
-                                          precision_bits::Int=256) where T
-    is_bigfloat_input = real(T) === BigFloat
-    old_prec = precision(BigFloat)
-    if !is_bigfloat_input
-        setprecision(BigFloat, precision_bits)
-    end
-
-    try
-        A_bf = is_bigfloat_input ? A : BigFloat.(A)
-        F = svd(A_bf)
-
-        U_bf = Matrix(F.U)
-        S_bf = F.S
-        V_bf = Matrix(F.V)
-
-        # Compute rigorous residual
-        residual = A_bf - U_bf * Diagonal(S_bf) * V_bf'
-        residual_norm = sqrt(sum(abs2, residual))
-
-        # Create BallMatrix enclosures — preserve BigFloat when input is BigFloat
-        OT = is_bigfloat_input ? real(T) : Float64
-        U_ball = BallArithmetic.BallMatrix(OT.(U_bf), fill(OT(residual_norm), size(U_bf)))
-        V_ball = BallArithmetic.BallMatrix(OT.(V_bf), fill(OT(residual_norm), size(V_bf)))
-        S_out = OT.(S_bf)
-
-        return (U_ball, S_out, V_ball, OT(residual_norm))
-    finally
-        if !is_bigfloat_input
-            setprecision(BigFloat, old_prec)
-        end
-    end
-end
-
-"""
-    verified_polar_gla(A::AbstractMatrix; precision_bits::Int=256, right::Bool=true)
-
-Verified polar decomposition using GenericLinearAlgebra's native BigFloat SVD.
-
-Achieves residuals ~10⁻⁷⁴ (vs ~10⁻¹⁴ for Float64→BigFloat).
-
-# Returns
-`VerifiedPolarResult` with Q (unitary) and P (positive semidefinite) as BallMatrix enclosures.
-"""
-function BallArithmetic.verified_polar_gla(A::AbstractMatrix{T};
-                                            precision_bits::Int=256,
-                                            right::Bool=true) where T
-    is_bigfloat_input = real(T) === BigFloat
-    old_prec = precision(BigFloat)
-    if !is_bigfloat_input
-        setprecision(BigFloat, precision_bits)
-    end
-
-    try
-        A_bf = is_bigfloat_input ? A : BigFloat.(A)
-        n = size(A_bf, 1)
-        size(A_bf, 1) == size(A_bf, 2) || throw(DimensionMismatch("A must be square for polar decomposition"))
-
-        RT_bf = real(eltype(A_bf))
-        F = svd(A_bf)
-
-        U_bf = Matrix(F.U)
-        S_bf = F.S
-        V_bf = Matrix(F.V)
-
-        # Compute SVD residual
-        residual = A_bf - U_bf * Diagonal(S_bf) * V_bf'
-        svd_error = maximum(abs.(residual))
-
-        # Polar factors from SVD
-        # Q = U V^H (unitary)
-        Q_mid = U_bf * V_bf'
-
-        # Error in Q: |ΔQ| ≤ 2 * svd_error / σ_min
-        σ_pos = S_bf[S_bf .> eps(RT_bf)]
-        Q_rad = isempty(σ_pos) ? fill(RT_bf(Inf), n, n) : fill(2 * svd_error / minimum(σ_pos), n, n)
-
-        if right
-            # P = V Σ V^H
-            P_mid = V_bf * Diagonal(S_bf) * V_bf'
-            P_mid = (P_mid + P_mid') / 2  # symmetrize
-        else
-            # P = U Σ U^H
-            P_mid = U_bf * Diagonal(S_bf) * U_bf'
-            P_mid = (P_mid + P_mid') / 2  # symmetrize
-        end
-        P_rad = fill(2 * svd_error, n, n)
-
-        Q_ball = BallArithmetic.BallMatrix(Q_mid, Q_rad)
-        P_ball = BallArithmetic.BallMatrix(P_mid, P_rad)
-
-        # Compute relative residual
-        if right
-            QP = Q_mid * P_mid
-        else
-            QP = P_mid * Q_mid
-        end
-        residual_norm = maximum(abs.(QP - A_bf)) / maximum(abs.(A_bf))
-
-        return BallArithmetic.VerifiedPolarResult(Q_ball, P_ball, right, true, residual_norm)
-    finally
-        if !is_bigfloat_input
-            setprecision(BigFloat, old_prec)
-        end
+function BallArithmetic.verified_svd_gla(A::AbstractMatrix; precision_bits::Int = 256,
+        kappa::Real = 0)
+    return BallArithmetic._decomposition_arithmetic(true, precision_bits) do
+        BallArithmetic.verifysvdall(BallArithmetic._decomposition_input(A, true); kappa)
     end
 end
 

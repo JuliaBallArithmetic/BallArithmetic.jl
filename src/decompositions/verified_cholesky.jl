@@ -81,7 +81,8 @@ Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 4.
 function verified_cholesky(A::AbstractMatrix{S};
         precision_bits::Int = 256,
         use_double_precision::Bool = true,
-        use_bigfloat::Bool = true) where {S <: Union{
+        use_bigfloat::Bool = true,
+        oracle::Union{Nothing, Type} = nothing) where {S <: Union{
         Float64, ComplexF64, BigFloat, Complex{BigFloat}}}
     n = size(A, 1)
     n == size(A, 2) || throw(DimensionMismatch("A must be square"))
@@ -93,26 +94,34 @@ function verified_cholesky(A::AbstractMatrix{S};
     return _decomposition_arithmetic(bigfloat, precision_bits) do
         Hb = _symmetric_part_ball(_decomposition_input(A, bigfloat), conj)
         T = eltype(rad(Hb))
-        r = _rumpogita2024_cholesky(Hb)
+        r = _rumpogita2024_cholesky(Hb; oracle)
         r === nothing && return VerifiedCholeskyResult(_unverified_ball(Hb, n, n), false, T(Inf))
         residual_norm = _relative_residual_bound(_ball_adjoint(r.G) * r.G - Hb, Hb)
         return VerifiedCholeskyResult(r.G, true, residual_norm)
     end
 end
 
-# Stub for Double64 extension
 """
-    verified_cholesky_double64(A; precision_bits=256)
+    verified_cholesky_double64(A; precision_bits = 256)
 
-Fast verified Cholesky using Double64 oracle. Requires DoubleFloats.jl.
+[`verified_cholesky`](@ref)`(A; precision_bits, use_bigfloat = true, oracle = Double64)`: the
+enclosure is computed in BigFloat, and the floating-point factorisation the method starts from
+in `Double64` (about 32 digits) in place of BigFloat.
+
+The verification is the one of the routine without the suffix and does not depend on the
+accuracy of the starting factorisation, which only decides how small the radii come out.
+Requires DoubleFloats.jl.
 """
 function verified_cholesky_double64 end
 
-# Stub for MultiFloat extension
 """
-    verified_cholesky_multifloat(A; precision_bits=256, float_type=Float64x4)
+    verified_cholesky_multifloat(A; precision = :x2, bigfloat_precision = 256)
 
-Fast verified Cholesky using MultiFloat oracle. Requires MultiFloats.jl.
+[`verified_cholesky`](@ref) in BigFloat at `bigfloat_precision`, with the floating-point factorisation
+the method starts from computed in a MultiFloat in place of BigFloat.
+
+`precision` is `:x2`, `:x4` or `:x8`. The verification is the one of the routine without the
+suffix. Requires MultiFloats.jl.
 """
 function verified_cholesky_multifloat end
 
