@@ -244,80 +244,13 @@ end
 # Schur Decomposition Refinement with MultiFloats
 #==============================================================================#
 
-"""
-    refine_schur_multifloat(A, Q0, T0; precision=:x2, max_iterations=2, certify=true)
-
-Refine Schur decomposition A = Q*T*Q' using MultiFloats.
-"""
-function BallArithmetic.refine_schur_multifloat(
-        A::AbstractMatrix{T}, Q0::Matrix, T0::Matrix;
-        precision::Symbol=:x2,
-        max_iterations::Int=2,
-        certify::Bool=true,
-        bigfloat_precision::Int=256) where {T<:Union{Float64, ComplexF64}}
-
-    MF = _select_multifloat_type(precision)
-
-    # Convert to MultiFloats
-    if T <: Complex
-        A_mf = convert.(Complex{MF}, A)
-        Q_mf = convert.(Complex{MF}, Q0)
-        T_mf = convert.(Complex{MF}, T0)
-    else
-        A_mf = convert.(MF, A)
-        Q_mf = convert.(MF, Q0)
-        T_mf = convert.(MF, T0)
-    end
-
-    Q_curr, T_curr = Q_mf, T_mf
-
-    for _ in 1:max_iterations
-        # Compute T̂ = Q' * A * Q
-        T_hat = Q_curr' * A_mf * Q_curr
-
-        # Extract strictly lower triangular part E and upper triangular T
-        E = _stril_mf(T_hat)
-        T_curr = T_hat - E
-
-        # Newton-Schulz orthogonalization
-        Q_curr = _newton_schulz_step_mf(Q_curr)
-    end
-
-    if certify
-        old_precision = Base.precision(BigFloat)
-        setprecision(BigFloat, bigfloat_precision)
-
-        try
-            if T <: Complex
-                Q_bf = convert.(Complex{BigFloat}, Q_curr)
-                T_bf = convert.(Complex{BigFloat}, T_curr)
-                A_bf = convert.(Complex{BigFloat}, A)
-            else
-                Q_bf = convert.(BigFloat, Q_curr)
-                T_bf = convert.(BigFloat, T_curr)
-                A_bf = convert.(BigFloat, A)
-            end
-
-            I_bf = Matrix{BigFloat}(I, size(Q_bf, 1), size(Q_bf, 1))
-            residual = A_bf - Q_bf * T_bf * Q_bf'
-            residual_norm = _frobenius_norm(residual) / _frobenius_norm(A_bf)
-            orthogonality_defect = _frobenius_norm(Q_bf' * Q_bf - I_bf)
-
-            return SchurRefinementResult(Q_bf, T_bf, max_iterations, residual_norm, orthogonality_defect, true)
-        finally
-            setprecision(BigFloat, old_precision)
-        end
-    else
-        n = size(Q_curr, 1)
-        I_mf = Matrix{eltype(Q_curr)}(I, n, n)
-        residual = A_mf - Q_curr * T_curr * Q_curr'
-        residual_norm = _frobenius_norm_mf(residual) / _frobenius_norm_mf(A_mf)
-        orthogonality_defect = _frobenius_norm_mf(Q_curr' * Q_curr - I_mf)
-
-        return SchurRefinementResult(Q_curr, T_curr, max_iterations,
-            convert(BigFloat, residual_norm), convert(BigFloat, orthogonality_defect), true)
-    end
-end
+# The Schur refinement is the one of the package (Algorithm 4 of Bujanović, Kressner and
+# Schröder) with a MultiFloat as the high precision.
+BallArithmetic.refine_schur_multifloat(A::AbstractMatrix{T}, Q0::Matrix, T0::Matrix;
+    precision::Symbol = :x2, max_iterations::Int = 10, tol::Real = 0.0, certify::Bool = true,
+    bigfloat_precision::Int = 256) where {T <: Union{Float64, ComplexF64}} =
+    BallArithmetic._refine_schur_impl(A, Q0, T0, max_iterations, tol;
+        hp = _select_multifloat_type(precision))
 
 #==============================================================================#
 # Symmetric Eigenvalue Refinement with MultiFloats
@@ -482,26 +415,6 @@ function _spectral_norm_bound_mf(A::AbstractMatrix{T}) where T
         one_norm = max(one_norm, col_sum)
     end
     return sqrt(inf_norm * one_norm)
-end
-
-"""Extract strictly lower triangular part of matrix."""
-function _stril_mf(A::AbstractMatrix{T}) where T
-    n, m = size(A)
-    L = zeros(T, n, m)
-    for j in 1:min(n-1, m)
-        for i in (j+1):n
-            L[i, j] = A[i, j]
-        end
-    end
-    return L
-end
-
-"""Newton-Schulz orthogonalization step for MultiFloats."""
-function _newton_schulz_step_mf(Q::Matrix{T}) where T
-    n = size(Q, 1)
-    I_n = Matrix{T}(I, n, n)
-    QtQ = Q' * Q
-    return Q * (T(3) * I_n - QtQ) / T(2)
 end
 
 #==============================================================================#

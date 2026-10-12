@@ -197,237 +197,19 @@ end
 # Schur Decomposition Refinement with Double64
 #==============================================================================#
 
-"""
-    refine_schur_double64(A, Q0, T0; max_iterations=2, certify_with_bigfloat=true)
+# The Schur refinements are those of the package (Algorithm 4 of Bujanović, Kressner and
+# Schröder) with Double64 as the high precision.
+BallArithmetic.refine_schur_double64(A::AbstractMatrix{T}, Q0::Matrix, T0::Matrix;
+    max_iterations::Int = 10, tol::Real = 0.0, certify_with_bigfloat::Bool = true,
+    bigfloat_precision::Int = 256) where {T <: Union{Float64, ComplexF64}} =
+    BallArithmetic._refine_schur_impl(A, Q0, T0, max_iterations, tol; hp = Double64)
 
-Fast Schur decomposition refinement using Double64 arithmetic (~106 bits precision).
-
-This is the Schur analog of `ogita_svd_refine_fast`. It uses Double64 for the bulk
-of the refinement iterations, which is ~30× faster than BigFloat.
-
-# Algorithm (Bujanović et al. 2022, Algorithm 4)
-The algorithm performs Newton-like iterations:
-1. Compute T̂ = Q^H A Q and extract E = stril(T̂)
-2. Solve triangular matrix equation stril(TL - LT) = -E for L
-3. Form skew-Hermitian W = L - L^H
-4. Update Q using modified Newton-Schulz: Q ← ½Q(2I + 2W - Y - YW + W² + W³)
-
-# Arguments
-- `A`: Original matrix (Float64 or ComplexF64)
-- `Q0, T0`: Initial Schur decomposition from LAPACK (A ≈ Q0 * T0 * Q0')
-- `max_iterations`: Number of Double64 refinement iterations (default: 2)
-- `certify_with_bigfloat`: If true, compute final residual with BigFloat for rigor
-
-# Returns
-A tuple `(Q, T, residual_norm, iterations)` with refined Schur decomposition.
-
-# Performance
-Double64 provides ~106 bits (~31 decimal digits). Starting from Float64 (~15 digits):
-- After 1 iteration: ~30 digits (saturates Double64)
-- After 2 iterations: can achieve ~60 digits with proper algorithm
-
-For most applications, 2 iterations with Double64 gives excellent results.
-For higher precision needs, use `refine_schur_hybrid`.
-"""
-function BallArithmetic.refine_schur_double64(
-        A::AbstractMatrix{T}, Q0::Matrix, T0::Matrix;
-        max_iterations::Int=2,
-        certify_with_bigfloat::Bool=true,
-        bigfloat_precision::Int=256) where {T<:Union{Float64, ComplexF64}}
-
-    n = size(A, 1)
-
-    # Convert to Double64 for refinement
-    if T <: Complex
-        A_d64 = convert.(Complex{Double64}, A)
-        Q_d64 = convert.(Complex{Double64}, Q0)
-        T_d64 = convert.(Complex{Double64}, T0)
-    else
-        A_d64 = convert.(Double64, A)
-        Q_d64 = convert.(Double64, Q0)
-        T_d64 = convert.(Double64, T0)
-    end
-
-    D64 = T <: Complex ? Complex{Double64} : Double64
-    I_n = Matrix{D64}(I, n, n)
-
-    # Initial orthogonalization
-    Q_curr = _newton_schulz_step_d64(Q_d64)
-    Q_curr = _newton_schulz_step_d64(Q_curr)
-    T_curr = T_d64
-
-    # Run full Schur refinement iterations in Double64
-    for _ in 1:max_iterations
-        # Step 1: Compute T̂ = Q^H A Q
-        T_hat = Q_curr' * A_d64 * Q_curr
-
-        # Step 2: Extract E = stril(T̂) and T = T̂ - E
-        E = _stril_d64(T_hat)
-        T_curr = T_hat - E
-
-        # Compute orthogonality defect Y = Q^H Q - I
-        Y = Q_curr' * Q_curr - I_n
-
-        # Step 3: Solve triangular matrix equation stril(TL - LT) = -E for L
-        L = _solve_triangular_equation_d64(T_curr, E)
-
-        # Step 4: Form skew-Hermitian W = L - L^H
-        W = L - L'
-
-        # Step 5: Compute products for Newton-Schulz update
-        W2 = W * W
-        W3 = W2 * W
-        YW = Y * W
-
-        # Step 6: Compute Σ = 2I + 2W - Y - YW + W² + W³
-        Σ = D64(2) * I_n + D64(2) * W - Y - YW + W2 + W3
-
-        # Step 7: Update Q ← ½QΣ
-        Q_curr = (Q_curr * Σ) / D64(2)
-    end
-
-    # Final T computation
-    T_hat = Q_curr' * A_d64 * Q_curr
-    E = _stril_d64(T_hat)
-    T_curr = T_hat - E
-
-    iterations = max_iterations
-
-    if certify_with_bigfloat
-        # Final certification with BigFloat for rigorous error bound
-        old_precision = precision(BigFloat)
-        setprecision(BigFloat, bigfloat_precision)
-
-        try
-            # Convert refined Schur decomposition to BigFloat
-            if T <: Complex
-                Q_bf = convert.(Complex{BigFloat}, Q_curr)
-                T_bf = convert.(Complex{BigFloat}, T_curr)
-                A_bf = convert.(Complex{BigFloat}, A)
-            else
-                Q_bf = convert.(BigFloat, Q_curr)
-                T_bf = convert.(BigFloat, T_curr)
-                A_bf = convert.(BigFloat, A)
-            end
-
-            # Compute rigorous residual norm using E (strictly lower triangular part)
-            T_hat_bf = Q_bf' * A_bf * Q_bf
-            E_bf = BallArithmetic._stril(T_hat_bf)
-            E_norm = BallArithmetic._frobenius_norm(E_bf)
-            A_norm = BallArithmetic._frobenius_norm(A_bf)
-            residual_norm = E_norm / A_norm
-
-            return (Q=Q_bf, T=T_bf, residual_norm=residual_norm, iterations=iterations)
-        finally
-            setprecision(BigFloat, old_precision)
-        end
-    else
-        # Return Double64 result directly
-        E_norm = _frobenius_norm_d64(E)
-        A_norm = _frobenius_norm_d64(A_d64)
-        residual_norm = E_norm / A_norm
-        return (Q=Q_curr, T=T_curr, residual_norm=convert(BigFloat, residual_norm), iterations=iterations)
-    end
-end
-
-"""
-    _solve_triangular_equation_d64(T, E)
-
-Solve the triangular matrix equation stril(TL - LT) = -E for strictly lower triangular L.
-This is the key step in Schur refinement that enables quadratic convergence.
-"""
-function _solve_triangular_equation_d64(T::AbstractMatrix{DT}, E::AbstractMatrix{DT}) where DT
-    n = size(T, 1)
-    L = zeros(DT, n, n)
-
-    # Scale truncation threshold with matrix norm so it stays meaningful
-    # for matrices of any size. This is a stability measure for the oracle solve;
-    # the result is certified a posteriori by the Schur refinement residual check.
-    T_norm = opnorm(T, Inf)
-    truncation_threshold = max(DT(1e10), DT(1e10) * T_norm)
-
-    # Solve element by element: for i > j, we have
-    # T[i,i]*L[i,j] - L[i,j]*T[j,j] + (terms with L[k,j] for k<i) = -E[i,j]
-    # => L[i,j] = (-E[i,j] - sum) / (T[i,i] - T[j,j])
-    for j in 1:n
-        for i in (j+1):n
-            # Compute the sum of already-computed terms
-            s = zero(DT)
-            for k in (j+1):(i-1)
-                s += T[i, k] * L[k, j] - L[i, k] * T[k, j]
-            end
-
-            denom = T[i, i] - T[j, j]
-            if abs(denom) > eps(real(DT)) * 100
-                L[i, j] = (-E[i, j] - s) / denom
-            else
-                # Near-degenerate case: use regularization
-                L[i, j] = zero(DT)
-            end
-
-            # Truncate large entries for stability
-            if abs(L[i, j]) > truncation_threshold
-                L[i, j] = sign(real(L[i, j])) * truncation_threshold
-            end
-        end
-    end
-
-    return L
-end
-
-"""
-    refine_schur_hybrid(A, Q0, T0; d64_iterations=2, bf_iterations=1, precision_bits=256)
-
-Hybrid Schur refinement: Double64 for bulk iterations, BigFloat for final polish.
-
-This is the Schur analog of `ogita_svd_refine_hybrid`. It combines the speed of
-Double64 with the rigor of BigFloat:
-1. Run `d64_iterations` in Double64 (fast, ~30× faster than BigFloat)
-2. Run `bf_iterations` in BigFloat (rigorous, provides certified error bound)
-
-# Performance
-For 256-bit precision:
-- Pure BigFloat: 3-4 iterations needed
-- Hybrid (2 D64 + 1 BF): ~2× faster, same precision
-"""
-function BallArithmetic.refine_schur_hybrid(
-        A::AbstractMatrix{T}, Q0::Matrix, T0::Matrix;
-        d64_iterations::Int=2,
-        bf_iterations::Int=1,
-        precision_bits::Int=256) where {T<:Union{Float64, ComplexF64}}
-
-    # Phase 1: Fast refinement in Double64
-    d64_result = BallArithmetic.refine_schur_double64(A, Q0, T0;
-        max_iterations=d64_iterations, certify_with_bigfloat=false)
-
-    # Phase 2: Polish and certify in BigFloat
-    old_precision = precision(BigFloat)
-    setprecision(BigFloat, precision_bits)
-
-    try
-        if T <: Complex
-            A_bf = convert.(Complex{BigFloat}, A)
-            Q_bf = convert.(Complex{BigFloat}, d64_result.Q)
-            T_bf = convert.(Complex{BigFloat}, d64_result.T)
-        else
-            A_bf = convert.(BigFloat, A)
-            Q_bf = convert.(BigFloat, d64_result.Q)
-            T_bf = convert.(BigFloat, d64_result.T)
-        end
-
-        # Run BigFloat iterations using the existing implementation
-        result_bf = BallArithmetic._refine_schur_impl(A_bf, Q_bf, T_bf, bf_iterations, 0.0)
-
-        return BallArithmetic.SchurRefinementResult(
-            result_bf.Q, result_bf.T,
-            d64_iterations + bf_iterations,
-            result_bf.residual_norm,
-            result_bf.orthogonality_defect,
-            result_bf.converged
-        )
-    finally
-        setprecision(BigFloat, old_precision)
-    end
+function BallArithmetic.refine_schur_hybrid(A::AbstractMatrix{T}, Q0::Matrix, T0::Matrix;
+        d64_iterations::Int = 10, bf_iterations::Int = 5,
+        precision_bits::Int = 256) where {T <: Union{Float64, ComplexF64}}
+    r = BallArithmetic.refine_schur_double64(A, Q0, T0; max_iterations = d64_iterations)
+    return BallArithmetic.refine_schur_decomposition(A, r.Q, r.T;
+        target_precision = precision_bits, max_iterations = bf_iterations)
 end
 
 #==============================================================================#
@@ -601,18 +383,6 @@ end
 # Helper Functions for Double64
 #==============================================================================#
 
-"""Extract strictly lower triangular part of matrix (Double64 version)."""
-function _stril_d64(A::AbstractMatrix{T}) where T
-    n, m = size(A)
-    L = zeros(T, n, m)
-    for j in 1:min(n-1, m)
-        for i in (j+1):n
-            L[i, j] = A[i, j]
-        end
-    end
-    return L
-end
-
 """Frobenius norm for Double64 matrices."""
 function _frobenius_norm_d64(A::AbstractMatrix{T}) where T
     s = zero(real(T))
@@ -622,15 +392,6 @@ function _frobenius_norm_d64(A::AbstractMatrix{T}) where T
         end
     end
     return sqrt(s)
-end
-
-"""Single Newton-Schulz orthogonalization step for Double64."""
-function _newton_schulz_step_d64(Q::Matrix{T}) where T
-    n = size(Q, 1)
-    I_n = Matrix{T}(I, n, n)
-    QtQ = Q' * Q
-    # Q = (1/2) * Q * (3I - Q'Q)
-    return Q * (T(3) * I_n - QtQ) / T(2)
 end
 
 #==============================================================================#

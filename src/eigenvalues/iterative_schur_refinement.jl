@@ -469,6 +469,19 @@ function refine_schur_decomposition(A::AbstractMatrix, Q0::Matrix, T0::Matrix;
 end
 
 # Helper function for converting to high precision
+# The data in the high precision of the refinement: BigFloat at the current precision, or the
+# given floating-point type (Double64, a MultiFloat).
+_to_high(::Type{BigFloat}, A::AbstractMatrix) = _to_bigfloat(A)
+_to_high(::Type{H}, A::AbstractMatrix{<:Real}) where {H} = Matrix{H}(A)
+_to_high(::Type{H}, A::AbstractMatrix{<:Complex}) where {H} = Matrix{Complex{H}}(A)
+
+# The size of a defect of the refinement, a diagnostic used by its stopping test: an upper
+# bound of the spectral norm in BigFloat, the Frobenius norm in the other arithmetics, where
+# balls are not available.
+_refine_defect_norm(E::AbstractMatrix{<:Union{BigFloat, Complex{BigFloat}}}) =
+    upper_bound_L2_opnorm(BallMatrix(E))
+_refine_defect_norm(E::AbstractMatrix) = _frobenius_norm(E)
+
 function _to_bigfloat(A::AbstractMatrix{T}) where T<:Real
     return convert.(BigFloat, A)
 end
@@ -504,13 +517,19 @@ to refine from double to quadruple precision.
   Algorithm 4: Mixed-precision Schur refinement.
 """
 function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
-                            max_iterations::Int, tol::Real)
+                            max_iterations::Int, tol::Real; hp::Type = BigFloat)
     n = size(A, 1)
+    # The iteration is for a triangular T. The real Schur form of a real matrix with complex
+    # eigenvalues has 2 × 2 blocks on the diagonal; the paper mentions an extension to it and
+    # does not give it, and on such an input this iteration diverges.
+    istriu(T0) || throw(ArgumentError(
+        "the Schur factor must be upper triangular; for a real matrix with complex " *
+        "eigenvalues pass its complex Schur form, schur(complex(A))"))
 
-    # Convert to BigFloat (or Complex{BigFloat} for complex matrices)
-    A_high = _to_bigfloat(A)
-    Q = _to_bigfloat(Q0)
-    T_mat = _to_bigfloat(T0)
+    # The high precision: BigFloat at the current precision, or the type `hp`
+    A_high = _to_high(hp, A)
+    Q = _to_high(hp, Q0)
+    T_mat = _to_high(hp, T0)
 
     # Determine element type for high precision
     HP = eltype(Q)  # BigFloat or Complex{BigFloat}
@@ -530,10 +549,10 @@ function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
     # an already-accurate decomposition (e.g. from GenericSchur at high precision).
     T_hat_pre = Q' * A_high * Q
     E_pre = _stril(T_hat_pre)
-    E_norm_pre = upper_bound_L2_opnorm(BallMatrix(E_pre))
+    E_norm_pre = _refine_defect_norm(E_pre)
     residual_pre = E_norm_pre / A_norm
     Y_pre = Q' * Q - I_n
-    orth_pre = upper_bound_L2_opnorm(BallMatrix(Y_pre))
+    orth_pre = _refine_defect_norm(Y_pre)
 
     if residual_pre < target_tol && orth_pre < target_tol
         return SchurRefinementResult(
@@ -564,12 +583,12 @@ function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
 
         # Check convergence: E should become small
         # Use rigorous ‖·‖₂ upper bound (tighter than Frobenius)
-        E_norm = upper_bound_L2_opnorm(BallMatrix(E))
+        E_norm = _refine_defect_norm(E)
         residual_norm = E_norm / A_norm
 
         # Also check orthogonality
         Y = Q' * Q - I_n
-        orthogonality_defect = upper_bound_L2_opnorm(BallMatrix(Y))
+        orthogonality_defect = _refine_defect_norm(Y)
 
         if residual_norm < target_tol && orthogonality_defect < target_tol
             converged = true
@@ -624,11 +643,11 @@ function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
     E = _stril(T_hat)
     T_mat = T_hat - E
 
-    E_norm = upper_bound_L2_opnorm(BallMatrix(E))
+    E_norm = _refine_defect_norm(E)
     residual_norm = E_norm / A_norm
 
     Y = Q' * Q - I_n
-    orthogonality_defect = upper_bound_L2_opnorm(BallMatrix(Y))
+    orthogonality_defect = _refine_defect_norm(Y)
 
     return SchurRefinementResult(
         Q, T_mat, iterations, residual_norm, orthogonality_defect, converged
@@ -1008,21 +1027,20 @@ end
 #==============================================================================#
 
 """
-    refine_schur_double64(A, Q0, T0; max_iterations=2, certify_with_bigfloat=true, bigfloat_precision=256)
+    refine_schur_double64(A, Q0, T0; max_iterations = 10, tol = 0)
 
-Fast Schur refinement using Double64 arithmetic. Requires DoubleFloats.jl to be loaded.
-
-This is ~30× faster than pure BigFloat refinement. See `DoubleFloatsExt` for details.
+[`refine_schur_decomposition`](@ref) with `Double64` (about 32 digits) as the high precision in
+place of BigFloat: the same iteration, Algorithm 4 of Bujanović, Kressner and Schröder, on the
+upper triangular Schur factor `T0`. Returns a [`SchurRefinementResult`](@ref) with factors in
+`Double64`; its two norms are floating-point diagnostics, not bounds. Requires DoubleFloats.jl.
 """
 function refine_schur_double64 end
 
 """
-    refine_schur_hybrid(A, Q0, T0; d64_iterations=2, bf_iterations=1, precision_bits=256)
+    refine_schur_hybrid(A, Q0, T0; d64_iterations = 10, bf_iterations = 5, precision_bits = 256)
 
-Hybrid Schur refinement: Double64 for bulk iterations, BigFloat for final polish.
-Requires DoubleFloats.jl to be loaded.
-
-Expected speedup: ~2× for 256-bit precision vs pure BigFloat.
+[`refine_schur_double64`](@ref) followed by [`refine_schur_decomposition`](@ref) in BigFloat at
+`precision_bits`, started from its result. Requires DoubleFloats.jl.
 """
 function refine_schur_hybrid end
 
@@ -1047,10 +1065,11 @@ function refine_symmetric_eigen_hybrid end
 #==============================================================================#
 
 """
-    refine_schur_multifloat(A, Q0, T0; precision=:x2, max_iterations=2, certify=true, bigfloat_precision=256)
+    refine_schur_multifloat(A, Q0, T0; precision = :x2, max_iterations = 10, tol = 0)
 
-Refine Schur decomposition using MultiFloats arithmetic.
-Requires MultiFloats.jl to be loaded.
+[`refine_schur_decomposition`](@ref) with a MultiFloat (`:x2`, `:x4`, `:x8`) as the high
+precision in place of BigFloat. Returns a [`SchurRefinementResult`](@ref) with factors in that
+type; its two norms are floating-point diagnostics, not bounds. Requires MultiFloats.jl.
 """
 function refine_schur_multifloat end
 
