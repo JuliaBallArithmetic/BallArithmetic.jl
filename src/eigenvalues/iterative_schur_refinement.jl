@@ -998,19 +998,20 @@ end
 Internal implementation of RefSyEv algorithm (Algorithm 1 from Ogita & Aishima 2018).
 """
 function _refine_symmetric_eigen_impl(A::AbstractMatrix, Q0::Matrix, λ0::AbstractVector,
-                                      max_iterations::Int, tol::Real)
+                                      max_iterations::Int, tol::Real; hp::Type = BigFloat)
     n = size(A, 1)
 
-    # Convert to BigFloat
-    A_high = _to_bigfloat(A)
-    Q = _to_bigfloat(Q0)
-    λ = convert.(BigFloat, λ0)
-
-    HP = eltype(Q)  # BigFloat or Complex{BigFloat}
+    # The high precision: BigFloat at the current precision, or the type `hp`
+    A_high = _to_high(hp, A)
+    Q = _to_high(hp, Q0)
+    HP = eltype(Q)
     HP_real = real(HP)
+    λ = convert.(HP_real, λ0)
 
-    # Determine tolerance
-    target_tol = tol > 0 ? HP_real(tol) : HP_real(100) * eps(HP_real)
+    # The default tolerance: 100 rounding units in BigFloat; in the other arithmetics, whose
+    # operations are not correctly rounded, it grows with the order
+    target_tol = tol > 0 ? HP_real(tol) :
+                 hp === BigFloat ? HP_real(100) * eps(HP_real) : HP_real(100 * n) * eps(HP_real)
 
     # Compute norm of A for relative tolerance
     A_norm = _frobenius_norm(A_high)
@@ -1147,18 +1148,20 @@ function refine_schur_double64 end
 function refine_schur_hybrid end
 
 """
-    refine_symmetric_eigen_double64(A, Q0, λ0; max_iterations=2, certify_with_bigfloat=true, bigfloat_precision=256)
+    refine_symmetric_eigen_double64(A, Q0, λ0; max_iterations = 10, tol = 0)
 
-Fast symmetric eigenvalue refinement (RefSyEv) using Double64 arithmetic.
-Requires DoubleFloats.jl to be loaded.
+[`refine_symmetric_eigen`](@ref) with `Double64` (about 32 digits) as the high precision in
+place of BigFloat: the same iteration, RefSyEv of Ogita and Aishima (2018). Returns a
+[`SymmetricEigenRefinementResult`](@ref) with `Q` and `λ` in `Double64`; its two norms are
+floating-point diagnostics, not bounds. Requires DoubleFloats.jl.
 """
 function refine_symmetric_eigen_double64 end
 
 """
-    refine_symmetric_eigen_hybrid(A, Q0, λ0; d64_iterations=2, bf_iterations=1, precision_bits=256)
+    refine_symmetric_eigen_hybrid(A, Q0, λ0; d64_iterations = 10, bf_iterations = 5, precision_bits = 256)
 
-Hybrid RefSyEv refinement: Double64 for bulk iterations, BigFloat for final polish.
-Requires DoubleFloats.jl to be loaded.
+[`refine_symmetric_eigen_double64`](@ref) followed by [`refine_symmetric_eigen`](@ref) in
+BigFloat at `precision_bits`, started from its result. Requires DoubleFloats.jl.
 """
 function refine_symmetric_eigen_hybrid end
 
@@ -1176,10 +1179,11 @@ type; its two norms are floating-point diagnostics, not bounds. Requires MultiFl
 function refine_schur_multifloat end
 
 """
-    refine_symmetric_eigen_multifloat(A, Q0, λ0; precision=:x2, max_iterations=2, certify=true, bigfloat_precision=256)
+    refine_symmetric_eigen_multifloat(A, Q0, λ0; precision = :x2, max_iterations = 10, tol = 0)
 
-Refine symmetric eigenvalue decomposition using MultiFloats arithmetic.
-Requires MultiFloats.jl to be loaded.
+[`refine_symmetric_eigen`](@ref) with a MultiFloat (`:x2`, `:x4`, `:x8`) as the high precision
+in place of BigFloat. Returns a [`SymmetricEigenRefinementResult`](@ref) with `Q` and `λ` in
+that type; its two norms are floating-point diagnostics, not bounds. Requires MultiFloats.jl.
 """
 function refine_symmetric_eigen_multifloat end
 

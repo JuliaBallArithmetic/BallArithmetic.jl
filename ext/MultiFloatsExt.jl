@@ -47,7 +47,8 @@ Fast SVD refinement using MultiFloats arithmetic.
 - `U, Σ, V`: Initial SVD approximation (from LAPACK)
 - `precision`: MultiFloats precision (`:x2` = 106 bits, `:x4` = 212 bits, `:x8` = 424 bits)
 - `max_iterations`: Number of refinement iterations (default: 2)
-- `certify_with_bigfloat`: If true, compute final residual with BigFloat for rigor
+- `certify_with_bigfloat`: if true, the factors are returned in BigFloat and the residual is
+  evaluated there (a floating-point diagnostic, not a bound)
 
 # Precision Guide
 - `:x2` (Float64x2): ~106 bits, similar to Double64, fastest
@@ -81,10 +82,10 @@ function BallArithmetic.ogita_svd_refine_multifloat(
     Σ_mf = convert.(MF, Σ)
 
     # Run refinement in MultiFloats
-    result_mf = _ogita_svd_refine_multifloat_impl(A_mf, U_mf, Σ_mf, V_mf, max_iterations)
+    result_mf = _ogita_svd_refine_impl(A_mf, U_mf, Σ_mf, V_mf, max_iterations, false)
 
     if certify_with_bigfloat
-        # Final certification with BigFloat for rigorous error bound
+        # the residual evaluated in BigFloat: a diagnostic, not a bound
         # a scoped setting: a global one has no effect inside a caller's scoped block
         return setprecision(BigFloat, bigfloat_precision) do
             # Convert refined SVD to BigFloat
@@ -100,7 +101,7 @@ function BallArithmetic.ogita_svd_refine_multifloat(
             Σ_vec = isa(result_mf.Σ, Diagonal) ? diag(result_mf.Σ) : result_mf.Σ
             Σ_bf = convert.(BigFloat, Σ_vec)
 
-            # Compute rigorous residual norm
+            # the norm of the residual, in floating point
             residual = A_bf - U_bf * Diagonal(Σ_bf) * V_bf'
             residual_norm = _spectral_norm_bound(residual)
 
@@ -128,114 +129,6 @@ function BallArithmetic.ogita_svd_refine_multifloat(
     end
 end
 
-"""
-Internal implementation of Ogita SVD refinement for MultiFloats.
-"""
-function _ogita_svd_refine_multifloat_impl(A, U, Σ, V, max_iterations)
-    m, n = size(A)
-    min_dim = min(m, n)
-    T = eltype(A)
-    RT = real(T)
-
-    U_curr = copy(U)
-    Σ_curr = copy(Σ)
-    V_curr = copy(V)
-
-    for _ in 1:max_iterations
-        # Step 1: Compute residual matrices
-        R = I - U_curr' * U_curr
-        S = I - V_curr' * V_curr
-        T_matrix = U_curr' * A * V_curr
-
-        # Step 2: Compute refined singular values
-        σ_tilde = zeros(RT, min_dim)
-        for i in 1:min_dim
-            denom = 1 - real(R[i,i] + S[i,i]) / 2
-            σ_tilde[i] = real(T_matrix[i,i] / denom)
-        end
-
-        # Steps 3-7: Compute correction matrices
-        F_tilde = zeros(T, m, m)
-        G_tilde = zeros(T, n, n)
-
-        # Diagonal parts
-        for i in 1:n
-            F_tilde[i,i] = R[i,i] / 2
-            G_tilde[i,i] = S[i,i] / 2
-        end
-
-        # Off-diagonal parts
-        for i in 1:n
-            for j in 1:n
-                if i != j
-                    denom = σ_tilde[j]^2 - σ_tilde[i]^2
-                    if abs(denom) > eps(RT) * max(σ_tilde[i], σ_tilde[j])^2
-                        α = T_matrix[i,j] + σ_tilde[j] * R[i,j]
-                        β = conj(T_matrix[j,i]) + σ_tilde[j] * conj(S[j,i])
-                        F_tilde[i,j] = (α * σ_tilde[j] + β * σ_tilde[i]) / denom
-                        G_tilde[i,j] = (α * σ_tilde[i] + β * σ_tilde[j]) / denom
-                    end
-                end
-            end
-        end
-
-        # F_12 block
-        if m > n
-            for i in 1:n
-                for j in (n+1):m
-                    if abs(σ_tilde[i]) > eps(RT)
-                        F_tilde[i,j] = -T_matrix[j,i] / σ_tilde[i]
-                    end
-                end
-            end
-        end
-
-        # F_21 block
-        if m > n
-            for i in (n+1):m
-                for j in 1:n
-                    F_tilde[i,j] = R[i,j] - F_tilde[j,i]
-                end
-            end
-        end
-
-        # F_22 block
-        if m > n
-            for i in (n+1):m
-                for j in (n+1):m
-                    F_tilde[i,j] = R[i,j] / 2
-                end
-            end
-        end
-
-        # Update
-        U_curr = U_curr * (I + F_tilde)
-        V_curr = V_curr * (I + G_tilde)
-        Σ_curr = σ_tilde
-    end
-
-    # Final singular value computation
-    T_final = U_curr' * A * V_curr
-    R_final = I - U_curr' * U_curr
-    S_final = I - V_curr' * V_curr
-    for i in 1:min_dim
-        denom = one(RT) - real(R_final[i,i] + S_final[i,i]) / 2
-        Σ_curr[i] = abs(T_final[i,i] / denom)
-    end
-
-    # Phase correction for complex matrices
-    if T <: Complex
-        for i in 1:min_dim
-            if abs(T_final[i,i]) > eps(RT)
-                phase = T_final[i,i] / abs(T_final[i,i])
-                U_curr[:, i] .*= phase
-            end
-        end
-    end
-
-    return (U=U_curr, Σ=Σ_curr, V=V_curr)
-end
-
 #==============================================================================#
 # Schur Decomposition Refinement with MultiFloats
 #==============================================================================#
@@ -250,110 +143,15 @@ BallArithmetic.refine_schur_multifloat(A::AbstractMatrix{T}, Q0::Matrix, T0::Mat
         hp = _select_multifloat_type(precision), rng, threshold)
 
 #==============================================================================#
-# Symmetric Eigenvalue Refinement with MultiFloats
+# Symmetric eigendecomposition: RefSyEv of the package with a MultiFloat as the high precision
 #==============================================================================#
 
-"""
-    refine_symmetric_eigen_multifloat(A, Q0, λ0; precision=:x2, max_iterations=2, certify=true)
-
-Refine symmetric eigenvalue decomposition A = Q*Λ*Q' using MultiFloats.
-Uses the RefSyEv algorithm from Ogita & Aishima (2018).
-"""
-function BallArithmetic.refine_symmetric_eigen_multifloat(
-        A::AbstractMatrix{T}, Q0::Matrix, λ0::AbstractVector;
-        precision::Symbol=:x2,
-        max_iterations::Int=2,
-        certify::Bool=true,
-        bigfloat_precision::Int=256) where {T<:Union{Float64, ComplexF64}}
-
-    MF = _select_multifloat_type(precision)
-    n = size(A, 1)
-
-    # Convert to MultiFloats
-    if T <: Complex
-        A_mf = convert.(Complex{MF}, A)
-        Q_mf = convert.(Complex{MF}, Q0)
-    else
-        A_mf = convert.(MF, A)
-        Q_mf = convert.(MF, Q0)
-    end
-    λ_mf = convert.(MF, λ0)
-
-    I_n = Matrix{eltype(Q_mf)}(I, n, n)
-    E_tilde = zeros(eltype(Q_mf), n, n)
-    Q_curr, λ_curr = Q_mf, λ_mf
-
-    for _ in 1:max_iterations
-        R = I_n - Q_curr' * Q_curr
-        S = Q_curr' * A_mf * Q_curr
-
-        # Update eigenvalues
-        for i in 1:n
-            denom = one(MF) - real(R[i, i])
-            if abs(denom) > eps(MF)
-                λ_curr[i] = real(S[i, i] / denom)
-            else
-                λ_curr[i] = real(S[i, i])
-            end
-        end
-
-        # Compute threshold δ
-        D_tilde = Diagonal(λ_curr)
-        S_minus_D_norm = _frobenius_norm_mf(S - D_tilde)
-        R_norm = _frobenius_norm_mf(R)
-        A_norm = _frobenius_norm_mf(A_mf)
-        δ = MF(2) * (S_minus_D_norm + A_norm * R_norm)
-
-        # Compute correction matrix
-        fill!(E_tilde, zero(eltype(E_tilde)))
-        for j in 1:n
-            for i in 1:n
-                if i == j
-                    E_tilde[i, i] = R[i, i] / MF(2)
-                else
-                    λ_diff = λ_curr[j] - λ_curr[i]
-                    if abs(λ_diff) > δ
-                        E_tilde[i, j] = (S[i, j] + λ_curr[j] * R[i, j]) / λ_diff
-                    else
-                        E_tilde[i, j] = R[i, j] / MF(2)
-                    end
-                end
-            end
-        end
-
-        Q_curr = Q_curr * (I_n + E_tilde)
-    end
-
-    if certify
-        # a scoped setting: a global one has no effect inside a caller's scoped block
-        return setprecision(BigFloat, bigfloat_precision) do
-            if T <: Complex
-                Q_bf = convert.(Complex{BigFloat}, Q_curr)
-                A_bf = convert.(Complex{BigFloat}, A)
-            else
-                Q_bf = convert.(BigFloat, Q_curr)
-                A_bf = convert.(BigFloat, A)
-            end
-            λ_bf = convert.(BigFloat, λ_curr)
-
-            I_bf = Matrix{BigFloat}(I, n, n)
-            Λ = Diagonal(λ_bf)
-            reconstruction = Q_bf * Λ * Q_bf'
-            residual_norm = _frobenius_norm(A_bf - reconstruction) / _frobenius_norm(A_bf)
-            orthogonality_defect = _frobenius_norm(I_bf - Q_bf' * Q_bf)
-
-            return SymmetricEigenRefinementResult(Q_bf, λ_bf, max_iterations, residual_norm, orthogonality_defect, true)
-        end
-    else
-        Λ = Diagonal(λ_curr)
-        reconstruction = Q_curr * Λ * Q_curr'
-        residual_norm = _frobenius_norm_mf(A_mf - reconstruction) / _frobenius_norm_mf(A_mf)
-        orthogonality_defect = _frobenius_norm_mf(I_n - Q_curr' * Q_curr)
-
-        return SymmetricEigenRefinementResult(Q_curr, λ_curr, max_iterations,
-            convert(BigFloat, residual_norm), convert(BigFloat, orthogonality_defect), true)
-    end
-end
+BallArithmetic.refine_symmetric_eigen_multifloat(A::AbstractMatrix{T}, Q0::Matrix,
+    λ0::AbstractVector; precision::Symbol = :x2, max_iterations::Int = 10, tol::Real = 0.0,
+    certify::Bool = true,
+    bigfloat_precision::Int = 256) where {T <: Union{Float64, ComplexF64}} =
+    BallArithmetic._refine_symmetric_eigen_impl(A, Q0, λ0, max_iterations, tol;
+        hp = _select_multifloat_type(precision))
 
 #==============================================================================#
 # Helper Functions
@@ -381,17 +179,6 @@ function _precision_bits(::Type{Float64x4})
 end
 function _precision_bits(::Type{Float64x8})
     return 424
-end
-
-"""Frobenius norm for MultiFloat matrices."""
-function _frobenius_norm_mf(A::AbstractMatrix{T}) where T
-    s = zero(real(T))
-    @inbounds for j in axes(A, 2)
-        for i in axes(A, 1)
-            s += abs2(A[i, j])
-        end
-    end
-    return sqrt(s)
 end
 
 """Spectral norm bound for MultiFloat matrices."""

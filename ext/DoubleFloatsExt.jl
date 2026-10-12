@@ -67,7 +67,7 @@ function BallArithmetic.ogita_svd_refine_fast(
     result_d64 = _ogita_svd_refine_impl(A_d64, U_d64, Σ_d64, V_d64, max_iterations, false)
 
     if certify_with_bigfloat
-        # Final certification with BigFloat for rigorous error bound
+        # the residual evaluated in BigFloat: a diagnostic, not a bound
         # a scoped setting: a global one has no effect inside a caller's scoped block
         return setprecision(BigFloat, bigfloat_precision) do
             # Convert refined SVD to BigFloat
@@ -83,7 +83,7 @@ function BallArithmetic.ogita_svd_refine_fast(
             Σ_vec = isa(result_d64.Σ, Diagonal) ? diag(result_d64.Σ) : result_d64.Σ
             Σ_bf = convert.(BigFloat, Σ_vec)
 
-            # Compute rigorous residual norm
+            # the norm of the residual, in floating point
             residual = A_bf - U_bf * Diagonal(Σ_bf) * V_bf'
             residual_norm = _spectral_norm_bound(residual)
 
@@ -96,7 +96,7 @@ function BallArithmetic.ogita_svd_refine_fast(
             )
         end
     else
-        # Return Double64 result directly (no rigorous certification)
+        # the Double64 result as it is
         Σ_vec = isa(result_d64.Σ, Diagonal) ? diag(result_d64.Σ) : result_d64.Σ
         residual = A_d64 - result_d64.U * Diagonal(Σ_vec) * result_d64.V'
         residual_norm = _spectral_norm_bound(residual)
@@ -211,178 +211,27 @@ function BallArithmetic.refine_schur_hybrid(A::AbstractMatrix{T}, Q0::Matrix, T0
 end
 
 #==============================================================================#
-# Symmetric Eigenvalue Refinement (RefSyEv) with Double64
+# Symmetric eigendecomposition: RefSyEv of the package with Double64 as the high precision
 #==============================================================================#
 
-"""
-    refine_symmetric_eigen_double64(A, Q0, λ0; max_iterations=2, certify_with_bigfloat=true)
+BallArithmetic.refine_symmetric_eigen_double64(A::AbstractMatrix{T}, Q0::Matrix,
+    λ0::AbstractVector; max_iterations::Int = 10, tol::Real = 0.0,
+    certify_with_bigfloat::Bool = true,
+    bigfloat_precision::Int = 256) where {T <: Union{Float64, ComplexF64}} =
+    BallArithmetic._refine_symmetric_eigen_impl(A, Q0, λ0, max_iterations, tol; hp = Double64)
 
-Fast symmetric eigenvalue refinement using Double64 arithmetic.
-
-This applies the RefSyEv algorithm (Ogita & Aishima 2018) using Double64 for speed.
-"""
-function BallArithmetic.refine_symmetric_eigen_double64(
-        A::AbstractMatrix{T}, Q0::Matrix, λ0::AbstractVector;
-        max_iterations::Int=2,
-        certify_with_bigfloat::Bool=true,
-        bigfloat_precision::Int=256) where {T<:Union{Float64, ComplexF64}}
-
-    n = size(A, 1)
-
-    # Convert to Double64
-    if T <: Complex
-        A_d64 = convert.(Complex{Double64}, A)
-        Q_d64 = convert.(Complex{Double64}, Q0)
-    else
-        A_d64 = convert.(Double64, A)
-        Q_d64 = convert.(Double64, Q0)
-    end
-    λ_d64 = convert.(Double64, λ0)
-
-    # RefSyEv iterations in Double64
-    Q_curr, λ_curr = Q_d64, λ_d64
-    I_n = Matrix{eltype(Q_d64)}(I, n, n)
-    E_tilde = zeros(eltype(Q_d64), n, n)
-
-    for _ in 1:max_iterations
-        # R = I - Q'Q
-        R = I_n - Q_curr' * Q_curr
-
-        # S = Q'AQ
-        S = Q_curr' * A_d64 * Q_curr
-
-        # Update eigenvalues: λ̃_i = s_ii / (1 - r_ii)
-        for i in 1:n
-            denom = one(Double64) - real(R[i, i])
-            if abs(denom) > eps(Double64)
-                λ_curr[i] = real(S[i, i] / denom)
-            else
-                λ_curr[i] = real(S[i, i])
-            end
-        end
-
-        # Compute threshold δ
-        D_tilde = Diagonal(λ_curr)
-        S_minus_D_norm = _frobenius_norm_d64(S - D_tilde)
-        R_norm = _frobenius_norm_d64(R)
-        A_norm = _frobenius_norm_d64(A_d64)
-        δ = Double64(2) * (S_minus_D_norm + A_norm * R_norm)
-
-        # Compute correction matrix Ẽ
-        fill!(E_tilde, zero(eltype(E_tilde)))
-        for j in 1:n
-            for i in 1:n
-                if i == j
-                    E_tilde[i, i] = R[i, i] / Double64(2)
-                else
-                    λ_diff = λ_curr[j] - λ_curr[i]
-                    if abs(λ_diff) > δ
-                        E_tilde[i, j] = (S[i, j] + λ_curr[j] * R[i, j]) / λ_diff
-                    else
-                        E_tilde[i, j] = R[i, j] / Double64(2)
-                    end
-                end
-            end
-        end
-
-        # Update Q = Q(I + Ẽ)
-        Q_curr = Q_curr * (I_n + E_tilde)
-    end
-
-    if certify_with_bigfloat
-        # a scoped setting: a global one has no effect inside a caller's scoped block
-        return setprecision(BigFloat, bigfloat_precision) do
-            if T <: Complex
-                Q_bf = convert.(Complex{BigFloat}, Q_curr)
-                A_bf = convert.(Complex{BigFloat}, A)
-            else
-                Q_bf = convert.(BigFloat, Q_curr)
-                A_bf = convert.(BigFloat, A)
-            end
-            λ_bf = convert.(BigFloat, λ_curr)
-
-            # Compute rigorous residual
-            Λ = Diagonal(λ_bf)
-            reconstruction = Q_bf * Λ * Q_bf'
-            residual_norm = BallArithmetic._frobenius_norm(A_bf - reconstruction) / BallArithmetic._frobenius_norm(A_bf)
-
-            I_n_bf = Matrix{BigFloat}(I, n, n)
-            orthogonality_defect = BallArithmetic._frobenius_norm(I_n_bf - Q_bf' * Q_bf)
-
-            return BallArithmetic.SymmetricEigenRefinementResult(
-                Q_bf, λ_bf, max_iterations, residual_norm, orthogonality_defect, true
-            )
-        end
-    else
-        Λ = Diagonal(λ_curr)
-        reconstruction = Q_curr * Λ * Q_curr'
-        residual_norm_d64 = _frobenius_norm_d64(A_d64 - reconstruction) / _frobenius_norm_d64(A_d64)
-        orthogonality_defect_d64 = _frobenius_norm_d64(I_n - Q_curr' * Q_curr)
-
-        # Keep types consistent: Q is Double64, λ is Double64, so residual should be Double64
-        return BallArithmetic.SymmetricEigenRefinementResult(
-            Matrix(Q_curr), Vector(λ_curr), max_iterations,
-            residual_norm_d64,
-            orthogonality_defect_d64,
-            true
-        )
-    end
-end
-
-"""
-    refine_symmetric_eigen_hybrid(A, Q0, λ0; d64_iterations=2, bf_iterations=1, precision_bits=256)
-
-Hybrid symmetric eigenvalue refinement: Double64 for bulk iterations, BigFloat for final polish.
-"""
-function BallArithmetic.refine_symmetric_eigen_hybrid(
-        A::AbstractMatrix{T}, Q0::Matrix, λ0::AbstractVector;
-        d64_iterations::Int=2,
-        bf_iterations::Int=1,
-        precision_bits::Int=256) where {T<:Union{Float64, ComplexF64}}
-
-    # Phase 1: Fast refinement in Double64
-    d64_result = BallArithmetic.refine_symmetric_eigen_double64(A, Q0, λ0;
-        max_iterations=d64_iterations, certify_with_bigfloat=false)
-
-    # Phase 2: Polish and certify in BigFloat
-    # a scoped setting: a global one has no effect inside a caller's scoped block
-    return setprecision(BigFloat, precision_bits) do
-        if T <: Complex
-            A_bf = convert.(Complex{BigFloat}, A)
-            Q_bf = convert.(Complex{BigFloat}, d64_result.Q)
-        else
-            A_bf = convert.(BigFloat, A)
-            Q_bf = convert.(BigFloat, d64_result.Q)
-        end
-        λ_bf = convert.(BigFloat, d64_result.λ)
-
-        # Run BigFloat iterations
-        result_bf = BallArithmetic._refine_symmetric_eigen_impl(A_bf, Q_bf, λ_bf, bf_iterations, 0.0)
-
-        return BallArithmetic.SymmetricEigenRefinementResult(
-            result_bf.Q, result_bf.λ,
-            d64_iterations + bf_iterations,
-            result_bf.residual_norm,
-            result_bf.orthogonality_defect,
-            result_bf.converged
-        )
-    end
+function BallArithmetic.refine_symmetric_eigen_hybrid(A::AbstractMatrix{T}, Q0::Matrix,
+        λ0::AbstractVector; d64_iterations::Int = 10, bf_iterations::Int = 5,
+        precision_bits::Int = 256) where {T <: Union{Float64, ComplexF64}}
+    r = BallArithmetic.refine_symmetric_eigen_double64(A, Q0, λ0;
+        max_iterations = d64_iterations)
+    return BallArithmetic.refine_symmetric_eigen(A, r.Q, r.λ;
+        target_precision = precision_bits, max_iterations = bf_iterations)
 end
 
 #==============================================================================#
 # Helper Functions for Double64
 #==============================================================================#
-
-"""Frobenius norm for Double64 matrices."""
-function _frobenius_norm_d64(A::AbstractMatrix{T}) where T
-    s = zero(real(T))
-    @inbounds for j in axes(A, 2)
-        for i in axes(A, 1)
-            s += abs2(A[i, j])
-        end
-    end
-    return sqrt(s)
-end
 
 #==============================================================================#
 # Oishi 2023 Schur Complement with Double64 Oracle
