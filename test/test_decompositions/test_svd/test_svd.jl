@@ -93,21 +93,18 @@ end
 
     result = schur_gershgorin_enclosure(Σ)
 
+    # one cluster for the double value 5 and one for 2; their order follows the reduction
     @test length(result.clusters) == 2
-    @test result.clusters[1] == 1:1
-    @test result.clusters[2] == 2:3
+    @test sort(length.(result.clusters)) == [1, 2]
+    @test sort(reduce(vcat, collect.(result.clusters))) == [1, 2, 3]
 
-    @test result.block_diagonal.c[1, 2] == 0
-    @test result.block_diagonal.c[1, 3] == 0
-    @test result.block_diagonal.c[2, 1] == 0
-    @test result.block_diagonal.c[3, 1] == 0
-    @test result.block_diagonal.r[1, 2] == 0
-    @test result.block_diagonal.r[1, 3] == 0
-    @test result.block_diagonal.r[2, 1] == 0
-    @test result.block_diagonal.r[3, 1] == 0
-
-    @test result.remainder.c[1, 2] ≈ result.transformed.c[1, 2]
-    @test result.remainder.c[1, 3] ≈ result.transformed.c[1, 3]
+    # entries between the two clusters: zero in the block diagonal part, and in the remainder
+    c1, c2 = result.clusters
+    for (i, j) in Iterators.flatten((Iterators.product(c1, c2), Iterators.product(c2, c1)))
+        @test result.block_diagonal.c[i, j] == 0
+        @test result.block_diagonal.r[i, j] == 0
+        @test result.remainder.c[i, j] ≈ result.transformed.c[i, j]
+    end
     @test result.remainder_norm ≥ 0
     collatz = BallArithmetic.collatz_upper_bound_L2_opnorm(result.remainder)
     @test result.remainder_norm <= collatz
