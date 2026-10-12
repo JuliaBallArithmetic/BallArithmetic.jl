@@ -280,7 +280,7 @@ end
 Compute diag(1./d) * M with rigorous bounds, where d are the diagonal elements
 and d_rad contains the radii of the diagonal.
 """
-function _diagonal_scale_left(d::Vector{T}, d_rad::AbstractMatrix{T},
+function _diagonal_scale_left(d::Vector{<:Union{T, Complex{T}}}, d_rad::AbstractMatrix{T},
                                M::BallMatrix{T}) where {T}
     m, n_cols = size(M)
     length(d) == m || throw(DimensionMismatch("d must have length equal to rows of M"))
@@ -288,7 +288,7 @@ function _diagonal_scale_left(d::Vector{T}, d_rad::AbstractMatrix{T},
     result_mid = similar(M_mid)
     result_rad = similar(M_rad)
     for i in 1:m
-        if sub_down(abs(d[i]), d_rad[i, i]) ≤ zero(T)
+        if sub_down(abs_down(d[i]), d_rad[i, i]) ≤ zero(T)
             # the diagonal entry may vanish: no bound of the inverse
             result_mid[i, :] .= zero(T)
             result_rad[i, :] .= T(Inf)
