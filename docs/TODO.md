@@ -691,5 +691,28 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     Not measured: complex factors, non-negative factors (the radius products, where only the
     upper bound is used), one thread, sizes above 1600, matrices with cancellation.
     Suite at b06c31d on nighthawk: 183,039 passed, none failed (`rigour_suite59.out`).
-    **To decide (Isaia):** whether `_product_down_up` and `_product_up` call it, and from
-    which size the split route.
+    **Decided (Isaia, 2026-10-12):** `MMul4` is the default, called by `*`, and the code uses
+    `*` only; the Dot2Err route stays as an alternative that nothing calls.
+
+36. **The MMul routines read against their sources, 2026-10-12.** Sources: S. M. Rump, Fast
+    interval matrix multiplication, Numer. Algorithms 61 (2012) 1-34 (Theorem 2.1, Algorithms
+    4.3, 4.5, 4.7, 4.9); Revol and Théveny (2013), Algorithms 1 and 2; Théveny's thesis (2014).
+    `MMul4` is Algorithm 4.5 with the conversion to midpoint and radius. `MMul3` is Algorithm
+    4.7 (and 4.3 for a point factor) with `(k + 2)·2⁻⁵²` where the paper has `(k + 2)·2⁻⁵³`.
+    `MMul5` is Algorithm 4.9; its error bound had half of the paper's `realmin`, and it threw
+    on every `Float32` input (a `Float64` literal in the radius): both corrected at 59422a8,
+    suite 183,048 passed, none failed (`rigour_suite60.out`). `MMul3` and `MMul5` accepted
+    complex ball matrices, for which the algorithms are not stated: restricted to real at
+    6b7dc28, and both check the paper's bound on the inner dimension. Enclosure check before
+    the changes, `check_mmul.jl` on nighthawk: 0 entries outside the ball for `MMul3`, `MMul4`,
+    `MMul5` and `*` in `Float64` (651,520 each), `MMul3`, `MMul4`, `*` in `Float32` (162,880
+    each), `MMul3`, `MMul5`, `*` in `ComplexF64` (651,520 each).
+    The matrix of `rounding_test`, run when the module is loaded, is the example of Section
+    5.1.3 of the thesis; the INTLAB page that gives CONSISTENT_FPCSR as a remedy is cited in
+    the README and beside the import.
+    `blas_rounding_cases.jl` on nighthawk: 0 entries of `_product_down_up` on the wrong side
+    for dense `Float64` and `Float32`, n from 1 to 150, and for views, adjoint, transpose,
+    triangular, diagonal, symmetric and rectangular factors at n = 2, 3, 8, 64.
+    **Open:** `MMul2` is a stub that warns "Not Implemented" (thesis, Algorithm 9): implement
+    or remove. `MMul3` and `MMul5` rest on the products `mA·mB` and `|mA|·|mB|` being computed
+    in the same order (Remark 1 of Rump's paper).

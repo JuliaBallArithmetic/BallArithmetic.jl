@@ -39,24 +39,15 @@
 # midpoint is O(m n k) scalar operations with no BLAS, some ten flops per summand, threaded over the
 # output columns; the complex ball product it is compared against itself issues several GEMMs for the
 # real and imaginary parts plus the absolute-value products, which is why the crossover is as late as
-# it is. `*` nonetheless continues to dispatch to MMul4: making this the default is a separate
-# decision, since the kernel's own tests assert particular radii in places.
+# it is. `*` dispatches to MMul4, see the note below.
 #
 # The Ozaki scheme, which recovers full BLAS speed by splitting until the accumulations are
 # themselves exact, would remove even the k = 1600 penalty and is not implemented.
 
-# TODO (next version): compute the radius in round-to-nearest, with no `setrounding`. The three
-# products in it, |A||B|, |A| rad(B) and rad(A)(|B| + rad(B)), have nonnegative factors, so a
-# nearest-rounded GEMM s̃ of k terms satisfies s <= s̃/(1 - γ_k), and one elementwise `mul_up` by
-# an upper bound of 1/(1 - γ_k) makes it an upper bound; the accuracy term and the sums are then
-# elementwise `mul_up`/`add_up`, O(n²) emulated operations. Nothing would then depend on the BLAS
-# honouring the rounding mode, which is what OpenBLASConsistentFPCSR_jll is here for. To settle
-# first: that OpenBLAS's gemm satisfies the k-term error model (FMA does; a Strassen-type scheme
-# would not), and an absolute term for underflow, where γ_k does not hold. The cost on the radius
-# is a relative γ_k, ~1e-12 at k = 5000; the γ_N² of the midpoint is untouched. The plan for the
-# next version is to make the prodK route, this one, the default `*` in place of MMul4's
-# directed-rounding BLAS products; the measured cost above (faster below k = 400, 3.6x slower at
-# 1600) is what that decision has to weigh at large k.
+# The default product stays `MMul4` (Isaia, 2026-10-12): `*` calls it and the code of the package
+# uses `*` only. `MMul4` evaluates BLAS products under `RoundUp` and `RoundDown`, on the OpenBLAS
+# built with CONSISTENT_FPCSR that the module loads (see `src/BallArithmetic.jl`). This routine
+# and `_product_down_up_dot2err` below are alternatives that are not called by `*`.
 
 export mmul_ogita_rump_oishi_2005
 
@@ -127,10 +118,8 @@ six additions, both in round-to-nearest. Only the radius is accumulated under `R
 **Cost.** `O(mnk)` scalar operations with no BLAS, threaded over the output columns. Measured on 16
 threads against the ball `*` on complex matrices with radius zero, it is *faster* below about
 `k = 400` — `0.55×` at `k = 200`, `0.41×` at `400` — and `1.32×` at `800`, `3.59×` at `1600`, with the
-radius ratio improving from `0.0075` to `0.0029` over the same range. `*` nonetheless continues to
-dispatch to [`MMul4`](@ref); making this the default is a separate decision, since some of the
-kernel's tests assert particular radii. Removing even the `k = 1600` penalty needs the Ozaki scheme,
-which is not implemented here.
+radius ratio improving from `0.0075` to `0.0029` over the same range. `*` dispatches to
+[`MMul4`](@ref), which is the default product of the package.
 
 # Reference
 
