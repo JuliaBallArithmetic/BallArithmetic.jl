@@ -517,3 +517,13 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     In all, 410 and 145 lines removed. `docs/src/literate/benchmark_warmstart_circle.tex` still
     names the second.
 
+30. **`BallMatrix(Float64, A)` for a matrix of Arb numbers, 2026-10-12.** The radius was formed
+    as `Float64(midpoint) + Float64(radius)` of an Arb sum under the rounding mode upward; the
+    conversion of an Arb number to `Float64` rounds to nearest whatever the mode.
+    `probe_arb_conversion.jl`: 9939 and 10053 of 20000 converted balls did not contain their Arb
+    ball (Arb precision 128 and 512), by at most 1.1e-16 of the radius; the BigFloat conversion
+    had none at 64, 128, 256 and 1024 bits. Now each converted number is moved to the next
+    float when it fell below the exact one, and the complex radius is `hi √(1 + (lo/hi)²)`, the
+    squares of tiny radii having underflowed in the direct formula. Test: containment at 4096
+    bits, in `test_arbnumerics_ext.jl`.
+
