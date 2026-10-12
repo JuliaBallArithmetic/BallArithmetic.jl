@@ -1344,7 +1344,7 @@ function _parametric_setup(schur_matrix::BallMatrix, k, config::ResolventBoundCo
     all(iszero, schur_matrix.r) ||
         throw(ArgumentError("the parametric certifier needs a Schur factor with zero radius"))
     precomp = sylvester_resolvent_precompute(Matrix(schur_matrix.c), k_used)
-    precomp.precomputation_success ||
+    precomp.certified ||
         error("Sylvester precomputation failed: $(precomp.failure_reason)")
     @info "Parametric certification with k=$k_used (n=$n)"
     @info "Configuration: $(config.d_inv_estimator), $(config.coupling_estimator)"

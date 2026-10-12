@@ -33,7 +33,7 @@ using JuMP, HiGHS
             bc = randn(rng, n)
             bΔ = rand(rng, n) .* 10.0^rand(rng, -3:0.5:-0.5)
             A, b = BallMatrix(Ac, AΔ), BallVector(bc, bΔ)
-            is_regular(A).is_regular || continue
+            is_regular(A).certified || continue
             x0 = interval_initial_enclosure(A, b)
             all(isfinite, rad(x0)) || continue
             sols = vertex_solutions(Ac, AΔ, bc, bΔ)

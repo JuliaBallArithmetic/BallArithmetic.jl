@@ -14,14 +14,14 @@
 Result of a regularity test.
 
 # Fields
-- `is_regular::Bool`: `true` when regularity is proved; `false` when the test is inconclusive
+- `certified::Bool`: `true` when regularity is proved; `false` when the test is inconclusive
 - `method::Symbol`: the condition that was tried last
 - `certificate::T`: the quantity compared in that condition, as described by each routine
 
-The conditions are sufficient: `is_regular = false` does not say that the matrix is singular.
+The conditions are sufficient: `certified = false` does not say that the matrix is singular.
 """
 struct RegularityResult{T}
-    is_regular::Bool
+    certified::Bool
     method::Symbol
     certificate::T
 end
@@ -182,9 +182,9 @@ function is_regular(A::BallMatrix{T};
         else
             throw(ArgumentError("unknown regularity test $method"))
         end
-        verbose && println(method, ": ", result.is_regular ? "regular" : "inconclusive",
+        verbose && println(method, ": ", result.certified ? "regular" : "inconclusive",
             " (certificate ", result.certificate, ")")
-        result.is_regular && return result
+        result.certified && return result
         last_result = result
     end
     return last_result

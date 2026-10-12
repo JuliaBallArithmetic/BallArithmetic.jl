@@ -91,7 +91,7 @@ using BallArithmetic
         n, k = 8, 3
         T = Matrix(UpperTriangular(0.3 * randn(ComplexF64, n, n))) + Diagonal(ComplexF64.(1:n))
         p = sylvester_resolvent_precompute(T, k)
-        @test p.precomputation_success && p.k == k && p.n == n
+        @test p.certified && p.k == k && p.n == n
         @test p.residual_norm < 1e-12
         @test p.similarity_cond ≥ 1
         # R encloses T12 + T11 X − X T22 for the X stored, evaluated at 512 bits
@@ -106,17 +106,17 @@ using BallArithmetic
 
         # any X is admissible: with X = 0 the residual is T12 and the similarity is the identity
         p0 = sylvester_resolvent_precompute(T, k; X_oracle = zeros(k, n - k))
-        @test p0.precomputation_success && p0.similarity_cond == 1
+        @test p0.certified && p0.similarity_cond == 1
         @test p0.residual_norm ≥ opnorm(T[1:k, (k + 1):n]) * tol
 
         # structure that the identity needs
         Tbad = copy(T); Tbad[n, 1] = 1e-300
-        @test !sylvester_resolvent_precompute(Tbad, k).precomputation_success
+        @test !sylvester_resolvent_precompute(Tbad, k).certified
         Tbad = copy(T); Tbad[n, n - 1] = 1e-300
         pbad = sylvester_resolvent_precompute(Tbad, k)
-        @test !pbad.precomputation_success && occursin("upper triangular", pbad.failure_reason)
+        @test !pbad.certified && occursin("upper triangular", pbad.failure_reason)
         @test !parametric_resolvent_bound(pbad, Tbad, 0.5 + 0im).certified
-        @test !sylvester_resolvent_precompute(T, k; X_oracle = fill(NaN, k, n - k)).precomputation_success
+        @test !sylvester_resolvent_precompute(T, k; X_oracle = fill(NaN, k, n - k)).certified
         @test_throws ArgumentError sylvester_resolvent_precompute(T, 0)
         @test_throws ArgumentError sylvester_resolvent_precompute(T, n)
         @test_throws ArgumentError sylvester_resolvent_precompute(ones(2, 3), 1)
@@ -224,7 +224,7 @@ using BallArithmetic
             T = Complex{BigFloat}.(Matrix(UpperTriangular(0.3 * randn(ComplexF64, n, n))) +
                                    Diagonal(ComplexF64.(1:n)))
             p = sylvester_resolvent_precompute(T, k)
-            @test p.precomputation_success && p.residual_norm isa BigFloat
+            @test p.certified && p.residual_norm isa BigFloat
             for (_, cfg) in configs
                 r = parametric_resolvent_bound(p, T, 0.3 + 0.4im, cfg)
                 @test r.certified && r.resolvent_bound isa BigFloat

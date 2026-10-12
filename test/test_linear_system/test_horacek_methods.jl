@@ -59,7 +59,7 @@ _hull_radius(sols) = maximum(
             bc = randn(rng, n)
             bΔ = rand(rng, n) .* 10.0^rand(rng, -4:-1)
             A, b = BallMatrix(Ac, AΔ), BallVector(bc, bΔ)
-            is_regular(A).is_regular || continue
+            is_regular(A).certified || continue
             sols = _vertex_solutions(Ac, AΔ, bc, bΔ)
             for method in (:proposition, :norm, :auto)
                 x0 = interval_initial_enclosure(A, b; method)
@@ -205,7 +205,7 @@ end
             bc = randn(rng, n)
             bΔ = rand(rng, n) .* 10.0^rand(rng, -4:-1)
             A, b = BallMatrix(Ac, AΔ), BallVector(bc, bΔ)
-            is_regular(A).is_regular || continue
+            is_regular(A).certified || continue
             sols = _vertex_solutions(Ac, AΔ, bc, bΔ)
             for (key, r) in ((:preconditioned, hbr_method(A, b)), (:simple, hbr_method_simple(A, b)))
                 r.certified || continue
@@ -330,7 +330,7 @@ end
 
         result = is_regular_sufficient_condition(A)
 
-        @test result.is_regular
+        @test result.certified
         @test result.certificate > 0
     end
 
@@ -341,7 +341,7 @@ end
 
         result = is_regular_gershgorin(A)
 
-        @test result.is_regular
+        @test result.certified
     end
 
     @testset "Diagonal Dominance Test" begin
@@ -349,7 +349,7 @@ end
 
         result = is_regular_diagonal_dominance(A)
 
-        @test result.is_regular
+        @test result.certified
         @test result.method == :diagonal_dominance
     end
 
@@ -358,7 +358,7 @@ end
 
         result = is_regular(A, verbose=false)
 
-        @test result.is_regular
+        @test result.certified
     end
 
     @testset "Singularity Test" begin
@@ -367,7 +367,7 @@ end
 
         # Should not be able to prove regularity
         result = is_regular(A)
-        @test !result.is_regular
+        @test !result.certified
     end
 end
 
@@ -387,12 +387,12 @@ end
         end
         return signs
     end
-    regular_methods = (A -> is_regular_sufficient_condition(A).is_regular,
-        A -> is_regular_sufficient_condition(A; condition = 2).is_regular,
-        A -> is_regular_spectral_radius(A).is_regular,
-        A -> is_regular_diagonal_dominance(A).is_regular,
-        A -> is_regular_gershgorin(A).is_regular,
-        A -> is_regular(A).is_regular)
+    regular_methods = (A -> is_regular_sufficient_condition(A).certified,
+        A -> is_regular_sufficient_condition(A; condition = 2).certified,
+        A -> is_regular_spectral_radius(A).certified,
+        A -> is_regular_diagonal_dominance(A).certified,
+        A -> is_regular_gershgorin(A).certified,
+        A -> is_regular(A).certified)
     proved_regular = zeros(Int, length(regular_methods))
     proved_singular = zeros(Int, 4)
     for n in (2, 3), _ in 1:400
@@ -423,10 +423,10 @@ end
 
     # Examples 4.36 and 4.39 of the thesis
     A36 = BallMatrix([1.0 1.0; -1.0 1.0], [1.0 0.0; 0.0 1.0])
-    @test !is_regular_spectral_radius(A36).is_regular
+    @test !is_regular_spectral_radius(A36).certified
     A39 = BallMatrix([0.5 1.0; -1.0 0.5], [0.5 0.0; 0.0 0.5])
     r39 = is_regular_spectral_radius(A39)
-    @test r39.is_regular && 0.6 <= r39.certificate < 0.6 + 1e-12
+    @test r39.certified && 0.6 <= r39.certificate < 0.6 + 1e-12
 
     # each condition of Theorem 11.13 on a matrix built for it
     Z = BallMatrix(zeros(3, 3), Matrix(1.0I, 3, 3))
@@ -631,7 +631,7 @@ end
 
         # 1. Check regularity
         reg_result = is_regular(A)
-        @test reg_result.is_regular
+        @test reg_result.certified
 
         # 2. Compute preconditioner
         prec = compute_preconditioner(A)

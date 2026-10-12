@@ -43,7 +43,8 @@ the split `T = [T₁₁ T₁₂; 0 T₂₂]` at index `k` and an approximate sol
 - `reduction_factor`, `net_penalty`: the diagnostics `residual_norm/coupling_norm` and its product
   with `similarity_cond`, in plain floating point; they enter no bound
 - `k`, `n`: the split index and the size of `T`
-- `precomputation_success`, `failure_reason`
+- `certified`: `true` when the bounds were obtained; `false`, with `failure_reason`, when the
+  structure is not the required one or `X` is not finite
 - `X`: the matrix `X` used
 - `R`: a `BallMatrix` containing `R`
 """
@@ -55,7 +56,7 @@ struct SylvesterResolventResult{T}
     net_penalty::T
     k::Int
     n::Int
-    precomputation_success::Bool
+    certified::Bool
     failure_reason::String
     X::Matrix{Complex{T}}
     R::DenseBallMatrix{T, Complex{T}}
@@ -125,7 +126,7 @@ triangular. `X_oracle` is the matrix `X` of the similarity; when it is not given
 `R = T₁₂ + T₁₁X − XT₂₂` is enclosed in ball arithmetic for the `X` used, and its norm and the
 norm of `X` are bounded from above (`upper_bound_L2_opnorm`).
 
-Returns a [`SylvesterResolventResult`](@ref); `precomputation_success` is `false`, with the
+Returns a [`SylvesterResolventResult`](@ref); `certified` is `false`, with the
 reason, when the structure is not the required one or `X` is not finite.
 """
 function sylvester_resolvent_precompute(T::AbstractMatrix{ET}, k::Int;
@@ -369,7 +370,7 @@ function parametric_resolvent_bound(precomp::SylvesterResolventResult{RT}, T::Ab
     zc = Complex{RT}(z)
     fail(reason) = ParametricResolventResult{RT}(zc, RT(Inf), false, reason, config,
         RT(Inf), RT(Inf), RT(Inf), RT(Inf), RT(Inf))
-    precomp.precomputation_success ||
+    precomp.certified ||
         return fail("Precomputation failed: $(precomp.failure_reason)")
     size(T) == (precomp.n, precomp.n) ||
         throw(DimensionMismatch("T is not the matrix of the precomputation"))
