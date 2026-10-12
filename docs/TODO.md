@@ -485,3 +485,22 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     three: `nmin = 32` in the recursive solve of the triangular equation (the paper's
     experiments use 4); the real Schur form is refused.
 
+28. **To do: the Schur refinement on the MatrixMarket matrices of the paper.** Example 4 of
+    Bujanović, Kressner and Schröder (2023) runs Algorithm 4 on matrices from MatrixMarket,
+    double precision refined to quadruple. Its Table 3, for the real Schur form: `olm100`,
+    `tols90`, `tub100`, `bwm200`, `olm500`, `olm1000`, `tub1000`, `bwm2000`, `dw2048` converge
+    in 3 or 4 iterations, with `‖I − Q*Q‖_F` between 2.7e-32 and 1.3e-31 and
+    `‖stril(Q*AQ)‖_F/‖A‖_F` between 2.7e-34 and 3.5e-33; `rdb200`, `rdb200l`, `tols1090`,
+    `rdb1250` do not converge. Its Table 4, for the complex Schur form with the truncation at
+    1e-5: those four converge in 4, 4, 5 and 4 iterations.
+    To run: the three methods of `refine_schur_decomposition` on these thirteen matrices, with
+    `Double64` as the high precision (the closest to the paper's quadruple) and with BigFloat,
+    and compare with the two tables: which converge, in how many iterations, the two defects.
+    The interest is `:bujanovicetal2023truncated`, which on the construction of Example 3
+    (`probe_schur_refinement_methods.jl`, size 150, one matrix per row) did not converge in
+    three of four cases where the untruncated algorithm did; the tables are where the paper
+    reports that the truncation helps. Not comparable as they stand: Table 3 is for the real
+    Schur form, which the routines here refuse, so the first nine would be run on the complex
+    form. `rdb200` is already in the catalogue of the companion package's benchmarks; the
+    others are to be fetched (data go to `~/ResearchData`, not into the repository).
+
