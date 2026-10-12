@@ -163,7 +163,9 @@ end
         ([2.0 0.1 0.05; 0.1 5.0 0.2; 0.05 0.2 9.0], true)),
         structure in (:full, :quasi_triangular, :diagonal)
 
-        r = rigorous_block_schur(BallMatrix(A); hermitian = herm, block_structure = structure)
+        # a Hermitian point matrix by its type, a ball matrix otherwise
+        r = herm ? rigorous_block_schur(Hermitian(A); block_structure = structure) :
+            rigorous_block_schur(BallMatrix(A); block_structure = structure)
         @test r.inverse_defect_norm < 1e-10
         @test isfinite(r.perturbation_norm)
         @test r.perturbation_norm ≥ r.projected_residual_norm
