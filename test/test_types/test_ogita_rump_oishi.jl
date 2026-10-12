@@ -128,3 +128,79 @@ end
         @test mid(C0) == mid(C1)
     end
 end
+
+# the exact product, in rationals
+_exact_product(A, B) = Rational{BigInt}.(A) * Rational{BigInt}.(B)
+
+function _bounds_hold(A, B)
+    down, up = BA._product_down_up_dot2err(A, B)
+    ref = _exact_product(A, B)
+    return all(i -> (isinf(down[i]) || Rational{BigInt}(down[i]) <= ref[i]) &&
+                    (isinf(up[i]) || ref[i] <= Rational{BigInt}(up[i])), eachindex(ref))
+end
+
+@testset "Dot2Err (Ogita, Rump and Oishi 2005, Algorithm 5.8): product bounds without a rounding mode" begin
+    rng = MersenneTwister(58)
+
+    @testset "random factors, $T" for T in (Float64, Float32)
+        for (m, k, n) in ((1, 1, 1), (7, 13, 5), (30, 20, 25))
+            A, B = randn(rng, T, m, k), randn(rng, T, k, n)
+            @test _bounds_hold(A, B)
+            down, up = BA._product_down_up_dot2err(A, B)
+            @test all(down .<= up)
+            # the bound β is far below one unit in the last place here
+            @test all(up .<= nextfloat.(down, 2))
+        end
+    end
+
+    @testset "cancellation" begin
+        for T in (Float64, Float32)
+            k = 40
+            x = randn(rng, T, k)
+            A = vcat(x', -x', (x .* T(3))')
+            B = hcat(x, reverse(x), T.(exp10.(range(-6, 6, length = k))) .* randn(rng, T, k))
+            A[1, 1] = nextfloat(A[1, 1])
+            @test _bounds_hold(A, B)
+            @test _bounds_hold(hcat(A, -A), vcat(B, B))        # the exact product is zero
+        end
+    end
+
+    @testset "underflow" begin
+        A = randn(rng, 6, 9) .* 1e-170
+        B = randn(rng, 9, 4) .* 1e-160
+        @test _bounds_hold(A, B)
+        down, up = BA._product_down_up_dot2err(A, B)
+        @test all(isfinite, down) && all(isfinite, up)
+        @test _bounds_hold(A .* 1e16, B)                       # products near the smallest normal number
+        A32 = randn(rng, Float32, 6, 9) .* 1.0f-25
+        B32 = randn(rng, Float32, 9, 4) .* 1.0f-22
+        @test _bounds_hold(A32, B32)
+    end
+
+    @testset "overflow gives (-Inf, Inf)" begin
+        down, up = BA._product_down_up_dot2err(fill(1e200, 2, 3), fill(1e200, 3, 2))
+        @test all(==(-Inf), down) && all(==(Inf), up)
+    end
+
+    @testset "vectors and sizes" begin
+        A, x = randn(rng, 5, 8), randn(rng, 8)
+        down, up = BA._product_down_up_dot2err(A, x)
+        @test down isa Vector{Float64} && length(down) == 5
+        ref = _exact_product(A, reshape(x, :, 1))
+        @test all(i -> Rational{BigInt}(down[i]) <= ref[i] <= Rational{BigInt}(up[i]), 1:5)
+        @test_throws DimensionMismatch BA._product_down_up_dot2err(randn(3, 4), randn(5, 2))
+    end
+
+    @testset "res and err of Corollary 5.9" begin
+        for T in (Float64, Float32), k in (1, 2, 50, 1000)
+            x, y = randn(rng, T, k), randn(rng, T, k)
+            k > 2 && (y[end] = -sum(x[1:(end - 1)] .* y[1:(end - 1)]) / x[end])   # a small dot product
+            res, err = BA._dot2err_ogita_rump_oishi_2005(x, y)
+            ref = sum(Rational{BigInt}.(x) .* Rational{BigInt}.(y))
+            @test Rational{BigInt}(res) - Rational{BigInt}(err) <= ref <=
+                  Rational{BigInt}(res) + Rational{BigInt}(err)
+            @test err <= 4 * eps(T) * abs(res) + floatmin(T)
+        end
+        @test_throws DimensionMismatch BA._dot2err_ogita_rump_oishi_2005(randn(3), randn(4))
+    end
+end

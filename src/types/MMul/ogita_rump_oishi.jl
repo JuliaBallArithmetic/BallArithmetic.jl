@@ -198,6 +198,132 @@ function _accurate_midpoint!(mC::Matrix{S}, mA::AbstractMatrix{S},
 end
 
 # ---------------------------------------------------------------------------------------------
+# The product of two floating-point matrices bounded below and above with no rounding mode, by
+#
+#   T. Ogita, S. M. Rump and S. Oishi, Accurate sum and dot product, SIAM J. Sci. Comput. 26(6)
+#   (2005) 1955-1988, doi 10.1137/030601818, Algorithm 5.8 (Dot2Err) and Corollary 5.9.
+#
+# Algorithm 5.8, for x, y of n floating-point numbers, eps the relative rounding error unit and
+# eta the underflow unit, every operation in rounding to nearest:
+#
+#       if 2n eps ≥ 1, error
+#       [p, s] = TwoProduct(x₁, y₁);  e = |s|
+#       for i = 2 : n
+#           [h, r] = TwoProduct(xᵢ, yᵢ);  [p, q] = TwoSum(p, h)
+#           t = fl(q + r);  s = fl(s + t);  e = fl(e + |t|)
+#       res = fl(p + s)
+#       δ = fl(n eps/(1 − 2n eps));  α = fl(eps|res| + (δe + 3eta/eps));  err = fl(α/(1 − 2eps))
+#
+# Corollary 5.9: if the algorithm runs to completion then, also in the presence of underflow,
+# res − err ≤ xᵀy ≤ res + err.
+#
+# The loop below starts from p = s = e = 0 and treats the first product as the others; TwoSum(0, h)
+# is (h, 0), so the values of p, s and e are those of the algorithm. `two_product` is the paper's
+# Algorithm 3.5 (TwoProductFMA) where the corollary is stated for Algorithm 3.3; with underflow its
+# two outputs differ from the product by one rounding of the exact residual, at most eta/2, where
+# Theorem 3.4 allows 5 eta (the paper does not state the FMA case).
+
+# p, s and e of Algorithm 5.8 for row i of At' and column j of B, At the transpose of the left
+# factor so that both are read down a column.
+@inline function _dot2err_accumulate(At::AbstractMatrix{T}, B::AbstractMatrix{T}, i::Integer,
+        j::Integer) where {T <: AbstractFloat}
+    p = zero(T)
+    s = zero(T)
+    e = zero(T)
+    @inbounds for k in axes(B, 1)
+        h, r = two_product(At[k, i], B[k, j])
+        p, q = two_sum(p, h)
+        t = q + r
+        s += t
+        e += abs(t)
+    end
+    return p, s, e
+end
+
+# δ and 3eta/eps of Algorithm 5.8. n eps and 3eta/eps are exact; the two operations of δ are
+# rounded to nearest as the algorithm prescribes.
+function _dot2err_constants(n::Integer, ::Type{T}) where {T <: Union{Float32, Float64}}
+    u = unit_roundoff(T)
+    nu = T(n) * u
+    2 * nu < 1 || error("_dot2err: 2n eps = $(2 * nu) ≥ 1 for n = $n, inclusion failed")
+    return nu / (1 - 2 * nu), 3 * subnormal_min(T) / u
+end
+
+"""
+    _dot2err_ogita_rump_oishi_2005(x, y) -> (res, err)
+
+Algorithm 5.8 (Dot2Err) of Ogita, Rump and Oishi (2005) for two vectors of `Float32` or `Float64`:
+`res` is the dot product accumulated in twice the working precision and rounded, and
+`res − err ≤ xᵀy ≤ res + err` (Corollary 5.9), also in the presence of underflow. Every operation
+is in rounding to nearest. Where an intermediate result is not finite `err` is `Inf`.
+
+# Reference
+
+T. Ogita, S. M. Rump and S. Oishi, *Accurate sum and dot product*, SIAM J. Sci. Comput. **26**(6)
+(2005) 1955-1988, doi 10.1137/030601818.
+"""
+function _dot2err_ogita_rump_oishi_2005(x::AbstractVector{T},
+        y::AbstractVector{T}) where {T <: Union{Float32, Float64}}
+    length(x) == length(y) ||
+        throw(DimensionMismatch("_dot2err: lengths $(length(x)) and $(length(y))"))
+    δ, c = _dot2err_constants(length(x), T)
+    p, s, e = _dot2err_accumulate(reshape(x, :, 1), reshape(y, :, 1), 1, 1)
+    u = unit_roundoff(T)
+    res = p + s
+    α = u * abs(res) + (δ * e + c)
+    err = α / (1 - 2 * u)
+    return res, (isfinite(res) && isfinite(err)) ? err : T(Inf)
+end
+
+# Lower and upper bound of xᵀy from p, s and e of Algorithm 5.8. The proof of Corollary 5.9 bounds
+# the distance of xᵀy from the unevaluated p + s, underflow included, by the Δ of (5.9) less the
+# one eta charged there to fl(eps|res|), and shows Δ ≤ fl(δe + 3eta/eps) =: β. The corollary then
+# rounds p + s to nearest and charges eps|res| for it; here p + (s ± β) is instead rounded
+# downward and upward by the directed operations, which is our step and not the paper's.
+@inline function _dot2err_down_up(p::T, s::T, e::T, δ::T, c::T) where {T <: AbstractFloat}
+    β = δ * e + c
+    (isfinite(p) && isfinite(s) && isfinite(β)) || return T(-Inf), T(Inf)
+    return add_down(p, sub_down(s, β)), add_up(p, add_up(s, β))
+end
+
+"""
+    _product_down_up_dot2err(A, B) -> (down, up)
+
+Entrywise lower and upper bounds of the product of two `Float32` or `Float64` matrices,
+`down ≤ AB ≤ up`, with no change of the rounding mode: each entry is accumulated by Algorithm 5.8
+(Dot2Err) of Ogita, Rump and Oishi (2005) as an unevaluated sum `p + s` with the bound `β` of the
+proof of Corollary 5.9 on its distance from the exact entry, underflow included, and
+`p + (s − β)`, `p + (s + β)` are rounded downward and upward by `add_down`, `sub_down`, `add_up`.
+An entry with a non-finite intermediate result gets `(-Inf, Inf)`.
+
+The same role as [`_product_down_up`](@ref), which evaluates the BLAS product twice under
+`RoundDown` and `RoundUp`. `O(mnk)` scalar operations, no BLAS, threaded over the columns.
+
+# Reference
+
+T. Ogita, S. M. Rump and S. Oishi, *Accurate sum and dot product*, SIAM J. Sci. Comput. **26**(6)
+(2005) 1955-1988, doi 10.1137/030601818.
+"""
+function _product_down_up_dot2err(A::AbstractVecOrMat{T},
+        B::AbstractVecOrMat{T}) where {T <: Union{Float32, Float64}}
+    size(A, 2) == size(B, 1) ||
+        throw(DimensionMismatch("_product_down_up_dot2err: size(A, 2) = $(size(A, 2)) but size(B, 1) = $(size(B, 1))"))
+    δ, c = _dot2err_constants(size(A, 2), T)
+    At = Matrix{T}(transpose(A isa AbstractVector ? reshape(A, :, 1) : A))
+    Bm = B isa AbstractVector ? reshape(B, :, 1) : B
+    m, n = size(At, 2), size(Bm, 2)
+    down, up = Matrix{T}(undef, m, n), Matrix{T}(undef, m, n)
+    Base.Threads.@threads for j in 1:n
+        for i in 1:m
+            p, s, e = _dot2err_accumulate(At, Bm, i, j)
+            @inbounds down[i, j], up[i, j] = _dot2err_down_up(p, s, e, δ, c)
+        end
+    end
+    B isa AbstractVector && return vec(down), vec(up)
+    return down, up
+end
+
+# ---------------------------------------------------------------------------------------------
 # Sums of products of point matrices, to twice the working precision, in the two forms in which
 # Rump and Ogita (2024) call INTLAB's `prodK` with k = 2: one output with an error matrix, and
 # the unevaluated sum of two matrices.
