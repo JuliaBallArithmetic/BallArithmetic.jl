@@ -20,7 +20,7 @@ Result from iterative Schur refinement to higher precision.
 
 # References
 - [BujanovicKressnerSchroder2022](@cite) Bujanović, Kressner & Schröder,
-  "Iterative refinement of Schur decompositions", Numer. Algorithms 95, 247–267 (2024)
+  "Iterative refinement of Schur decompositions", Numer. Algorithms 92, 247–267 (2023)
 """
 struct SchurRefinementResult{T, RT<:Real}
     Q::Matrix{T}
@@ -146,7 +146,7 @@ where entries to the left or below (i,j) must be computed first.
 # Notes
 When eigenvalues are clustered (nearly equal), the denominator T[i,i] - T[j,j] becomes
 very small, causing large entries in L that can destabilize the algorithm. Following
-the suggestion in Bujanović et al. (Example 10), entries larger than `max_entry` are
+the suggestion in Bujanović et al. (Example 4), entries larger than `max_entry` are
 set to zero.
 
 # References
@@ -183,7 +183,7 @@ function _solve_triangular_equation_direct!(L::Matrix{T}, T_mat::Matrix{T}, E::M
                 L[i, j] = zero(T)
             else
                 entry = -val / denom
-                # Truncate large entries to zero (following Example 10 in the paper)
+                # Truncate large entries to zero (the trick of Example 4 of the paper)
                 if abs(entry) > max_entry
                     L[i, j] = zero(T)
                 else
@@ -365,7 +365,7 @@ the equation.
 - `use_recursive`: If true, use recursive block algorithm (default: true)
 - `nmin`: Minimum block size for recursive algorithm (default: 32)
 - `max_entry`: Maximum allowed entry magnitude before truncation (default: 1e5).
-  This prevents instability from clustered eigenvalues (see Example 10 in the paper).
+  This prevents instability from clustered eigenvalues (see Example 4 of the paper, which uses 1e-5).
 
 # Returns
 Strictly lower triangular matrix L satisfying stril(TL - LT) = -E
@@ -387,80 +387,170 @@ function solve_triangular_matrix_equation(T_mat::Matrix{T}, E::Matrix{T};
     return L
 end
 
+# ---------------------------------------------------------------------------------------------
+# The algorithms, each named for what it is
+# ---------------------------------------------------------------------------------------------
+
+# Line 1 of Algorithm 4 asks for an ordered Schur decomposition in low precision; Section 2.4:
+# "the initial lp Schur decomposition is reordered so that clustered eigenvalues appear on
+# neighboring diagonal elements of T_lp. This is done using ordschur in Matlab; the target
+# permutation of eigenvalues is determined by the order in which they appear after being
+# projected on a random line in the complex plane." The line is the one through the origin at a
+# random angle; the eigenvalues are brought to the order of their projections, one at a time,
+# by `ordschur`, which keeps the relative order of the eigenvalues it selects.
+function _bujanovicetal2023_order(Q0::Matrix, T0::Matrix, rng)
+    eltype(T0) <: Union{Float32, Float64, ComplexF32, ComplexF64} && eltype(Q0) === eltype(T0) ||
+        throw(ArgumentError("the reordering of the Schur form is done by LAPACK: Q0 and T0 " *
+                            "must be Float32, Float64 or their complex types"))
+    n = size(T0, 1)
+    θ = 2 * pi * (rng === nothing ? rand() : rand(rng))
+    proj = real.(diag(T0) .* cis(-θ))
+    desired = sortperm(proj)
+    cur = collect(1:n)
+    Q, T = copy(Q0), copy(T0)
+    wanted = falses(n)                     # indexed by the original position
+    for k in 1:(n - 1)
+        wanted[desired[k]] = true
+        sel = Bool[wanted[c] for c in cur]
+        all(view(sel, 1:k)) && continue
+        T, Q, _ = ordschur(T, Q, sel)
+        cur = vcat(cur[sel], cur[.!sel])
+    end
+    return Q, T
+end
+
 """
-    refine_schur_decomposition(A::AbstractMatrix{T}, Q0::Matrix, T0::Matrix;
-                                target_precision::Int=256,
-                                max_iterations::Int=20,
-                                tol::Real=0.0) where T
+    _bujanovicetal2023_alg4(A, Q0, T0, max_iterations, tol; hp = BigFloat, rng = nothing)
 
-Refine an approximate Schur decomposition A ≈ Q₀ T₀ Q₀^H to higher precision.
+Algorithm 4 of Bujanović, Kressner and Schröder (2023), the mixed-precision refinement of a
+Schur decomposition, from line 1's ordering on: `Q0`, `T0` are the Schur factors of `A` in low
+precision (`Float64`), `T0` upper triangular.
 
-Starting from an approximate Schur decomposition computed in Float64, this
-function iteratively refines Q and T to achieve the accuracy of `target_precision`
-bits. The algorithm uses Newton-like iterations that converge quadratically.
+1. The Schur form is reordered so that eigenvalues close to each other are neighbours on the
+   diagonal: by the order of their projections on a random line through the origin.
+2. `Q̂` is converted to high precision and `Q ← ½ Q̂ (3I − Q̂ᴴQ̂)`, one Newton-Schulz step.
+3. Until `E` is small: `T̂ ← QᴴAQ` in high precision; `E ← stril(T̂)`, `T ← T̂ − E`; the
+   equation `stril(T L − L T) = −E` is solved for the strictly lower triangular `L` in low
+   precision, by the recursive Algorithm 3; `W = L − Lᴴ`, `Y = QᴴQ − I`; the products `YW`,
+   `W²`, `W³` in low precision; `Σ = 2I + 2W − Y − YW + W² + W³` and `Q ← ½ Q Σ` in high
+   precision.
 
-# Algorithm (from Bujanović et al. 2022, Algorithm 4)
+`hp` is the high precision: BigFloat at the current precision, or a type such as `Double64`.
+The iteration stops when `‖E‖/‖A‖ ≤ tol`. The result is in floating point: its two norms are
+diagnostics, not bounds. The paper reports that the iteration can fail when eigenvalues are
+poorly separated (its Example 3), the entries of `L` growing until they are not numbers.
 
-Given A = Q₀ T₀ Q₀^H + E where E is the initial error:
+Not the paper's: `nmin`, the size at which Algorithm 3 stops recursing, is 32 here; the paper's
+experiments use 4 for the complex Schur form.
+"""
+_bujanovicetal2023_alg4(A, Q0, T0, max_iterations, tol; hp::Type = BigFloat, rng = nothing) =
+    _refine_schur_impl(A, Q0, T0, max_iterations, tol; hp, order = true, rng,
+        truncation = Inf, single_initial_step = true, precheck = false,
+        stop_on_orthogonality = false)
 
-1. **Pre-computation** (2 high-precision matrix multiplications):
-   - Compute A_Q = A * Q and Q^H_A = Q^H * A in target precision
+"""
+    _bujanovicetal2023_alg4_truncated(A, Q0, T0, max_iterations, tol;
+        hp = BigFloat, rng = nothing, threshold = 1e-5)
 
-2. **Iteration** (4 high-precision matrix multiplications per step):
-   - Compute residual R = Q^H * A_Q - T
-   - Extract diagonal correction: T_new = T + diag(R)
-   - Solve Sylvester equations for off-diagonal corrections
-   - Apply Newton-Schulz to re-orthogonalize Q
-   - Repeat until convergence
+[`_bujanovicetal2023_alg4`](@ref) with the modification of Example 4 of the paper: "once an
+element of L is computed (Line 4 of Algorithm 2, Line 6 of Algorithm 3), if its absolute value
+turns out to be larger than, e.g., 10⁻⁵, such element is immediately set to zero. The idea is to
+prevent propagation of large elements in L, at the cost of obtaining a less accurate solution of
+the triangular equation." The paper adds that "there is little theoretical support that such a
+modification will lead to convergence"; it resolved the failures of its Table 3 and not the one
+of its Example 3.
+"""
+_bujanovicetal2023_alg4_truncated(A, Q0, T0, max_iterations, tol; hp::Type = BigFloat,
+    rng = nothing, threshold::Real = 1e-5) =
+    _refine_schur_impl(A, Q0, T0, max_iterations, tol; hp, order = true, rng,
+        truncation = threshold, single_initial_step = true, precheck = false,
+        stop_on_orthogonality = false)
 
-The method achieves 10-20× speedup over computing Schur directly in high precision.
+"""
+    _bujanovicetal2023_alg4_unordered(A, Q0, T0, max_iterations, tol; hp = BigFloat)
 
-# Arguments
-- `A`: Original matrix (will be converted to target precision)
-- `Q0`: Approximate orthogonal/unitary factor from Schur decomposition
-- `T0`: Approximate upper triangular factor from Schur decomposition
-- `target_precision`: Target precision in bits (default: 256 for BigFloat)
-- `max_iterations`: Maximum refinement iterations (default: 20)
-- `tol`: Convergence tolerance (default: machine epsilon of target precision)
+The iteration of [`_bujanovicetal2023_alg4`](@ref) without the reordering of its line 1, so that
+the eigenvalues stay on the diagonal in the order of `T0`: a deviation, named for it. It is for
+the callers that have ordered the Schur form themselves and use that order afterwards. Three
+further differences from the paper's listing: `Q0`, `T0` are returned as they are when both
+defects are already below the tolerance; the initial orthogonalisation takes up to three
+Newton-Schulz steps; and the iteration stops when both `‖E‖/‖A‖` and `‖QᴴQ − I‖` are below the
+tolerance. `Q0` and `T0` may be in any precision.
+"""
+_bujanovicetal2023_alg4_unordered(A, Q0, T0, max_iterations, tol; hp::Type = BigFloat) =
+    _refine_schur_impl(A, Q0, T0, max_iterations, tol; hp)
 
-# Returns
-[`SchurRefinementResult`](@ref) containing refined Q, T and convergence information.
+# the algorithm for a `method`
+function _schur_refinement(method::Symbol, A, Q0, T0, max_iterations, tol; hp::Type = BigFloat,
+        rng = nothing, threshold::Real = 1e-5)
+    method === :bujanovicetal2023 &&
+        return _bujanovicetal2023_alg4(A, Q0, T0, max_iterations, tol; hp, rng)
+    method === :bujanovicetal2023truncated &&
+        return _bujanovicetal2023_alg4_truncated(A, Q0, T0, max_iterations, tol; hp, rng,
+            threshold)
+    method === :bujanovicetal2023unordered &&
+        return _bujanovicetal2023_alg4_unordered(A, Q0, T0, max_iterations, tol; hp)
+    throw(ArgumentError("unknown method $(repr(method)); the implemented methods are " *
+                        ":bujanovicetal2023, :bujanovicetal2023truncated and " *
+                        ":bujanovicetal2023unordered"))
+end
+
+"""
+    refine_schur_decomposition(A, Q0, T0; method = :bujanovicetal2023unordered,
+        target_precision = 256, max_iterations = 20, tol = 0, threshold = 1e-5, rng = nothing)
+
+Refines an approximate Schur decomposition `A ≈ Q0 T0 Q0ᴴ` computed in `Float64`, `T0` upper
+triangular, to BigFloat at `target_precision` bits. Returns a [`SchurRefinementResult`](@ref)
+with the factors in BigFloat; its `residual_norm` and `orthogonality_defect` are floating-point
+diagnostics, not bounds.
+
+Each algorithm is an unexported function named for the paper it implements, a deviation being
+visible in the name:
+
+| `method` | routine | what it is |
+|---|---|---|
+| `:bujanovicetal2023` | [`_bujanovicetal2023_alg4`](@ref) | Algorithm 4 of Bujanović, Kressner and Schröder (2023), with the reordering of its line 1 |
+| `:bujanovicetal2023truncated` | [`_bujanovicetal2023_alg4_truncated`](@ref) | the same with the modification of the paper's Example 4: the entries of `L` above `threshold` are set to zero |
+| `:bujanovicetal2023unordered` | [`_bujanovicetal2023_alg4_unordered`](@ref) | the iteration without the reordering, the order of the eigenvalues of `T0` being kept; a deviation, named for it |
+
+The default is the unordered one, because the callers in this package order the Schur form
+before refining it and rely on that order. The first two reorder the eigenvalues along a random
+line (`rng` gives the generator), so the diagonal of the result is in another order than that
+of `T0`, and they need `Q0`, `T0` in a LAPACK type.
+
+`tol` is the tolerance of the stopping test, by default 100 rounding units of the target
+precision. A `T0` that is not upper triangular is an `ArgumentError`: for a real matrix with
+complex eigenvalues pass the complex Schur form, `schur(complex(A))`; the paper mentions an
+extension to the real Schur form and does not give it.
 
 # Example
 ```julia
-using BallArithmetic, LinearAlgebra
-
-# Compute Schur in Float64
 A = randn(100, 100)
-F = schur(A)
-Q0, T0 = F.Z, F.T
-
-# Refine to BigFloat precision
-result = refine_schur_decomposition(A, Q0, T0; target_precision=256)
-
-# Check residual
-@show result.residual_norm      # Should be ≈ 10^-77 for 256-bit precision
-@show result.orthogonality_defect
+F = schur(complex(A))
+r = refine_schur_decomposition(A, F.Z, F.T; method = :bujanovicetal2023)
+r.residual_norm          # near 1e-77 at 256 bits
 ```
 
-# References
-- [BujanovicKressnerSchroder2022](@cite) Bujanović, Kressner & Schröder,
-  "Iterative refinement of Schur decompositions", Numer. Algorithms 95, 247–267 (2024).
-  Algorithm 4: Mixed-precision Schur refinement.
+# Reference
+
+Z. Bujanović, D. Kressner and C. Schröder, "Iterative refinement of Schur decompositions",
+Numerical Algorithms 92 (2023), 247-267, doi 10.1007/s11075-022-01327-6.
 """
 function refine_schur_decomposition(A::AbstractMatrix, Q0::Matrix, T0::Matrix;
+                                    method::Symbol = :bujanovicetal2023unordered,
                                     target_precision::Int=256,
                                     max_iterations::Int=20,
-                                    tol::Real=0.0)
+                                    tol::Real=0.0,
+                                    threshold::Real=1e-5,
+                                    rng=nothing)
     n = size(A, 1)
     n == size(A, 2) || throw(DimensionMismatch("A must be square"))
     size(Q0) == (n, n) || throw(DimensionMismatch("Q0 must be n×n"))
     size(T0) == (n, n) || throw(DimensionMismatch("T0 must be n×n"))
 
-    # Set precision for BigFloat
     # a scoped setting: a global one has no effect inside a caller's scoped block
     return setprecision(BigFloat, target_precision) do
-        return _refine_schur_impl(A, Q0, T0, max_iterations, tol)
+        return _schur_refinement(method, A, Q0, T0, max_iterations, tol; rng, threshold)
     end
 end
 
@@ -510,11 +600,14 @@ to refine from double to quadruple precision.
 
 # References
 - [BujanovicKressnerSchroder2022](@cite) Bujanović, Kressner & Schröder,
-  "Iterative refinement of Schur decompositions", Numer. Algorithms 95, 247–267 (2024).
+  "Iterative refinement of Schur decompositions", Numer. Algorithms 92, 247–267 (2023).
   Algorithm 4: Mixed-precision Schur refinement.
 """
 function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
-                            max_iterations::Int, tol::Real; hp::Type = BigFloat)
+                            max_iterations::Int, tol::Real; hp::Type = BigFloat,
+                            order::Bool = false, rng = nothing, truncation::Real = 1e5,
+                            single_initial_step::Bool = false, precheck::Bool = true,
+                            stop_on_orthogonality::Bool = true)
     n = size(A, 1)
     # The iteration is for a triangular T. The real Schur form of a real matrix with complex
     # eigenvalues has 2 × 2 blocks on the diagonal; the paper mentions an extension to it and
@@ -522,6 +615,10 @@ function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
     istriu(T0) || throw(ArgumentError(
         "the Schur factor must be upper triangular; for a real matrix with complex " *
         "eigenvalues pass its complex Schur form, schur(complex(A))"))
+
+    if order
+        Q0, T0 = _bujanovicetal2023_order(Q0, T0, rng)
+    end
 
     # The high precision: BigFloat at the current precision, or the type `hp`
     A_high = _to_high(hp, A)
@@ -555,7 +652,7 @@ function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
     Y_pre = Q' * Q - I_n
     orth_pre = _refine_defect_norm(Y_pre)
 
-    if residual_pre < target_tol && orth_pre < target_tol
+    if precheck && residual_pre < target_tol && orth_pre < target_tol
         return SchurRefinementResult(
             Q, T_hat_pre - E_pre, 0, residual_pre, orth_pre, true
         )
@@ -563,7 +660,11 @@ function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
 
     # Step 1: Initial orthogonalization of Q using Newton-Schulz (Algorithm 4, line 2)
     # Q ← ½Q̂(3I - Q̂^H Q̂)
-    newton_schulz_orthogonalize!(Q; max_iter=3, tol=target_tol)
+    if single_initial_step
+        Q .= (Q * (3 * I_n - Q' * Q)) / HP(2)
+    else
+        newton_schulz_orthogonalize!(Q; max_iter=3, tol=target_tol)
+    end
 
     converged = false
     iterations = 0
@@ -591,7 +692,8 @@ function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
         Y = Q' * Q - I_n
         orthogonality_defect = _refine_defect_norm(Y)
 
-        if residual_norm < target_tol && orthogonality_defect < target_tol
+        if residual_norm < target_tol &&
+           (!stop_on_orthogonality || orthogonality_defect < target_tol)
             converged = true
             return SchurRefinementResult(
                 Q, T_mat, iterations, residual_norm, orthogonality_defect, converged
@@ -605,8 +707,10 @@ function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
         E_lp = HP <: Complex ? convert.(ComplexF64, E) : convert.(Float64, E)
 
         # Solve in low precision with aggressive truncation for stability
-        # The paper (Example 10) suggests truncating large entries to avoid instability
-        L_lp = solve_triangular_matrix_equation(T_lp, E_lp; use_recursive=true, nmin=32, max_entry=1e5)
+        # entries of L above `truncation` are set to zero: the trick of Example 4 of the paper
+        # when it is its 1e-5, and no truncation in practice at the 1e5 of the unordered variant
+        L_lp = solve_triangular_matrix_equation(T_lp, E_lp; use_recursive=true, nmin=32,
+            max_entry=truncation)
 
         # Convert L back to high precision (line 7)
         L = convert.(HP, L_lp)

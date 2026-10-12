@@ -192,14 +192,20 @@ end
 # The Schur refinements are those of the package (Algorithm 4 of Bujanović, Kressner and
 # Schröder) with Double64 as the high precision.
 BallArithmetic.refine_schur_double64(A::AbstractMatrix{T}, Q0::Matrix, T0::Matrix;
-    max_iterations::Int = 10, tol::Real = 0.0, certify_with_bigfloat::Bool = true,
+    method::Symbol = :bujanovicetal2023unordered, max_iterations::Int = 10, tol::Real = 0.0,
+    threshold::Real = 1e-5, rng = nothing, certify_with_bigfloat::Bool = true,
     bigfloat_precision::Int = 256) where {T <: Union{Float64, ComplexF64}} =
-    BallArithmetic._refine_schur_impl(A, Q0, T0, max_iterations, tol; hp = Double64)
+    BallArithmetic._schur_refinement(method, A, Q0, T0, max_iterations, tol; hp = Double64,
+        rng, threshold)
 
+# The Double64 stage runs `method`; the BigFloat stage starts from its result, which is already
+# ordered, and so runs the unordered iteration.
 function BallArithmetic.refine_schur_hybrid(A::AbstractMatrix{T}, Q0::Matrix, T0::Matrix;
-        d64_iterations::Int = 10, bf_iterations::Int = 5,
+        method::Symbol = :bujanovicetal2023unordered, d64_iterations::Int = 10,
+        bf_iterations::Int = 5, threshold::Real = 1e-5, rng = nothing,
         precision_bits::Int = 256) where {T <: Union{Float64, ComplexF64}}
-    r = BallArithmetic.refine_schur_double64(A, Q0, T0; max_iterations = d64_iterations)
+    r = BallArithmetic.refine_schur_double64(A, Q0, T0; method, max_iterations = d64_iterations,
+        threshold, rng)
     return BallArithmetic.refine_schur_decomposition(A, r.Q, r.T;
         target_precision = precision_bits, max_iterations = bf_iterations)
 end

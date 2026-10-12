@@ -243,10 +243,11 @@ end
 # The Schur refinement is the one of the package (Algorithm 4 of Bujanović, Kressner and
 # Schröder) with a MultiFloat as the high precision.
 BallArithmetic.refine_schur_multifloat(A::AbstractMatrix{T}, Q0::Matrix, T0::Matrix;
-    precision::Symbol = :x2, max_iterations::Int = 10, tol::Real = 0.0, certify::Bool = true,
-    bigfloat_precision::Int = 256) where {T <: Union{Float64, ComplexF64}} =
-    BallArithmetic._refine_schur_impl(A, Q0, T0, max_iterations, tol;
-        hp = _select_multifloat_type(precision))
+    method::Symbol = :bujanovicetal2023unordered, precision::Symbol = :x2,
+    max_iterations::Int = 10, tol::Real = 0.0, threshold::Real = 1e-5, rng = nothing,
+    certify::Bool = true, bigfloat_precision::Int = 256) where {T <: Union{Float64, ComplexF64}} =
+    BallArithmetic._schur_refinement(method, A, Q0, T0, max_iterations, tol;
+        hp = _select_multifloat_type(precision), rng, threshold)
 
 #==============================================================================#
 # Symmetric Eigenvalue Refinement with MultiFloats

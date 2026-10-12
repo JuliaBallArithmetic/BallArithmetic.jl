@@ -49,6 +49,83 @@ using MultiFloats
             end
         end
 
+        @testset "the three algorithms: $method" for method in (:bujanovicetal2023,
+            :bujanovicetal2023truncated, :bujanovicetal2023unordered)
+            for n in (8, 20), T in (Float64, ComplexF64)
+                A = randn(rng, T, n, n)
+                F = schur(complex(A))
+                r = refine_schur_decomposition(A, F.Z, F.T; method, rng = MersenneTwister(5))
+                res, orth = defects(A, r.Q, r.T)
+                @test r.converged
+                @test istriu(r.T)
+                @test res < 1e-70
+                @test orth < 1e-70
+                # the eigenvalues are those of the input, as a set
+                d0 = sort(diag(F.T); by = z -> (real(z), imag(z)))
+                d1 = sort(ComplexF64.(diag(r.T)); by = z -> (real(z), imag(z)))
+                @test maximum(abs.(d0 .- d1)) < 1e-8
+                if method === :bujanovicetal2023unordered
+                    # the order of the diagonal is kept
+                    @test maximum(abs.(ComplexF64.(diag(r.T)) .- diag(F.T))) < 1e-8
+                end
+                rd = refine_schur_double64(A, F.Z, F.T; method, rng = MersenneTwister(5))
+                res, orth = defects(A, rd.Q, rd.T)
+                @test res < 1e-28 && orth < 1e-28
+                rm = refine_schur_multifloat(A, F.Z, F.T; method, precision = :x4,
+                    rng = MersenneTwister(5))
+                res, orth = defects(A, rm.Q, rm.T)
+                @test res < 1e-58 && orth < 1e-58
+                rh = refine_schur_hybrid(A, F.Z, F.T; method, rng = MersenneTwister(5))
+                res, orth = defects(A, rh.Q, rh.T)
+                @test res < 1e-70 && orth < 1e-70
+            end
+        end
+
+        @testset "line 1 of Algorithm 4: the reordering" begin
+            for T in (Float64, ComplexF64), n in (5, 12)
+                A = T === Float64 ?
+                    Matrix(qr(randn(rng, n, n)).Q) * (triu(randn(rng, n, n), 1) +
+                                                      Diagonal(randn(rng, n))) :
+                    randn(rng, T, n, n)
+                A = T === Float64 ? A * inv(Matrix(qr(randn(MersenneTwister(1), n, n)).Q)) : A
+                F = schur(T === Float64 ? triu(randn(rng, n, n), 1) + Diagonal(randn(rng, n)) : A)
+                M = F.Z * F.T * F.Z'
+                g = MersenneTwister(77)
+                Q, Tr = BallArithmetic._bujanovicetal2023_order(F.Z, F.T, g)
+                @test istriu(Tr)
+                @test norm(Q * Tr * Q' - M) <= 1e-12 * norm(M)
+                @test norm(Q' * Q - I) <= 1e-12
+                # the same random line, and the diagonal in the order of its projections
+                θ = 2 * pi * rand(MersenneTwister(77))
+                proj = real.(diag(Tr) .* cis(-θ))
+                @test all(diff(proj) .>= -1e-10)
+                # the same eigenvalues
+                d0 = sort(complex(diag(F.T)); by = z -> (real(z), imag(z)))
+                d1 = sort(complex(diag(Tr)); by = z -> (real(z), imag(z)))
+                @test maximum(abs.(d0 .- d1)) < 1e-10
+            end
+            @test_throws ArgumentError BallArithmetic._bujanovicetal2023_order(
+                big.([1.0 0.0; 0.0 1.0]), big.([1.0 2.0; 0.0 3.0]), nothing)
+        end
+
+        @testset "the truncation of Example 4, and the method keyword" begin
+            # stril(T L − L T) = −E with two close eigenvalues: L₂₁ = −E₂₁/(t₂₂ − t₁₁) is large
+            T2 = [1.0 2.0; 0.0 1.0 + 1e-9]
+            E2 = [0.0 0.0; 1e-12 0.0]
+            L = solve_triangular_matrix_equation(T2, E2; use_recursive = false, max_entry = Inf)
+            @test abs(L[2, 1]) > 1e-4
+            L = solve_triangular_matrix_equation(T2, E2; use_recursive = false, max_entry = 1e-5)
+            @test L[2, 1] == 0
+            A = randn(rng, 6, 6)
+            F = schur(complex(A))
+            @test_throws ArgumentError refine_schur_decomposition(A, F.Z, F.T; method = :other)
+            @test_throws ArgumentError refine_schur_double64(A, F.Z, F.T; method = :other)
+            # a threshold of zero removes every correction: nothing is refined
+            r = refine_schur_decomposition(A, F.Z, F.T; method = :bujanovicetal2023truncated,
+                threshold = 0.0, max_iterations = 3)
+            @test !r.converged
+        end
+
         @testset "a real Schur form with 2 × 2 blocks is refused" begin
             A = [0.0 -1.0 0.3; 1.0 0.0 0.2; 0.0 0.0 2.0]
             F = schur(A)
