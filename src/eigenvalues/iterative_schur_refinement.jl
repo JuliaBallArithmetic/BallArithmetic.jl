@@ -471,7 +471,8 @@ end
 # Helper function for converting to high precision
 # The data in the high precision of the refinement: BigFloat at the current precision, or the
 # given floating-point type (Double64, a MultiFloat).
-_to_high(::Type{BigFloat}, A::AbstractMatrix) = _to_bigfloat(A)
+_to_high(::Type{BigFloat}, A::AbstractMatrix{<:Real}) = _to_bigfloat(A)
+_to_high(::Type{BigFloat}, A::AbstractMatrix{<:Complex}) = _to_bigfloat(A)
 _to_high(::Type{H}, A::AbstractMatrix{<:Real}) where {H} = Matrix{H}(A)
 _to_high(::Type{H}, A::AbstractMatrix{<:Complex}) where {H} = Matrix{Complex{H}}(A)
 
