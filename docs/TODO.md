@@ -471,3 +471,17 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     All eleven now use the block form: `refine_schur_decomposition`, `refine_symmetric_eigen`,
     `ogita_svd_refine`, and eight in the DoubleFloats and MultiFloats extensions.
 
+27. **`refine_schur_decomposition` by method, 2026-10-12.** Reading the paper against the code
+    found that the code skipped the reordering of line 1 of Algorithm 4, took up to three
+    initial Newton-Schulz steps where the paper takes one, and truncated the entries of `L` at
+    `1e5` where the paper's Example 4 proposes `1e-5` (the code cited an "Example 10"; the
+    paper has four); the citation gave volume 95 (2024), which is 92 (2023). Now, following
+    the rule of `verifyeigall` that each algorithm is a function named for its paper and a
+    deviation is visible in the name: `:bujanovicetal2023` (`_bujanovicetal2023_alg4`, the
+    algorithm as published, with the reordering along a random line), `:bujanovicetal2023truncated`
+    (the modification of Example 4), and `:bujanovicetal2023unordered` (what the routine did,
+    the default, because `CertifScripts` orders the Schur form before refining it). The same
+    keyword is on the Double64, hybrid and MultiFloat routines. Not the paper's in any of the
+    three: `nmin = 32` in the recursive solve of the triangular equation (the paper's
+    experiments use 4); the real Schur form is refused.
+
