@@ -35,7 +35,7 @@ end
 
 """
     verified_polar(A::AbstractMatrix; right = true, kappa = 0, precision_bits = 256,
-                   use_bigfloat = true)
+                   arithmetic = BigFloat)
 
 Inclusions of the factors of the polar decomposition of the `m × n` matrix `A`, by Section 7 of
 Rump and Ogita (2024), from the inclusions of the singular value decomposition of Rump and Lange
@@ -50,15 +50,15 @@ with orthonormal columns and `P` of size `n × n` Hermitian positive definite. W
 
 # Arguments
 - `kappa`: the clustering threshold of [`verifysvdall`](@ref).
-- `use_bigfloat`: with `true`, the default, the computation runs in BigFloat at `precision_bits`;
-  with `false` it runs in Float64. A BigFloat input is always treated in BigFloat.
+- `arithmetic`: the arithmetic of the enclosure, `BigFloat` (the default), at `precision_bits`,
+  or `Float64`. A BigFloat input is always treated in BigFloat.
 - `precision_bits`: the BigFloat precision. A BigFloat input with more digits is rounded to it
   and the rounding is enclosed.
 
 # Example
 ```julia
 A = randn(ComplexF64, 50, 50)
-r = verified_polar(A; use_bigfloat = false)
+r = verified_polar(A; arithmetic = Float64)
 r.certified      # A = Q P with Q in r.Q and P in r.P
 ```
 
@@ -73,12 +73,12 @@ function verified_polar(A::AbstractMatrix{S};
                         precision_bits::Int=256,
                         right::Bool=true,
                         kappa::Real=0,
-                        use_bigfloat::Bool=true,
+                        arithmetic::Type = BigFloat,
                         oracle::Union{Nothing, Type}=nothing) where S<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}
     m, n = size(A)
     (right ? m >= n : m <= n) || throw(DimensionMismatch(
         "verified_polar: A = QP needs at least as many rows as columns, A = PQ at most as many"))
-    bigfloat = use_bigfloat || real(S) === BigFloat
+    bigfloat = _bigfloat_arithmetic(arithmetic) || real(S) === BigFloat
     return _decomposition_arithmetic(bigfloat, precision_bits) do
         Ab = _decomposition_input(A, bigfloat)
         T = eltype(rad(Ab))
@@ -93,29 +93,4 @@ function verified_polar(A::AbstractMatrix{S};
     end
 end
 
-"""
-    verified_polar_double64(A; precision_bits = 256, right = true, kappa = 0)
-
-[`verified_polar`](@ref)`(A; precision_bits, right, kappa, use_bigfloat = true, oracle = Double64)`: the
-enclosure is computed in BigFloat, and the floating-point factorisation the method starts from
-in `Double64` (about 32 digits) in place of BigFloat.
-
-The verification is the one of the routine without the suffix and does not depend on the
-accuracy of the starting factorisation, which only decides how small the radii come out.
-Requires DoubleFloats.jl.
-"""
-function verified_polar_double64 end
-
-"""
-    verified_polar_multifloat(A; precision = :x2, bigfloat_precision = 256, right = true, kappa = 0)
-
-[`verified_polar`](@ref) in BigFloat at `bigfloat_precision`, with the floating-point factorisation
-the method starts from computed in a MultiFloat in place of BigFloat.
-
-`precision` is `:x2`, `:x4` or `:x8`. The verification is the one of the routine without the
-suffix. Requires MultiFloats.jl; for this routine also a generic
-singular value decomposition for the MultiFloat type, which GenericLinearAlgebra provides.
-"""
-function verified_polar_multifloat end
-
-export VerifiedPolarResult, verified_polar, verified_polar_double64, verified_polar_multifloat
+export VerifiedPolarResult, verified_polar

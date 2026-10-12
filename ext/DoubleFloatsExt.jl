@@ -232,36 +232,4 @@ function BallArithmetic.refine_symmetric_eigen_hybrid(A::AbstractMatrix{T}, Q0::
         target_precision = precision_bits, max_iterations = bf_iterations)
 end
 
-#==============================================================================#
-# Decompositions with error bounds, the approximate factorisation computed in Double64
-#==============================================================================#
-
-# Each routine is the one of the package without the suffix, in BigFloat at `precision_bits`, with
-# the floating-point factorisation that the method starts from computed in `Double64` (about 32
-# digits) in place of BigFloat. The verification is unchanged: it encloses the exact factors
-# from residuals in BigFloat, whatever the accuracy of the starting factors, which only decides
-# how small the radii come out.
-
-BallArithmetic.verified_lu_double64(A::AbstractMatrix{T};
-    precision_bits::Int = 256) where {T <: Union{Float64, ComplexF64}} =
-    BallArithmetic.verified_lu(A; precision_bits, use_bigfloat = true, oracle = Double64)
-
-BallArithmetic.verified_cholesky_double64(A::AbstractMatrix{T};
-    precision_bits::Int = 256) where {T <: Union{Float64, ComplexF64}} =
-    BallArithmetic.verified_cholesky(A; precision_bits, use_bigfloat = true, oracle = Double64)
-
-BallArithmetic.verified_qr_double64(A::AbstractMatrix{T}; precision_bits::Int = 256,
-    compute_full_Q::Bool = false) where {T <: Union{Float64, ComplexF64}} =
-    BallArithmetic.verified_qr(A; precision_bits, compute_full_Q, use_bigfloat = true,
-        oracle = Double64)
-
-BallArithmetic.verified_polar_double64(A::AbstractMatrix{T}; precision_bits::Int = 256,
-    right::Bool = true, kappa::Real = 0) where {T <: Union{Float64, ComplexF64}} =
-    BallArithmetic.verified_polar(A; precision_bits, right, kappa, use_bigfloat = true,
-        oracle = Double64)
-
-BallArithmetic.verified_takagi_double64(A::AbstractMatrix{ComplexF64};
-    precision_bits::Int = 256) =
-    BallArithmetic.verified_takagi(A; precision_bits, use_bigfloat = true, oracle = Double64)
-
 end # module

@@ -283,13 +283,13 @@ The factor comes from [`verified_cholesky`](@ref), so positive definiteness of
   back-substitution with a BLAS-speed inverse plus verification.
 - `radius_type = Float64`: radius type of the enclosures handed to the
   certifier.
-- `use_bigfloat = true`: precision of the verified Cholesky, forwarded to
-  [`verified_cholesky`](@ref). The BigFloat factor enclosure is many orders of
+- `arithmetic = BigFloat`: the arithmetic of the verified Cholesky, `BigFloat` or `Float64`,
+  forwarded to [`verified_cholesky`](@ref). The BigFloat factor enclosure is many orders of
   magnitude tighter (radii ~1e-31 against ~1e-14 for a `Float64` Gram matrix),
   and that tightness propagates straight into `Ã`, so it is worth the cost; the
-  transformed matrix is rounded outward to `radius_type` afterwards. Set it to
-  `false` to trade enclosure width for speed.
-- `precision_bits = 256`: BigFloat precision when `use_bigfloat = true`.
+  transformed matrix is rounded outward to `radius_type` afterwards. `Float64`
+  trades enclosure width for speed.
+- `precision_bits = 256`: BigFloat precision when `arithmetic = BigFloat`.
 - `inverse_method = :auto`: `:backsub` for the tight `O(n³)` scalar triangular
   substitution, `:verify` for the BLAS-speed approximate-inverse-plus-
   verification route. `:auto` picks `:backsub` for triangular factors with
@@ -307,7 +307,7 @@ function gram_transform(gram;
         factor = nothing,
         factor_inv = nothing,
         radius_type::Type = Float64,
-        use_bigfloat::Bool = true,
+        arithmetic::Type = BigFloat,
         precision_bits::Int = 256,
         inverse_method::Symbol = :auto,
         hermitian_tol::Real = 1e-10)
@@ -335,11 +335,11 @@ function gram_transform(gram;
         source = :diagonal
     else
         chol = verified_cholesky(G; precision_bits = precision_bits,
-            use_bigfloat = use_bigfloat)
+            arithmetic)
         chol.certified ||
             throw(ArgumentError("verified Cholesky of the Gram matrix failed: G " *
                                 "could not be proven positive definite. Try " *
-                                "use_bigfloat = true or a larger precision_bits."))
+                                "arithmetic = BigFloat or a larger precision_bits."))
         L = chol.G
     end
 

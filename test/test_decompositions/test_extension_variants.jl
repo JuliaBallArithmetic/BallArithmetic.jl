@@ -1,6 +1,6 @@
-# The variants of the decompositions with error bounds that compute their starting factorisation
-# in Double64 or in a MultiFloat, and the names kept for the BigFloat routines: every factor
-# against a reference computed at 2048 bits, in the normalisation of the routine.
+# The decompositions with error bounds with their starting factorisation computed in Double64 or
+# in a MultiFloat (the keyword `oracle`) and in BigFloat: every factor against a reference
+# computed at 2048 bits, in the normalisation of the routine.
 
 using Test
 using BallArithmetic
@@ -16,18 +16,15 @@ _ext_maxrad(B) = Float64(maximum(rad(B)))
 
 @testset "decompositions: the Double64, MultiFloat and BigFloat variants" begin
     setprecision(BigFloat, 2048) do
+        # the starting factorisation in the type `O`; `nothing` is the working arithmetic, BigFloat
+        with_oracle(f, O) = (A; kw...) -> f(A; oracle = O, kw...)
         variants = (
-            ("double64", verified_lu_double64, verified_cholesky_double64, verified_qr_double64,
-                verified_polar_double64, verified_takagi_double64),
-            ("multifloat x2", verified_lu_multifloat, verified_cholesky_multifloat,
-                verified_qr_multifloat, verified_polar_multifloat, verified_takagi_multifloat),
-            ("multifloat x4", (A; kw...) -> verified_lu_multifloat(A; precision = :x4, kw...),
-                (A; kw...) -> verified_cholesky_multifloat(A; precision = :x4, kw...),
-                (A; kw...) -> verified_qr_multifloat(A; precision = :x4, kw...),
-                (A; kw...) -> verified_polar_multifloat(A; precision = :x4, kw...),
-                (A; kw...) -> verified_takagi_multifloat(A; precision = :x4, kw...)),
-            ("gla", verified_lu_gla, verified_cholesky_gla, verified_qr_gla, verified_polar_gla,
-                nothing))
+            (tag, with_oracle(verified_lu, O), with_oracle(verified_cholesky, O),
+                with_oracle(verified_qr, O), with_oracle(verified_polar, O),
+                tak ? with_oracle(verified_takagi, O) : nothing)
+            for (tag, O, tak) in (("oracle Double64", Double64, true),
+                ("oracle Float64x2", Float64x2, true), ("oracle Float64x4", Float64x4, true),
+                ("BigFloat", nothing, false)))
         rng = MersenneTwister(20261012)
         for T in (Float64, ComplexF64), n in (6, 15)
             A = randn(rng, T, n, n)
@@ -103,31 +100,31 @@ _ext_maxrad(B) = Float64(maximum(rad(B)))
             end
         end
 
-        @testset "the oracle keyword, and verified_svd_gla" begin
+        @testset "the oracle and arithmetic keywords, and verified_svd" begin
             A = randn(rng, 7, 7)
             r1 = verified_lu(A; oracle = Double64)
-            r2 = verified_lu_double64(A)
-            @test mid(r1.L) == mid(r2.L) && rad(r1.U) == rad(r2.U)
             # the starting factorisation in Double64 gives wider enclosures than in BigFloat
             r0 = verified_lu(A)
             @test _ext_maxrad(r0.U) <= _ext_maxrad(r1.U)
             @test r1.L isa BallMatrix{BigFloat}
             # a rectangular matrix
             R = randn(rng, 9, 5)
-            r = verified_lu_double64(R)
+            r = verified_lu(R; oracle = Double64)
             @test r.certified
             F = lu(big.(R)[r.p, r.q], NoPivot())
             @test _ext_inside(r.L, Matrix(F.L)) && _ext_inside(r.U, Matrix(F.U))
-            r = verified_qr_double64(R)
+            r = verified_qr(R; oracle = Double64)
             @test r.certified
             Rref = Matrix(cholesky(Hermitian(big.(R)' * big.(R))).U)
             @test _ext_inside(r.R, Rref) && _ext_inside(r.Q, big.(R) / Rref)
             # a singular matrix is not certified
-            @test !verified_lu_double64([1.0 2.0; 2.0 4.0]).certified
-            @test !verified_cholesky_multifloat([1.0 2.0; 2.0 1.0]).certified
-            @test_throws ArgumentError verified_lu_multifloat(A; precision = :x3)
+            @test !verified_lu([1.0 2.0; 2.0 4.0]; oracle = Double64).certified
+            @test !verified_cholesky([1.0 2.0; 2.0 1.0]; oracle = Float64x2).certified
+            # the enclosure is in Float64 or in BigFloat; another type is an oracle
+            @test_throws ArgumentError verified_lu(A; arithmetic = Double64)
+            @test verified_lu(A; arithmetic = Float64).L isa BallMatrix{Float64}
             # all the singular values
-            s = verified_svd_gla(A)
+            s = verified_svd(A)
             σ = svdvals(big.(A))
             @test all(any(abs(σ[k] - big(mid(b))) <= big(rad(b)) for b in s.values) for k in 1:7)
             @test maximum(Float64.(rad.(s.values))) < 1e-40

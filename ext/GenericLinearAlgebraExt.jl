@@ -165,35 +165,4 @@ function _ogita_iteration_gla!(A::AbstractMatrix{T}, U::AbstractMatrix{T},
     return sqrt(real(sum(abs2, residual)))
 end
 
-#==============================================================================#
-# Decompositions with error bounds in BigFloat
-#==============================================================================#
-
-# The routines of the package without the suffix already run in BigFloat (`use_bigfloat = true`
-# is their default), with the generic factorisations of Julia; the singular value and symmetric
-# eigenvalue decompositions that the polar routine and `verifysvdall` start from are the ones
-# this package's dependency GenericLinearAlgebra provides for BigFloat. The names below are
-# kept for the callers that used them.
-
-BallArithmetic.verified_lu_gla(A::AbstractMatrix; precision_bits::Int = 256) =
-    BallArithmetic.verified_lu(A; precision_bits, use_bigfloat = true)
-
-BallArithmetic.verified_qr_gla(A::AbstractMatrix; precision_bits::Int = 256,
-    compute_full_Q::Bool = false) =
-    BallArithmetic.verified_qr(A; precision_bits, compute_full_Q, use_bigfloat = true)
-
-BallArithmetic.verified_cholesky_gla(A::AbstractMatrix; precision_bits::Int = 256) =
-    BallArithmetic.verified_cholesky(A; precision_bits, use_bigfloat = true)
-
-BallArithmetic.verified_polar_gla(A::AbstractMatrix; precision_bits::Int = 256,
-    right::Bool = true, kappa::Real = 0) =
-    BallArithmetic.verified_polar(A; precision_bits, right, kappa, use_bigfloat = true)
-
-function BallArithmetic.verified_svd_gla(A::AbstractMatrix; precision_bits::Int = 256,
-        kappa::Real = 0)
-    return BallArithmetic._decomposition_arithmetic(true, precision_bits) do
-        BallArithmetic.verifysvdall(BallArithmetic._decomposition_input(A, true); kappa)
-    end
-end
-
 end # module

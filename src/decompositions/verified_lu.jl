@@ -1,5 +1,5 @@
 # The exported LU decomposition with error bounds, and what the exported decompositions share:
-# the working arithmetic selected by `use_bigfloat` and `precision_bits`, the input as a ball
+# the working arithmetic selected by `arithmetic` and `precision_bits`, the input as a ball
 # matrix in it, and the relative residual of an enclosure. The method is in `rump_ogita_2024.jl`.
 
 # Helper to get appropriate BigFloat type (handles Complex)
@@ -24,6 +24,16 @@ end
 
 # Runs `f` in the working arithmetic of the exported decompositions: Float64, or BigFloat at
 # `precision_bits`.
+# Whether the enclosure runs in BigFloat. `arithmetic` is the keyword of the `verified_*`
+# routines: the enclosure is computed in ball arithmetic, which this package has for Float64 and
+# for BigFloat; another floating-point type can only be the `oracle`.
+function _bigfloat_arithmetic(arithmetic::Type)
+    arithmetic === BigFloat && return true
+    arithmetic === Float64 && return false
+    throw(ArgumentError("arithmetic = $arithmetic: the enclosure is computed in Float64 or in " *
+                        "BigFloat; a Double64 or a MultiFloat type can be given as `oracle`"))
+end
+
 _decomposition_arithmetic(f, use_bigfloat::Bool, precision_bits::Integer) =
     use_bigfloat ? setprecision(f, BigFloat, precision_bits) : f()
 
@@ -110,7 +120,7 @@ VerifiedLUResult(L, U, p, success, residual_norm) =
     VerifiedLUResult(L, U, p, success, residual_norm, collect(1:size(U, 2)))
 
 """
-    verified_lu(A::AbstractMatrix; precision_bits = 256, use_bigfloat = true)
+    verified_lu(A::AbstractMatrix; precision_bits = 256, arithmetic = BigFloat)
 
 Inclusions of the factors of the LU decomposition of the `m × n` matrix `A`, by Section 3 of
 Rump and Ogita (2024); the method is described at [`_rumpogita2024_lu`](@ref). Returns a
@@ -120,13 +130,12 @@ the ball matrices returned. `p` comes from partial pivoting; `q` is the identity
 for `m < n` the column permutation of Section 3.4 of the paper.
 
 # Arguments
-- `use_bigfloat`: with `true`, the default, the computation runs in BigFloat at `precision_bits`
-  and the factors are enclosed to about that precision; with `false` it runs in Float64 and the
-  radii are of the order of the rounding unit times the size of the factors. A BigFloat input is
-  always treated in BigFloat.
+- `arithmetic`: the arithmetic of the enclosure, `BigFloat` (the default) or `Float64`. In
+  BigFloat the computation runs at `precision_bits` and the factors are enclosed to about that
+  precision; in Float64 the radii are of the order of the rounding unit times the size of the
+  factors. A BigFloat input is always treated in BigFloat.
 - `precision_bits`: the BigFloat precision. A BigFloat input with more digits is rounded to it
   and the rounding is enclosed.
-- `use_double_precision`: kept for compatibility; it has no effect.
 - `oracle`: a floating-point type (`Double64`, a `MultiFloat`) in which the approximate
   factorisation the method starts from is computed, in place of the working arithmetic;
   `nothing`, the default, means the working arithmetic. It has no part in the verification:
@@ -138,7 +147,7 @@ for `m < n` the column permutation of Section 3.4 of the paper.
 # Example
 ```julia
 A = randn(100, 100)
-r = verified_lu(A; use_bigfloat = false)
+r = verified_lu(A; arithmetic = Float64)
 r.certified      # A[r.p, r.q] = L U with L in r.L and U in r.U
 ```
 
@@ -148,11 +157,10 @@ Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 3.
 """
 function verified_lu(A::AbstractMatrix{S};
         precision_bits::Int = 256,
-        use_double_precision::Bool = true,
-        use_bigfloat::Bool = true,
+        arithmetic::Type = BigFloat,
         oracle::Union{Nothing, Type} = nothing) where {S <: Union{
         Float64, ComplexF64, BigFloat, Complex{BigFloat}}}
-    bigfloat = use_bigfloat || real(S) === BigFloat
+    bigfloat = _bigfloat_arithmetic(arithmetic) || real(S) === BigFloat
     return _decomposition_arithmetic(bigfloat, precision_bits) do
         Ab = _decomposition_input(A, bigfloat)
         T = eltype(rad(Ab))
@@ -167,28 +175,4 @@ function verified_lu(A::AbstractMatrix{S};
     end
 end
 
-"""
-    verified_lu_double64(A; precision_bits = 256)
-
-[`verified_lu`](@ref)`(A; precision_bits, use_bigfloat = true, oracle = Double64)`: the
-enclosure is computed in BigFloat, and the floating-point factorisation the method starts from
-in `Double64` (about 32 digits) in place of BigFloat.
-
-The verification is the one of the routine without the suffix and does not depend on the
-accuracy of the starting factorisation, which only decides how small the radii come out.
-Requires DoubleFloats.jl.
-"""
-function verified_lu_double64 end
-
-"""
-    verified_lu_multifloat(A; precision = :x2, bigfloat_precision = 256)
-
-[`verified_lu`](@ref) in BigFloat at `bigfloat_precision`, with the floating-point factorisation
-the method starts from computed in a MultiFloat in place of BigFloat.
-
-`precision` is `:x2`, `:x4` or `:x8`. The verification is the one of the routine without the
-suffix. Requires MultiFloats.jl.
-"""
-function verified_lu_multifloat end
-
-export VerifiedLUResult, verified_lu, verified_lu_double64, verified_lu_multifloat
+export VerifiedLUResult, verified_lu

@@ -203,46 +203,6 @@ end
 
 
 #==============================================================================#
-# Decompositions with error bounds, the approximate factorisation computed in a MultiFloat
-#==============================================================================#
-
-# Each routine is the one of the package without the suffix, in BigFloat at `bigfloat_precision`,
-# with the floating-point factorisation that the method starts from computed in the MultiFloat
-# type chosen by `precision` (`:x2`, `:x4`, `:x8`) in place of BigFloat. The verification is
-# unchanged; see the note in `DoubleFloatsExt.jl`.
-#
-# The polar and the Takagi routines start from a singular value decomposition and from a
-# symmetric eigendecomposition; for a MultiFloat these exist only when a package that provides
-# them generically (GenericLinearAlgebra) is loaded, and the call is a `MethodError` otherwise.
-
-BallArithmetic.verified_lu_multifloat(A::AbstractMatrix{T}; precision::Symbol = :x2,
-    bigfloat_precision::Int = 256) where {T <: Union{Float64, ComplexF64}} =
-    BallArithmetic.verified_lu(A; precision_bits = bigfloat_precision, use_bigfloat = true,
-        oracle = _select_multifloat_type(precision))
-
-BallArithmetic.verified_cholesky_multifloat(A::AbstractMatrix{T}; precision::Symbol = :x2,
-    bigfloat_precision::Int = 256) where {T <: Union{Float64, ComplexF64}} =
-    BallArithmetic.verified_cholesky(A; precision_bits = bigfloat_precision,
-        use_bigfloat = true, oracle = _select_multifloat_type(precision))
-
-BallArithmetic.verified_qr_multifloat(A::AbstractMatrix{T}; precision::Symbol = :x2,
-    bigfloat_precision::Int = 256,
-    compute_full_Q::Bool = false) where {T <: Union{Float64, ComplexF64}} =
-    BallArithmetic.verified_qr(A; precision_bits = bigfloat_precision, compute_full_Q,
-        use_bigfloat = true, oracle = _select_multifloat_type(precision))
-
-BallArithmetic.verified_polar_multifloat(A::AbstractMatrix{T}; precision::Symbol = :x2,
-    bigfloat_precision::Int = 256, right::Bool = true,
-    kappa::Real = 0) where {T <: Union{Float64, ComplexF64}} =
-    BallArithmetic.verified_polar(A; precision_bits = bigfloat_precision, right, kappa,
-        use_bigfloat = true, oracle = _select_multifloat_type(precision))
-
-BallArithmetic.verified_takagi_multifloat(A::AbstractMatrix{ComplexF64};
-    precision::Symbol = :x2, bigfloat_precision::Int = 256) =
-    BallArithmetic.verified_takagi(A; precision_bits = bigfloat_precision, use_bigfloat = true,
-        oracle = _select_multifloat_type(precision))
-
-#==============================================================================#
 # Precision Cascade SVD Refinement
 #==============================================================================#
 

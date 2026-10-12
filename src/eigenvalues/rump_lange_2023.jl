@@ -500,3 +500,29 @@ function verifysvdall(A::BallMatrix{T}; kappa::Real = 0, oracle = nothing) where
     return VerifySvdAllResult(values, clusters, BallMatrix(Xs, repeat(reshape(rU, 1, n), m, 1)),
         BallMatrix(Ys, repeat(reshape(rV, 1, n), n, 1)))
 end
+
+"""
+    verified_svd(A::AbstractMatrix; arithmetic = BigFloat, precision_bits = 256, kappa = 0)
+        -> VerifySvdAllResult
+
+[`verifysvdall`](@ref) for a matrix with exact entries, in the arithmetic named: enclosures of
+all the singular values and of bases of the singular subspaces, by the method of Rump and Lange
+(2023). `arithmetic` is `BigFloat`, at `precision_bits`, or `Float64`; a BigFloat input is always
+treated in BigFloat. `kappa` is the clustering threshold of `verifysvdall`. The keywords are
+those of [`verified_lu`](@ref) and the other `verified_*` decompositions.
+
+# Reference
+S. M. Rump and M. Lange, *Fast computation of error bounds for all eigenpairs of a Hermitian and
+all singular pairs of a rectangular matrix with emphasis on eigen- and singular value clusters*,
+J. Comput. Appl. Math. **434** (2023), 115332, doi 10.1016/j.cam.2023.115332.
+"""
+function verified_svd(A::AbstractMatrix{S}; arithmetic::Type = BigFloat,
+        precision_bits::Int = 256, kappa::Real = 0) where {S <: Union{
+        Float64, ComplexF64, BigFloat, Complex{BigFloat}}}
+    bigfloat = _bigfloat_arithmetic(arithmetic) || real(S) === BigFloat
+    return _decomposition_arithmetic(bigfloat, precision_bits) do
+        verifysvdall(_decomposition_input(A, bigfloat); kappa)
+    end
+end
+
+export verified_svd

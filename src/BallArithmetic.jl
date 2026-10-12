@@ -162,50 +162,6 @@ include("decompositions/verified_polar.jl")
 include("decompositions/verified_takagi.jl")
 include("decompositions/polar_iterations.jl")
 
-# The decompositions in BigFloat under their older names (methods in GenericLinearAlgebraExt)
-"""
-    verified_lu_gla(A; precision_bits = 256)
-
-[`verified_lu`](@ref)`(A; precision_bits, use_bigfloat = true)`, kept under this name.
-Requires GenericLinearAlgebra.jl.
-"""
-function verified_lu_gla end
-
-"""
-    verified_qr_gla(A; precision_bits = 256, compute_full_Q = false)
-
-[`verified_qr`](@ref)`(A; precision_bits, compute_full_Q, use_bigfloat = true)`, kept under
-this name. Requires GenericLinearAlgebra.jl.
-"""
-function verified_qr_gla end
-
-"""
-    verified_cholesky_gla(A; precision_bits = 256)
-
-[`verified_cholesky`](@ref)`(A; precision_bits, use_bigfloat = true)`, kept under this name.
-Requires GenericLinearAlgebra.jl.
-"""
-function verified_cholesky_gla end
-
-"""
-    verified_svd_gla(A; precision_bits = 256, kappa = 0) -> VerifySvdAllResult
-
-[`verifysvdall`](@ref) on `A` in BigFloat at `precision_bits`: enclosures of all the singular
-values and of bases of the singular subspaces, by the method of Rump and Lange (2023).
-Requires GenericLinearAlgebra.jl.
-"""
-function verified_svd_gla end
-
-"""
-    verified_polar_gla(A; precision_bits = 256, right = true, kappa = 0)
-
-[`verified_polar`](@ref)`(A; precision_bits, right, kappa, use_bigfloat = true)`, kept under
-this name. Requires GenericLinearAlgebra.jl.
-"""
-function verified_polar_gla end
-
-export verified_lu_gla, verified_qr_gla, verified_cholesky_gla, verified_svd_gla,
-       verified_polar_gla
 include("pseudospectra/rigorous_contour.jl")
 include("pseudospectra/block_resolvent_floor.jl")
 include("pseudospectra/svd_frame_floor.jl")
@@ -290,12 +246,7 @@ export estimate_2norm, find_optimal_split, compare_all_configs
 for f in (:polar_newton, :polar_newton_schulz, :polar_qdwh, :cholesky_qr2,
     :triangular_eigenvectors,
     :verified_lu, :verified_qr, :verified_cholesky, :verified_polar, :verified_takagi,
-    :verified_lu_gla, :verified_qr_gla, :verified_cholesky_gla, :verified_polar_gla,
-    :verified_svd_gla,
-    :verified_lu_double64, :verified_qr_double64, :verified_cholesky_double64,
-    :verified_polar_double64, :verified_takagi_double64,
-    :verified_lu_multifloat, :verified_qr_multifloat, :verified_cholesky_multifloat,
-    :verified_polar_multifloat, :verified_takagi_multifloat)
+    :verified_svd)
     @eval $f(A::BallMatrix, args...; kwargs...) = throw(ArgumentError(string($(string(f)),
         " is for a matrix with exact entries, not for a ball matrix; mid(A) is such a matrix, ",
         "and what is then computed is about mid(A) alone")))

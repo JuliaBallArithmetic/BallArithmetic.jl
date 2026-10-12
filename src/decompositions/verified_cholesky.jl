@@ -48,7 +48,7 @@ function _symmetric_part_ball(A::BallMatrix{T}, f) where {T}
 end
 
 """
-    verified_cholesky(A::AbstractMatrix; precision_bits = 256, use_bigfloat = true)
+    verified_cholesky(A::AbstractMatrix; precision_bits = 256, arithmetic = BigFloat)
 
 An inclusion of the Cholesky factor of `A`, by Section 4 of Rump and Ogita (2024); the method is
 described at [`_rumpogita2024_cholesky`](@ref). Returns a [`VerifiedCholeskyResult`](@ref): when
@@ -60,17 +60,16 @@ When `A` is not Hermitian a warning is issued (above a rounding-level threshold)
 statement is for its Hermitian part `(A + A*)/2`, enclosed in ball arithmetic.
 
 # Arguments
-- `use_bigfloat`: with `true`, the default, the computation runs in BigFloat at `precision_bits`
-  and the factor is enclosed to about that precision; with `false` it runs in Float64. A
-  BigFloat input is always treated in BigFloat.
+- `arithmetic`: the arithmetic of the enclosure, `BigFloat` (the default) or `Float64`. In
+  BigFloat the computation runs at `precision_bits` and the factor is enclosed to about that
+  precision. A BigFloat input is always treated in BigFloat.
 - `precision_bits`: the BigFloat precision. A BigFloat input with more digits is rounded to it
   and the rounding is enclosed.
-- `use_double_precision`: kept for compatibility; it has no effect.
 
 # Example
 ```julia
 B = randn(100, 100); A = B' * B + I
-r = verified_cholesky(A; use_bigfloat = false)
+r = verified_cholesky(A; arithmetic = Float64)
 r.certified      # A is positive definite and its Cholesky factor lies in r.G
 ```
 
@@ -80,8 +79,7 @@ Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 4.
 """
 function verified_cholesky(A::AbstractMatrix{S};
         precision_bits::Int = 256,
-        use_double_precision::Bool = true,
-        use_bigfloat::Bool = true,
+        arithmetic::Type = BigFloat,
         oracle::Union{Nothing, Type} = nothing) where {S <: Union{
         Float64, ComplexF64, BigFloat, Complex{BigFloat}}}
     n = size(A, 1)
@@ -90,7 +88,7 @@ function verified_cholesky(A::AbstractMatrix{S};
     if sym_error > 100 * eps(real(S)) * maximum(abs.(A); init = zero(real(S)))
         @warn "Matrix A is not symmetric (error = $sym_error)"
     end
-    bigfloat = use_bigfloat || real(S) === BigFloat
+    bigfloat = _bigfloat_arithmetic(arithmetic) || real(S) === BigFloat
     return _decomposition_arithmetic(bigfloat, precision_bits) do
         Hb = _symmetric_part_ball(_decomposition_input(A, bigfloat), conj)
         T = eltype(rad(Hb))
@@ -101,29 +99,4 @@ function verified_cholesky(A::AbstractMatrix{S};
     end
 end
 
-"""
-    verified_cholesky_double64(A; precision_bits = 256)
-
-[`verified_cholesky`](@ref)`(A; precision_bits, use_bigfloat = true, oracle = Double64)`: the
-enclosure is computed in BigFloat, and the floating-point factorisation the method starts from
-in `Double64` (about 32 digits) in place of BigFloat.
-
-The verification is the one of the routine without the suffix and does not depend on the
-accuracy of the starting factorisation, which only decides how small the radii come out.
-Requires DoubleFloats.jl.
-"""
-function verified_cholesky_double64 end
-
-"""
-    verified_cholesky_multifloat(A; precision = :x2, bigfloat_precision = 256)
-
-[`verified_cholesky`](@ref) in BigFloat at `bigfloat_precision`, with the floating-point factorisation
-the method starts from computed in a MultiFloat in place of BigFloat.
-
-`precision` is `:x2`, `:x4` or `:x8`. The verification is the one of the routine without the
-suffix. Requires MultiFloats.jl.
-"""
-function verified_cholesky_multifloat end
-
-export VerifiedCholeskyResult, verified_cholesky, verified_cholesky_double64,
-       verified_cholesky_multifloat
+export VerifiedCholeskyResult, verified_cholesky

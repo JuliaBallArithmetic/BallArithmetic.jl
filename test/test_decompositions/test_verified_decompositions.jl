@@ -803,7 +803,7 @@ end
     @testset "Enclosures contain the factors" begin
         Random.seed!(20261011)
         inside(ref, B) = all(abs.(big.(mid(B)) .- ref) .<= big.(rad(B)))
-        modes = (((; use_bigfloat = false), 1e-9), ((;), 1e-60), ((; precision_bits = 128), 1e-30))
+        modes = (((; arithmetic = Float64), 1e-9), ((;), 1e-60), ((; precision_bits = 128), 1e-30))
 
         @testset "LU, $elt, $m × $n" for elt in (Float64, ComplexF64),
             (m, n) in ((6, 6), (9, 5), (5, 9))
@@ -845,7 +845,7 @@ end
             B = randn(6, 6)
             A = B' * B + I
             A[1, 2] += 1e-3
-            r = @test_logs (:warn,) verified_cholesky(A; use_bigfloat = false)
+            r = @test_logs (:warn,) verified_cholesky(A; arithmetic = Float64)
             @test r.certified
             setprecision(BigFloat, 1024) do
                 H = (big.(A) + big.(A)') / 2
@@ -854,7 +854,7 @@ end
         end
 
         @testset "Cholesky declines an indefinite matrix" begin
-            r = verified_cholesky([1.0 2.0; 2.0 1.0]; use_bigfloat = false)
+            r = verified_cholesky([1.0 2.0; 2.0 1.0]; arithmetic = Float64)
             @test !r.certified
             @test all(isinf, rad(r.G))
         end
@@ -878,12 +878,12 @@ end
 
         @testset "QR, full and wide" begin
             A = randn(8, 5)
-            r = verified_qr(A; compute_full_Q = true, use_bigfloat = false)
+            r = verified_qr(A; compute_full_Q = true, arithmetic = Float64)
             @test r.certified
             @test size(r.Q) == (8, 8) && size(r.R) == (8, 5)
             @test r.orthogonality_defect < 1e-9
             W = randn(4, 7)
-            r = verified_qr(W; use_bigfloat = false)
+            r = verified_qr(W; arithmetic = Float64)
             @test r.certified
             @test size(r.Q) == (4, 4) && size(r.R) == (4, 7)
             @test r.residual_norm < 1e-9
@@ -891,7 +891,7 @@ end
 
         @testset "Polar, $elt" for elt in (Float64, ComplexF64)
             A = randn(elt, 7, 5)
-            for (kw, tol) in (((; use_bigfloat = false), 1e-7), ((;), 1e-55))
+            for (kw, tol) in (((; arithmetic = Float64), 1e-7), ((;), 1e-55))
                 r = verified_polar(A; kw...)
                 @test r.certified && r.is_right
                 @test r.residual_norm < tol
@@ -941,11 +941,11 @@ end
 
         @testset "A singular matrix is declined" begin
             A = [1.0 2.0; 2.0 4.0]
-            l = verified_lu(A; use_bigfloat = false)
+            l = verified_lu(A; arithmetic = Float64)
             @test !l.certified && all(isinf, rad(l.U))
-            q = verified_qr(A; use_bigfloat = false)
+            q = verified_qr(A; arithmetic = Float64)
             @test !q.certified && all(isinf, rad(q.Q))
-            p = verified_polar(A; use_bigfloat = false)
+            p = verified_polar(A; arithmetic = Float64)
             @test !p.certified && all(isinf, rad(p.P))
         end
     end

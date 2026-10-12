@@ -1419,7 +1419,7 @@ Run the adaptive certification routine on `circle` using a serial evaluator.
 - `gram_factor = nothing`, `gram_factor_inv = nothing`: precomputed (and, for
   the inverse, verified before use) factor data — see [`gram_transform`](@ref).
 - `gram_kwargs = (;)`: extra keywords forwarded to [`gram_transform`](@ref),
-  e.g. `(use_bigfloat = true, inverse_method = :verify)`.
+  e.g. `(arithmetic = BigFloat, inverse_method = :verify)`.
 
 The return value is a named tuple containing the computed Schur form, the
 accumulated certification log, and the resolvent bounds for both the Schur

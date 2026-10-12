@@ -144,10 +144,12 @@ With GenericLinearAlgebra, we achieve **60+ orders of magnitude better residuals
 ```julia
 using BallArithmetic, GenericLinearAlgebra
 
-result_lu = verified_lu_gla(A)        # ~10⁻⁷⁵ residual
-result_qr = verified_qr_gla(A)        # ~10⁻⁷⁵ residual
-result_chol = verified_cholesky_gla(A_spd)  # ~10⁻⁷⁴ residual
-(U, S, V, res) = verified_svd_gla(A)  # ~10⁻⁷⁴ residual
+result_lu = verified_lu(A)              # arithmetic = BigFloat is the default
+result_qr = verified_qr(A)
+result_chol = verified_cholesky(A_spd)
+result_svd = verified_svd(A)            # a VerifySvdAllResult
+result_fast = verified_lu(A; arithmetic = Float64)
+result_d64 = verified_lu(A; oracle = Double64)   # starting factorisation in Double64
 ```
 
 **Usage examples:**

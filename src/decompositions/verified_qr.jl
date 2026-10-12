@@ -33,7 +33,7 @@ end
 
 """
     verified_qr(A::AbstractMatrix; compute_full_Q = false, precision_bits = 256,
-                use_bigfloat = true)
+                arithmetic = BigFloat)
 
 Inclusions of the factors of the QR decomposition of the `m × n` matrix `A`, real or complex, by
 Section 5 of Rump and Ogita (2024); the method is described at [`_rumpogita2024_qr`](@ref).
@@ -47,17 +47,16 @@ the range, which is not unique, and the statement is that some such basis lies i
 `m < n`, `Q` is `m × m`, from the leading square block, and `R = Q*A` is `m × n`.
 
 # Arguments
-- `use_bigfloat`: with `true`, the default, the computation runs in BigFloat at `precision_bits`
-  and the factors are enclosed to about that precision; with `false` it runs in Float64. A
-  BigFloat input is always treated in BigFloat.
+- `arithmetic`: the arithmetic of the enclosure, `BigFloat` (the default) or `Float64`. In
+  BigFloat the computation runs at `precision_bits` and the factors are enclosed to about that
+  precision. A BigFloat input is always treated in BigFloat.
 - `precision_bits`: the BigFloat precision. A BigFloat input with more digits is rounded to it
   and the rounding is enclosed.
-- `use_double_precision`: kept for compatibility; it has no effect.
 
 # Example
 ```julia
 A = randn(100, 50)
-r = verified_qr(A; use_bigfloat = false)
+r = verified_qr(A; arithmetic = Float64)
 r.certified      # A = Q R with Q (100 × 50) in r.Q and R (50 × 50) in r.R
 ```
 
@@ -67,11 +66,10 @@ Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 5 and Lemma 5
 """
 function verified_qr(A::AbstractMatrix{S};
                      precision_bits::Int=256,
-                     use_double_precision::Bool=true,
                      compute_full_Q::Bool=false,
-                     use_bigfloat::Bool=true,
+                     arithmetic::Type = BigFloat,
         oracle::Union{Nothing, Type} = nothing) where S<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}
-    bigfloat = use_bigfloat || real(S) === BigFloat
+    bigfloat = _bigfloat_arithmetic(arithmetic) || real(S) === BigFloat
     return _decomposition_arithmetic(bigfloat, precision_bits) do
         Ab = _decomposition_input(A, bigfloat)
         T = eltype(rad(Ab))
@@ -88,28 +86,4 @@ function verified_qr(A::AbstractMatrix{S};
     end
 end
 
-"""
-    verified_qr_double64(A; precision_bits = 256, compute_full_Q = false)
-
-[`verified_qr`](@ref)`(A; precision_bits, compute_full_Q, use_bigfloat = true, oracle = Double64)`: the
-enclosure is computed in BigFloat, and the floating-point factorisation the method starts from
-in `Double64` (about 32 digits) in place of BigFloat.
-
-The verification is the one of the routine without the suffix and does not depend on the
-accuracy of the starting factorisation, which only decides how small the radii come out.
-Requires DoubleFloats.jl.
-"""
-function verified_qr_double64 end
-
-"""
-    verified_qr_multifloat(A; precision = :x2, bigfloat_precision = 256, compute_full_Q = false)
-
-[`verified_qr`](@ref) in BigFloat at `bigfloat_precision`, with the floating-point factorisation
-the method starts from computed in a MultiFloat in place of BigFloat.
-
-`precision` is `:x2`, `:x4` or `:x8`. The verification is the one of the routine without the
-suffix. Requires MultiFloats.jl.
-"""
-function verified_qr_multifloat end
-
-export VerifiedQRResult, verified_qr, verified_qr_double64, verified_qr_multifloat
+export VerifiedQRResult, verified_qr

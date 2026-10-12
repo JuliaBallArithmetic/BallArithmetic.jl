@@ -136,7 +136,7 @@ using BallArithmetic
     end
 
     @testset "the factors computed at higher precision lie in the enclosure" begin
-        for n in (3, 8), (kw, tol) in (((; use_bigfloat = false), 1e-9), ((;), 1e-60))
+        for n in (3, 8), (kw, tol) in (((; arithmetic = Float64), 1e-9), ((;), 1e-60))
             B = randn(ComplexF64, n, n)
             A = B + transpose(B)
             r = verified_takagi(A; kw...)
@@ -159,7 +159,7 @@ using BallArithmetic
 
     @testset "the symmetric part of a non-symmetric input" begin
         A = [2.0+1im 0.5; 0.25 1.0-1im]
-        r = @test_logs (:warn,) verified_takagi(A; use_bigfloat = false)
+        r = @test_logs (:warn,) verified_takagi(A; arithmetic = Float64)
         @test r.certified
         S = (A + transpose(A)) / 2
         @test maximum(abs.(svdvals(S) .- mid.(r.Σ))) < 1e-12
