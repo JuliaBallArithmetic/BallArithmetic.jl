@@ -141,7 +141,7 @@ using GenericLinearAlgebra
                     verified_polar, verified_takagi, verified_svd)
                     @test_throws ArgumentError f(A)
                 end
-                @test_throws ArgumentError verified_lu(A; arithmetic = Float64)
+                @test_throws ArgumentError verified_lu(Float64, A)
             end
             # and still take the matrix itself
             @test verified_lu([2.0 1.0; 1.0 3.0]).certified

@@ -121,8 +121,8 @@ _ext_maxrad(B) = Float64(maximum(rad(B)))
             @test !verified_lu([1.0 2.0; 2.0 4.0]; oracle = Double64).certified
             @test !verified_cholesky([1.0 2.0; 2.0 1.0]; oracle = Float64x2).certified
             # the enclosure is in Float64 or in BigFloat; another type is an oracle
-            @test_throws ArgumentError verified_lu(A; arithmetic = Double64)
-            @test verified_lu(A; arithmetic = Float64).L isa BallMatrix{Float64}
+            @test_throws ArgumentError verified_lu(Double64, A)
+            @test verified_lu(Float64, A).L isa BallMatrix{Float64}
             # all the singular values
             s = verified_svd(A)
             σ = svdvals(big.(A))

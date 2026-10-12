@@ -251,5 +251,9 @@ for f in (:polar_newton, :polar_newton_schulz, :polar_qdwh, :cholesky_qr2,
         " is for a matrix with exact entries, not for a ball matrix; mid(A) is such a matrix, ",
         "and what is then computed is about mid(A) alone")))
 end
+for f in (:verified_lu, :verified_qr, :verified_cholesky, :verified_polar, :verified_takagi,
+    :verified_svd)
+    @eval $f(T::Type, A::BallMatrix, args...; kwargs...) = $f(A)
+end
 
 end

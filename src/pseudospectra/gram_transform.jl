@@ -334,8 +334,7 @@ function gram_transform(gram;
         L, L_inv = _diagonal_gram_factor(G)
         source = :diagonal
     else
-        chol = verified_cholesky(G; precision_bits = precision_bits,
-            arithmetic)
+        chol = verified_cholesky(arithmetic, G; precision_bits = precision_bits)
         chol.certified ||
             throw(ArgumentError("verified Cholesky of the Gram matrix failed: G " *
                                 "could not be proven positive definite. Try " *

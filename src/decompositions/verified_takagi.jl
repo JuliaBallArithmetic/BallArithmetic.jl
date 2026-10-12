@@ -31,7 +31,7 @@ struct VerifiedTakagiResult{UM<:BallMatrix, SV<:AbstractVector, RT<:Real}
 end
 
 """
-    verified_takagi(A::AbstractMatrix{<:Complex}; precision_bits = 256, arithmetic = BigFloat)
+    verified_takagi([T = BigFloat,] A::AbstractMatrix{<:Complex}; precision_bits = 256)
 
 Inclusions of the factors of the Takagi decomposition `A = UΣUᵀ` of a complex symmetric matrix,
 by the third method of Section 9 of Rump and Ogita (2024), the one through the real symmetric
@@ -46,15 +46,15 @@ When `A` is not symmetric a warning is issued (above a rounding-level threshold)
 statement is for its symmetric part `(A + Aᵀ)/2`, enclosed in ball arithmetic.
 
 # Arguments
-- `arithmetic`: the arithmetic of the enclosure, `BigFloat` (the default), at `precision_bits`,
-  or `Float64`. A BigFloat input is always treated in BigFloat.
+- `T`: the arithmetic of the enclosure, `BigFloat` (the default), at `precision_bits`, or
+  `Float64`, as a leading argument. A BigFloat input is always treated in BigFloat.
 - `precision_bits`: the BigFloat precision. An input with more digits is rounded to it and the
   rounding is enclosed.
 
 # Example
 ```julia
 B = randn(ComplexF64, 20, 20); A = B + transpose(B)
-r = verified_takagi(A; arithmetic = Float64)
+r = verified_takagi(Float64, A)
 r.certified      # A = U Σ Uᵀ with U in r.U and the diagonal of Σ in r.Σ
 ```
 
@@ -62,17 +62,16 @@ r.certified      # A = U Σ Uᵀ with U in r.U and the diagonal of Σ in r.Σ
 S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
 Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 9.
 """
-function verified_takagi(A::AbstractMatrix{Complex{S}};
+function verified_takagi(::Type{AT}, A::AbstractMatrix{Complex{S}};
                          precision_bits::Int=256,
-                         arithmetic::Type = BigFloat,
-        oracle::Union{Nothing, Type} = nothing) where S<:Union{Float64, BigFloat}
+        oracle::Union{Nothing, Type} = nothing) where {AT, S<:Union{Float64, BigFloat}}
     n = size(A, 1)
     n == size(A, 2) || throw(DimensionMismatch("A must be square"))
     sym_error = maximum(abs.(A - transpose(A)); init = zero(S))
     if sym_error > 100 * eps(S) * maximum(abs.(A); init = zero(S))
         @warn "Matrix A is not complex symmetric (error = $sym_error)"
     end
-    bigfloat = _bigfloat_arithmetic(arithmetic) || S === BigFloat
+    bigfloat = _bigfloat_arithmetic(AT) || S === BigFloat
     return _decomposition_arithmetic(bigfloat, precision_bits) do
         Sb = _symmetric_part_ball(_decomposition_input(A, bigfloat), identity)
         T = eltype(rad(Sb))
@@ -85,5 +84,7 @@ function verified_takagi(A::AbstractMatrix{Complex{S}};
         return VerifiedTakagiResult(r.U, r.sigma, true, residual_norm)
     end
 end
+
+verified_takagi(A::AbstractMatrix; kwargs...) = verified_takagi(BigFloat, A; kwargs...)
 
 export VerifiedTakagiResult, verified_takagi

@@ -48,7 +48,7 @@ function _symmetric_part_ball(A::BallMatrix{T}, f) where {T}
 end
 
 """
-    verified_cholesky(A::AbstractMatrix; precision_bits = 256, arithmetic = BigFloat)
+    verified_cholesky([T = BigFloat,] A::AbstractMatrix; precision_bits = 256)
 
 An inclusion of the Cholesky factor of `A`, by Section 4 of Rump and Ogita (2024); the method is
 described at [`_rumpogita2024_cholesky`](@ref). Returns a [`VerifiedCholeskyResult`](@ref): when
@@ -60,7 +60,8 @@ When `A` is not Hermitian a warning is issued (above a rounding-level threshold)
 statement is for its Hermitian part `(A + A*)/2`, enclosed in ball arithmetic.
 
 # Arguments
-- `arithmetic`: the arithmetic of the enclosure, `BigFloat` (the default) or `Float64`. In
+- `T`: the arithmetic of the enclosure, `BigFloat` (the default) or `Float64`, as a leading
+  argument. In
   BigFloat the computation runs at `precision_bits` and the factor is enclosed to about that
   precision. A BigFloat input is always treated in BigFloat.
 - `precision_bits`: the BigFloat precision. A BigFloat input with more digits is rounded to it
@@ -69,7 +70,7 @@ statement is for its Hermitian part `(A + A*)/2`, enclosed in ball arithmetic.
 # Example
 ```julia
 B = randn(100, 100); A = B' * B + I
-r = verified_cholesky(A; arithmetic = Float64)
+r = verified_cholesky(Float64, A)
 r.certified      # A is positive definite and its Cholesky factor lies in r.G
 ```
 
@@ -77,10 +78,9 @@ r.certified      # A is positive definite and its Cholesky factor lies in r.G
 S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
 Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 4.
 """
-function verified_cholesky(A::AbstractMatrix{S};
+function verified_cholesky(::Type{AT}, A::AbstractMatrix{S};
         precision_bits::Int = 256,
-        arithmetic::Type = BigFloat,
-        oracle::Union{Nothing, Type} = nothing) where {S <: Union{
+        oracle::Union{Nothing, Type} = nothing) where {AT, S <: Union{
         Float64, ComplexF64, BigFloat, Complex{BigFloat}}}
     n = size(A, 1)
     n == size(A, 2) || throw(DimensionMismatch("A must be square"))
@@ -88,7 +88,7 @@ function verified_cholesky(A::AbstractMatrix{S};
     if sym_error > 100 * eps(real(S)) * maximum(abs.(A); init = zero(real(S)))
         @warn "Matrix A is not symmetric (error = $sym_error)"
     end
-    bigfloat = _bigfloat_arithmetic(arithmetic) || real(S) === BigFloat
+    bigfloat = _bigfloat_arithmetic(AT) || real(S) === BigFloat
     return _decomposition_arithmetic(bigfloat, precision_bits) do
         Hb = _symmetric_part_ball(_decomposition_input(A, bigfloat), conj)
         T = eltype(rad(Hb))
@@ -98,5 +98,7 @@ function verified_cholesky(A::AbstractMatrix{S};
         return VerifiedCholeskyResult(r.G, true, residual_norm)
     end
 end
+
+verified_cholesky(A::AbstractMatrix; kwargs...) = verified_cholesky(BigFloat, A; kwargs...)
 
 export VerifiedCholeskyResult, verified_cholesky

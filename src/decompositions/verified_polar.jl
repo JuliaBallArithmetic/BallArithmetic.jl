@@ -34,8 +34,7 @@ struct VerifiedPolarResult{QM<:BallMatrix, PM<:BallMatrix, RT<:Real}
 end
 
 """
-    verified_polar(A::AbstractMatrix; right = true, kappa = 0, precision_bits = 256,
-                   arithmetic = BigFloat)
+    verified_polar([T = BigFloat,] A::AbstractMatrix; right = true, kappa = 0, precision_bits = 256)
 
 Inclusions of the factors of the polar decomposition of the `m × n` matrix `A`, by Section 7 of
 Rump and Ogita (2024), from the inclusions of the singular value decomposition of Rump and Lange
@@ -50,15 +49,15 @@ with orthonormal columns and `P` of size `n × n` Hermitian positive definite. W
 
 # Arguments
 - `kappa`: the clustering threshold of [`verifysvdall`](@ref).
-- `arithmetic`: the arithmetic of the enclosure, `BigFloat` (the default), at `precision_bits`,
-  or `Float64`. A BigFloat input is always treated in BigFloat.
+- `T`: the arithmetic of the enclosure, `BigFloat` (the default), at `precision_bits`, or
+  `Float64`, as a leading argument. A BigFloat input is always treated in BigFloat.
 - `precision_bits`: the BigFloat precision. A BigFloat input with more digits is rounded to it
   and the rounding is enclosed.
 
 # Example
 ```julia
 A = randn(ComplexF64, 50, 50)
-r = verified_polar(A; arithmetic = Float64)
+r = verified_polar(Float64, A)
 r.certified      # A = Q P with Q in r.Q and P in r.P
 ```
 
@@ -69,16 +68,15 @@ Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 7; S. M. Rump
 rectangular matrix with emphasis on eigen- and singular value clusters*, J. Comput. Appl. Math.
 **434** (2023), 115332, doi 10.1016/j.cam.2023.115332.
 """
-function verified_polar(A::AbstractMatrix{S};
+function verified_polar(::Type{AT}, A::AbstractMatrix{S};
                         precision_bits::Int=256,
                         right::Bool=true,
                         kappa::Real=0,
-                        arithmetic::Type = BigFloat,
-                        oracle::Union{Nothing, Type}=nothing) where S<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}
+                        oracle::Union{Nothing, Type}=nothing) where {AT, S<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}}
     m, n = size(A)
     (right ? m >= n : m <= n) || throw(DimensionMismatch(
         "verified_polar: A = QP needs at least as many rows as columns, A = PQ at most as many"))
-    bigfloat = _bigfloat_arithmetic(arithmetic) || real(S) === BigFloat
+    bigfloat = _bigfloat_arithmetic(AT) || real(S) === BigFloat
     return _decomposition_arithmetic(bigfloat, precision_bits) do
         Ab = _decomposition_input(A, bigfloat)
         T = eltype(rad(Ab))
@@ -92,5 +90,7 @@ function verified_polar(A::AbstractMatrix{S};
         return VerifiedPolarResult(Q, r.P, right, true, residual_norm)
     end
 end
+
+verified_polar(A::AbstractMatrix; kwargs...) = verified_polar(BigFloat, A; kwargs...)
 
 export VerifiedPolarResult, verified_polar

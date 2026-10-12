@@ -1,5 +1,5 @@
 # The exported LU decomposition with error bounds, and what the exported decompositions share:
-# the working arithmetic selected by `arithmetic` and `precision_bits`, the input as a ball
+# the working arithmetic selected by the leading type argument and `precision_bits`, the input as a ball
 # matrix in it, and the relative residual of an enclosure. The method is in `rump_ogita_2024.jl`.
 
 # Helper to get appropriate BigFloat type (handles Complex)
@@ -24,13 +24,13 @@ end
 
 # Runs `f` in the working arithmetic of the exported decompositions: Float64, or BigFloat at
 # `precision_bits`.
-# Whether the enclosure runs in BigFloat. `arithmetic` is the keyword of the `verified_*`
-# routines: the enclosure is computed in ball arithmetic, which this package has for Float64 and
+# Whether the enclosure runs in BigFloat. `arithmetic` is the leading type argument of the
+# `verified_*` routines: the enclosure is computed in ball arithmetic, which this package has for Float64 and
 # for BigFloat; another floating-point type can only be the `oracle`.
 function _bigfloat_arithmetic(arithmetic::Type)
     arithmetic === BigFloat && return true
     arithmetic === Float64 && return false
-    throw(ArgumentError("arithmetic = $arithmetic: the enclosure is computed in Float64 or in " *
+    throw(ArgumentError("$arithmetic: the enclosure is computed in Float64 or in " *
                         "BigFloat; a Double64 or a MultiFloat type can be given as `oracle`"))
 end
 
@@ -120,7 +120,7 @@ VerifiedLUResult(L, U, p, success, residual_norm) =
     VerifiedLUResult(L, U, p, success, residual_norm, collect(1:size(U, 2)))
 
 """
-    verified_lu(A::AbstractMatrix; precision_bits = 256, arithmetic = BigFloat)
+    verified_lu([T = BigFloat,] A::AbstractMatrix; precision_bits = 256)
 
 Inclusions of the factors of the LU decomposition of the `m × n` matrix `A`, by Section 3 of
 Rump and Ogita (2024); the method is described at [`_rumpogita2024_lu`](@ref). Returns a
@@ -130,7 +130,8 @@ the ball matrices returned. `p` comes from partial pivoting; `q` is the identity
 for `m < n` the column permutation of Section 3.4 of the paper.
 
 # Arguments
-- `arithmetic`: the arithmetic of the enclosure, `BigFloat` (the default) or `Float64`. In
+- `T`: the arithmetic of the enclosure, `BigFloat` (the default) or `Float64`, as a leading
+  argument. In
   BigFloat the computation runs at `precision_bits` and the factors are enclosed to about that
   precision; in Float64 the radii are of the order of the rounding unit times the size of the
   factors. A BigFloat input is always treated in BigFloat.
@@ -147,7 +148,7 @@ for `m < n` the column permutation of Section 3.4 of the paper.
 # Example
 ```julia
 A = randn(100, 100)
-r = verified_lu(A; arithmetic = Float64)
+r = verified_lu(Float64, A)
 r.certified      # A[r.p, r.q] = L U with L in r.L and U in r.U
 ```
 
@@ -155,12 +156,11 @@ r.certified      # A[r.p, r.q] = L U with L in r.L and U in r.U
 S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
 Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 3.
 """
-function verified_lu(A::AbstractMatrix{S};
+function verified_lu(::Type{AT}, A::AbstractMatrix{S};
         precision_bits::Int = 256,
-        arithmetic::Type = BigFloat,
-        oracle::Union{Nothing, Type} = nothing) where {S <: Union{
+        oracle::Union{Nothing, Type} = nothing) where {AT, S <: Union{
         Float64, ComplexF64, BigFloat, Complex{BigFloat}}}
-    bigfloat = _bigfloat_arithmetic(arithmetic) || real(S) === BigFloat
+    bigfloat = _bigfloat_arithmetic(AT) || real(S) === BigFloat
     return _decomposition_arithmetic(bigfloat, precision_bits) do
         Ab = _decomposition_input(A, bigfloat)
         T = eltype(rad(Ab))
@@ -174,5 +174,7 @@ function verified_lu(A::AbstractMatrix{S};
         return VerifiedLUResult(r.L, r.U, r.p, true, residual_norm, r.q)
     end
 end
+
+verified_lu(A::AbstractMatrix; kwargs...) = verified_lu(BigFloat, A; kwargs...)
 
 export VerifiedLUResult, verified_lu

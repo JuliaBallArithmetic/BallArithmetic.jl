@@ -32,8 +32,7 @@ struct VerifiedQRResult{QM<:BallMatrix, RM<:BallMatrix, RT<:Real}
 end
 
 """
-    verified_qr(A::AbstractMatrix; compute_full_Q = false, precision_bits = 256,
-                arithmetic = BigFloat)
+    verified_qr([T = BigFloat,] A::AbstractMatrix; compute_full_Q = false, precision_bits = 256)
 
 Inclusions of the factors of the QR decomposition of the `m × n` matrix `A`, real or complex, by
 Section 5 of Rump and Ogita (2024); the method is described at [`_rumpogita2024_qr`](@ref).
@@ -47,7 +46,8 @@ the range, which is not unique, and the statement is that some such basis lies i
 `m < n`, `Q` is `m × m`, from the leading square block, and `R = Q*A` is `m × n`.
 
 # Arguments
-- `arithmetic`: the arithmetic of the enclosure, `BigFloat` (the default) or `Float64`. In
+- `T`: the arithmetic of the enclosure, `BigFloat` (the default) or `Float64`, as a leading
+  argument. In
   BigFloat the computation runs at `precision_bits` and the factors are enclosed to about that
   precision. A BigFloat input is always treated in BigFloat.
 - `precision_bits`: the BigFloat precision. A BigFloat input with more digits is rounded to it
@@ -56,7 +56,7 @@ the range, which is not unique, and the statement is that some such basis lies i
 # Example
 ```julia
 A = randn(100, 50)
-r = verified_qr(A; arithmetic = Float64)
+r = verified_qr(Float64, A)
 r.certified      # A = Q R with Q (100 × 50) in r.Q and R (50 × 50) in r.R
 ```
 
@@ -64,12 +64,11 @@ r.certified      # A = Q R with Q (100 × 50) in r.Q and R (50 × 50) in r.R
 S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
 Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 5 and Lemma 5.1.
 """
-function verified_qr(A::AbstractMatrix{S};
+function verified_qr(::Type{AT}, A::AbstractMatrix{S};
                      precision_bits::Int=256,
                      compute_full_Q::Bool=false,
-                     arithmetic::Type = BigFloat,
-        oracle::Union{Nothing, Type} = nothing) where S<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}
-    bigfloat = _bigfloat_arithmetic(arithmetic) || real(S) === BigFloat
+        oracle::Union{Nothing, Type} = nothing) where {AT, S<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}}
+    bigfloat = _bigfloat_arithmetic(AT) || real(S) === BigFloat
     return _decomposition_arithmetic(bigfloat, precision_bits) do
         Ab = _decomposition_input(A, bigfloat)
         T = eltype(rad(Ab))
@@ -85,5 +84,7 @@ function verified_qr(A::AbstractMatrix{S};
         return VerifiedQRResult(r.Q, r.R, true, residual_norm, orthogonality_defect)
     end
 end
+
+verified_qr(A::AbstractMatrix; kwargs...) = verified_qr(BigFloat, A; kwargs...)
 
 export VerifiedQRResult, verified_qr
