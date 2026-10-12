@@ -371,7 +371,9 @@ end
 Compute rigorous SVD bounds with adaptive precision using Ogita's refinement.
 
 # Algorithm
-1. Start with Float64 precision
+1. Start with Float64 precision. A matrix given at a higher precision is rounded to the working
+   precision of each level, and the rounding error goes into the radii, so that what is certified
+   at every level holds for `A`.
 2. Compute rigorous SVD bounds using `rigorous_svd`
 3. Check if max(rad(σᵢ)) < tolerance
 4. If not satisfied, refine using Ogita's method with doubled precision
@@ -500,20 +502,37 @@ function adaptive_ogita_svd(A::BallMatrix{T};
     )
 end
 
-"""
-    _convert_to_precision(A::BallMatrix{T}, precision_bits::Int) where {T}
-
-Convert a ball matrix to specified precision.
-"""
+# The ball matrix `A` in the arithmetic of `precision_bits` bits, which is Float64 at 53 bits or
+# fewer and BigFloat above. A midpoint with more digits than that is rounded to nearest; the
+# rounding error, computed exactly at the precision of the midpoint and then rounded up, is added
+# to the radius, itself rounded up, so that the result contains `A`.
 function _convert_to_precision(A::BallMatrix{T}, precision_bits::Int) where {T}
-    if precision_bits <= 53
-        return BallMatrix(convert.(eltype(mid(A)) <: Complex ? ComplexF64 : Float64, mid(A)),
-            convert.(Float64, rad(A)))
+    RT = precision_bits <= 53 ? Float64 : BigFloat
+    p = RT === Float64 ? 53 : precision_bits
+    up(x::Real) = RT === Float64 ? Float64(x, RoundUp) : BigFloat(x, RoundUp; precision = p)
+    nearest(x::Real) = RT === Float64 ? Float64(x) : BigFloat(x; precision = p)
+    function excess(x::Real, c::Real)
+        px = precision(x)
+        px <= p && return up(0)
+        return up(setprecision(() -> abs(BigFloat(x) - BigFloat(c)), BigFloat, px))
     end
-    return setprecision(BigFloat, precision_bits) do
-        CT = eltype(mid(A)) <: Complex ? Complex{BigFloat} : BigFloat
-        BallMatrix(convert.(CT, mid(A)), convert.(BigFloat, rad(A)))
+    Ac, Ar = mid(A), rad(A)
+    iscomplex = eltype(Ac) <: Complex
+    c = Matrix{iscomplex ? Complex{RT} : RT}(undef, size(A))
+    r = Matrix{RT}(undef, size(A))
+    convert_entries() = for i in eachindex(Ac)
+        x = Ac[i]
+        if iscomplex
+            cr, ci = nearest(real(x)), nearest(imag(x))
+            c[i] = complex(cr, ci)
+            r[i] = add_up(add_up(excess(real(x), cr), excess(imag(x), ci)), up(Ar[i]))
+        else
+            c[i] = nearest(x)
+            r[i] = add_up(excess(x, c[i]), up(Ar[i]))
+        end
     end
+    RT === Float64 ? convert_entries() : setprecision(convert_entries, BigFloat, p)
+    return BallMatrix(c, r)
 end
 
 #==============================================================================#

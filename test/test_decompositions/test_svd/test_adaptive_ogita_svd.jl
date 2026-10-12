@@ -218,3 +218,28 @@ println("All adaptive Ogita SVD tests passed!")
         @test all(hi > lo for (lo, hi) in exact)
     end
 end
+
+@testset "a matrix at a higher precision is enclosed at every level" begin
+    setprecision(BigFloat, 256) do
+        rng = MersenneTwister(20261012)
+        for M in (big.(randn(rng, 4, 4)) / 3 + 4I,
+            (big.(randn(rng, 4, 4)) + im * big.(randn(rng, 4, 4))) / 3 + 4I)
+            A = BallMatrix(M, fill(big(2.0)^-200, 4, 4))
+            for p in (53, 106, 256, 512)
+                B = BallArithmetic._convert_to_precision(A, p)
+                @test eltype(rad(B)) === (p <= 53 ? Float64 : BigFloat)
+                # the ball of every entry of A is inside the converted ball
+                @test all(abs(M[i] - mid(B)[i]) + rad(A)[i] <= rad(B)[i] for i in eachindex(M))
+                p >= 256 && @test rad(B) == rad(A) && mid(B) == M
+            end
+            # the first level is Float64: its enclosures must hold for the matrix as given
+            r = redirect_stderr(devnull) do
+                adaptive_ogita_svd(A; tolerance = 1e-10)
+            end
+            @test r.final_precision == 53
+            σ = svdvals(M)
+            @test all(any(abs(s - mid(b)) <= rad(b) for b in r.rigorous_result.singular_values)
+            for s in σ)
+        end
+    end
+end

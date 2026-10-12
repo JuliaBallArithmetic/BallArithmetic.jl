@@ -27,3 +27,21 @@
     @test ev_result.inverse_defect_norm >= zero(radtype(first(v)))
     @test ev_result.projected_residual_norm >= zero(radtype(first(v)))
 end
+
+@testset "generalised eigenvalues in BigFloat" begin
+    setprecision(BigFloat, 256) do
+        A = big.([4.0 1.0 0.0; 1.0 3.0 1.0; 0.0 1.0 2.0]) / 3
+        B = big.([2.0 0.5 0.0; 0.5 2.0 0.5; 0.0 0.5 2.0]) / 7
+        for (bA, bB) in ((BallMatrix(A), BallMatrix(B)),
+            (BallMatrix(complex(A)), BallMatrix(complex(B))))
+            r = BallArithmetic.rigorous_generalized_eigenvalues(bA, bB)
+            @test BallArithmetic.gevbox(bA, bB) == r.eigenvalues
+            @test all(rad(b) < big(2.0)^-200 for b in r.eigenvalues)
+            # the eigenvalues of the pencil, from the eigenvalues of B⁻¹A at twice the precision
+            λ = setprecision(() -> eigvals(B \ A), BigFloat, 512)
+            @test all(any(abs(l - mid(b)) <= rad(b) + big(2.0)^-240 for b in r.eigenvalues)
+            for l in λ)
+        end
+    end
+end
+

@@ -310,10 +310,11 @@ end
 An upper bound of `max_i 1/|x_i|` over `|x_i − d[i]| ≤ d_rad[i, i]`, the 2-norm of the inverse of
 the diagonal matrix; `Inf` where an entry may vanish. The lower bound of `|x_i|` is rounded down.
 """
-function _inverse_diagonal_norm(d::Vector{T}, d_rad::AbstractMatrix{T}) where {T}
+function _inverse_diagonal_norm(d::Vector{<:Union{T, Complex{T}}},
+        d_rad::AbstractMatrix{T}) where {T}
     bound = zero(T)
     for i in eachindex(d)
-        lower = sub_down(abs(d[i]), d_rad[i, i])
+        lower = sub_down(abs_down(d[i]), d_rad[i, i])
         lower ≤ zero(T) && return T(Inf)
         bound = max(bound, div_up(one(T), lower))
     end

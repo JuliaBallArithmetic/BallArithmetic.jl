@@ -29,20 +29,21 @@ Enumeration of available preconditioning strategies.
 end
 
 """
-    PreconditionerResult{T}
+    PreconditionerResult{CT, T, F}
 
-Result from preconditioner computation.
+Result from preconditioner computation. Nothing in it is verified: the preconditioner is an
+approximate inverse and the condition number an estimate.
 
 # Fields
-- `preconditioner::Matrix{T}`: Approximate inverse C
+- `preconditioner::Matrix{CT}`: Approximate inverse C, real or complex as the midpoint is
 - `method::PreconditionerType`: Method used
-- `condition_number::T`: Estimated condition number
+- `condition_number::T`: Estimated condition number, a real number
 - `success::Bool`: Whether computation succeeded
 - `factorization`: the stored factorization (for LU/LDLT), `nothing` otherwise
 """
-struct PreconditionerResult{T, F}
+struct PreconditionerResult{CT, T, F}
     """Approximate inverse matrix."""
-    preconditioner::Matrix{T}
+    preconditioner::Matrix{CT}
     """Preconditioning method used."""
     method::PreconditionerType
     """Estimated condition number."""
@@ -97,6 +98,7 @@ function compute_preconditioner(A::BallMatrix{T};
                                 check_conditioning::Bool=true) where {T}
     n = size(A, 1)
     A_mid = mid(A)
+    CT = eltype(A_mid)
 
     # Check for symmetry if using LDLT
     if method == :ldlt
@@ -109,7 +111,7 @@ function compute_preconditioner(A::BallMatrix{T};
     # Compute preconditioner based on method
     if method == :identity
         # No preconditioning
-        C = Matrix{T}(I, n, n)
+        C = Matrix{CT}(I, n, n)
         cond_est = T(1.0)
         factorization = nothing
         prec_type = IdentityPreconditioner
@@ -124,7 +126,7 @@ function compute_preconditioner(A::BallMatrix{T};
         catch e
             @warn "Midpoint inverse failed: $e"
             return PreconditionerResult(
-                Matrix{T}(I, n, n), MidpointInverse, T(Inf), false, nothing
+                Matrix{CT}(I, n, n), MidpointInverse, T(Inf), false, nothing
             )
         end
 
@@ -139,7 +141,7 @@ function compute_preconditioner(A::BallMatrix{T};
         catch e
             @warn "LU factorization failed: $e"
             return PreconditionerResult(
-                Matrix{T}(I, n, n), LUFactorization, T(Inf), false, nothing
+                Matrix{CT}(I, n, n), LUFactorization, T(Inf), false, nothing
             )
         end
 
@@ -149,7 +151,7 @@ function compute_preconditioner(A::BallMatrix{T};
             # the LDLᵀ factorisation of a dense symmetric matrix, with the pivoting of Bunch and
             # Kaufman; `ldlt` itself has methods for tridiagonal and sparse matrices only
             ldlt_fact = bunchkaufman(Symmetric(A_mid))
-            C = Matrix{T}(inv(ldlt_fact))
+            C = Matrix{CT}(inv(ldlt_fact))
             cond_est = check_conditioning ? cond(A_mid) : T(NaN)
             factorization = ldlt_fact
             prec_type = LDLTFactorization

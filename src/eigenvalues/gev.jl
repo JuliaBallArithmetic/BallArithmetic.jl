@@ -107,7 +107,18 @@ use [`verifyeigall`](@ref).
 * [Miyajima2012](@cite) Miyajima, JCAM 246, 9 (2012)
 """
 function rigorous_generalized_eigenvalues(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
-    gev = eigen(A.c, B.c)
+    gev = try
+        eigen(A.c, B.c)
+    catch e
+        # no generalised eigensolver for this arithmetic (BigFloat): the approximation of
+        # `verifyeigall(A, B)`, which falls back on the eigendecomposition of B⁻¹A. Nothing is
+        # assumed about the approximation; the certification below is the same.
+        e isa MethodError || rethrow(e)
+        V, λ = _miyajima2014a_alg1_step1(Matrix{Complex{T}}(A.c), Matrix{Complex{T}}(B.c))
+        V === nothing && throw(ArgumentError("rigorous_generalized_eigenvalues: no approximate " *
+                                             "eigendecomposition, the midpoint of B is singular"))
+        (vectors = V, values = λ)
+    end
     return _certify_generalized_eigenvalues(A, B, gev)
 end
 
@@ -123,8 +134,8 @@ function gevbox(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
     return result.eigenvalues
 end
 
-function _certify_generalized_eigenvalues(A::BallMatrix{T}, B::BallMatrix{T},
-        gev::GeneralizedEigen) where {T}
+# `gev` has the approximate eigenvectors in `vectors` and the approximate eigenvalues in `values`
+function _certify_generalized_eigenvalues(A::BallMatrix{T}, B::BallMatrix{T}, gev) where {T}
     X_mid = gev.vectors
     Y_mid = inv(B.c * X_mid)
 

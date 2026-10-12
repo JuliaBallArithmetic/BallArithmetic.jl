@@ -284,6 +284,22 @@ end
         @test is_well_preconditioned(A, prec, threshold=0.5)
     end
 
+    @testset "complex and BigFloat matrices" begin
+        Mr = [3.0 1.0; 1.0 2.0]
+        Mc = Mr + im * [0.5 -0.2; 0.3 0.1]
+        for M in (Mc, big.(Mr), big.(Mc)), method in (:midpoint, :lu, :identity)
+            prec = redirect_stderr(devnull) do
+                compute_preconditioner(BallMatrix(M); method)
+            end
+            @test prec.success
+            @test eltype(prec.preconditioner) === eltype(M)
+            @test prec.condition_number isa real(eltype(M))
+            method === :identity || @test prec.preconditioner * M ≈ I
+            v = eltype(M)[1, 2]
+            @test apply_preconditioner(prec, v) ≈ (method === :identity ? v : M \ v)
+        end
+    end
+
     @testset "the quality check is a bound over the whole ball" begin
         rng = MersenneTwister(20261013)
         for _ in 1:200

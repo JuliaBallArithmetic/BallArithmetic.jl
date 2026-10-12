@@ -463,3 +463,23 @@ end
         end
     end
 end
+
+@testset "σ_min bounds of the Schur complement: complex matrices" begin
+    rng = MersenneTwister(20261012)
+    for _ in 1:10
+        n = 8
+        Gc = Diagonal(5 .+ rand(rng, n)) + 0.1 * (randn(rng, n, n) + im * randn(rng, n, n))
+        G = BallMatrix(Matrix(Gc), fill(1e-12, n, n))
+        σ = svdvals(Matrix(Gc))[end]
+        for (m, r) in (oishi_2023_optimal_block_size(G), rump_oishi_2024_optimal_block_size(G))
+            @test 1 <= m < n
+            @test r.certified
+            # the perturbation of σ_min by the radii is at most n · 1e-12
+            @test 0 < r.sigma_min_lower <= σ + n * 1e-12
+        end
+    end
+    # the lower bound of |d| for a complex d is rounded down
+    d = [complex(3.0, 4.0) * (1 + k * eps()) for k in 1:50]
+    b = BallArithmetic._inverse_diagonal_norm(d, zeros(50, 50))
+    @test all(big(b) >= 1 / abs(big(z)) for z in d)
+end
