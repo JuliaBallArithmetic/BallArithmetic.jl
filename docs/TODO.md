@@ -574,6 +574,14 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       `_miyajima2014_thm10_weyl`, which did the same step with two `setrounding` blocks.
       Before, the radii went through the residual at every level and the driver ran to its
       limit when the tolerance was below what they impose.
+      Comparison of 9666e4e with ac017d8 (`regression_digest.jl`, scratch, nighthawk: 131
+      calls on fixed 8 × 8 and 10 × 6 inputs, each revision run twice with identical
+      output): besides the calls changed on purpose, `oishi_2023_optimal_block_size` and
+      `rump_oishi_2024_optimal_block_size` on the real ball changed in the last digit, and
+      the change is at ac017d8, in `_miyajima2014_thm10_weyl`. On the 7 × 7 block concerned,
+      the widened ball of σ₇ at 76e943c has its upper end below `mid + rad + delta` of the
+      inner ball computed in BigFloat; at ac017d8 both ends enclose it. One input; the
+      cause in the `setrounding` version was not looked for.
     - `compute_preconditioner` threw on a complex matrix; `PreconditionerResult{CT, T, F}`.
     - `oishi_2023_sigma_min_bound`, `rump_oishi_2024_sigma_min_bound` and the two block size
       searches threw on a complex matrix; the lower bound of `|d|` on the diagonal was
