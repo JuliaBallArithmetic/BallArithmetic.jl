@@ -436,7 +436,7 @@ function adaptive_ogita_svd(A::BallMatrix{T};
             Σ = _diagonal_ball_matrix(σ)
             residual = r0.U * Σ * r0.V' - Ap
             vbd = apply_vbd && r0.block_diagonalisation !== nothing ?
-                  _schur_gershgorin_hermitian_members(adjoint(Σ) * Σ) : nothing
+                  schur_gershgorin_enclosure(adjoint(Σ) * Σ) : nothing
             RigorousSVDResult(r0.U, σ, Σ, r0.V, residual, upper_bound_L2_opnorm(residual),
                 r0.right_orthogonality_defect, r0.left_orthogonality_defect, vbd)
         end

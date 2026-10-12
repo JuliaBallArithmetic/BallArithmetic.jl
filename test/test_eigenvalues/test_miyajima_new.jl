@@ -56,7 +56,7 @@ end
 @testset "Block Schur - Basic Decomposition" begin
     A = BallMatrix([2.0 0.1; 0.1 5.0])
 
-    result = BallArithmetic._rigorous_block_schur(A, true; block_structure=:diagonal)
+    result = rigorous_block_schur(A; block_structure=:diagonal)
 
     # Verify basic properties
     @test size(result.Q) == (2, 2)
@@ -81,7 +81,7 @@ end
     A_rad[4, 6] = A_rad[6, 4] = 0.3  # Cluster 5.0 and 5.1
     A = BallMatrix(A_mid, A_rad)
 
-    result = BallArithmetic._rigorous_block_schur(A, true; block_structure=:quasi_triangular)
+    result = rigorous_block_schur(A; block_structure=:quasi_triangular)
 
     # Should have 4 clusters total
     @test length(result.clusters) >= 2
@@ -107,9 +107,9 @@ end
     A = BallMatrix(Diagonal([1.0, 1.1, 5.0]))
 
     # Test all three structures
-    result_diag = BallArithmetic._rigorous_block_schur(A, true; block_structure=:diagonal)
-    result_quasi = BallArithmetic._rigorous_block_schur(A, true; block_structure=:quasi_triangular)
-    result_full = BallArithmetic._rigorous_block_schur(A, true; block_structure=:full)
+    result_diag = rigorous_block_schur(A; block_structure=:diagonal)
+    result_quasi = rigorous_block_schur(A; block_structure=:quasi_triangular)
+    result_full = rigorous_block_schur(A; block_structure=:full)
 
     # All should have same Q and clusters
     @test result_diag.clusters == result_quasi.clusters == result_full.clusters
@@ -130,7 +130,7 @@ end
 @testset "Block Schur - Separation Estimation" begin
     A = BallMatrix([2.0 0.1; 0.1 5.0])
 
-    result = BallArithmetic._rigorous_block_schur(A, true)
+    result = rigorous_block_schur(A)
 
     @test length(result.clusters) == 2
 
@@ -208,11 +208,11 @@ end
     A = BallMatrix(A_mid, A_rad)
 
     # Step 1: VBD
-    vbd = BallArithmetic._schur_gershgorin_hermitian_members(A)
+    vbd = schur_gershgorin_enclosure(A)
     @test length(vbd.clusters) >= 2
 
     # Step 2: Block Schur
-    schur = BallArithmetic._rigorous_block_schur(A, true)
+    schur = rigorous_block_schur(A)
     @test length(schur.clusters) >= 2
 
     # both identify the same clusters
@@ -225,26 +225,26 @@ end
         A_big = BallMatrix(Diagonal(BigFloat[1.0, 1.1, 5.0]))
 
         # VBD
-        vbd = BallArithmetic._schur_gershgorin_hermitian_members(A_big)
+        vbd = schur_gershgorin_enclosure(A_big)
         @test vbd.remainder_norm < BigFloat(1e-30)
 
         # Block Schur
-        schur = BallArithmetic._rigorous_block_schur(A_big, true)
+        schur = rigorous_block_schur(A_big)
         @test schur.projected_residual_norm < BigFloat(1e-30)
     end
 end
 
 @testset "Complex Matrices" begin
     # Test with complex Hermitian matrix
-    A_complex = BallMatrix([1.0+0.0im   0.1-0.05im;
-                            0.1+0.05im  5.0+0.0im])
+    A_complex = Hermitian([1.0+0.0im   0.1-0.05im;
+                           0.1+0.05im  5.0+0.0im])
 
     # VBD
-    vbd = BallArithmetic._schur_gershgorin_hermitian_members(A_complex)
+    vbd = schur_gershgorin_enclosure(A_complex)
     @test length(vbd.clusters) == 2
 
     # Block Schur
-    schur = BallArithmetic._rigorous_block_schur(A_complex, true)
+    schur = rigorous_block_schur(A_complex)
     @test verify_block_schur_properties(schur; tol=1e-9)
 end
 
@@ -276,6 +276,16 @@ end
     @test_throws MethodError rigorous_block_schur(A; hermitian = true)
     @test_throws MethodError schur_gershgorin_enclosure(Hermitian(A))
     @test_throws MethodError rigorous_block_schur(Hermitian(A))
+
+    # a real ball matrix stored as Diagonal: every matrix in it is real diagonal, real intervals
+    D = BallMatrix(Diagonal([1.0, 1.0 + 1e-9, 4.0]), Diagonal(fill(1e-8, 3)))
+    for r in (schur_gershgorin_enclosure(D), rigorous_block_schur(D))
+        @test eltype(r.cluster_intervals) == Ball{Float64, Float64}
+        @test length(r.clusters) == 2
+    end
+    # the same entries stored as a dense ball matrix are a general ball matrix
+    @test eltype(schur_gershgorin_enclosure(BallMatrix(Matrix(mid(D)), Matrix(rad(D)))).cluster_intervals) ==
+          Ball{Float64, ComplexF64}
 
     # a point matrix that is Hermitian by its type: real intervals
     for H in (Hermitian([2.0 0.1; 0.1 5.0]), Symmetric([2.0 0.1; 0.1 5.0]),

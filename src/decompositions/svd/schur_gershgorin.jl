@@ -160,7 +160,10 @@ The type of the argument decides the kind of enclosure. For a `BallMatrix` the
 clusters are discs of the complex plane: with positive radii it is an open set of
 matrices, which contains matrices that are not Hermitian, whatever its midpoint.
 For a point matrix that is Hermitian by its type, `Hermitian(M)` or `Symmetric(M)`
-with `M` real, the eigenvalues are real and the clusters are real intervals.
+with `M` real, the eigenvalues are real and the clusters are real intervals. The same
+holds for a real ball matrix stored as `Diagonal` in midpoint and radius, the type of
+the matrix of singular value enclosures of [`rigorous_svd`](@ref): every matrix in it
+is a real diagonal matrix, whose eigenvalues are its diagonal entries.
 
 The midpoint matrix is reduced by a unitary Schur form, or by an eigenvalue
 decomposition for a Hermitian point matrix; the enclosure is transported to that basis
@@ -190,33 +193,41 @@ the basis is only permuted. For the block-diagonalising route see
 [`miyajima2014a_schurnewton`](@ref).
 """
 
-schur_gershgorin_enclosure(A::BallMatrix) = _schur_gershgorin(A, false)
+# What kind of set the spectrum is enclosed by, decided by the type of the argument.
+abstract type _SpectrumKind end
+"Discs of the complex plane: a general matrix."
+struct _ComplexDiscs <: _SpectrumKind end
+"Intervals of the real line: matrices whose type guarantees a real spectrum."
+struct _RealIntervals <: _SpectrumKind end
+
+# A real ball matrix stored as `Diagonal` in midpoint and radius: its off-diagonal entries are
+# zero with radius zero, so every matrix in it is a real diagonal matrix, whose eigenvalues are
+# its diagonal entries. This is the type of the matrix of singular value enclosures.
+const _RealDiagonalBallMatrix{T} = BallMatrix{T, T, Ball{T, T}, <:Diagonal, <:Diagonal}
+
+_spectrum_kind(::BallMatrix) = _ComplexDiscs()
+_spectrum_kind(::_RealDiagonalBallMatrix) = _RealIntervals()
+
+schur_gershgorin_enclosure(A::BallMatrix) = _schur_gershgorin(_spectrum_kind(A), A)
 schur_gershgorin_enclosure(H::_HermitianPointMatrix) =
-    _schur_gershgorin(BallMatrix(Matrix(H)), true)
+    _schur_gershgorin(_RealIntervals(), BallMatrix(Matrix(H)))
 
-"""
-    _schur_gershgorin_hermitian_members(A::BallMatrix) -> SchurGershgorinResult
+# the unitary basis the enclosure is transported to
+_unitary_reduction(::_ComplexDiscs, M) = _schur_diagonalisation(M)
+_unitary_reduction(::_RealIntervals, M) = _hermitian_diagonalisation(M)
+# a disc, or its intersection with the real line
+_spectral_ball_type(::_ComplexDiscs, ::Type{T}) where {T} = Ball{T, Complex{T}}
+_spectral_ball_type(::_RealIntervals, ::Type{T}) where {T} = Ball{T, T}
+_spectral_ball(::_ComplexDiscs, b::Ball{T}) where {T} = Ball(Complex{T}(mid(b)), rad(b))
+_spectral_ball(::_RealIntervals, b::Ball) = _real_interval(b)
+_spectral_centre(::_ComplexDiscs, x) = x
+_spectral_centre(::_RealIntervals, x) = real(x)
 
-The enclosure of [`schur_gershgorin_enclosure`](@ref) with real intervals, as a statement about
-the Hermitian matrices contained in the ball matrix `A` only: for a Hermitian `M` in `A`,
-`Z*MZ` is Hermitian whatever `Z`, its diagonal is real and its eigenvalues are real, so each
-disc is cut down to its intersection with the real line.
-
-It says nothing about the matrices of `A` that are not Hermitian, which is why it is not a
-method of the exported routine: a ball matrix is not Hermitian. It is used where the set of
-interest is a set of Hermitian matrices that a ball matrix encloses, the products `S*S` for `S`
-in a ball matrix, whose eigenvalues are the squares of the singular values of `S`.
-"""
-_schur_gershgorin_hermitian_members(A::BallMatrix) = _schur_gershgorin(A, true)
-
-# The common routine. With `hermitian = true` the intervals are real and the statement is about
-# the Hermitian matrices of `A`; see the two callers above.
-function _schur_gershgorin(A::BallMatrix{T, NT}, hermitian::Bool) where {T, NT}
+function _schur_gershgorin(kind::_SpectrumKind, A::BallMatrix{T, NT}) where {T, NT}
     m, n = size(A)
     m == n || throw(ArgumentError("schur_gershgorin_enclosure expects a square matrix"))
 
-    basis, _ = hermitian ? _hermitian_diagonalisation(mid(A)) :
-               _schur_diagonalisation(mid(A))
+    basis, _ = _unitary_reduction(kind, mid(A))
     identity_order = collect(1:n)
 
     current_basis = basis
@@ -235,7 +246,7 @@ function _schur_gershgorin(A::BallMatrix{T, NT}, hermitian::Bool) where {T, NT}
         # discs are inflated BEFORE clustering so the overlap-clustering is itself rigorous.
         R2 = basis_adjoint * basis_ball - I
         beta, _ = _vbd_beta_rows(R2, transformed, T)
-        intervals = _inflate_intervals(_vbd_gershgorin_intervals(transformed; hermitian), beta)
+        intervals = _inflate_intervals(_vbd_gershgorin_intervals(kind, transformed), beta)
         clusters, order = _interval_clusters(intervals)
         order == identity_order && break
 
@@ -254,7 +265,7 @@ function _schur_gershgorin(A::BallMatrix{T, NT}, hermitian::Bool) where {T, NT}
     # `M̃ = Z'AZ`, NOT the candidate `D` from eigen/schur — the candidate drops out (draft
     # Remark "the candidate eigenvalues drop out"; the disc centres are these same `M̃ᵢᵢ`).
     midT = mid(transformed)
-    eigenvalues = hermitian ? [real(midT[i, i]) for i in 1:n] : [midT[i, i] for i in 1:n]
+    eigenvalues = [_spectral_centre(kind, midT[i, i]) for i in 1:n]
 
     block = _block_diagonal_part(transformed, clusters)
     remainder = transformed - block
@@ -272,7 +283,7 @@ function _schur_gershgorin(A::BallMatrix{T, NT}, hermitian::Bool) where {T, NT}
     block_residual_norm = _vbd_block_data(
         A, BallMatrix(basis), BallMatrix(adjoint(basis)),
         transformed, block, remainder, clusters, T)
-    hermitian && (block_centers = real.(block_centers))
+    block_centers = _spectral_centre.(Ref(kind), block_centers)
 
     return SchurGershgorinResult(basis, transformed, block, remainder, clusters,
         intervals, remainder_norm, eigenvalues, block_coupling, block_centers,
@@ -334,18 +345,17 @@ function _schur_diagonalisation(A::AbstractMatrix{T}) where {T}
     return (Matrix(sch.Z), sch.values)
 end
 
-function _vbd_gershgorin_intervals(H::BallMatrix{T, NT}; hermitian::Bool) where {T, NT}
+function _vbd_gershgorin_intervals(kind::_SpectrumKind, H::BallMatrix{T, NT}) where {T, NT}
     n = size(H, 1)
     midH = mid(H)
     radH = rad(H)
 
-    intervals = hermitian ? Vector{Ball{T, T}}(undef, n) :
-                Vector{Ball{T, Complex{T}}}(undef, n)
+    intervals = Vector{_spectral_ball_type(kind, T)}(undef, n)
 
     absH = upper_abs(H)
     for i in 1:n
         diag_entry = Ball(midH[i, i], radH[i, i])
-        diag_ball = hermitian ? _real_interval(diag_entry) : diag_entry
+        diag_ball = _spectral_ball(kind, diag_entry)
 
         row_sum = zero(T)
         for j in 1:n

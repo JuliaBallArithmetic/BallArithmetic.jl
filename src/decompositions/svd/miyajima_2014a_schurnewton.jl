@@ -310,7 +310,7 @@ function _certify_ball(A::BallMatrix{T}, W::AbstractMatrix;
     beta_rows, nrmR2 = _vbd_beta_rows(R2, transformed, T)
 
     # β-inflated discs: reuse the proven Gershgorin loop, then add βᵢ to each radius.
-    base = _vbd_gershgorin_intervals(transformed; hermitian = false)
+    base = _vbd_gershgorin_intervals(_ComplexDiscs(), transformed)
     discs = _inflate_intervals(base, beta_rows)
     beta = maximum(beta_rows)                        # scalar summary for the record
 

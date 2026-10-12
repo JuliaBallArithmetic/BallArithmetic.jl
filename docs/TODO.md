@@ -821,10 +821,17 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       `1 ± 2.0e-6` and `1.00000001 ± 2.0e-6`; the matrix `[1 1e-6; −1e-6 1+1e-8]` of that ball
       has the eigenvalues `1.000000005 ± 1.0e-6 i`. Now (c99e81f): a `BallMatrix` gives discs of
       the complex plane and has no keyword; `Hermitian(M)`, or `Symmetric(M)` with `M` real,
-      for a point matrix gives real intervals. The singular value routines, which need real
-      intervals for the products `S*S`, call the unexported
-      `_schur_gershgorin_hermitian_members`, whose statement is about the Hermitian matrices
-      contained in the ball only.
+      for a point matrix gives real intervals; so does a real ball matrix stored as `Diagonal`
+      in midpoint and radius, every matrix of which is a real diagonal matrix. That last type
+      is what the singular value routines pass: after the certification, with `apply_vbd`,
+      they group the enclosures by calling the routine on `Σ*Σ`, `Σ` the diagonal ball matrix
+      of the singular value enclosures. No Bool selects the algorithm: the kind of enclosure
+      is a type (`_ComplexDiscs`, `_RealIntervals`) obtained from the type of the argument.
+      (A first version of this change, c99e81f, added an unexported routine "for the Hermitian
+      matrices contained in the ball", with a docstring saying that the singular value
+      routines enclose the eigenvalues of `S*S` for `S` in a ball matrix. They do not: Isaia,
+      "the svd routines certify a numerical svd, they never build S'*S". The routine is
+      removed.)
     - `certify_eigenpairs(B; hermitian = true)` threw a `MethodError` for a complex Hermitian
       `B`; corrected. The keyword there selects the eigendecomposition the approximations come
       from; the certification is for every matrix of the ball.

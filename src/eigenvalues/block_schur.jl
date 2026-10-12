@@ -110,14 +110,17 @@ computed `S̃` and the residual of its solve is the lemma "Residual control of S
 *Enclosure of eigenvalues via approximate diagonalization* (unpublished note, 2026); the argument is the identity
 `S − S̃ = −(I + R₂)⁻¹((I + R₂)S̃ − R₁)` stated in [`RigorousBlockSchurResult`](@ref).
 """
-rigorous_block_schur(A::BallMatrix; kwargs...) = _rigorous_block_schur(A, false; kwargs...)
+rigorous_block_schur(A::BallMatrix; kwargs...) =
+    _rigorous_block_schur(_spectrum_kind(A), A; kwargs...)
 rigorous_block_schur(H::_HermitianPointMatrix; kwargs...) =
-    _rigorous_block_schur(BallMatrix(Matrix(H)), true; kwargs...)
+    _rigorous_block_schur(_RealIntervals(), BallMatrix(Matrix(H)); kwargs...)
 
-# With `hermitian = true` the clusters are real intervals and the statement is about the
-# Hermitian matrices of `A`, as in `_schur_gershgorin_hermitian_members`; the exported method
-# passes a ball matrix of radius zero.
-function _rigorous_block_schur(A::BallMatrix{RT, NT}, hermitian::Bool;
+# the block diagonalisation chosen by `vbd_method = :auto`: a unitary basis diagonalises a
+# matrix with a real spectrum by its type; a general matrix needs the decoupling Newton step
+_default_vbd(::_RealIntervals) = :nsd
+_default_vbd(::_ComplexDiscs) = :schur_newton
+
+function _rigorous_block_schur(kind::_SpectrumKind, A::BallMatrix{RT, NT};
                                block_structure::Symbol = :quasi_triangular,
                                vbd_method::Symbol = :auto) where {RT, NT}
     n = size(A, 1)
@@ -136,13 +139,13 @@ function _rigorous_block_schur(A::BallMatrix{RT, NT}, hermitian::Bool;
     # a unitary basis leaves all the non-normality in the off-diagonal (huge coupling), so
     # default to Schur+Newton, which decouples between clusters and confines the
     # non-normality to the diagonal blocks.  Hermitian ⇒ NSD (a unitary basis diagonalizes).
-    vbd_method == :auto && (vbd_method = hermitian ? :nsd : :schur_newton)
+    vbd_method == :auto && (vbd_method = _default_vbd(kind))
 
     # Step 1: Compute VBD to identify clusters and get basis
     vbd = if vbd_method == :schur_newton
         miyajima2014a_schurnewton(A)
     else
-        _schur_gershgorin(A, hermitian)
+        _schur_gershgorin(kind, A)
     end
 
     # Step 2: Construct the basis Q and its inverse.  For a unitary (NSD) basis the
