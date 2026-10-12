@@ -186,9 +186,7 @@ function _rump2022a_prodK(B::BallMatrix{T}, W::Matrix{CT}, X::Matrix{CT}) where 
     E = _accurate_product_sum(((Bm, W, one(T)), (W, X, -one(T))))
     # the interval part rad(B)|W|, the moduli bounded above with `abs_up`
     absW = abs_up.(W)
-    interval_part = setrounding(T, RoundUp) do
-        Br * absW
-    end
+    interval_part = _product_up(Br, absW)
     return BallMatrix(mid(E), add_up.(rad(E), interval_part))
 end
 
@@ -266,9 +264,9 @@ function _rump2022a_prodK_pencil(A::BallMatrix{T}, B::BallMatrix{T}, W::Matrix{C
     E = _accurate_product_sum(((Am, W, one(T)), ((Bm, P, -one(T)) for P in WD)...))
     absB, absW, absD = abs_up.(Bm), abs_up.(W), abs_up.(D)
     under = mul_up(T(8), subnormal_min(T))
-    extra = setrounding(T, RoundUp) do
-        rad(A) * absW .+ rad(B) * (absW .* transpose(absD)) .+ absB * fill(under, n, n)
-    end
+    extra = add_up.(
+        add_up.(_product_up(rad(A), absW), _product_up(rad(B), mul_up.(absW, transpose(absD)))),
+        _product_up(absB, fill(under, n, n)))
     return BallMatrix(mid(E), add_up.(rad(E), extra))
 end
 
@@ -351,9 +349,7 @@ end
 # which that is below 1e-14 ‖A‖_inf.
 function _rump2022a_clusters(d_mid::Vector{CT}, d_rad::Vector{T}, normA::T) where {T, CT}
     n = length(d_mid)
-    tol = setrounding(T, RoundUp) do
-        T(1e-14) * normA
-    end
+    tol = mul_up(T(1e-14), normA)
     parent = collect(1:n)
     find(x) = (parent[x] == x ? x : (parent[x] = find(parent[x])))
     for i in 1:n, j in (i + 1):n
@@ -402,17 +398,13 @@ function _rump2022a_split(X::BallMatrix{T}, clusters) where {T}
         rD[c, c] = rad(X)[c, c]
     end
     XD = BallMatrix(mD, rD)
-    XO = BallMatrix(mid(X) .- mD, setrounding(T, RoundUp) do
-        rad(X) .- rD
-    end)
+    XO = BallMatrix(mid(X) .- mD, sub_up.(rad(X), rD))
     return XD, XO
 end
 
 # Epsilon-inflation, the first of the three standard techniques.
 function _rump2022a_inflate(Y::BallMatrix{T}; factor = T(0.1), eta = T(1e-300)) where {T}
-    r = setrounding(T, RoundUp) do
-        rad(Y) .* (one(T) + factor) .+ eta
-    end
+    r = add_up.(mul_up.(rad(Y), add_up(one(T), factor)), eta)
     return BallMatrix(mid(Y), r)
 end
 
@@ -677,15 +669,11 @@ function _rump2022a_discclusters_rule(d_mid::Vector{CT}, d_rad::Vector{T}, normA
     # the Gershgorin radius of row i is not available here, so the disc is the diagonal enclosure
     # widened by the floating-point sensitivity of a multiple eigenvalue, sqrt(eps)*||A||, which is
     # the k = 2 floor and the smallest widening that groups anything the fixed rule does not
-    tol = setrounding(T, RoundUp) do
-        sqrt(eps(T)) * normA
-    end
+    tol = mul_up(sqrt_up(eps(T)), normA)
     parent = collect(1:n)
     find(x) = (parent[x] == x ? x : (parent[x] = find(parent[x])))
     for i in 1:n, j in (i + 1):n
-        sep = setrounding(T, RoundDown) do
-            abs(d_mid[i] - d_mid[j]) - (d_rad[i] + d_rad[j])
-        end
+        sep = sub_down(dist_down(d_mid[i], d_mid[j]), add_up(d_rad[i], d_rad[j]))
         if sep <= tol
             pi_, pj = find(i), find(j)
             pi_ == pj || (parent[pi_] = pj)

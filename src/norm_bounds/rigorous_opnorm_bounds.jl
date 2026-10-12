@@ -27,12 +27,7 @@ function upper_abs(A::BallMatrix{T}) where {T <: Union{Float32, Float64}}
 end
 # BigFloat: the same construction with the MPFR directed operations, so no rounding mode is set
 upper_abs(A::BallMatrix{BigFloat}) = add_up.(abs_up.(A.c), A.r)
-function upper_abs(A::BallMatrix{T}) where {T}
-    absA = setrounding(T, RoundUp) do
-        return abs.(A.c) + A.r
-    end
-    return absA
-end
+upper_abs(A::BallMatrix{T}) where {T} = add_up.(abs_up.(A.c), A.r)
 upper_abs(A::AbstractMatrix{<:Union{Float32, Float64, Complex{Float32}, Complex{Float64}}}) =
     [abs_up(x) for x in A]
 
@@ -132,12 +127,8 @@ Rigorous upper bound on the ℓ¹ operator norm (largest column sum) of every ma
 function upper_bound_L1_opnorm(A::BallMatrix{T}) where {T <: Union{Float32, Float64}}
     return _colrow_sums_up(upper_abs(A))[1]
 end
-function upper_bound_L1_opnorm(A::BallMatrix{T}) where {T}
-    norm = setrounding(T, RoundUp) do
-        return opnorm(A.c, 1) + opnorm(A.r, 1)
-    end
-    return norm
-end
+# the same in any other arithmetic (BigFloat): no rounding mode is set
+upper_bound_L1_opnorm(A::BallMatrix{T}) where {T} = _colrow_sums_up(upper_abs(A))[1]
 
 """
     upper_bound_L_inf_opnorm(A::BallMatrix{T})
@@ -148,12 +139,7 @@ the largest row sum of [`upper_abs`](@ref)`(A)`, rounded upward.
 function upper_bound_L_inf_opnorm(A::BallMatrix{T}) where {T <: Union{Float32, Float64}}
     return _colrow_sums_up(upper_abs(A))[2]
 end
-function upper_bound_L_inf_opnorm(A::BallMatrix{T}) where {T}
-    norm = setrounding(T, RoundUp) do
-        return opnorm(A.c, Inf) + opnorm(A.r, Inf)
-    end
-    return norm
-end
+upper_bound_L_inf_opnorm(A::BallMatrix{T}) where {T} = _colrow_sums_up(upper_abs(A))[2]
 
 """
     upper_bound_frobenius(A::BallMatrix) -> T

@@ -80,9 +80,7 @@ function Base.:+(A::BallVector{T}, B::BallVector{T}) where {T <: AbstractFloat}
 
     C = mA + mB
     ϵ = machine_epsilon(T)
-    R = setrounding(T, RoundUp) do
-        (ϵ * abs.(C) + rA) + rB
-    end
+    R = add_up.(add_up.(mul_up.(ϵ, abs_up.(C)), rA), rB)
     BallVector(C, R)
 end
 
@@ -101,9 +99,7 @@ function Base.:-(A::BallVector{T}, B::BallVector{T}) where {T <: AbstractFloat}
 
     C = mA - mB
     ϵ = machine_epsilon(T)
-    R = setrounding(T, RoundUp) do
-        (ϵ * abs.(C) + rA) + rB
-    end
+    R = add_up.(add_up.(mul_up.(ϵ, abs_up.(C)), rA), rB)
     BallVector(C, R)
 end
 
