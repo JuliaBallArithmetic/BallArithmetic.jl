@@ -755,3 +755,36 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     **Decided (Isaia, 2026-10-12):** the package keeps `MMul4` on the OpenBLAS built with
     CONSISTENT_FPCSR for the time being; the splitting, Dot2 and mixed-precision routes are
     not substituted for it.
+
+38. **Decisions of 2026-10-12 (Isaia), carried out.**
+    - `MMul2` removed; `rigorous_residual.jl` stays removed.
+    - `consolidate-rp` fast-forwarded to f50b4e8, where the suite (182,957 passed,
+      `rigour_suite64.out`) and the companion's tests (300 of 300) passed. No tag.
+    - `refine_schur_decomposition` and its Double64, hybrid and MultiFloat forms: the default
+      method is `:bujanovicetal2023`, the algorithm as published; `CertifScripts`, the
+      certification routine and the second stage of the hybrid routine pass
+      `:bujanovicetal2023unordered`.
+    - `_certify_svd` is `certify_svd`, with a docstring.
+    - The field that says the proof went through is `certified`: `RegularityResult.is_regular`
+      and `SylvesterResolventResult.precomputation_success` renamed. Kept, because they say
+      something else: `VerifyEigAllResult.spectrum_covered`, `PreconditionerResult.success`.
+    - `verified_lu`, `verified_qr`, `verified_cholesky`, `verified_polar`, `verified_takagi`,
+      `verified_svd` take the arithmetic of the enclosure as a leading type argument,
+      `verified_lu(Float64, A)`; without it, BigFloat. `use_bigfloat`, `use_double_precision`
+      and the names with `_gla`, `_double64`, `_multifloat` are removed (`oracle = Double64`,
+      `oracle = Float64x4` say the same); `verified_svd_gla` is `verified_svd`.
+      `gram_transform` takes the keyword `arithmetic` in place of `use_bigfloat`.
+    - `rigorous_eigenvalues`, `evbox`, `rigorous_generalized_eigenvalues`, `gevbox`: a ball
+      matrix always gives discs with complex centres. They gave real balls when the computed
+      eigenvalues of a real matrix were real, and a real ball is an interval, while a matrix
+      inside the input ball may have complex eigenvalues. Real intervals are returned for a
+      point matrix that is `Hermitian`, or real `Symmetric`, by its type. A ball matrix is
+      an open set of matrices and is not Hermitian: no such method.
+    - The dependent packages are audited later: RigorousPseudospectra's tests pass at 3da1547
+      (300 of 300) with the renames; RigorousInvariantMeasures and GKWExperiments not run.
+    **Open in the return types** (`audit_return_types.jl`, rerun at f50b4e8: no struct field
+    is flagged as not concrete; 22 calls with a return type that is not inferred): the type
+    depends on a keyword in `rigorous_svd` (`apply_vbd`) and `compute_preconditioner`
+    (`method`), and on the data in `certify_eigenpairs`; not traced: `rigorous_block_schur`,
+    `schur_gershgorin_enclosure`, `triangular_sylvester_miyajima_enclosure`,
+    `adaptive_ogita_svd`. To rerun after the type argument and the eigenvalue dispatch.
