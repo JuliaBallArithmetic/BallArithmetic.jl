@@ -102,6 +102,10 @@ A single ball need not contain an eigenvalue, and the number of eigenvalues in a
 group of overlapping balls is not certified. For sets with a certified number of eigenvalues
 use [`verifyeigall`](@ref).
 
+The balls are discs of the complex plane, with complex centres, also when `A` and `B` are real
+and the computed eigenvalues are real: pairs of matrices in the input balls may have complex
+eigenvalues, which lie in the discs.
+
 # References
 
 * [Miyajima2012](@cite) Miyajima, JCAM 246, 9 (2012)
@@ -119,7 +123,11 @@ function rigorous_generalized_eigenvalues(A::BallMatrix{T}, B::BallMatrix{T}) wh
                                              "eigendecomposition, the midpoint of B is singular"))
         (vectors = V, values = λ)
     end
-    return _certify_generalized_eigenvalues(A, B, gev)
+    # the eigenvalues of a pencil are complex numbers, also when the computed ones are real: the
+    # balls are discs of the complex plane
+    CT = Complex{T}
+    return _certify_generalized_eigenvalues(A, B,
+        (vectors = Matrix{CT}(gev.vectors), values = Vector{CT}(gev.values)))
 end
 
 """
@@ -173,6 +181,7 @@ end
 
 """
     rigorous_eigenvalues(A::BallMatrix)
+    rigorous_eigenvalues(A::Hermitian{<:Ball, <:BallMatrix})
 
 Compute a set of balls whose union contains the eigenvalues of `A`, following
 Ref. [Miyajima2012](@cite).  The returned [`RigorousEigenvaluesResult`](@ref) exposes both the
@@ -184,26 +193,55 @@ A single ball need not contain an eigenvalue, and the number of eigenvalues in a
 group of overlapping balls is not certified. For sets with a certified number of eigenvalues
 use [`verifyeigall`](@ref).
 
+The type of the argument decides the kind of ball:
+
+- for a `BallMatrix` the balls are discs of the complex plane, with complex centres, also when
+  the matrix is real and the computed eigenvalues are real: matrices in the input ball may have
+  complex eigenvalues, which lie in the discs;
+- for `Hermitian(A)`, or `Symmetric(A)` with `A` real, the statement is about the Hermitian
+  matrices whose stored triangle lies in the stored triangle of `A`; their eigenvalues are
+  real and the balls are real intervals.
+
 # References
 
 * [Miyajima2012](@cite) Miyajima, JCAM 246, 9 (2012)
 """
 function rigorous_eigenvalues(A::BallMatrix{T}) where {T}
-    gev = eigen(A.c)
-    return _certify_eigenvalues(A, gev)
+    F = eigen(A.c)
+    # the eigenvalues of a general matrix are complex numbers, also when the computed ones are
+    # real: the balls are discs of the complex plane
+    CT = Complex{T}
+    return _certify_eigenvalues(A, Eigen(Vector{CT}(F.values), Matrix{CT}(F.vectors)))
+end
+
+# A Hermitian matrix of balls, or a real symmetric one: the set of the Hermitian matrices whose
+# stored triangle lies in the stored triangle of the balls.
+const _HermitianBallMatrix = Union{Hermitian{<:Ball, <:BallMatrix},
+    Symmetric{<:Ball{T, T}, <:BallMatrix} where {T}}
+
+# The ball matrix that contains every matrix of that set: the stored triangle mirrored, with
+# conjugate midpoints, and on the diagonal the real part of the midpoint with the same radius
+# (a real number in a disc is at most the radius away from the real part of its centre).
+function _hermitian_ball_hull(H::_HermitianBallMatrix)
+    P = parent(H)
+    uplo = Symbol(H.uplo)
+    return BallMatrix(Matrix(Hermitian(mid(P), uplo)), Matrix(Symmetric(rad(P), uplo)))
+end
+
+function rigorous_eigenvalues(H::_HermitianBallMatrix)
+    A = _hermitian_ball_hull(H)
+    return _certify_eigenvalues(A, eigen(Hermitian(mid(A))))
 end
 
 """
-    evbox(A::BallMatrix{T})
+    evbox(A::BallMatrix)
+    evbox(A::Hermitian{<:Ball, <:BallMatrix})
 
 Backward-compatible wrapper returning only the vector of balls
 produced by [`rigorous_eigenvalues`](@ref): their union contains the eigenvalues, a single ball need
 not contain one.
 """
-function evbox(A::BallMatrix{T}) where {T}
-    result = rigorous_eigenvalues(A)
-    return result.eigenvalues
-end
+evbox(A::Union{BallMatrix, _HermitianBallMatrix}) = rigorous_eigenvalues(A).eigenvalues
 
 function _certify_eigenvalues(A::BallMatrix{T}, gev::Eigen) where {T}
     X_mid = gev.vectors

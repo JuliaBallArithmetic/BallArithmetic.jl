@@ -45,3 +45,47 @@ end
     end
 end
 
+
+@testset "the kind of ball follows the type of the matrix" begin
+    using LinearAlgebra, Random
+    rng = MersenneTwister(12)
+    setprecision(BigFloat, 256) do
+        # a real matrix whose midpoint has real eigenvalues, while matrices in the ball have
+        # complex ones: the balls are discs of the complex plane and contain them
+        M = [1.0 1.0; 0.0 1.0 + 1e-8]
+        A = BallMatrix(M, fill(1e-6, 2, 2))
+        r = BallArithmetic.rigorous_eigenvalues(A)
+        @test eltype(r.eigenvalues) == Ball{Float64, ComplexF64}
+        X = [1.0 1.0; -1e-6 1.0 + 1e-8]                  # in the ball, eigenvalues 1 ± 1e-3 i
+        λ = eigvals(big.(X))
+        @test maximum(abs ∘ imag, λ) > 1e-4
+        @test all(any(abs(l - mid(b)) <= rad(b) for b in r.eigenvalues) for l in λ)
+        @test (Test.@inferred BallArithmetic.evbox(A)) isa Vector{Ball{Float64, ComplexF64}}
+        @test (Test.@inferred BallArithmetic.gevbox(A, BallMatrix(Matrix(1.0I, 2, 2)))) isa
+              Vector{Ball{Float64, ComplexF64}}
+
+        # Hermitian and real symmetric: real intervals, for the Hermitian matrices of the ball
+        for S in (Float64, ComplexF64), n in (3, 8)
+            B = randn(rng, S, n, n)
+            Hm = (B + B') / 2
+            A = BallMatrix(Hm, fill(1e-9, n, n))
+            for H in (S == Float64 ? (Hermitian(A), Symmetric(A), Hermitian(A, :L)) :
+                      (Hermitian(A), Hermitian(A, :L)))
+                v = BallArithmetic.evbox(H)
+                @test v isa Vector{Ball{Float64, Float64}}
+                for _ in 1:4
+                    D = randn(rng, S, n, n)
+                    D = 1e-9 .* (D + D') ./ (2 * maximum(abs, D))
+                    λ = eigvals(Hermitian(big.(Hm) + big.(D)))
+                    @test all(any(abs(l - mid(b)) <= rad(b) for b in v) for l in λ)
+                end
+            end
+            # the lower triangle is not looked at for :U
+            A2 = BallMatrix(triu(Hm) + 7 .* tril(ones(S, n, n), -1), fill(1e-9, n, n))
+            @test all(any(abs(l - mid(b)) <= rad(b) for b in BallArithmetic.evbox(Hermitian(A2)))
+            for l in eigvals(Hermitian(big.(Hm))))
+        end
+        # a complex symmetric matrix of balls is not Hermitian
+        @test_throws MethodError BallArithmetic.evbox(Symmetric(BallMatrix(ComplexF64[1 im; im 2])))
+    end
+end
