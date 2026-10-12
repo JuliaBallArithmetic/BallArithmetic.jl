@@ -663,3 +663,33 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     procedures), then the matrix products of `types/MMul` and `types/matrix.jl`, where the
     question is the complex case and broadcasts inside a block.
 
+
+35. **Product bounds without a rounding mode, by Dot2Err, 2026-10-12** (Isaia: the trick of
+    RoundingEmulator, a value with its error term rounded to either side, applied to a product
+    kept in two terms). `_dot2err_ogita_rump_oishi_2005(x, y)` is Algorithm 5.8 of Ogita, Rump
+    and Oishi (2005) with the `res`, `err` of Corollary 5.9. `_product_down_up_dot2err(A, B)`
+    keeps each entry as the unevaluated `p + s` of that algorithm, bounds its distance from
+    the exact entry by `β = fl(δe + 3eta/eps)`, which the proof of the corollary shows with
+    underflow included, and rounds `p + (s − β)` and `p + (s + β)` down and up with
+    `add_down`, `sub_down`, `add_up`. `Float32` and `Float64` only. Nothing calls it yet:
+    `_product_down_up` and `_product_up` still evaluate the BLAS product under `RoundDown`
+    and `RoundUp`.
+    Timing, `time_product_down_up.jl` on nighthawk at 53a5a3a, 16 Julia threads, 64 BLAS
+    threads, `A`, `B` real `k × k` with standard normal entries, minimum of 3 runs in seconds;
+    "split" is `_two_term_product_sum` (the Lange and Rump splitting on the BLAS) with the
+    same directed sums of its two terms and bound; width is the median of `(up − down)/|up|`:
+
+    | k | BLAS, two modes | Dot2Err | split | width BLAS | width Dot2Err | width split |
+    |---|---|---|---|---|---|---|
+    | 100 | 0.000050 | 0.00028 | 0.00071 | 1.1e-14 | 1.6e-16 | 1.6e-16 |
+    | 200 | 0.00018 | 0.0010 | 0.0027 | 2.2e-14 | 1.6e-16 | 1.6e-16 |
+    | 400 | 0.00045 | 0.0060 | 0.011 | 4.4e-14 | 1.6e-16 | 1.6e-16 |
+    | 800 | 0.0017 | 0.046 | 0.041 | 6.3e-14 | 1.6e-16 | 1.6e-16 |
+    | 1600 | 0.0082 | 0.30 | 0.19 | 9.7e-14 | 1.6e-16 | 1.6e-16 |
+
+    At every `k` each Dot2Err interval lay inside the interval of the two BLAS products.
+    Not measured: complex factors, non-negative factors (the radius products, where only the
+    upper bound is used), one thread, sizes above 1600, matrices with cancellation.
+    Suite at b06c31d on nighthawk: 183,039 passed, none failed (`rigour_suite59.out`).
+    **To decide (Isaia):** whether `_product_down_up` and `_product_up` call it, and from
+    which size the split route.
