@@ -132,5 +132,25 @@ using GenericLinearAlgebra
             @test ogita_iterations_for_precision(256) == 3
             @test ogita_iterations_for_precision(1024) == 5
         end
+
+        @testset "the routines for matrices with exact entries refuse a ball matrix" begin
+            for S in (Float64, ComplexF64), A in (BallMatrix(S[2 1; 1 3]),
+                BallMatrix(S[2 1; 1 3], fill(1e-10, 2, 2)))
+                for f in (polar_newton, polar_newton_schulz, polar_qdwh, cholesky_qr2,
+                    triangular_eigenvectors, verified_lu, verified_qr, verified_cholesky,
+                    verified_polar, verified_takagi, verified_lu_gla, verified_qr_gla,
+                    verified_cholesky_gla, verified_polar_gla, verified_svd_gla,
+                    verified_lu_double64, verified_qr_double64, verified_cholesky_double64,
+                    verified_polar_double64, verified_takagi_double64, verified_lu_multifloat,
+                    verified_qr_multifloat, verified_cholesky_multifloat,
+                    verified_polar_multifloat, verified_takagi_multifloat)
+                    @test_throws ArgumentError f(A)
+                end
+                @test_throws ArgumentError verified_lu(A; use_bigfloat = false)
+            end
+            # and still take the matrix itself
+            @test verified_lu([2.0 1.0; 1.0 3.0]).certified
+            @test polar_qdwh([2.0 1.0; 1.0 3.0]) isa Tuple
+        end
     end
 end

@@ -280,4 +280,22 @@ export ResolventBoundConfig, config_v1, config_v2, config_v3, config_v2p5
 export ParametricResolventResult, parametric_resolvent_bound, SVDWarmStart
 export estimate_2norm, find_optimal_split, compare_all_configs
 
+# The routines below are stated for a matrix with exact entries: an approximate factor or
+# iteration, or a verified decomposition of one matrix. Given a ball matrix they refuse, with the
+# reason, in place of the `MethodError` or the "This conversion breaks rigour" that their
+# arithmetic would meet on the way.
+for f in (:polar_newton, :polar_newton_schulz, :polar_qdwh, :cholesky_qr2,
+    :triangular_eigenvectors,
+    :verified_lu, :verified_qr, :verified_cholesky, :verified_polar, :verified_takagi,
+    :verified_lu_gla, :verified_qr_gla, :verified_cholesky_gla, :verified_polar_gla,
+    :verified_svd_gla,
+    :verified_lu_double64, :verified_qr_double64, :verified_cholesky_double64,
+    :verified_polar_double64, :verified_takagi_double64,
+    :verified_lu_multifloat, :verified_qr_multifloat, :verified_cholesky_multifloat,
+    :verified_polar_multifloat, :verified_takagi_multifloat)
+    @eval $f(A::BallMatrix, args...; kwargs...) = throw(ArgumentError(string($(string(f)),
+        " is for a matrix with exact entries, not for a ball matrix; mid(A) is such a matrix, ",
+        "and what is then computed is about mid(A) alone")))
+end
+
 end

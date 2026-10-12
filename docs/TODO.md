@@ -579,9 +579,15 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     Left as they are: the routines stated for real interval matrices refuse complex ones
     with an `ArgumentError` (Horáček's methods, `det_gershgorin`,
     `verified_linear_solve_hmatrix`, Theorem 11.13); the routines for plain matrices given a
-    ball matrix (`polar_newton`, `polar_qdwh`, `cholesky_qr2`, `triangular_eigenvectors`,
-    `verified_*_gla`) fail with "This conversion breaks rigour" or a `MethodError`, which
-    refuses but does not say why. Not covered by the sweep: functions whose first argument
+    ball matrix (`polar_newton`, `polar_newton_schulz`, `polar_qdwh`, `cholesky_qr2`,
+    `triangular_eigenvectors`, `verified_lu`, `verified_qr`, `verified_cholesky`,
+    `verified_polar`, `verified_takagi` and their `_gla`, `_double64` and `_multifloat`
+    forms) failed with "This conversion breaks rigour" or a `MethodError`; they throw an
+    `ArgumentError` that says so (Isaia, 2026-10-12).
+    **To do** (Isaia, 2026-10-12): some of these can probably be extended to ball matrices
+    by treating midpoint and radius separately, the factorisation computed on the midpoint
+    and the radii carried into the residual that is bounded. Not examined routine by
+    routine; `verifysvdall` and `rigorous_svd` already take a ball matrix in this way. Not covered by the sweep: functions whose first argument
     is not a ball matrix, keyword options, and whether the results are correct, which the
     sweep does not check.
     The nineteen `@assert` of the package are explicit errors now, since an assertion may be
