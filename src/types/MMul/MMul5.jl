@@ -18,8 +18,10 @@
 # and is correct, also in the presence of underflow, provided 2(2n + 2) eps ≤ 1 and mC and μ are
 # computed in the same order (Theorem 2.1 of Rump's paper). Below `eps.(Γ)` is the unit in the last
 # place, 2 eps ufp(Γ), so `(k + 1) * eps.(Γ)` is the paper's (2n + 2) eps ufp(μ), and
-# `η_val / ϵ` is realmin. The papers are for real matrices.
-function MMul5(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
+# `η_val / ϵ` is realmin. The papers are for real matrices, and so is the method: a complex
+# product goes through `*`, which forms (A + iB)(C + iD) = AC − BD + i(AD + BC) from four real
+# products.
+function MMul5(A::BallMatrix{T, T}, B::BallMatrix{T, T}) where {T <: AbstractFloat}
     m, k = size(A)
     2 * (2k + 2) * unit_roundoff(T) <= 1 ||
         throw(ArgumentError("MMul5: inner dimension $k too large, 2(2k + 2)eps ≤ 1 is required"))

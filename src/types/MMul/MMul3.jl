@@ -1,13 +1,36 @@
-# Revol-Théveny midpoint-radius interval matrix multiplication
-# Reference: N. Revol & P. Théveny, "Parallel Implementation of Interval Matrix Multiplication",
-#            Reliable Computing 19(1), pp. 91-106, 2013. https://hal.science/hal-00801890
+# Midpoint-radius interval matrix multiplication in three point matrix products.
 #
-# The midpoint is intentionally computed with RoundNearest (default) for efficiency,
-# while the radius uses RoundUp. The error terms (k+2)*ε in the radius formula
-# rigorously account for floating-point errors in the midpoint computation.
+#   S. M. Rump, Fast interval matrix multiplication, Numer. Algorithms 61 (2012) 1-34,
+#   doi 10.1007/s11075-011-9524-z, Algorithm 4.7 (IImul3) for two interval matrices and
+#   Algorithm 4.3 (FImul2) for a point matrix and an interval matrix, without the conversions
+#   from and to the infimum-supremum representation; Algorithm 4.7 is Algorithm 1 (MMMul3) of
+#   N. Revol and P. Théveny, Parallel implementation of interval matrix multiplication,
+#   Reliable Computing 19(1) (2013) 91-106, https://hal.science/hal-00801890.
+#
+# With eps = 2^-53, realmin the smallest positive normalised number and n the inner dimension,
+# Algorithm 4.7 is
+#
+#     mC  = fl(mA mB)                                       rounding to nearest
+#     rB' = fl△((n + 2) eps |mB| + rB)
+#     rC  = fl△(|mA| rB' + realmin + rA (|mB| + rB))
+#
+# and is correct, also in the presence of underflow, provided 2(n + 2) eps ≤ 1 (Theorem 2.1 of
+# Rump's paper, which assumes that the products are computed in the same order). Below
+# `ϵ = machine_epsilon(T)` is 2 eps, so the first term of rB' is twice the paper's, and
+# `η_val / ϵ` is realmin. The papers are for real matrices, and so are the methods: a complex
+# product goes through `*`, which forms (A + iB)(C + iD) = AC − BD + i(AD + BC) from four real
+# products.
 
-function MMul3(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
+# the hypothesis 2(n + 2) eps ≤ 1 of the algorithms
+function _mmul3_check(k::Integer, ::Type{T}) where {T}
+    2 * (k + 2) * unit_roundoff(T) <= 1 ||
+        throw(ArgumentError("MMul3: inner dimension $k too large, 2(k + 2)eps ≤ 1 is required"))
+    return nothing
+end
+
+function MMul3(A::BallMatrix{T, T}, B::BallMatrix{T, T}) where {T <: AbstractFloat}
     m, k = size(A)
+    _mmul3_check(k, T)
     mA, rA = mid(A), rad(A)
     mB, rB = mid(B), rad(B)
     mC = mA * mB
@@ -23,8 +46,9 @@ function MMul3(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
     BallMatrix(mC, rC)
 end
 
-function MMul3(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
+function MMul3(A::BallMatrix{T, T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
     m, k = size(A)
+    _mmul3_check(k, T)
     mA, rA = mid(A), rad(A)
     mC = mA * B
     ϵ = machine_epsilon(T)
@@ -39,8 +63,9 @@ function MMul3(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat
     BallMatrix(mC, rC)
 end
 
-function MMul3(A::AbstractMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
+function MMul3(A::AbstractMatrix{T}, B::BallMatrix{T, T}) where {T <: AbstractFloat}
     m, k = size(A)
+    _mmul3_check(k, T)
     mB, rB = mid(B), rad(B)
     mC = A * mB
     ϵ = machine_epsilon(T)
@@ -57,6 +82,7 @@ end
 
 function MMul3(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
     m, k = size(A)
+    _mmul3_check(k, T)
     mC = A * B
     ϵ = machine_epsilon(T)
     η_val = subnormal_min(T)

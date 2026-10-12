@@ -176,3 +176,13 @@ using BallArithmetic
             BallMatrix(zeros(Float32, 1, 2^22)), BallMatrix(zeros(Float32, 2^22, 1)))
     end
 end
+
+@testset "MMul3 and MMul5 are for real matrices" begin
+    # Rump (2012) states the algorithms for real matrices; a complex product goes through `*`
+    Ac = BallMatrix(ComplexF64[1+im 2; 3 4-im])
+    @test_throws MethodError BallArithmetic.MMul3(Ac, Ac)
+    @test_throws MethodError BallArithmetic.MMul5(Ac, Ac)
+    @test (Ac * Ac) isa BallMatrix
+    @test_throws ArgumentError BallArithmetic.MMul3(
+        BallMatrix(zeros(Float32, 1, 2^23)), BallMatrix(zeros(Float32, 2^23, 1)))
+end
