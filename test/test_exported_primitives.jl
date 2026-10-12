@@ -150,7 +150,7 @@ using GenericLinearAlgebra
             end
             # and still take the matrix itself
             @test verified_lu([2.0 1.0; 1.0 3.0]).certified
-            @test polar_qdwh([2.0 1.0; 1.0 3.0]) isa Tuple
+            @test polar_qdwh([2.0 1.0; 1.0 3.0]).converged
         end
     end
 end

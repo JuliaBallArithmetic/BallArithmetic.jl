@@ -40,8 +40,10 @@ using LinearAlgebra
 
         result = adaptive_ogita_svd(A; tolerance=1e-10, max_refinement_iterations=2)
 
-        # Should achieve tolerance or get close
-        @test result.final_precision > 53
+        # the precision is adapted on the midpoint, which meets the tolerance in Float64; the
+        # radii of A then add a bound of ‖rad(A)‖₂ = 1.01e-10 to each enclosure
+        @test result.final_precision == 53 && result.tolerance_achieved
+        @test all(1e-10 <= rad(b) <= 1.02e-10 for b in result.rigorous_result.singular_values)
         @test !isempty(result.precision_levels)
         @test length(result.radii_history) == length(result.precision_levels)
 
