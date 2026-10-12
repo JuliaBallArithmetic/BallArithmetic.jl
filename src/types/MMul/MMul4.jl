@@ -84,6 +84,14 @@ function _product_down_up(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <
     return down, up
 end
 
+# `fl△(AB)` alone: an entrywise upper bound of the product, and of `AB` itself when `A` and `B`
+# are non-negative. The products that are still formed under a rounding mode go through this
+# function and `_product_down_up`, so that the dependence on the BLAS is in one place.
+_product_up(A::AbstractVecOrMat{T}, B::AbstractVecOrMat{T}) where {T <: AbstractFloat} =
+    setrounding(T, RoundUp) do
+        A * B
+    end
+
 function MMul4(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
     C1, C2 = _product_down_up(mid(A), mid(B))
 

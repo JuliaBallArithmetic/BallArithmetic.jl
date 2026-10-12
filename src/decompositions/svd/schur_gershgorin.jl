@@ -68,22 +68,12 @@ function _vbd_beta_rows(R2::BallMatrix, transformed::BallMatrix, ::Type{T}) wher
         error("VBD: Neumann condition ‖R₂‖_∞ = $nrmR2 ≥ 1; basis not certifiably " *
               "nonsingular at this precision")
     normT = upper_bound_L_inf_opnorm(transformed)     # ‖Ã‖_∞
-    denom = setrounding(T, RoundDown) do
-        one(T) - nrmR2
-    end
-    g = setrounding(T, RoundUp) do
-        normT / denom                                 # ‖Ã‖_∞/(1−‖R₂‖_∞)
-    end
+    denom = sub_down(one(T), nrmR2)
+    g = div_up(normT, denom)                          # ‖Ã‖_∞/(1−‖R₂‖_∞)
     absR2 = upper_abs(R2)
     beta = Vector{T}(undef, n)
     for i in 1:n
-        beta[i] = setrounding(T, RoundUp) do
-            rowR2 = zero(T)
-            for j in 1:n
-                rowR2 += absR2[i, j]                   # ‖rowᵢ(R₂)‖₁
-            end
-            rowR2 * g
-        end
+        beta[i] = mul_up(sum_up(view(absR2, i, :)), g)   # ‖rowᵢ(R₂)‖₁ g
     end
     return beta, nrmR2
 end
@@ -91,9 +81,8 @@ end
 # add the per-row certification slack `β[i]` to each Gershgorin disc radius (RoundUp)
 function _inflate_intervals(intervals::AbstractVector{Ball{T, CT}},
         beta::AbstractVector{T}) where {T, CT}
-    return [Ball(mid(intervals[i]), setrounding(T, RoundUp) do
-                rad(intervals[i]) + beta[i]
-            end) for i in eachindex(intervals)]
+    return [Ball(mid(intervals[i]), add_up(rad(intervals[i]), beta[i]))
+            for i in eachindex(intervals)]
 end
 
 # PER-BLOCK enclosure data (draft Thm. enclosure + Prop. blockgersg, with within-block
@@ -131,18 +120,12 @@ function _vbd_block_data(A::BallMatrix, WB::BallMatrix, YB::BallMatrix,
     nrmR2 = upper_bound_L2_opnorm(R2)
     nrmR2 < 1 ||
         error("VBD: Neumann condition ‖R₂‖₂ = $nrmR2 ≥ 1 while forming block data")
-    denom = setrounding(T, RoundDown) do
-        one(T) - nrmR2
-    end
+    denom = sub_down(one(T), nrmR2)
     # R₁ = Y(AW − BWΛ) certifies the candidate Λ = block: β_Λ = ‖R₁‖₂/(1−‖R₂‖₂).
     # (B = I recovers the standard R₁ = Y(AW − WΛ).)
     R1 = YB * (A * WB - FB * block)
-    block_slack = setrounding(T, RoundUp) do
-        upper_bound_L2_opnorm(R1) / denom
-    end
-    beta2 = setrounding(T, RoundUp) do
-        nrmR2 * upper_bound_L2_opnorm(transformed) / denom
-    end
+    block_slack = div_up(upper_bound_L2_opnorm(R1), denom)
+    beta2 = div_up(mul_up(nrmR2, upper_bound_L2_opnorm(transformed)), denom)
     midT = mid(transformed)
     CT = eltype(midT)
     coupling = Vector{T}(undef, length(clusters))
@@ -150,27 +133,18 @@ function _vbd_block_data(A::BallMatrix, WB::BallMatrix, YB::BallMatrix,
     nonnormality = Vector{T}(undef, length(clusters))
     q = length(clusters)
     # √(q−1), rounded up, for the strip form of the row bound
-    sqrtqm1 = setrounding(T, RoundUp) do
-        sqrt(T(max(q - 1, 0)))
-    end
+    sqrtqm1 = sqrt_up(T(max(q - 1, 0)))
     for (k, cl) in enumerate(clusters)
         cj = sum(midT[i, i] for i in cl) / length(cl)        # block barycentre
         centres[k] = cj
         nonnormality[k] = upper_bound_L2_opnorm(transformed[cl, cl] - cj * I)  # ‖Pⱼ − cⱼI‖₂
-        rowsum = setrounding(T, RoundUp) do
-            acc = zero(T)
-            for (j, cj2) in enumerate(clusters)
-                j == k && continue
-                acc += upper_bound_L2_opnorm(remainder[cl, cj2])
-            end
-            acc
+        rowsum = zero(T)
+        for (j, cj2) in enumerate(clusters)
+            j == k && continue
+            rowsum = add_up(rowsum, upper_bound_L2_opnorm(remainder[cl, cj2]))
         end
-        strip = setrounding(T, RoundUp) do
-            sqrtqm1 * upper_bound_L2_opnorm(remainder[cl, :])
-        end
-        coupling[k] = setrounding(T, RoundUp) do
-            min(rowsum, strip) + beta2
-        end
+        strip = mul_up(sqrtqm1, upper_bound_L2_opnorm(remainder[cl, :]))
+        coupling[k] = add_up(min(rowsum, strip), beta2)
     end
     return coupling, centres, nonnormality, block_slack
 end
@@ -295,9 +269,7 @@ From the barycentre floor `σ_min(Pᵢ − zI) ≥ |z − cᵢ| − nᵢ` and th
 function block_enclosure(vbd)
     T = eltype(vbd.block_coupling)
     return [(center = vbd.block_centers[k],
-                radius = setrounding(T, RoundUp) do
-                    vbd.block_nonnormality[k] + vbd.block_coupling[k]
-                end,
+                radius = add_up(vbd.block_nonnormality[k], vbd.block_coupling[k]),
                 mult = length(vbd.clusters[k])) for k in eachindex(vbd.clusters)]
 end
 
@@ -350,19 +322,12 @@ function _vbd_gershgorin_intervals(H::BallMatrix{T, NT}; hermitian::Bool) where 
         diag_entry = Ball(midH[i, i], radH[i, i])
         diag_ball = hermitian ? _real_interval(diag_entry) : diag_entry
 
-        row_sum = setrounding(T, RoundUp) do
-            s = zero(T)
-            for j in 1:n
-                if j != i
-                    s += absH[i, j]
-                end
-            end
-            s
+        row_sum = zero(T)
+        for j in 1:n
+            j != i && (row_sum = add_up(row_sum, absH[i, j]))
         end
 
-        radius = setrounding(T, RoundUp) do
-            rad(diag_ball) + row_sum
-        end
+        radius = add_up(rad(diag_ball), row_sum)
         intervals[i] = Ball(mid(diag_ball), radius)
     end
 
@@ -372,9 +337,7 @@ end
 _real_interval(x::Ball{T, T}) where {T} = x
 
 function _real_interval(x::Ball{T, Complex{T}}) where {T}
-    radius = setrounding(T, RoundUp) do
-        rad(x) + abs(imag(mid(x)))
-    end
+    radius = add_up(rad(x), abs(imag(mid(x))))
     return Ball(real(mid(x)), radius)
 end
 
@@ -496,12 +459,8 @@ function r2_infty_bound_by_blocks(H::BallMatrix{T}, intervals, clusters::Vector{
                 return convert(T, Inf)
             end
             E∞ = block_infty_upper(absH, clusters[p], clusters[q])
-            contribution = setrounding(T, RoundUp) do
-                E∞ / sep
-            end
-            row_sums[p] = setrounding(T, RoundUp) do
-                row_sums[p] + contribution
-            end
+            contribution = div_up(E∞, sep)
+            row_sums[p] = add_up(row_sums[p], contribution)
         end
     end
 
@@ -511,12 +470,9 @@ end
 function block_infty_upper(absH::AbstractMatrix{T}, rows, cols) where {T}
     smax = zero(T)
     for i in rows
-        s = setrounding(T, RoundUp) do
-            acc = zero(T)
-            for j in cols
-                acc += absH[i, j]
-            end
-            acc
+        s = zero(T)
+        for j in cols
+            s = add_up(s, absH[i, j])
         end
         smax = max(smax, s)
     end

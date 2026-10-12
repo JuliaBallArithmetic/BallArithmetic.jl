@@ -146,19 +146,13 @@ function _miyajima2014a_cor3_2(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
     S = I - YBXt
 
     absS, absR = upper_abs(S), upper_abs(R)
-    t = setrounding(T, RoundUp) do
-        vec(sum(absS, dims = 2))
-    end
+    t = _rowsums_up(absS)
     tinf = maximum(t)
     tinf < 1 || return nothing                       # Step 2: terminate with failure
-    uvec = setrounding(T, RoundUp) do
-        vec(sum(absR, dims = 2))
-    end
+    uvec = _rowsums_up(absR)
     # Corollary 3.2: r = u + <u>_t t
     au = _miyajima2014a_lem2_3(uvec, t)
-    r = setrounding(T, RoundUp) do
-        uvec .+ au .* t
-    end
+    r = add_up.(uvec, mul_up.(au, t))
     return _Miyajima2014aDiscs(lambdas, r, t, absR, upper_abs(Xtb), Xt, YBXt, R, tinf)
 end
 
@@ -191,25 +185,15 @@ function _miyajima2014a_thm3_5(G::_Miyajima2014aDiscs{T, CT}, i::Int) where {T, 
     f = T[sub_down(dist_down(G.lambdas[j], G.lambdas[i]), G.r[i]) for j in 1:n]
     all(>(0), view(f, keep)) || return nothing # Remark 3.6: isolation gives I_i f > 0
     w = G.absR[:, i]                           # |R| e_i
-    v = setrounding(T, RoundUp) do             # |R| J_i 1 = row sums of |R| off column i
-        vec(sum(G.absR, dims = 2)) .- w
-    end
+    v = sub_up.(_rowsums_up(G.absR), w)        # |R| J_i 1 = row sums of |R| off column i
     av, aw = _miyajima2014a_lem2_3(v, G.t), _miyajima2014a_lem2_3(w, G.t)
-    g = setrounding(T, RoundUp) do
-        T[(v[j] + av * G.t[j]) / f[j] for j in keep]
-    end
+    g = T[div_up(add_up(v[j], mul_up(av, G.t[j])), f[j]) for j in keep]
     maximum(g) < 1 || return nothing           # Remark 3.6: ||g||_inf < 1
-    h = setrounding(T, RoundUp) do
-        T[(w[j] + aw * G.t[j]) / f[j] for j in keep]
-    end
+    h = T[div_up(add_up(w[j], mul_up(aw, G.t[j])), f[j]) for j in keep]
     ah = _miyajima2014a_lem2_3(h, g)
-    q = setrounding(T, RoundUp) do
-        h .+ ah .* g
-    end
+    q = add_up.(h, mul_up.(ah, g))
     # |Xt| J_i q, an n-vector: J_i drops column i, so this is |Xt|[:, keep] * q
-    rad = setrounding(T, RoundUp) do
-        view(G.absXt, :, keep) * q
-    end
+    rad = _product_up(G.absXt[:, keep], q)
     return BallMatrix(reshape(G.Xt[:, i], n, 1), reshape(rad, n, 1))
 end
 
@@ -242,39 +226,27 @@ function _miyajima2014a_alg2(G::_Miyajima2014aDiscs{T, CT}, A::BallMatrix{T}, B:
     # Step 2: phi, nu' and mu of Lemma 3.9
     absphi = T[incl[j] ? one(T) : dist_down(G.lambdas[j], lam) for j in 1:n]
     all(>(0), absphi) || return nothing
-    nup = setrounding(T, RoundUp) do            # nu' = |R'| U U^T 1: columns outside the cluster
-        isempty(comp) ? zeros(T, n) : vec(sum(view(absRp, :, comp), dims = 2))
-    end
+    # nu' = |R'| U U^T 1: columns outside the cluster
+    nup = isempty(comp) ? zeros(T, n) : _rowsums_up(view(absRp, :, comp))
     anup = _miyajima2014a_lem2_3(nup, G.t)
-    mu = setrounding(T, RoundUp) do
-        (nup .+ anup .* G.t) ./ absphi
-    end
+    mu = div_up.(add_up.(nup, mul_up.(anup, G.t)), absphi)
     maximum(mu) < 1 || return nothing
 
     # Step 3: Rw = |R'| V + t w^T, floored at sqrt(realmin) so no entry underflows to zero
     wcols = _miyajima2014a_cor2_4(view(absRp, :, cl), G.t)
     sqrtrealmin = sqrt(floatmin(T))
-    Rw = setrounding(T, RoundUp) do
-        M = view(absRp, :, cl) .+ G.t * transpose(wcols)
-        max.(M, sqrtrealmin)
-    end
+    Rw = max.(add_up.(view(absRp, :, cl), mul_up.(G.t, transpose(wcols))), sqrtrealmin)
 
     # Step 4: Pbar_eps = P*_eps, which is P_eps of Lemma 3.10 at P_r = 0, and sigma
-    Tm = setrounding(T, RoundUp) do
-        Rw ./ absphi                            # T = (Rw + 0) ./ (|phi| 1^T)
-    end
+    Tm = div_up.(Rw, absphi)                    # T = (Rw + 0) ./ (|phi| 1^T)
     z = _miyajima2014a_cor2_4(Tm, mu)
-    Pe = setrounding(T, RoundUp) do
-        Tm .+ mu * transpose(z)
-    end
+    Pe = add_up.(Tm, mul_up.(mu, transpose(z)))
     # sigma >= || (U U^T Pbar_eps)(V^T Pbar_eps) ./ Rw ||_M, the max over entries
     VtPe = Pe[cl, :]                            # V^T Pbar_eps, k by k
     UUtPe = copy(Pe)                            # U U^T Pbar_eps zeroes the cluster rows
     UUtPe[cl, :] .= zero(T)
     eps_T = eps(T)
-    sigma = setrounding(T, RoundUp) do
-        maximum((UUtPe * VtPe) ./ Rw)
-    end
+    sigma = maximum(div_up.(_product_up(UUtPe, VtPe), Rw))
     onepeps = add_up(one(T), eps_T)
     c6 = mul_up(sigma, pow_up(onepeps, 6))
     c6 < one(T) / 4 || return nothing
@@ -288,9 +260,7 @@ function _miyajima2014a_alg2(G::_Miyajima2014aDiscs{T, CT}, A::BallMatrix{T}, B:
 
     # Step 6: Pbarbar_eps = (1 + sigma eta^2) Pbar_eps, then the eigenvalue disc and the subspace
     fac = add_up(one(T), mul_up(sigma, mul_up(eta, eta)))
-    Pee = setrounding(T, RoundUp) do
-        fac .* Pe
-    end
+    Pee = mul_up.(fac, Pe)
     VtPee = Pee[cl, :]
     rho = collatz_upper_bound(BallMatrix(VtPee))
     isfinite(rho) || return nothing
@@ -301,9 +271,7 @@ function _miyajima2014a_alg2(G::_Miyajima2014aDiscs{T, CT}, A::BallMatrix{T}, B:
 
     UUtPee = copy(Pee)
     UUtPee[cl, :] .= zero(T)
-    subrad = setrounding(T, RoundUp) do
-        G.absXt * UUtPee
-    end
+    subrad = _product_up(G.absXt, UUtPee)
     subspace = BallMatrix(G.Xt[:, cl], subrad)
     # the block itself: Lambda in <lambda I_k, V^T Pbarbar_eps>
     block = BallMatrix(Matrix{CT}(lam * I, k, k), VtPee)
