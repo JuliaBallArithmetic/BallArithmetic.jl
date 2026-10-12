@@ -27,20 +27,19 @@ _bmp_u(::Type{T}) where {T <: AbstractFloat} = eps(T) / 2
 # rounded roots of unity of order 2^j: at most u when both parts are rounded to nearest, each
 # being within u/2 of a number of modulus at most one. ρ is the relative error of the complex
 # product: √5 u for the product formed without a fused multiply-add, as it is here.
-# Every operation is rounded upwards.
+#
+# The product is not formed factor by factor: 1 + u is not a floating-point number, and rounding
+# it upwards to 1 + 2u doubles the bound. With S := n u + (n − 2) g, the sum of the logarithms'
+# upper bounds, ∏(1 + aᵢ) − 1 ≤ e^S − 1 ≤ S / (1 − S/2) for 0 ≤ S < 2, by comparison of the two
+# series; every operation below is rounded in the direction that keeps the bound.
 function _bmp_bn(n::Integer, ::Type{T}) where {T <: AbstractFloat}
     u = _bmp_u(T)
-    one_u = add_up(one(T), u)
     ρ = mul_up(sqrt_up(T(5)), u)
-    one_g = add_up(one(T), add_up(u, mul_up(ρ, one_u)))
-    p = one(T)
-    for _ in 1:n
-        p = mul_up(p, one_u)
-    end
-    for _ in 3:n
-        p = mul_up(p, one_g)
-    end
-    return mul_up(sqrt_up(T(2)), mul_up(T(2)^n, sub_up(p, one(T))))
+    g = add_up(u, add_up(ρ, mul_up(ρ, u)))
+    S = add_up(mul_up(T(n), u), mul_up(T(max(n - 2, 0)), g))
+    S < 1 || return T(Inf)
+    bracket = BallArithmetic.div_up(S, BallArithmetic.sub_down(one(T), BallArithmetic.div_up(S, T(2))))
+    return mul_up(sqrt_up(T(2)), mul_up(T(2)^n, bracket))
 end
 
 # exp(−2πi j/N) for j = 0, …, N/2 − 1, each part rounded to nearest: computed with 64 guard bits
