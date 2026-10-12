@@ -1,30 +1,20 @@
 """
     _up_bound_Linf_opnorm(A::AbstractMatrix{T}) where T
 
-Compute an upper bound for the L∞ operator norm of matrix `A` using
-directed rounding. Returns a value of type `float(real(T))`.
+An upper bound of the ∞-norm of the matrix `A`, of type `float(real(T))`: the largest row sum of
+the moduli, each modulus and each sum rounded up.
 """
-function _up_bound_Linf_opnorm(A::AbstractMatrix{T}) where {T}
-    RT = float(real(T))
-    bdd = setrounding(RT, RoundUp) do
-        return opnorm(A, Inf)
-    end
-    return bdd
-end
+_up_bound_Linf_opnorm(A::AbstractMatrix{T}) where {T} =
+    _colrow_sums_up(abs_up.(float.(A)))[2]
 
 """
     _up_bound_Linf_norm(v::AbstractVector{T}) where T
 
-Compute an upper bound for the L∞ norm of vector `v` using
-directed rounding. Returns a value of type `float(real(T))`.
+An upper bound of the ∞-norm of the vector `v`, of type `float(real(T))`: the largest modulus,
+rounded up.
 """
-function _up_bound_Linf_norm(v::AbstractVector{T}) where {T}
-    RT = float(real(T))
-    bdd = setrounding(RT, RoundUp) do
-        return norm(v, Inf)
-    end
-    return bdd
-end
+_up_bound_Linf_norm(v::AbstractVector{T}) where {T} =
+    maximum(abs_up, float.(v); init = zero(float(real(T))))
 
 """
     bdd_R2(Y::AbstractMatrix, Z::BallMatrix)
@@ -50,9 +40,7 @@ function bdd_R2(Y::AbstractMatrix{T}, Z::BallMatrix{RT, NT}) where {T, RT, NT}
     WT = promote_type(float(real(T)), RT)
 
     # Compute Y * mid(Z) with nearest rounding
-    YZc = setrounding(WT, RoundNearest) do
-        return Y * Zc
-    end
+    YZc = Y * Zc
 
     # Bound 1: ‖Y * mid(Z) - I‖∞
     bd1 = _up_bound_Linf_opnorm(YZc - I)
@@ -71,13 +59,16 @@ function bdd_R2(Y::AbstractMatrix{T}, Z::BallMatrix{RT, NT}) where {T, RT, NT}
     bd4 = _up_bound_Linf_opnorm(YZc)
 
     # Final bound combining all error sources with rounding error analysis
-    bdd = setrounding(WT, RoundUp) do
-        u = eps(WT)
-        ui = nextfloat(zero(WT))
-        gamma = n * u / (1 - n * u)
-        gammaprime = sqrt(WT(5)) * u + gamma * (1 + sqrt(WT(5)) * u)
-        return bd1 + bd2 + gammaprime * bd3 + u * (bd4 + 1) + 4 * n^2 * (1 + gamma) * ui
-    end
+    # every operation rounded up, and the denominator 1 − n u rounded down
+    u = eps(WT)
+    ui = nextfloat(zero(WT))
+    nu = mul_up(WT(n), u)
+    gamma = div_up(nu, sub_down(one(WT), nu))
+    sqrt5u = mul_up(sqrt_up(WT(5)), u)
+    gammaprime = add_up(sqrt5u, mul_up(gamma, add_up(one(WT), sqrt5u)))
+    underflow = mul_up(mul_up(mul_up(WT(4), mul_up(WT(n), WT(n))), add_up(one(WT), gamma)), ui)
+    bdd = add_up(add_up(add_up(add_up(bd1, bd2), mul_up(gammaprime, bd3)),
+            mul_up(u, add_up(bd4, one(WT)))), underflow)
     return bdd
 end
 

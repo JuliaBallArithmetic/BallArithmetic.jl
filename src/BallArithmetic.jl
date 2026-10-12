@@ -94,7 +94,6 @@ export RumpOishi2024Result, rump_oishi_2024_sigma_min_bound,
 export psi_schur_factor, pi_norm
 include("eigenvalues/gev.jl")
 include("eigenvalues/upper_bound_spectral.jl")
-include("eigenvalues/miyajima/proceduresMiyajima2010.jl")
 include("eigenvalues/miyajima/gev_miyajima_procedures.jl")
 include("eigenvalues/rump_lange_2023.jl")
 export RigorousGeneralizedEigenvaluesResult, RigorousEigenvaluesResult,

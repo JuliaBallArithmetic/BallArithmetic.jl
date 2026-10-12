@@ -636,7 +636,23 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     (`regression_digest.jl`): 29 of 131 lines differ, all in `svdbox`, `rigorous_svd`,
     `svd_bound_L2_opnorm_inverse` and the σ_min bounds built on them; in each the sum of the
     radii is larger or the lower bound smaller, by amounts of the order of 1e-15 relative.
-    **To do:** the remaining 145 lines with `setrounding` in src and ext, scalar blocks first
+    Converted since (4a84a38, bee49b1 and the commit of this entry): the block
+    diagonalisation and Gershgorin bounds, Algorithms 1 and 2 of Miyajima (2014a),
+    `verifyeigall`, the 1- and ∞-norm bounds and `upper_abs` in arithmetics other than
+    Float32 and Float64, the sums of ball vectors, `bdd_R2` (where `n u/(1 − n u)` was
+    evaluated inside a RoundUp block, so with the denominator rounded up). The matrix
+    products that stay under a rounding mode in those files go through `_product_up`,
+    beside `_product_down_up`. `proceduresMiyajima2010.jl` is removed: its two functions
+    `_encR1ci` and `_encR1ccr` used a type `T` that is not defined in them, and nothing
+    called them. Not checked: the formula of `bdd_R2` against Miyajima's paper; its bounds
+    2 and 3 are products formed in round-to-nearest, which the γ terms are meant to cover.
+    RoundingEmulator exports the ten scalar operations and no `setrounding` (read in its
+    source, version 0.2.1), so a matrix product cannot be converted in the same way: to
+    decide (Isaia), whether the default `*` moves from `MMul4` to the error-free route
+    `mmul_ogita_rump_oishi_2005`, and whether its radius is then bounded in round-to-nearest
+    as the note in `ogita_rump_oishi.jl` proposes, which needs the error model of gemm and
+    an underflow term first.
+    **To do:** the remaining lines (145 at 8aa59dc) with `setrounding` in src and ext, scalar blocks first
     (`schur_gershgorin.jl`, `miyajima_2014a.jl`, `rump_verifyeigall.jl`, `rump_lange_2023.jl`,
     `gram_transform.jl`, `rigorous_residual.jl`, `rigorous_opnorm_bounds.jl`, the Miyajima
     procedures), then the matrix products of `types/MMul` and `types/matrix.jl`, where the
