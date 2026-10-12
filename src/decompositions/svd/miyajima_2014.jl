@@ -433,14 +433,17 @@ radii wherever Theorem 10 does on the midpoint.
 function _miyajima2014_thm10_weyl(A::BallMatrix{T}) where {T}
     R = rad(A)
     iszero(R) && return _miyajima2014_thm10(A)
-    inner = _miyajima2014_thm10(BallMatrix(Matrix(mid(A))))
+    return _weyl_widening(_miyajima2014_thm10(BallMatrix(Matrix(mid(A)))), R)
+end
+
+# Enclosures `σ` of the singular values of a matrix Ã, each widened by an upper bound of ‖R‖₂, so
+# that the i-th contains σᵢ(X) for every X with |X − Ã| ≤ R entrywise: the two inequalities in the
+# docstring of `_miyajima2014_thm10_weyl`. Whatever produced `σ` must index it as the singular
+# values in decreasing order.
+function _weyl_widening(σ::AbstractVector{<:Ball}, R::AbstractMatrix{T}) where {T}
     delta = upper_bound_L2_opnorm(BallMatrix(Matrix(R)))
-    return [_ball_from_bounds(setrounding(T, RoundDown) do
-                mid(s) - rad(s) - delta
-            end,
-            setrounding(T, RoundUp) do
-                mid(s) + rad(s) + delta
-            end, T) for s in inner]
+    return [_ball_from_bounds(sub_down(sub_down(mid(s), rad(s)), delta),
+                add_up(add_up(mid(s), rad(s)), delta), T) for s in σ]
 end
 
 """

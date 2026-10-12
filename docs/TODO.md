@@ -568,6 +568,12 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       The first level is the arithmetic of the matrix given (Isaia, 2026-10-12: a BigFloat
       matrix should have a BigFloat result), Float64 or BigFloat at the precision of the
       midpoints, and no level is below `max_precision_bits` when the matrix is at it.
+      On a matrix with radii the precision is adapted on the midpoint and each enclosure is
+      widened by a bound of `‖rad(A)‖₂` (Isaia, 2026-10-12: the singular values are Lipschitz
+      in the 2-norm, and there was a helper for it): `_weyl_widening`, taken out of
+      `_miyajima2014_thm10_weyl`, which did the same step with two `setrounding` blocks.
+      Before, the radii went through the residual at every level and the driver ran to its
+      limit when the tolerance was below what they impose.
     - `compute_preconditioner` threw on a complex matrix; `PreconditionerResult{CT, T, F}`.
     - `oishi_2023_sigma_min_bound`, `rump_oishi_2024_sigma_min_bound` and the two block size
       searches threw on a complex matrix; the lower bound of `|d|` on the diagonal was

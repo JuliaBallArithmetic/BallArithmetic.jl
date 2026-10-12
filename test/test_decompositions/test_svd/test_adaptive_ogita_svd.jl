@@ -244,7 +244,8 @@ end
                 @test eltype(sv) <: Ball{BigFloat}
                 @test eltype(mid(r.rigorous_result.U)) === eltype(M)
                 @test r.precision_levels[1] == 256
-                @test r.tolerance_achieved == (maximum(rad, sv) <= tol)
+                # the radii of A are 2^-200: the tolerance is about the midpoint
+                @test r.tolerance_achieved == (r.radii_history[end] <= tol)
                 @test all(any(abs(s - mid(b)) <= rad(b) + big(2.0)^-240 for b in sv) for s in σ)
             end
             # no level below the precision of the matrix when that is the largest allowed

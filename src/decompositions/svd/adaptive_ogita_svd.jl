@@ -384,13 +384,12 @@ Compute rigorous SVD bounds with adaptive precision using Ogita's refinement.
 # A matrix with non-zero radii
 The enclosures must contain the singular values of every matrix of the ball, so their radii cannot
 be brought below what the radii of `A` impose, at any precision. The singular values are Lipschitz
-with constant 1 in the 2-norm, `|σᵢ(M + E) − σᵢ(M)| ≤ ‖E‖₂`: indeed `σᵢ(M)` is the maximum over
-the subspaces of dimension `i` of the minimum of `‖Mx‖₂` over the unit vectors `x` of the subspace,
-and `|‖(M + E)x‖₂ − ‖Mx‖₂| ≤ ‖E‖₂`. Moreover `‖E‖₂ ≤ ‖R‖₂` when `|E| ≤ R` entrywise, since
-`‖Ex‖₂ ≤ ‖R|x|‖₂`. The precision is therefore adapted on the midpoint of `A`, and `tolerance`, `radii_history` and
-`tolerance_achieved` are about the enclosures of the singular values of the midpoint. In
-`rigorous_result` each of those enclosures has its radius increased by an upper bound of
-`‖rad(A)‖₂`, so that it holds for every matrix of the ball; the residual there is `U Σ Vᴴ − A`
+with constant 1 in the 2-norm, `|σᵢ(X) − σᵢ(M)| ≤ ‖X − M‖₂`, and `‖X − M‖₂ ≤ ‖R‖₂` when
+`|X − M| ≤ R` entrywise; both are proved in the docstring of [`_miyajima2014_thm10_weyl`](@ref),
+which uses the same step. The precision is therefore adapted on the midpoint of `A`, and
+`tolerance`, `radii_history` and `tolerance_achieved` are about the enclosures of the singular
+values of the midpoint. In `rigorous_result` each of those enclosures is widened by an upper bound
+of `‖rad(A)‖₂`, so that it holds for every matrix of the ball; the residual there is `U Σ Vᴴ − A`
 with that `Σ`.
 
 # Arguments
@@ -422,10 +421,9 @@ function adaptive_ogita_svd(A::BallMatrix{T};
                            max_precision_bits::Int=1024,
                            max_refinement_iterations::Int=5) where {T}
 
-    # A matrix with radii. The singular values are Lipschitz with constant 1 in the 2-norm,
-    # |σᵢ(M + E) − σᵢ(M)| ≤ ‖E‖₂ (Weyl), and ‖E‖₂ ≤ ‖R‖₂ when |E| ≤ R entrywise. So the
-    # precision is adapted on the midpoint M, whose singular values can be enclosed as tightly
-    # as asked, and an upper bound ρ of ‖rad(A)‖₂ is added to the radius of each enclosure.
+    # A matrix with radii: the precision is adapted on the midpoint, whose singular values can be
+    # enclosed as tightly as asked, and each enclosure is widened by an upper bound of ‖rad(A)‖₂
+    # (`_weyl_widening`, the step that `_miyajima2014_thm10_weyl` applies to Theorem 10).
     if any(!iszero, rad(A))
         inner = adaptive_ogita_svd(BallMatrix(mid(A)); tolerance, method, apply_vbd,
             max_precision_bits, max_refinement_iterations)
@@ -434,9 +432,7 @@ function adaptive_ogita_svd(A::BallMatrix{T};
         infloat64 = eltype(rad(r0.U)) === Float64
         widen() = begin
             Ap = infloat64 && T === Float64 ? A : _convert_to_precision(A, p)
-            R = BallMatrix(rad(Ap))
-            ρ = min(collatz_upper_bound_L2_opnorm(R), upper_bound_L2_opnorm(R))
-            σ = [Ball(mid(b), add_up(rad(b), ρ)) for b in r0.singular_values]
+            σ = _weyl_widening(r0.singular_values, rad(Ap))
             Σ = _diagonal_ball_matrix(σ)
             residual = r0.U * Σ * r0.V' - Ap
             vbd = apply_vbd && r0.block_diagonalisation !== nothing ?
