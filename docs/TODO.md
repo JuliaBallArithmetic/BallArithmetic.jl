@@ -610,3 +610,35 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     `rigorous_generalized_eigenvalues`, the triangular matrix of the four substitutions, the
     sizes and indices of the Riesz projections (`ArgumentError`, `DimensionMismatch`).
 
+34. **Rounding-mode blocks are not reliable; the SVD theorems no longer use them, 2026-10-12.**
+    Base of Julia 1.12.7 has no `setrounding(Float64, mode)`; the package takes it from
+    SetRounding.jl, which calls `fesetround`. Measured on nighthawk, Julia 1.12.7:
+    - `setrounding_patterns3.jl`: a function with `setrounding(T, RoundDown) do s.c - s.r - δ end`
+      inside a loop or comprehension over a vector of structs gave a result above the exact
+      value in 106,249 of 200,000 cases, and the mirror block with RoundUp a result below it
+      in the same number (forms H1 to H5, including a single block per iteration). With each
+      block around a whole comprehension (H6), or one RoundUp block with the lower end
+      written as −((−c + r) + δ) (H7), 0 of 200,000.
+    - `setrounding_patterns.jl`: six other scalar forms, 0 failures in 200,000 each.
+    - a real matrix product inside a block, with the package loaded (its OpenBLAS with
+      consistent rounding across threads, 64 threads): 0 entries on the wrong side for
+      n = 64, 300, 1000. Without the package, stock OpenBLAS on 64 threads, n = 300: 42,542
+      and 42,594 of 90,000; n = 8 and 64: 0.
+    - a complex matrix product inside a block is not a bound of the real and imaginary
+      parts (about half the entries on the wrong side at n = 64 and 300); whether the package
+      relies on one anywhere was not checked.
+    Rewritten with the directed operations (8e76e3d): Theorems 4, 7, 10, 11 of Miyajima
+    (2014), Theorem 3.1 of Rump (2011), `_compute_svd_bounds`, `_ball_from_bounds`. Three
+    formulas were wrong whatever the rounding: in Theorems 10 and 11 a quotient was bounded
+    below with its denominator rounded down and above with it rounded up; in Rump's theorem
+    the modulus of a complex diagonal entry was rounded to nearest, and a negative numerator
+    was divided by the upper bound of the denominator. Comparison of ac017d8 with 8e76e3d
+    (`regression_digest.jl`): 29 of 131 lines differ, all in `svdbox`, `rigorous_svd`,
+    `svd_bound_L2_opnorm_inverse` and the σ_min bounds built on them; in each the sum of the
+    radii is larger or the lower bound smaller, by amounts of the order of 1e-15 relative.
+    **To do:** the remaining 145 lines with `setrounding` in src and ext, scalar blocks first
+    (`schur_gershgorin.jl`, `miyajima_2014a.jl`, `rump_verifyeigall.jl`, `rump_lange_2023.jl`,
+    `gram_transform.jl`, `rigorous_residual.jl`, `rigorous_opnorm_bounds.jl`, the Miyajima
+    procedures), then the matrix products of `types/MMul` and `types/matrix.jl`, where the
+    question is the complex case and broadcasts inside a block.
+
