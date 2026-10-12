@@ -716,3 +716,38 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     **Open:** `MMul2` is a stub that warns "Not Implemented" (thesis, Algorithm 9): implement
     or remove. `MMul3` and `MMul5` rest on the products `mA·mB` and `|mA|·|mB|` being computed
     in the same order (Remark 1 of Rump's paper).
+
+37. **Routes to the real ball product compared, 2026-10-12** (Isaia: whether to substitute the
+    default with the prodK alternative; the centre and the radius may have different
+    precision). `ball_product_routes.jl` on nighthawk at c067ed2, 16 Julia threads, 64 BLAS
+    threads, real `k × k` factors with standard normal midpoints and radius `relrad·|mid|`;
+    minimum of 3 runs (2 at 3200), seconds; the radius is the median of `rad/|mid|` of the
+    product. "mixed" is `MMul4` with the two radius products in `Float32` (Ozaki, Ogita,
+    Bünger and Oishi, NOLTA 6 (2015) 364-376, doi 10.1587/nolta.6.364, Algorithm 4), written
+    in the script and not in the package; "split1", "split2" take the midpoint from
+    `_lange_rump_two_terms` with one and two splitting points and the radius products of
+    `MMul4`; "dot2" is `mmul_ogita_rump_oishi_2005`.
+
+    | k | gemm | mmul4 | mixed | dot2 | split1 | split2 |
+    |---|---|---|---|---|---|---|
+    | 100 | 0.000036 | 0.00015 | 0.00018 | 0.00069 | 0.00027 | 0.00037 |
+    | 400 | 0.00028 | 0.0016 | 0.0021 | 0.013 | 0.0030 | 0.0061 |
+    | 800 | 0.00089 | 0.013 | 0.0095 | 0.061 | 0.011 | 0.016 |
+    | 1600 | 0.0036 | 0.044 | 0.044 | 0.42 | 0.071 | 0.11 |
+    | 3200 | 0.024 | 0.25 | 0.34 | not run | 0.53 | 0.72 |
+
+    (times at `relrad = 0`; at 800 and 1600 `mmul4` took 0.0065 and 0.027 with `relrad > 0`).
+    Median relative radius of the product:
+
+    | k | relrad | mmul4 | dot2 | split1 | split2 |
+    |---|---|---|---|---|---|
+    | 100 | 0 | 5.5e-15 | 1.1e-16 | 3.9e-17 | 3.8e-17 |
+    | 1600 | 0 | 4.9e-14 | 1.1e-16 | 4.7e-17 | 3.8e-17 |
+    | 3200 | 0 | 7.5e-14 | not run | 7.0e-17 | 3.8e-17 |
+    | 1600 | 1e-15 | 1.25e-13 | 7.56e-14 | 7.55e-14 | 7.55e-14 |
+    | 1600 | 1e-12 | 7.5538e-11 | 7.5489e-11 | 7.5489e-11 | 7.5489e-11 |
+    | 1600 | 1e-8 | 7.54360e-7 | 7.54360e-7 | 7.54360e-7 | 7.54360e-7 |
+
+    The radius of "mixed" agreed with that of `mmul4` to 5 digits in every row. Not measured:
+    complex factors, a chain of products (where the output radius of one is the input radius
+    of the next), the certification runs of the paper with either route.
