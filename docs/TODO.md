@@ -405,8 +405,11 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     `(1 − q₀)² − 4cy` was evaluated with the rounding mode downward, which rounds the product
     `4cy` down and the discriminant up; `u` was divided by `uᴴṽ` where the conjugate is needed
     for `uᴴṽ = 1`, so a computed complex `u` gave a large residual (no wrong enclosure, a
-    refusal); and the package had no test of either routine. Added:
-    `test_newton_kantorovich_eigenpair.jl`, against 256-bit eigendecompositions.
+    refusal). Added to `test_newton_kantorovich_eigenpair.jl`: tests against 256-bit
+    eigendecompositions. The file existed, with 150 lines of tests from the commit that
+    introduced the routine; on 2026-10-12 it was overwritten by the new tests, by a search
+    that excluded its own name, and the statement that the routines had no test was wrong.
+    The old tests were put back the same day, beside the new ones.
     GKWExperiments calls these routines in six scripts and one source file.
 
 21. **`miyajima_gev_enclosure`, read on 2026-10-12** against Theorem 1 of Miyajima (2010),
