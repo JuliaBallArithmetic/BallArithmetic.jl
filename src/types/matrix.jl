@@ -148,9 +148,7 @@ function Base.:+(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
 
     C = mA + mB
     ϵ = machine_epsilon(T)
-    R = setrounding(T, RoundUp) do
-        (ϵ * abs.(C) + rA) + rB
-    end
+    R = add_up.(add_up.(mul_up.(ϵ, abs.(C)), rA), rB)
     BallMatrix(C, R)
 end
 
@@ -172,9 +170,7 @@ function Base.:-(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
 
     C = mA - mB
     ϵ = machine_epsilon(T)
-    R = setrounding(T, RoundUp) do
-        (ϵ * abs.(C) + rA) + rB
-    end
+    R = add_up.(add_up.(mul_up.(ϵ, abs.(C)), rA), rB)
     BallMatrix(C, R)
 end
 
@@ -263,12 +259,7 @@ function Base.:+(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFlo
     C = mA + B
 
     ϵ = machine_epsilon(T)
-    R = setrounding(T, RoundUp) do
-        # Only the `BallMatrix` contributes an existing radius, but
-        # we still need to compensate for floating-point error in the
-        # combined midpoint.
-        return (ϵ * abs.(C) + rA)
-    end
+    R = add_up.(mul_up.(ϵ, abs.(C)), rA)
     BallMatrix(C, R)
 end
 
@@ -297,11 +288,7 @@ function Base.:-(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFlo
     C = mA - B
 
     ϵ = machine_epsilon(T)
-    R = setrounding(T, RoundUp) do
-        # Only `A` carries an existing radius; nevertheless we must still
-        # compensate for floating-point roundoff in the midpoint result.
-        return (ϵ * abs.(C) + rA)
-    end
+    R = add_up.(mul_up.(ϵ, abs.(C)), rA)
     BallMatrix(C, R)
 end
 
@@ -319,11 +306,7 @@ function Base.:-(B::AbstractMatrix{T}, A::BallMatrix{T}) where {T <: AbstractFlo
     C = B - mA
 
     ϵ = machine_epsilon(T)
-    R = setrounding(T, RoundUp) do
-        # The stored radii of `A` still drive the enclosure, with additional
-        # padding for floating-point roundoff in the midpoint subtraction.
-        return (ϵ * abs.(C) + rA)
-    end
+    R = add_up.(mul_up.(ϵ, abs.(C)), rA)
     BallMatrix(C, R)
 end
 
@@ -347,11 +330,8 @@ function Base.:+(A::BallMatrix{T}, J::UniformScaling) where {T}
     end
 
     ϵ = machine_epsilon(T)
-    R = setrounding(T, RoundUp) do
-        @inbounds for i in axes(A, 1)
-            R[i, i] += ϵ * abs(B[i, i])
-        end
-        return R
+    @inbounds for i in axes(A, 1)
+        R[i, i] = add_up(R[i, i], mul_up(ϵ, abs(B[i, i])))
     end
     return BallMatrix(B, R)
 end
@@ -374,11 +354,8 @@ function Base.:+(A::BallMatrix{T},
     end
 
     ϵ = machine_epsilon(T)
-    R = setrounding(T, RoundUp) do
-        @inbounds for i in axes(A, 1)
-            R[i, i] += ϵ * abs(B[i, i]) + J.λ.r
-        end
-        return R
+    @inbounds for i in axes(A, 1)
+        R[i, i] = add_up(R[i, i], add_up(mul_up(ϵ, abs(B[i, i])), J.λ.r))
     end
     return BallMatrix(B, R)
 end
@@ -414,11 +391,8 @@ function Base.:-(A::BallMatrix{T}, J::UniformScaling) where {T}
     end
 
     ϵ = machine_epsilon(T)
-    R = setrounding(T, RoundUp) do
-        @inbounds for i in axes(A, 1)
-            R[i, i] += ϵ * abs(B[i, i])
-        end
-        return R
+    @inbounds for i in axes(A, 1)
+        R[i, i] = add_up(R[i, i], mul_up(ϵ, abs(B[i, i])))
     end
     return BallMatrix(B, R)
 end
@@ -442,11 +416,8 @@ function Base.:-(A::BallMatrix{T},
     end
 
     ϵ = machine_epsilon(T)
-    R = setrounding(T, RoundUp) do
-        @inbounds for i in axes(A, 1)
-            R[i, i] += ϵ * abs(B[i, i]) + J.λ.r
-        end
-        return R
+    @inbounds for i in axes(A, 1)
+        R[i, i] = add_up(R[i, i], add_up(mul_up(ϵ, abs(B[i, i])), J.λ.r))
     end
     return BallMatrix(B, R)
 end
@@ -476,11 +447,8 @@ function Base.:-(J::UniformScaling, A::BallMatrix{T}) where {T}
     end
 
     ϵ = machine_epsilon(T)
-    R = setrounding(T, RoundUp) do
-        @inbounds for i in axes(A, 1)
-            R[i, i] += ϵ * abs(B[i, i])
-        end
-        return R
+    @inbounds for i in axes(A, 1)
+        R[i, i] = add_up(R[i, i], mul_up(ϵ, abs(B[i, i])))
     end
     return BallMatrix(B, R)
 end
@@ -509,11 +477,8 @@ function Base.:-(J::UniformScaling{Ball{T, NT}},
     end
 
     ϵ = machine_epsilon(T)
-    R = setrounding(T, RoundUp) do
-        @inbounds for i in axes(A, 1)
-            R[i, i] += ϵ * abs(B[i, i]) + J.λ.r
-        end
-        return R
+    @inbounds for i in axes(A, 1)
+        R[i, i] = add_up(R[i, i], add_up(mul_up(ϵ, abs(B[i, i])), J.λ.r))
     end
     return BallMatrix(B, R)
 end

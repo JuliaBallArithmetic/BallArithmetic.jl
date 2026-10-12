@@ -2,7 +2,6 @@ module ArbNumericsExt
 
 using BallArithmetic
 import ArbNumerics
-using SetRounding: setrounding
 
 # ============================================================================
 # Float64 conversion helpers — truncation error absorbed into radius
@@ -85,9 +84,8 @@ function _arbcomplex_to_bigfloat_with_radius(x::ArbNumerics.ArbComplex{P}) where
     mid_bf = Complex{BigFloat}(mid_real, mid_imag)
 
     # Rigorous combined radius: √(rad_real² + rad_imag²) rounded up
-    rad_bf = setrounding(BigFloat, RoundUp) do
-        sqrt(rad_real * rad_real + rad_imag * rad_imag)
-    end
+    rad_bf = BallArithmetic.sqrt_up(BallArithmetic.add_up(
+        BallArithmetic.mul_up(rad_real, rad_real), BallArithmetic.mul_up(rad_imag, rad_imag)))
 
     return mid_bf, rad_bf
 end

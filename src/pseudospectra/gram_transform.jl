@@ -59,8 +59,6 @@ end
 # Directed-rounding helpers                                         #
 #####################################################################
 
-_gram_up(f::Function, ::Type{T}) where {T} = setrounding(f, T, RoundUp)
-_gram_down(f::Function, ::Type{T}) where {T} = setrounding(f, T, RoundDown)
 
 #####################################################################
 # Rigorous radius-type conversion (outward rounding)                #
@@ -87,9 +85,7 @@ function _gram_convert(M::BallMatrix{T, NT}, ::Type{T2}) where {T, NT, T2 <: Abs
 
     for i in eachindex(r2)
         err = _gram_conv_err(M.c[i], back[i])
-        total = _gram_up(T) do
-            M.r[i] + err
-        end
+        total = add_up(M.r[i], err)
         r2[i] = T2(total, RoundUp)
     end
 
@@ -137,15 +133,9 @@ function _verify_inverse(F::BallMatrix{T, NT}, X::BallMatrix{T, NT}) where {T, N
     nX = upper_bound_L2_opnorm(X)
 
     # Denominator rounded *down* so that the quotient stays an upper bound.
-    denom = _gram_down(T) do
-        one(T) - nR
-    end
-    δ = _gram_up(T) do
-        (nR * nX) / denom
-    end
-    radii = _gram_up(T) do
-        X.r .+ δ
-    end
+    denom = sub_down(one(T), nR)
+    δ = div_up(mul_up(nR, nX), denom)
+    radii = add_up.(X.r, δ)
 
     return BallMatrix(X.c, radii)
 end
@@ -260,13 +250,11 @@ function _gram_residual_bound(G::AbstractMatrix, L::BallMatrix{WT, NT}) where {W
     residual = L_adj * L - BallMatrix(convert.(NT, G))
     numerator = upper_bound_L2_opnorm(residual)
 
-    denominator = _gram_down(WT) do
-        maximum(i -> real(convert(NT, G[i, i])), 1:n)
-    end
+    # a lower bound of the largest diagonal entry: each conversion to the working type is
+    # rounded downward
+    denominator = maximum(i -> _float_down(WT, real(G[i, i])), 1:n)
     denominator > 0 || return WT(Inf)
-    return _gram_up(WT) do
-        numerator / denominator
-    end
+    return div_up(numerator, denominator)
 end
 
 """
@@ -368,12 +356,8 @@ function gram_transform(gram;
 
     nL = upper_bound_L2_opnorm(L)
     nLi = upper_bound_L2_opnorm(L_inv)
-    cond_factor = _gram_up(WT) do
-        WT(nL) * WT(nLi)
-    end
-    cond_gram = _gram_up(WT) do
-        cond_factor * cond_factor
-    end
+    cond_factor = mul_up(_float_up(WT, nL), _float_up(WT, nLi))
+    cond_gram = mul_up(cond_factor, cond_factor)
 
     RT = radius_type
     # the three diagnostics are upper bounds: converted to the radius type without going below

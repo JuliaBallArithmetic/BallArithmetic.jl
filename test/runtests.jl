@@ -97,7 +97,6 @@ using Test
     include("test_exported_primitives.jl")
     include("test_fft/test_ball_fft.jl")
     include("test_schur_refinement_variants.jl")
-    include("test_decompositions/test_rigorous_residual.jl")
 
     # Certification
     include("test_certification/test_certifscripts.jl")

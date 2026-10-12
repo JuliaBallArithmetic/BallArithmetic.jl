@@ -51,6 +51,11 @@ function _float_up(::Type{RT}, x::Real) where {RT <: AbstractFloat}
     y = RT(x)
     return y < x ? nextfloat(y) : y
 end
+# x as a float of type RT, not above x
+function _float_down(::Type{RT}, x::Real) where {RT <: AbstractFloat}
+    y = RT(x)
+    return y > x ? prevfloat(y) : y
+end
 
 # The ordered pair used for the cluster `indices`: (Q, T̃, k) with the selected diagonal entries
 # first and T̃ exactly upper triangular. Everything here is floating point; what the pair
