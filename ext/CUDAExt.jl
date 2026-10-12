@@ -298,7 +298,7 @@ function BallArithmetic.rigorous_svd_gpu(A::BallMatrix{Float64, Float64};
     residual = E + corr
     residual_norm = upper_bound_L2_opnorm(residual)
 
-    vbd = apply_vbd ? schur_gershgorin_enclosure(adjoint(Σ) * Σ; hermitian = true) : nothing
+    vbd = apply_vbd ? BallArithmetic._schur_gershgorin_hermitian_members(adjoint(Σ) * Σ) : nothing
 
     return RigorousSVDResult(U, singular_values, Σ, V, residual,
         residual_norm, normF, normG, vbd)

@@ -70,8 +70,8 @@ end
 Base.length(result::RigorousBlockSchurResult) = length(result.clusters)
 
 """
-    rigorous_block_schur(A::BallMatrix; hermitian = false, block_structure = :quasi_triangular,
-                         vbd_method = :auto)
+    rigorous_block_schur(A::BallMatrix; block_structure = :quasi_triangular, vbd_method = :auto)
+    rigorous_block_schur(H::Hermitian; block_structure = :quasi_triangular, vbd_method = :auto)
 
 A block form `T` of `A` in the basis `Q` of a verified block diagonalisation, with the residuals
 that bound its distance from a similarity. See [`RigorousBlockSchurResult`](@ref) for the
@@ -81,9 +81,12 @@ statement that the result carries.
 
 1. The verified block diagonalisation gives the clusters, their intervals and the basis:
    [`miyajima2014a_schurnewton`](@ref) (Schur form followed by a Newton step for the decoupling)
-   for a non-Hermitian matrix, [`schur_gershgorin_enclosure`](@ref) for a Hermitian one
-   (`vbd_method = :schur_newton` or `:nsd`; `:auto` chooses by `hermitian`). The clusters and
-   intervals of the result are the certified ones of that routine.
+   for a ball matrix, [`schur_gershgorin_enclosure`](@ref) for a point matrix that is Hermitian
+   by its type, `Hermitian(M)` or `Symmetric(M)` with `M` real (`vbd_method = :schur_newton` or
+   `:nsd`; `:auto` chooses by the type of the argument). The clusters and intervals of the
+   result are the certified ones of that routine: discs of the complex plane for a ball matrix,
+   which with positive radii contains matrices that are not Hermitian, and real intervals for
+   a Hermitian point matrix.
 2. `Q` is that basis and `Q_inv` an approximate inverse in floating point (the adjoint for a
    unitary basis).
 3. `T = Q_inv A Q` in ball arithmetic, with the blocks that `block_structure` drops set to zero:
@@ -107,8 +110,14 @@ computed `S̃` and the residual of its solve is the lemma "Residual control of S
 *Enclosure of eigenvalues via approximate diagonalization* (unpublished note, 2026); the argument is the identity
 `S − S̃ = −(I + R₂)⁻¹((I + R₂)S̃ − R₁)` stated in [`RigorousBlockSchurResult`](@ref).
 """
-function rigorous_block_schur(A::BallMatrix{RT, NT};
-                               hermitian::Bool = false,
+rigorous_block_schur(A::BallMatrix; kwargs...) = _rigorous_block_schur(A, false; kwargs...)
+rigorous_block_schur(H::_HermitianPointMatrix; kwargs...) =
+    _rigorous_block_schur(BallMatrix(Matrix(H)), true; kwargs...)
+
+# With `hermitian = true` the clusters are real intervals and the statement is about the
+# Hermitian matrices of `A`, as in `_schur_gershgorin_hermitian_members`; the exported method
+# passes a ball matrix of radius zero.
+function _rigorous_block_schur(A::BallMatrix{RT, NT}, hermitian::Bool;
                                block_structure::Symbol = :quasi_triangular,
                                vbd_method::Symbol = :auto) where {RT, NT}
     n = size(A, 1)
@@ -133,7 +142,7 @@ function rigorous_block_schur(A::BallMatrix{RT, NT};
     vbd = if vbd_method == :schur_newton
         miyajima2014a_schurnewton(A)
     else
-        schur_gershgorin_enclosure(A; hermitian = hermitian)
+        _schur_gershgorin(A, hermitian)
     end
 
     # Step 2: Construct the basis Q and its inverse.  For a unitary (NSD) basis the

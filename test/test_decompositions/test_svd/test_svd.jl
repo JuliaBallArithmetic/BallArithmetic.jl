@@ -67,7 +67,7 @@ end
     @test result.left_orthogonality_defect < 1
 
     H = adjoint(result.Σ) * result.Σ
-    recomputed = BallArithmetic.schur_gershgorin_enclosure(H; hermitian = true)
+    recomputed = BallArithmetic._schur_gershgorin_hermitian_members(H)
     @test result.block_diagonalisation.clusters == recomputed.clusters
     @test result.block_diagonalisation.remainder_norm == recomputed.remainder_norm
 
@@ -91,7 +91,7 @@ end
     Σrad[1, 3] = Σrad[2, 3] = Σrad[3, 1] = Σrad[3, 2] = 1.0e-6
     Σ = BallMatrix(Σmid, Σrad)
 
-    result = BallArithmetic.schur_gershgorin_enclosure(Σ; hermitian = true)
+    result = BallArithmetic._schur_gershgorin_hermitian_members(Σ)
 
     @test length(result.clusters) == 2
     @test result.clusters[1] == 1:1
@@ -126,7 +126,7 @@ end
     Σrad[1, 3] = Σrad[3, 1] = 0.3
     Σ = BallMatrix(Σmid, Σrad)
 
-    result = BallArithmetic.schur_gershgorin_enclosure(Σ; hermitian = true)
+    result = BallArithmetic._schur_gershgorin_hermitian_members(Σ)
 
     @test length(result.clusters) == 2
     @test result.clusters[1] == 1:2
@@ -141,7 +141,7 @@ end
     Σmid = Diagonal([4.0, 2.0, 1.0])
     Σ = BallMatrix(Matrix(Σmid))
 
-    result = BallArithmetic.schur_gershgorin_enclosure(Σ; hermitian = true)
+    result = BallArithmetic._schur_gershgorin_hermitian_members(Σ)
 
     @test length(result.clusters) == 3
     @test all(result.clusters[i] == i:i for i in 1:3)
@@ -154,7 +154,7 @@ end
     Σmid = [1 + 2im  0.3 - 0.2im; -0.4 + 0.1im  1 - im]
     Σ = BallMatrix(Σmid)
 
-    result = BallArithmetic.schur_gershgorin_enclosure(Σ; hermitian = true)
+    result = BallArithmetic._schur_gershgorin_hermitian_members(Σ)
 
     @test length(result.cluster_intervals) == size(Σmid, 1)
     @test all(isreal, mid.(result.cluster_intervals))

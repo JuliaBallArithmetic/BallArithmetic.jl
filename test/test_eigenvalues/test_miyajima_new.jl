@@ -56,7 +56,7 @@ end
 @testset "Block Schur - Basic Decomposition" begin
     A = BallMatrix([2.0 0.1; 0.1 5.0])
 
-    result = rigorous_block_schur(A; hermitian=true, block_structure=:diagonal)
+    result = BallArithmetic._rigorous_block_schur(A, true; block_structure=:diagonal)
 
     # Verify basic properties
     @test size(result.Q) == (2, 2)
@@ -81,7 +81,7 @@ end
     A_rad[4, 6] = A_rad[6, 4] = 0.3  # Cluster 5.0 and 5.1
     A = BallMatrix(A_mid, A_rad)
 
-    result = rigorous_block_schur(A; hermitian=true, block_structure=:quasi_triangular)
+    result = BallArithmetic._rigorous_block_schur(A, true; block_structure=:quasi_triangular)
 
     # Should have 4 clusters total
     @test length(result.clusters) >= 2
@@ -107,9 +107,9 @@ end
     A = BallMatrix(Diagonal([1.0, 1.1, 5.0]))
 
     # Test all three structures
-    result_diag = rigorous_block_schur(A; hermitian=true, block_structure=:diagonal)
-    result_quasi = rigorous_block_schur(A; hermitian=true, block_structure=:quasi_triangular)
-    result_full = rigorous_block_schur(A; hermitian=true, block_structure=:full)
+    result_diag = BallArithmetic._rigorous_block_schur(A, true; block_structure=:diagonal)
+    result_quasi = BallArithmetic._rigorous_block_schur(A, true; block_structure=:quasi_triangular)
+    result_full = BallArithmetic._rigorous_block_schur(A, true; block_structure=:full)
 
     # All should have same Q and clusters
     @test result_diag.clusters == result_quasi.clusters == result_full.clusters
@@ -130,7 +130,7 @@ end
 @testset "Block Schur - Separation Estimation" begin
     A = BallMatrix([2.0 0.1; 0.1 5.0])
 
-    result = rigorous_block_schur(A; hermitian=true)
+    result = BallArithmetic._rigorous_block_schur(A, true)
 
     @test length(result.clusters) == 2
 
@@ -206,11 +206,11 @@ end
     A = BallMatrix(A_mid, A_rad)
 
     # Step 1: VBD
-    vbd = schur_gershgorin_enclosure(A; hermitian=true)
+    vbd = BallArithmetic._schur_gershgorin_hermitian_members(A)
     @test length(vbd.clusters) >= 2
 
     # Step 2: Block Schur
-    schur = rigorous_block_schur(A; hermitian=true)
+    schur = BallArithmetic._rigorous_block_schur(A, true)
     @test length(schur.clusters) >= 2
 
     # both identify the same clusters
@@ -223,11 +223,11 @@ end
         A_big = BallMatrix(Diagonal(BigFloat[1.0, 1.1, 5.0]))
 
         # VBD
-        vbd = schur_gershgorin_enclosure(A_big; hermitian=true)
+        vbd = BallArithmetic._schur_gershgorin_hermitian_members(A_big)
         @test vbd.remainder_norm < BigFloat(1e-30)
 
         # Block Schur
-        schur = rigorous_block_schur(A_big; hermitian=true)
+        schur = BallArithmetic._rigorous_block_schur(A_big, true)
         @test schur.projected_residual_norm < BigFloat(1e-30)
     end
 end
@@ -238,11 +238,11 @@ end
                             0.1+0.05im  5.0+0.0im])
 
     # VBD
-    vbd = schur_gershgorin_enclosure(A_complex; hermitian=true)
+    vbd = BallArithmetic._schur_gershgorin_hermitian_members(A_complex)
     @test length(vbd.clusters) == 2
 
     # Block Schur
-    schur = rigorous_block_schur(A_complex; hermitian=true)
+    schur = BallArithmetic._rigorous_block_schur(A_complex, true)
     @test verify_block_schur_properties(schur; tol=1e-9)
 end
 
@@ -251,10 +251,37 @@ end
     A = BallMatrix([2.0 1.0; 0.5 3.0])
 
     # VBD (using Schur form)
-    vbd = schur_gershgorin_enclosure(A; hermitian=false)
+    vbd = schur_gershgorin_enclosure(A)
     @test vbd.remainder_norm >= 0
 
     # Block Schur
-    schur = rigorous_block_schur(A; hermitian=false)
+    schur = rigorous_block_schur(A)
     @test schur.projected_residual_norm < 1e-9
+end
+
+@testset "a ball matrix is not Hermitian: the kind of enclosure follows the type" begin
+    # the midpoint is symmetric, the ball contains matrices with complex eigenvalues
+    A = BallMatrix([1.0 0.0; 0.0 1.0 + 1e-8], fill(1e-6, 2, 2))
+    X = [1.0 1e-6; -1e-6 1.0 + 1e-8]
+    λ = eigvals(X)
+    @test maximum(abs ∘ imag, λ) > 1e-7
+    for r in (schur_gershgorin_enclosure(A), rigorous_block_schur(A),
+        rigorous_block_schur(A; vbd_method = :nsd))
+        @test eltype(r.cluster_intervals) == Ball{Float64, ComplexF64}
+        @test all(any(abs(l - mid(b)) <= rad(b) for b in r.cluster_intervals) for l in λ)
+    end
+    @test_throws MethodError schur_gershgorin_enclosure(A; hermitian = true)
+    @test_throws MethodError rigorous_block_schur(A; hermitian = true)
+    @test_throws MethodError schur_gershgorin_enclosure(Hermitian(A))
+    @test_throws MethodError rigorous_block_schur(Hermitian(A))
+
+    # a point matrix that is Hermitian by its type: real intervals
+    for H in (Hermitian([2.0 0.1; 0.1 5.0]), Symmetric([2.0 0.1; 0.1 5.0]),
+        Hermitian(ComplexF64[1 0.1-0.05im; 0.1+0.05im 5]))
+        μ = eigvals(H)
+        for r in (schur_gershgorin_enclosure(H), rigorous_block_schur(H))
+            @test eltype(r.cluster_intervals) == Ball{Float64, Float64}
+            @test all(any(abs(l - mid(b)) <= rad(b) + 1e-12 for b in r.cluster_intervals) for l in μ)
+        end
+    end
 end

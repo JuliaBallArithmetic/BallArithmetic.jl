@@ -268,3 +268,18 @@ end
         @test result.certified
     end
 end
+
+@testset "certify_eigenpairs: a complex Hermitian matrix through the Hermitian route" begin
+    # the eigenvalues of the midpoint are real numbers and the certified pairs are complex:
+    # this threw a MethodError on the element type of the result
+    B = ComplexF64[2 1im 0; -1im 3 0.5; 0 0.5 -1]
+    rs = certify_eigenpairs(B; hermitian = true)
+    @test rs.n_certified == 3
+    μ = eigvals(Hermitian(B))
+    @test all(any(abs(l - mid(p.eigenvalue)) <= rad(p.eigenvalue) + 1e-12 for p in rs) for l in μ)
+    # with radii the statement is for every matrix of the ball, Hermitian or not
+    rb = certify_eigenpairs(BallMatrix(B, fill(1e-9, 3, 3)); hermitian = true)
+    @test rb.n_certified == 3
+    X = B + 1e-9 .* [0 1 0; 1 0 0; 0 0 0]
+    @test all(any(abs(l - mid(p.eigenvalue)) <= rad(p.eigenvalue) for p in rb) for l in eigvals(X))
+end

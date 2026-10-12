@@ -228,7 +228,9 @@ Certify all (or selected) eigenpairs of matrix `A`.
 # Arguments
 - `A`: square matrix (plain or `BallMatrix`)
 - `indices`: optional vector of eigenvalue indices to certify
-- `hermitian::Bool`: if `true`, uses `Hermitian` for the eigendecomposition
+- `hermitian::Bool`: if `true`, the approximate eigenpairs that are then certified come from
+  the Hermitian eigendecomposition of the midpoint. It changes the approximations only: the
+  certification is the same and is for every matrix of the ball
 - `norm_method::Symbol`: `:fast` or `:svd`
 
 # Returns
@@ -256,7 +258,9 @@ function certify_eigenpairs(
 
     # Determine result element type from eigenvalues (may be complex for real A)
     RT = real(eltype(A_mid))
-    ET = eltype(λs)
+    # the eigenvalues of a Hermitian midpoint are real numbers while the certified pair of a
+    # complex matrix is complex
+    ET = promote_type(eltype(A_mid), eltype(λs))
 
     # Left eigenvectors
     if hermitian

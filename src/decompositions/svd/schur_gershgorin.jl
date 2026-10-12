@@ -150,13 +150,20 @@ function _vbd_block_data(A::BallMatrix, WB::BallMatrix, YB::BallMatrix,
 end
 
 """
-    schur_gershgorin_enclosure(A::BallMatrix; hermitian = false)
+    schur_gershgorin_enclosure(A::BallMatrix)
+    schur_gershgorin_enclosure(H::Hermitian)
 
 Enclose `σ(M)` for every `M` in the square ball matrix `A` by inflated Gershgorin
 discs in a unitary basis of `mid(A)`, grouped into blocks.
 
+The type of the argument decides the kind of enclosure. For a `BallMatrix` the
+clusters are discs of the complex plane: with positive radii it is an open set of
+matrices, which contains matrices that are not Hermitian, whatever its midpoint.
+For a point matrix that is Hermitian by its type, `Hermitian(M)` or `Symmetric(M)`
+with `M` real, the eigenvalues are real and the clusters are real intervals.
+
 The midpoint matrix is reduced by a unitary Schur form, or by an eigenvalue
-decomposition when `hermitian = true`; the enclosure is transported to that basis
+decomposition for a Hermitian point matrix; the enclosure is transported to that basis
 as `Ã = Z*AZ`, a ball product against the input ball so input radii propagate. `Z`
 is unitary only up to rounding, so the residual `R₂ = Z*Z − I` is formed and
 `‖R₂‖_∞ < 1` required, and the per-row slack `βᵢ = ‖row_i(R₂)‖₁‖Ã‖_∞/(1−‖R₂‖_∞)`
@@ -174,9 +181,6 @@ non-normality `nᵢ = ‖Pᵢ − cᵢI‖₂`, and coupling `rᵢ = min(Σ_{j�
 The bare strip norm `‖Ñ[Cᵢ,:]‖₂` alone is **not** a valid radius and was corrected
 in PR #68.
 
-When `hermitian = true` the input is expected Hermitian and the eigenvalues and
-intervals are real; otherwise the clusters are discs in the complex plane.
-
 This is **not** either algorithm of Miyajima (2014), whose name the routine
 formerly carried. That paper certifies clusters by a Brouwer fixed-point test on a
 Newton operator, over an approximate eigendecomposition (§3, radii `u + ⟨u⟩_t t`
@@ -186,7 +190,28 @@ the basis is only permuted. For the block-diagonalising route see
 [`miyajima2014a_schurnewton`](@ref).
 """
 
-function schur_gershgorin_enclosure(A::BallMatrix{T, NT}; hermitian::Bool = false) where {T, NT}
+schur_gershgorin_enclosure(A::BallMatrix) = _schur_gershgorin(A, false)
+schur_gershgorin_enclosure(H::_HermitianPointMatrix) =
+    _schur_gershgorin(BallMatrix(Matrix(H)), true)
+
+"""
+    _schur_gershgorin_hermitian_members(A::BallMatrix) -> SchurGershgorinResult
+
+The enclosure of [`schur_gershgorin_enclosure`](@ref) with real intervals, as a statement about
+the Hermitian matrices contained in the ball matrix `A` only: for a Hermitian `M` in `A`,
+`Z*MZ` is Hermitian whatever `Z`, its diagonal is real and its eigenvalues are real, so each
+disc is cut down to its intersection with the real line.
+
+It says nothing about the matrices of `A` that are not Hermitian, which is why it is not a
+method of the exported routine: a ball matrix is not Hermitian. It is used where the set of
+interest is a set of Hermitian matrices that a ball matrix encloses, the products `S*S` for `S`
+in a ball matrix, whose eigenvalues are the squares of the singular values of `S`.
+"""
+_schur_gershgorin_hermitian_members(A::BallMatrix) = _schur_gershgorin(A, true)
+
+# The common routine. With `hermitian = true` the intervals are real and the statement is about
+# the Hermitian matrices of `A`; see the two callers above.
+function _schur_gershgorin(A::BallMatrix{T, NT}, hermitian::Bool) where {T, NT}
     m, n = size(A)
     m == n || throw(ArgumentError("schur_gershgorin_enclosure expects a square matrix"))
 

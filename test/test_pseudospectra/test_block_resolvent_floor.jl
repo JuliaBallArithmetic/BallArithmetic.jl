@@ -167,7 +167,7 @@ using Test
 
     @testset "Hermitian route and BigFloat" begin
         H = [4.0 1.0 0.2; 1.0 3.0 0.1; 0.2 0.1 -1.0]
-        f = block_resolvent_floor(schur_gershgorin_enclosure(BallMatrix(H); hermitian = true))
+        f = block_resolvent_floor(schur_gershgorin_enclosure(Hermitian(H)))
         for z in grid(2.0 + 0im, 5.0, 9)
             s = sigma_min_floor(f, z; near = true)
             @test s ≤ σtrue(H, z) * (1 + 1e-12)

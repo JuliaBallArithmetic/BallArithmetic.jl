@@ -449,7 +449,7 @@ function _certify_svd_impl(A::BallMatrix{T}, U_in, S_in, V_in, Vt_in, method::SV
         # Skip VBD for BigFloat matrices
         if T !== BigFloat
             H = adjoint(Σ) * Σ
-            vbd = schur_gershgorin_enclosure(H; hermitian = true)
+            vbd = _schur_gershgorin_hermitian_members(H)
         end
     end
 
@@ -564,7 +564,7 @@ function rigorous_svd_m4(A::BallMatrix{T}; apply_vbd::Bool = true) where {T}
 
     vbd = nothing
     if apply_vbd && T !== BigFloat && all(isfinite, rad(Σ))
-        vbd = schur_gershgorin_enclosure(adjoint(Σ) * Σ; hermitian = true)
+        vbd = _schur_gershgorin_hermitian_members(adjoint(Σ) * Σ)
     end
 
     return RigorousSVDResult(BallMatrix(zeros(T, m, q)), singular_values, Σ, V,

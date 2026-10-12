@@ -36,7 +36,7 @@ sample_in_ball(rng, A) = mid(A) .+ (2 .* rand(rng, size(mid(A))...) .- 1) .* rad
             R = fill(ro, 5, 5); R[diagind(R)] .= ro / 2
             A = BallMatrix(M, R)
 
-            vbd = schur_gershgorin_enclosure(A; hermitian = true)
+            vbd = BallArithmetic._schur_gershgorin_hermitian_members(A)
             U = vbd.basis
             mask = offblock_mask(5, vbd.clusters)
 
