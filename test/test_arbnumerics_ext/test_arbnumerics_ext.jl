@@ -51,7 +51,8 @@
             Float64(ArbNumerics.midpoint(total_real)) + Float64(ArbNumerics.radius(total_real))
         end
 
-        @test B.r[1] == expected_rad
+        # the radius is at least the sum formed in rounding to nearest, and within two floats of it
+        @test expected_rad <= B.r[1] <= nextfloat(nextfloat(expected_rad))
 
         C = fill(complex_entry, 1, 1)
         D = BallMatrix(Float64, C)
@@ -82,7 +83,7 @@
             expected_rad = nextfloat(0.0)
         end
 
-        @test D.r[1] == expected_rad
+        @test expected_rad <= D.r[1] <= expected_rad * (1 + 4 * eps())
     end
 
     @testset "BigFloat preserves much more precision than Float64" begin
@@ -162,7 +163,8 @@
             expected_tiny_complex_radius = nextfloat(0.0)
         end
 
-        @test tiny_complex_ball.r[1] == expected_tiny_complex_radius
+        # the smallest float holds each part; the disc around the two takes at most the next one
+        @test nextfloat(0.0) <= tiny_complex_ball.r[1] <= 2 * nextfloat(0.0)
         @test expected_tiny_complex_radius == nextfloat(0.0)
     end
     @testset "the converted ball contains the Arb ball" begin

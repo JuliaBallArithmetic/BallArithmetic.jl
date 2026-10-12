@@ -39,9 +39,13 @@ end
 function _arbcomplex_to_float_with_radius(x::ArbNumerics.ArbComplex{P}) where {P}
     mr, rr = _arb_to_float_with_radius(real(x))
     mi, ri = _arb_to_float_with_radius(imag(x))
-    # the disc that contains the rectangle
-    rad = BallArithmetic.sqrt_up(BallArithmetic.add_up(BallArithmetic.mul_up(rr, rr),
-        BallArithmetic.mul_up(ri, ri)))
+    # the disc that contains the rectangle: √(rr² + ri²) as hi √(1 + (lo/hi)²), so that tiny
+    # radii are not squared into the underflow range
+    hi, lo = max(rr, ri), min(rr, ri)
+    iszero(hi) && return ComplexF64(mr, mi), 0.0
+    q = BallArithmetic.div_up(lo, hi)
+    rad = BallArithmetic.mul_up(hi,
+        BallArithmetic.sqrt_up(BallArithmetic.add_up(1.0, BallArithmetic.mul_up(q, q))))
     return ComplexF64(mr, mi), rad
 end
 
