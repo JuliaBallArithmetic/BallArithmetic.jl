@@ -1,12 +1,28 @@
-# Revol-Théveny midpoint-radius interval matrix multiplication
-# Reference: N. Revol & P. Théveny, "Parallel Implementation of Interval Matrix Multiplication",
-#            Reliable Computing 19(1), pp. 91-106, 2013. https://hal.science/hal-00801890
+# Midpoint-radius interval matrix multiplication in five point matrix products.
 #
-# The midpoint is intentionally computed with RoundNearest (default) for efficiency,
-# while the radius uses RoundUp. The error terms (k+1)*eps(Γ) in the radius formula
-# rigorously account for floating-point errors in the midpoint computation.
+#   S. M. Rump, Fast interval matrix multiplication, Numer. Algorithms 61 (2012) 1-34,
+#   doi 10.1007/s11075-011-9524-z, Algorithm 4.9 (IImul5), without the conversions from and to
+#   the infimum-supremum representation; it is Algorithm 2 (MMMul5) of
+#   N. Revol and P. Théveny, Parallel implementation of interval matrix multiplication,
+#   Reliable Computing 19(1) (2013) 91-106, https://hal.science/hal-00801890.
+#
+# With eps = 2^-53 the relative rounding error unit, realmin the smallest positive normalised
+# number and n the inner dimension, the algorithm is
+#
+#     ρA = sign(mA) .* min(|mA|, rA),  ρB likewise
+#     mC = fl(mA mB + ρA ρB)                      rounding to nearest
+#     μ  = fl(|mA||mB| + |ρA||ρB|)                rounding to nearest
+#     γ  = fl△((2n + 2) eps ufp(μ) + realmin)
+#     rC = fl△((|mA| + rA)(|mB| + rB) − μ + 2γ)
+#
+# and is correct, also in the presence of underflow, provided 2(2n + 2) eps ≤ 1 and mC and μ are
+# computed in the same order (Theorem 2.1 of Rump's paper). Below `eps.(Γ)` is the unit in the last
+# place, 2 eps ufp(Γ), so `(k + 1) * eps.(Γ)` is the paper's (2n + 2) eps ufp(μ), and
+# `η_val / ϵ` is realmin. The papers are for real matrices.
 function MMul5(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
     m, k = size(A)
+    2 * (2k + 2) * unit_roundoff(T) <= 1 ||
+        throw(ArgumentError("MMul5: inner dimension $k too large, 2(2k + 2)eps ≤ 1 is required"))
     mA, rA = mid(A), rad(A)
     mB, rB = mid(B), rad(B)
     ρA = sign.(mA) .* min.(abs.(mA), rA)
@@ -22,7 +38,7 @@ function MMul5(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
     ϵ = machine_epsilon(T)
     η_val = subnormal_min(T)
     rC = setrounding(T, RoundUp) do
-        γ = (k + 1) * eps.(Γ) .+ 0.5 * η_val / ϵ
+        γ = (k + 1) * eps.(Γ) .+ η_val / ϵ
         rC = (abs_mA + rA) * (abs_mB + rB) - Γ + 2γ
         return rC
     end

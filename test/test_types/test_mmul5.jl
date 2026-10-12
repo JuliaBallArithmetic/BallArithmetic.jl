@@ -149,4 +149,30 @@ using BallArithmetic
         @test all(isfinite.(mid(C)))
         @test all(isfinite.(rad(C)))
     end
+
+    @testset "Float32, and the underflow term of Algorithm 4.9" begin
+        # the error bound γ of Rump (2012), Algorithm 4.9, ends with realmin and enters the
+        # radius twice; the code had half of it, written with a Float64 literal that made the
+        # radius of a Float32 product a Float64 matrix, which the constructor refused
+        for T in (Float64, Float32)
+            Z = BallMatrix(zeros(T, 3, 4))
+            C = BallArithmetic.MMul5(Z, BallMatrix(zeros(T, 4, 2)))
+            @test eltype(rad(C)) == T
+            @test all(rad(C) .>= 2 * floatmin(T))
+        end
+        setprecision(BigFloat, 400) do
+            A_mid = Float32[1 -2 0.5; 3 4 -1]
+            B_mid = Float32[0.25 1; -1 2; 3 -0.5]
+            A = BallMatrix(A_mid, fill(1.0f-3, 2, 3))
+            B = BallMatrix(B_mid, fill(1.0f-3, 3, 2))
+            C = BallArithmetic.MMul5(A, B)
+            for sa in (-1, 1), sb in (-1, 1)
+                P = (BigFloat.(A_mid) .+ sa .* BigFloat.(rad(A))) *
+                    (BigFloat.(B_mid) .+ sb .* BigFloat.(rad(B)))
+                @test all(abs.(P .- BigFloat.(mid(C))) .<= BigFloat.(rad(C)))
+            end
+        end
+        @test_throws ArgumentError BallArithmetic.MMul5(
+            BallMatrix(zeros(Float32, 1, 2^22)), BallMatrix(zeros(Float32, 2^22, 1)))
+    end
 end
