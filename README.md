@@ -208,7 +208,7 @@ Features include:
 
 ### Rounding Mode Control
 
-The library uses IEEE 754 directed rounding modes via `setrounding(T, RoundUp)` and `setrounding(T, RoundDown)` to obtain rigorous bounds. This requires BLAS libraries that respect rounding modes - the package automatically configures OpenBLAS with `ConsistentFPCSR=1`.
+The library uses IEEE 754 directed rounding modes via `setrounding(T, RoundUp)` and `setrounding(T, RoundDown)` to obtain rigorous bounds. This requires a BLAS that respects the rounding mode in every thread. By default OpenBLAS does not synchronise the floating-point control and status register across its threads; the documentation of INTLAB, [INTLAB for GNU Octave](https://www.tuhh.de/ti3/rump/intlab/Octave/INTLAB_for_GNU_Octave.shtml), gives two remedies, OpenBLAS compiled with `CONSISTENT_FPCSR=1` or one computation thread. On x86_64 the package loads an OpenBLAS built with that option (`OpenBLASConsistentFPCSR_jll`) and, when it is loaded, checks one 1024 × 1024 product under `RoundUp` and `RoundDown` on all BLAS threads; where the check fails, and on other architectures, where the option does not exist, it sets the number of BLAS threads to one.
 
 ## References
 

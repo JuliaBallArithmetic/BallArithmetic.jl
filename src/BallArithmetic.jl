@@ -21,6 +21,11 @@ using LinearAlgebra
 using GenericLinearAlgebra
 using GenericSchur
 
+# By default OpenBLAS does not synchronise the floating-point control and status register across
+# its threads, so a product under `setrounding` may be rounded to nearest in some of them. The
+# INTLAB documentation, https://www.tuhh.de/ti3/rump/intlab/Octave/INTLAB_for_GNU_Octave.shtml,
+# gives two remedies: OpenBLAS compiled with `CONSISTENT_FPCSR=1`, an option for x86 and x86_64
+# only, or one computation thread. The first is used on x86_64 and the second elsewhere.
 if Sys.ARCH == :x86_64
     using OpenBLASConsistentFPCSR_jll
 else
