@@ -751,3 +751,6 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     The radius of "mixed" agreed with that of `mmul4` to 5 digits in every row. Not measured:
     complex factors, a chain of products (where the output radius of one is the input radius
     of the next), the certification runs of the paper with either route.
+    **Decided (Isaia, 2026-10-12):** the package keeps `MMul4` on the OpenBLAS built with
+    CONSISTENT_FPCSR for the time being; the splitting, Dot2 and mixed-precision routes are
+    not substituted for it.
