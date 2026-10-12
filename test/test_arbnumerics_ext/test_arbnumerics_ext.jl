@@ -165,4 +165,44 @@
         @test tiny_complex_ball.r[1] == expected_tiny_complex_radius
         @test expected_tiny_complex_radius == nextfloat(0.0)
     end
+    @testset "the converted ball contains the Arb ball" begin
+        # the ends of both, compared at 4096 bits
+        big4(x) = setprecision(() -> BigFloat(x), BigFloat, 4096)
+        function contained(B, A)
+            for i in eachindex(A)
+                parts = A[i] isa ArbNumerics.ArbComplex ? (real(A[i]), imag(A[i])) : (A[i],)
+                c = BallArithmetic.mid(B)[i]
+                r = big4(BallArithmetic.rad(B)[i])
+                cs = c isa Complex ? (real(c), imag(c)) : (c,)
+                for (a, ck) in zip(parts, cs)
+                    m, ρ = big4(ArbNumerics.midpoint(a)), big4(ArbNumerics.radius(a))
+                    ok = setprecision(BigFloat, 4096) do
+                        big4(ck) - r <= m - ρ && m + ρ <= big4(ck) + r
+                    end
+                    ok || return false
+                end
+            end
+            return true
+        end
+        for P in (128, 512)
+            ArbNumerics.setworkingprecision(ArbNumerics.ArbReal, bits = P)
+            xs = [ArbNumerics.ArbReal(k) / ArbNumerics.ArbReal(7 * k + 3) *
+                  (isodd(k) ? ArbNumerics.ArbReal(1) : sqrt(ArbNumerics.ArbReal(2)))
+                  for k in 1:400]
+            A = reshape(xs, 400, 1)
+            @test contained(BallMatrix(Float64, A), A)
+            Z = reshape([ArbNumerics.ArbComplex(xs[k], xs[401 - k]) for k in 1:400], 400, 1)
+            @test contained(BallMatrix(Float64, Z), Z)
+            for p in (64, 256, 1024)
+                setprecision(BigFloat, p) do
+                    @test contained(BallMatrix(BigFloat, A), A)
+                    @test contained(BallMatrix(BigFloat, Z), Z)
+                end
+            end
+        end
+        # an exact Float64 keeps radius zero
+        E = reshape([ArbNumerics.ArbReal(0.5), ArbNumerics.ArbReal(-3.0)], 2, 1)
+        @test all(iszero, BallArithmetic.rad(BallMatrix(Float64, E)))
+    end
+
 end

@@ -16,58 +16,33 @@ and `rad` is an upper bound on the uncertainty after rounding `x` to
 `Float64` precision.  The bound combines the original Arb radius and the
 rounding error introduced by the midpoint conversion.
 """
+# An upper bound in Float64 of the upper end of a nonnegative Arb ball. The conversion of an Arb
+# number to Float64 rounds to nearest whatever the rounding mode, so each of the two exact numbers
+# (midpoint and radius) is moved to the next float when its conversion fell below it.
+function _arb_upper_float(t::ArbNumerics.ArbReal)
+    function up(v)
+        f = Float64(v)
+        return ArbNumerics.ArbReal(f) < v ? nextfloat(f) : f
+    end
+    return BallArithmetic.add_up(up(ArbNumerics.midpoint(t)), up(ArbNumerics.radius(t)))
+end
+
 function _arb_to_float_with_radius(x::ArbNumerics.ArbReal{P}) where {P}
     mid = ArbNumerics.midpoint(x)
     rad = ArbNumerics.radius(x)
-
     mid_f = Float64(mid)
-
-    total = Ref(rad)
-    rad_f = setrounding(Float64, RoundUp) do
-        round_err = abs(mid - ArbNumerics.ArbReal(mid_f))
-        total[] = rad + round_err
-        Float64(ArbNumerics.midpoint(total[])) + Float64(ArbNumerics.radius(total[]))
-    end
-
-    if rad_f == 0.0 && !iszero(total[])
-        rad_f = nextfloat(0.0)
-    end
-
-    return mid_f, rad_f
+    # the Arb radius plus the rounding of the midpoint, the sum formed in Arb arithmetic
+    total = rad + abs(mid - ArbNumerics.ArbReal(mid_f))
+    return mid_f, _arb_upper_float(total)
 end
 
 function _arbcomplex_to_float_with_radius(x::ArbNumerics.ArbComplex{P}) where {P}
-    real_part = real(x)
-    imag_part = imag(x)
-
-    mid_real = ArbNumerics.midpoint(real_part)
-    mid_imag = ArbNumerics.midpoint(imag_part)
-
-    mid = ComplexF64(Float64(mid_real), Float64(mid_imag))
-
-    rad_real = ArbNumerics.radius(real_part)
-    rad_imag = ArbNumerics.radius(imag_part)
-
-    total_real = Ref(rad_real)
-    total_imag = Ref(rad_imag)
-
-    rad = setrounding(Float64, RoundUp) do
-        err_real = abs(mid_real - ArbNumerics.ArbReal(real(mid)))
-        err_imag = abs(mid_imag - ArbNumerics.ArbReal(imag(mid)))
-
-        total_real[] = rad_real + err_real
-        total_imag[] = rad_imag + err_imag
-
-        real_hi = Float64(ArbNumerics.midpoint(total_real[])) + Float64(ArbNumerics.radius(total_real[]))
-        imag_hi = Float64(ArbNumerics.midpoint(total_imag[])) + Float64(ArbNumerics.radius(total_imag[]))
-        sqrt(real_hi^2 + imag_hi^2)
-    end
-
-    if rad == 0.0 && (!iszero(total_real[]) || !iszero(total_imag[]))
-        rad = nextfloat(0.0)
-    end
-
-    return mid, rad
+    mr, rr = _arb_to_float_with_radius(real(x))
+    mi, ri = _arb_to_float_with_radius(imag(x))
+    # the disc that contains the rectangle
+    rad = BallArithmetic.sqrt_up(BallArithmetic.add_up(BallArithmetic.mul_up(rr, rr),
+        BallArithmetic.mul_up(ri, ri)))
+    return ComplexF64(mr, mi), rad
 end
 
 # ============================================================================
