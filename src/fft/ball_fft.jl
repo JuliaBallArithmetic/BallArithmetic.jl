@@ -40,10 +40,13 @@ end
 # in BigFloat with 64 guard bits and rounded once.
 function _brisebarreetal2023_compute_roots(::Type{T}, N::Int) where {T <: AbstractFloat}
     w = Vector{Complex{T}}(undef, max(N ÷ 2, 1))
-    setprecision(BigFloat, precision(T) + 64) do
+    p = precision(T)
+    # the rounding to the working precision; for BigFloat that is the precision outside the block
+    nearest(x) = T === BigFloat ? BigFloat(x; precision = p) : T(x)
+    setprecision(BigFloat, p + 64) do
         for j in 0:(length(w) - 1)
             θ = BigFloat(2 * j) / N                  # exact: N is a power of two
-            w[j + 1] = Complex{T}(T(cospi(θ)), -T(sinpi(θ)))
+            w[j + 1] = Complex{T}(nearest(cospi(θ)), -nearest(sinpi(θ)))
         end
     end
     return w
