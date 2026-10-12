@@ -83,10 +83,14 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       decomposition for every shape (Sections 3.2 to 3.4), Cholesky (4), QR economy and full
       (5), Schur (8), polar (7) and Takagi (9); `src/eigenvalues/rump_lange_2023.jl` has the
       Hermitian eigenproblem, reached by `verifyeigall(A; method = :rumplange2023, kappa)`, and
-      `verifysvdall(A; kappa)`, in place of the stub. Left to do:
-      the left null space for `m > n` in `verifysvdall`, which
-      the paper describes and leaves out of its listing; the paper's sizes (n = 100 to 1000)
-      and tables were not reproduced, the tests using n up to 30 or 40.
+      `verifysvdall(A; kappa)`, in place of the stub. Checked again on 2026-10-12 against
+      Section 7 of Rump and Lange: the code has the listing of the paper, including the
+      adjustment of the last radius of the left vectors for `m > n`, and Theorem 7.3 is stated
+      for that listing. An enclosure of a basis of the left null space for `m > n` is not part
+      of it: the paper says that this treatment "is omitted" from its algorithm and points to
+      a full decomposition or to its reference [37] for the kernel of `A*`. It would be an
+      addition, not a missing step. Not done: the paper's sizes (n = 100 to 1000) and tables
+      were not reproduced, the tests using n up to 30 or 40.
     - **The exported decompositions, rewired** (2026-10-11, `dbec098` to `abc9c13`):
       `verified_lu`, `verified_qr`, `verified_cholesky`, `verified_polar` and `verified_takagi`
       are wrappers over the routines above, in Float64 or in BigFloat at `precision_bits`. On
