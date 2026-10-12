@@ -504,3 +504,15 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     form. `rdb200` is already in the catalogue of the companion package's benchmarks; the
     others are to be fetched (data go to `~/ResearchData`, not into the repository).
 
+29. **More copies in the extensions, 2026-10-12.** `refine_symmetric_eigen_double64`, `_hybrid`
+    and `_multifloat` each had their own loop of RefSyEv; they now call the iteration of the
+    package with the high precision as a type, as the Schur ones do. `ogita_svd_refine_multifloat`
+    had its own copy of the Ogita-Aishima iteration; it calls the package's, as the Double64
+    one did. Removed from `DoubleFloatsExt.jl`: `oishi_2023_solve_double64` and
+    `oishi_2023_sigma_min_bound_fast`, which were plain functions of the extension module (not
+    methods of a function of the package, so not reachable by name), with no caller and no
+    test. The first returned a ball matrix described as an enclosure of the solution of
+    `AX = B` from norms evaluated in rounding to nearest and a bound of `‖A⁻¹‖` that is not
+    one; the second computed two solves, discarded them and called `oishi_2023_sigma_min_bound`.
+    In all, 410 and 115 lines removed.
+
