@@ -232,14 +232,24 @@ end
                 @test all(abs(M[i] - mid(B)[i]) + rad(A)[i] <= rad(B)[i] for i in eachindex(M))
                 p >= 256 && @test rad(B) == rad(A) && mid(B) == M
             end
-            # the first level is Float64: its enclosures must hold for the matrix as given
-            r = redirect_stderr(devnull) do
-                adaptive_ogita_svd(A; tolerance = 1e-10)
-            end
-            @test r.final_precision == 53
+            # a BigFloat matrix has a BigFloat result, from the first level on
             σ = svdvals(M)
-            @test all(any(abs(s - mid(b)) <= rad(b) for b in r.rigorous_result.singular_values)
-            for s in σ)
+            for tol in (1e-10, 1e-70, 1e-100)
+                r = redirect_stderr(devnull) do
+                    adaptive_ogita_svd(A; tolerance = tol)
+                end
+                sv = r.rigorous_result.singular_values
+                @test eltype(sv) <: Ball{BigFloat}
+                @test eltype(mid(r.rigorous_result.U)) === eltype(M)
+                @test r.precision_levels[1] == 256
+                @test r.tolerance_achieved == (maximum(rad, sv) <= tol)
+                @test all(any(abs(s - mid(b)) <= rad(b) + big(2.0)^-240 for b in sv) for s in σ)
+            end
+            # no level below the precision of the matrix when that is the largest allowed
+            r = redirect_stderr(devnull) do
+                adaptive_ogita_svd(A; tolerance = 1e-100, max_precision_bits = 256)
+            end
+            @test r.precision_levels == [256]
         end
     end
 end

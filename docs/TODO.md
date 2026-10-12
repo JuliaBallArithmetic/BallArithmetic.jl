@@ -565,8 +565,9 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       each level without enlarging the radii (at 53 bits, 12 of the 16 entries of a random
       matrix were outside the converted ball), so what it certified at Float64 was not about
       the matrix given. `_convert_to_precision` now puts the rounding error into the radii.
-      The first level is still Float64, so the result for a BigFloat matrix has Float64
-      numbers when the tolerance is met there.
+      The first level is the arithmetic of the matrix given (Isaia, 2026-10-12: a BigFloat
+      matrix should have a BigFloat result), Float64 or BigFloat at the precision of the
+      midpoints, and no level is below `max_precision_bits` when the matrix is at it.
     - `compute_preconditioner` threw on a complex matrix; `PreconditionerResult{CT, T, F}`.
     - `oishi_2023_sigma_min_bound`, `rump_oishi_2024_sigma_min_bound` and the two block size
       searches threw on a complex matrix; the lower bound of `|d|` on the diagonal was

@@ -371,9 +371,11 @@ end
 Compute rigorous SVD bounds with adaptive precision using Ogita's refinement.
 
 # Algorithm
-1. Start with Float64 precision. A matrix given at a higher precision is rounded to the working
-   precision of each level, and the rounding error goes into the radii, so that what is certified
-   at every level holds for `A`.
+1. Start in the arithmetic of `A`: Float64, or BigFloat at the precision of the midpoints of `A`.
+   The result for a BigFloat matrix is in BigFloat; for a Float64 matrix it is in Float64 when
+   the tolerance is met at the first level and in BigFloat otherwise. Where a level works at a
+   lower precision than an entry of `A` has, the entry is rounded and the rounding error goes
+   into the radii, so that what is certified holds for `A`.
 2. Compute rigorous SVD bounds using `rigorous_svd`
 3. Check if max(rad(σᵢ)) < tolerance
 4. If not satisfied, refine using Ogita's method with doubled precision
@@ -413,12 +415,18 @@ function adaptive_ogita_svd(A::BallMatrix{T};
     radii_history = T[]
     total_iterations = 0
 
-    # Start with Float64 precision
-    current_precision = 53  # Float64 precision in bits
-    A_working = T == Float64 ? A : _convert_to_precision(A, 53)
-
-    # Initial computation
-    result = rigorous_svd(A_working; method, apply_vbd)
+    # The first level is the arithmetic of the matrix given: Float64, or BigFloat at the
+    # precision of its midpoints, so that a BigFloat matrix has a BigFloat result.
+    if T === BigFloat
+        current_precision = maximum(x -> precision(real(x)), mid(A); init = precision(BigFloat))
+        result = setprecision(BigFloat, current_precision) do
+            rigorous_svd(A; method, apply_vbd)
+        end
+    else
+        current_precision = 53  # Float64 precision in bits
+        A_working = T == Float64 ? A : _convert_to_precision(A, 53)
+        result = rigorous_svd(A_working; method, apply_vbd)
+    end
 
     push!(precision_levels, current_precision)
     max_radius = maximum(rad.(result.singular_values))
@@ -434,6 +442,8 @@ function adaptive_ogita_svd(A::BallMatrix{T};
 
     # Need refinement - iterate with increasing precision
     for refinement_step in 1:max_refinement_iterations
+        # a matrix given at the largest precision allowed, or above it, is not rounded down
+        current_precision >= max_precision_bits && break
         # Double precision
         current_precision = min(current_precision * 2, max_precision_bits)
         push!(precision_levels, current_precision)
