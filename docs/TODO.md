@@ -514,5 +514,6 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     test. The first returned a ball matrix described as an enclosure of the solution of
     `AX = B` from norms evaluated in rounding to nearest and a bound of `‖A⁻¹‖` that is not
     one; the second computed two solves, discarded them and called `oishi_2023_sigma_min_bound`.
-    In all, 410 and 115 lines removed.
+    In all, 410 and 145 lines removed. `docs/src/literate/benchmark_warmstart_circle.tex` still
+    names the second.
 
