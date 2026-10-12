@@ -1,157 +1,218 @@
 module FFTExt
 
 using BallArithmetic, LinearAlgebra
-import BallArithmetic: machine_epsilon, add_up, sub_up, mul_up, sqrt_up
+import BallArithmetic: add_up, sub_up, mul_up, sqrt_up
 import FFTW
 
-# Per-component absolute error constant from
-# Brisebarre, Muller, Picot, "Testing the Sharpness of Known Error
-# Bounds on the Fast Fourier Transform", ARITH 2023, Eq. (4):
+# The discrete Fourier transform of a vector of balls, y_k = Σ_j x_j exp(−2πi jk/N), with the
+# a priori error bound of
 #
-#     b_n = √2 · 2^n · ((1+u) ∏_{j=3}^{n} (1+g_j) − 1)
+#   N. Brisebarre, J.-M. Muller and J. Picot, "Testing the sharpness of known error bounds on
+#   the fast Fourier transform", 30th IEEE Symposium on Computer Arithmetic (ARITH 2023),
+#   hal-04092770.
 #
-# with g_j = δ_j + ρ(1+δ_j); δ_j ≤ u (correctly-rounded roots of
-# unity) and ρ ≤ √5·u (relative error of complex multiplication
-# without FMA — conservative). For 1+g_j = (1+δ)(1+ρ) the product
-# collapses to ((1+u)(1+ρ))^(n−2). Each Re/Im component of the FP
-# error then satisfies max(|Re|, |Im|) ≤ b_n · ‖X‖∞⊥, where
-# ‖X‖∞⊥ := max_k max(|Re(x_k)|, |Im(x_k)|).
+# The bound is proved for one algorithm, the radix-2 transform of the paper's Fig. 1 with the
+# roots of unity rounded to nearest. It says nothing of another implementation, so the transform
+# is computed here by that algorithm and not by FFTW, whose codelets use other factorisations;
+# FFTW is only the package that owns the name `fft`.
+
+# The unit roundoff u = 2^(−p) of the paper, half of `eps`.
+_bmp_u(::Type{T}) where {T <: AbstractFloat} = eps(T) / 2
+
+# Equation (4) of the paper: with ‖Z‖∞⊥ := max_k max(|Re z_k|, |Im z_k|),
+#
+#     ‖Ŷ − Y‖∞⊥ ≤ b_n ‖X‖∞⊥,      b_n = √2 · 2ⁿ · ((1 + u)ⁿ ∏_{j=1}^{n} (1 + g_j) − 1),
+#
+# g₁ = g₂ = 0 and g_j = δ_j + ρ(1 + δ_j) for j ≥ 3. δ_j is the largest absolute error of the
+# rounded roots of unity of order 2^j: at most u when both parts are rounded to nearest, each
+# being within u/2 of a number of modulus at most one. ρ is the relative error of the complex
+# product: √5 u for the product formed without a fused multiply-add, as it is here.
+# Every operation is rounded upwards.
 function _bmp_bn(n::Integer, ::Type{T}) where {T <: AbstractFloat}
-    u = machine_epsilon(T)
-    sqrt2 = sqrt_up(T(2))
-    sqrt5 = sqrt_up(T(5))
-    ρ = mul_up(sqrt5, u)
-    one_plus_g = mul_up(add_up(T(1), u), add_up(T(1), ρ))
-    prod_g = T(1)
-    for _ in 3:n
-        prod_g = mul_up(prod_g, one_plus_g)
+    u = _bmp_u(T)
+    one_u = add_up(one(T), u)
+    ρ = mul_up(sqrt_up(T(5)), u)
+    one_g = add_up(one(T), add_up(u, mul_up(ρ, one_u)))
+    p = one(T)
+    for _ in 1:n
+        p = mul_up(p, one_u)
     end
-    bracket = sub_up(mul_up(add_up(T(1), u), prod_g), T(1))
-    return mul_up(sqrt2, mul_up(T(2)^n, bracket))
+    for _ in 3:n
+        p = mul_up(p, one_g)
+    end
+    return mul_up(sqrt_up(T(2)), mul_up(T(2)^n, sub_up(p, one(T))))
 end
 
-# Compute ‖slice‖∞⊥ (component-wise sup of |Re|,|Im| of midpoints)
-# and an upper bound on ‖slice_radii‖_1. abs/real/imag/max are exact
-# on FP, so x_inf needs no directed rounding; the radius sum uses
-# add_up to remain a rigorous upper bound.
-function _fiber_inf_and_l1(c_slice, r_slice, ::Type{T}) where {T <: AbstractFloat}
-    x_inf = T(0)
-    @inbounds for z in c_slice
-        a = max(T(abs(real(z))), T(abs(imag(z))))
-        if a > x_inf
-            x_inf = a
+# exp(−2πi j/N) for j = 0, …, N/2 − 1, each part rounded to nearest: computed with 64 guard bits
+# and rounded once. The table for a size is kept, the roots being the costly part.
+const _ROOTS = Dict{Tuple{DataType, Int, Int}, Any}()
+const _ROOTS_LOCK = ReentrantLock()
+function _bmp_roots(::Type{T}, N::Int) where {T <: AbstractFloat}
+    key = (T, N, T === BigFloat ? precision(BigFloat) : 0)
+    return lock(_ROOTS_LOCK) do
+        get!(_ROOTS, key) do
+            w = Vector{Complex{T}}(undef, max(N ÷ 2, 1))
+            setprecision(BigFloat, precision(T) + 64) do
+                for j in 0:(length(w) - 1)
+                    θ = BigFloat(2 * j) / N                  # exact: N is a power of two
+                    w[j + 1] = Complex{T}(T(cospi(θ)), -T(sinpi(θ)))
+                end
+            end
+            w
+        end
+    end::Vector{Complex{T}}
+end
+
+# The radix-2 transform of Fig. 1 of the paper: the permutation by bit reversal, then the stages
+# k = 1, …, n of butterflies y[j1] ← y[j1] + ω y[j2], y[j2] ← y[j1] − ω y[j2] on blocks of size
+# 2^k, ω the rounded root of unity of order 2^k. The complex product is formed without a fused
+# multiply-add and the complex sum part by part, in rounding to nearest.
+function _bmp_radix2_fft(x::AbstractVector{Complex{T}}) where {T <: AbstractFloat}
+    N = length(x)
+    n = trailing_zeros(N)
+    y = Vector{Complex{T}}(undef, N)
+    for j in 0:(N - 1)
+        r = 0
+        for b in 0:(n - 1)
+            r |= ((j >> b) & 1) << (n - 1 - b)
+        end
+        y[j + 1] = x[r + 1]
+    end
+    w = _bmp_roots(T, N)
+    for k in 1:n
+        bs = 1 << k
+        half = bs >> 1
+        step = N >> k
+        @inbounds for first in 0:bs:(N - 1), j in 0:(half - 1)
+            j1 = first + j + 1
+            j2 = j1 + half
+            ω = w[j * step + 1]
+            a, b = y[j1], y[j2]
+            tr = real(ω) * real(b) - imag(ω) * imag(b)
+            ti = real(ω) * imag(b) + imag(ω) * real(b)
+            y[j1] = Complex(real(a) + tr, imag(a) + ti)
+            y[j2] = Complex(real(a) - tr, imag(a) - ti)
         end
     end
-    r_1 = T(0)
+    return y
+end
+
+function _require_power_of_two(N::Integer)
+    (N >= 1 && ispow2(N)) || throw(ArgumentError(
+        "the error bound of the transform is proved for sizes that are powers of two; got $N"))
+    return trailing_zeros(N)
+end
+
+# ‖slice‖∞⊥ of the midpoints, which is exact, and an upper bound of the sum of the radii
+function _fiber_inf_and_l1(c_slice, r_slice, ::Type{T}) where {T <: AbstractFloat}
+    x_inf = zero(T)
+    @inbounds for z in c_slice
+        x_inf = max(x_inf, T(abs(real(z))), T(abs(imag(z))))
+    end
+    r_1 = zero(T)
     @inbounds for r in r_slice
         r_1 = add_up(r_1, T(r))
     end
     return x_inf, r_1
 end
 
-# √2 · b_n · x_inf + r_1, all rounded toward +∞.
-function _fft_err(bn::T, sqrt2::T, x_inf::T, r_1::T) where {T <: AbstractFloat}
-    return add_up(mul_up(sqrt2, mul_up(bn, x_inf)), r_1)
-end
+# √2 · b_n · x_inf + r_1, rounded upwards: the modulus of the error of an output from the bound
+# on its two parts, plus the effect of the radii of the input
+_fft_err(bn::T, x_inf::T, r_1::T) where {T <: AbstractFloat} =
+    add_up(mul_up(sqrt_up(T(2)), mul_up(bn, x_inf)), r_1)
 
 """
-    fft(v::BallVector{T})
+    fft(v::BallVector)
 
-Compute the FFT of a `BallVector` with a rigorous a-priori error
-bound from [BrisebarreMullerPicot2023](@cite), Eq. (4). Each output
-coefficient is enclosed by
+The discrete Fourier transform `y_k = Σ_j x_j exp(−2πi jk/N)` of every vector in the ball `v`,
+of length `N = 2ⁿ`: a ball vector whose midpoint is the transform of the midpoint computed in
+floating point and whose radii are all
 
-    Ŷ_k ± (√2 · b_n · ‖X‖∞⊥ + ‖r‖₁),
+    √2 · b_n · ‖X‖∞⊥ + ‖r‖₁.
 
-where `b_n` is the BMP constant for a radix-2 FFT of length
-`N = 2ⁿ`, `‖X‖∞⊥` is the component-wise ∞-norm of Re/Im parts of
-the input midpoints, and `‖r‖₁` is the 1-norm of the input radii.
-The latter is exact: each output is a sum of inputs weighted by
-unit-modulus roots of unity, so the radius contribution per output
-is bounded by the sum of input radii.
+Here `‖X‖∞⊥` is the largest absolute value of a real or imaginary part of the midpoints, `r`
+the radii of `v`, and `b_n` the constant of equation (4) of Brisebarre, Muller and Picot (2023),
+which bounds each part of the rounding error of an output by `b_n ‖X‖∞⊥`; the factor `√2`
+passes from the two parts to the modulus. The term `‖r‖₁` is the effect of the radii: an output
+is a sum of the inputs times numbers of modulus one.
 
-# References
+The bound is proved for the radix-2 algorithm of the paper's Fig. 1 with the roots of unity
+rounded to nearest and the complex product formed without a fused multiply-add. The midpoint is
+computed by that algorithm, not by FFTW. The paper's analysis excludes underflow and overflow;
+an output that is not finite is an `ArgumentError`, and underflow is not detected.
 
-* [BrisebarreMullerPicot2023](@cite) Brisebarre, Muller, Picot,
-  ARITH 2023.
-* [KnightKaiser1979](@cite) Knight, Kaiser, IEEE TASSP 27(6), 1979.
+A length that is not a power of two is an `ArgumentError`.
+
+# Reference
+
+N. Brisebarre, J.-M. Muller and J. Picot, "Testing the sharpness of known error bounds on the
+fast Fourier transform", 30th IEEE Symposium on Computer Arithmetic (ARITH 2023), Portland,
+2023, hal-04092770.
 """
 function FFTW.fft(v::BallVector{T}) where {T}
     N = length(v)
-    if !ispow2(N)
-        @warn "The rigorous error estimate works for power of two sizes"
-    end
-    Ŷ = FFTW.fft(v.c)
-    n = round(Int, log2(N))
-    # The error bound is a real quantity even when the midpoints are complex, and
-    # the helpers below are declared `where {T <: AbstractFloat}`. Passing T
-    # directly fails on a complex BallVector with
-    # `MethodError: no method matching eps(::Type{ComplexF64})` -- Base defines
-    # no `eps` for Complex on any Julia version, so this is not version-specific.
-    RT = real(T)
-    bn = _bmp_bn(n, RT)
-    sqrt2 = sqrt_up(RT(2))
-    x_inf, r_1 = _fiber_inf_and_l1(v.c, v.r, RT)
-    err_val = _fft_err(bn, sqrt2, x_inf, r_1)
-    return BallVector(Ŷ, fill(err_val, N))
+    n = _require_power_of_two(N)
+    Ŷ = _bmp_radix2_fft(Vector{Complex{T}}(v.c))
+    all(isfinite, Ŷ) || throw(ArgumentError("the transform overflowed"))
+    x_inf, r_1 = _fiber_inf_and_l1(v.c, v.r, T)
+    return BallVector(Ŷ, fill(_fft_err(_bmp_bn(n, T), x_inf, r_1), N))
 end
 
 """
-    fft(A::BallMatrix{T}, dims = (1, 2))
+    fft(A::BallMatrix, dims = (1, 2))
 
-Compute the FFT of a `BallMatrix` along the dimensions `dims`. The
-[BrisebarreMullerPicot2023](@cite) bound is applied per fiber: for
-each slice of `A` along `dims`, the per-output bound
+The discrete Fourier transform of the ball matrix `A` along the dimensions `dims` (an integer,
+or a tuple), each of size a power of two. Along one dimension it is [`fft`](@ref) of each column
+or row, with the bound of that fiber. Along both, the columns are transformed and then the rows,
+and every output has the radius
 
-    √2 · b_n · ‖X_fiber‖∞⊥ + ‖r_fiber‖₁
+    √2 · b_n · ‖X‖∞⊥ + ‖r‖₁,        n = log₂(number of entries),
 
-is computed independently with `n = log₂(prod(size(A,d) for d in
-dims))`. Outputs in the same fiber share the same radius.
+with the norms taken over the whole matrix.
 
-`dims` may be a single integer, a tuple, or any iterable of axis
-indices.
+The bound along both dimensions is not in the paper; it follows from the bound it quotes for
+the relative error in the Euclidean norm of the one-dimensional algorithm, `ε_m = (1 + u)ᵐ
+∏_{j ≤ m} (1 + g_j) − 1` for size `2ᵐ`. Applied to the columns and summed over them, and then to
+the rows, it gives `‖Ŷ − Y‖_F ≤ ((1 + ε_{n₁})(1 + ε_{n₂}) − 1) ‖Y‖_F`, the exact transform
+multiplying the Frobenius norm by the square root of the size of a fiber; and
+`(1 + ε_{n₁})(1 + ε_{n₂}) ≤ 1 + ε_n` for `n = n₁ + n₂`. An entry is at most the Frobenius norm,
+and `‖Y‖_F = √N ‖X‖_F ≤ √2 N ‖X‖∞⊥` with `N = 2ⁿ`, which is `b_n ‖X‖∞⊥`.
 """
 function FFTW.fft(A::BallMatrix{T}, dims = (1, 2)) where {T}
     dims_t = dims isa Integer ? (Int(dims),) : Tuple(Int.(dims))
-    if any(!ispow2(size(A.c, d)) for d in dims_t)
-        @warn "The rigorous error estimate works for power of two sizes"
-    end
+    all(d -> d in (1, 2), dims_t) && allunique(dims_t) ||
+        throw(ArgumentError("dims must be 1, 2 or both"))
+    n = sum(_require_power_of_two(size(A.c, d)) for d in dims_t)
+    bn = _bmp_bn(n, T)
 
-    Ŷ = FFTW.fft(A.c, dims_t)
-    Ntot = prod(size(A.c, d) for d in dims_t)
-    n = round(Int, log2(Ntot))
-    # See the BallVector method above: the error bound is real even for complex
-    # midpoints, so the bound arithmetic runs in real(T). This also keeps `err`
-    # real -- a BallMatrix radius array must be real, and `zeros(T, ...)` would
-    # have allocated a complex one for a complex BallMatrix.
-    RT = real(T)
-    bn = _bmp_bn(n, RT)
-    sqrt2 = sqrt_up(RT(2))
-
-    iter_dims = Tuple(setdiff(1:2, dims_t))
-    err = zeros(RT, size(A.c))
-
-    if isempty(iter_dims)
-        x_inf, r_1 = _fiber_inf_and_l1(A.c, A.r, RT)
-        fill!(err, _fft_err(bn, sqrt2, x_inf, r_1))
-    else
-        iter_sz = ntuple(i -> size(A.c, iter_dims[i]), length(iter_dims))
-        for I in CartesianIndices(iter_sz)
-            slice = ntuple(2) do d
-                if d in dims_t
-                    return Colon()
-                else
-                    pos = findfirst(==(d), iter_dims)
-                    return I[pos]
-                end
-            end
-            x_inf, r_1 = _fiber_inf_and_l1(view(A.c, slice...),
-                                           view(A.r, slice...),
-                                           RT)
-            view(err, slice...) .= _fft_err(bn, sqrt2, x_inf, r_1)
+    Ŷ = Matrix{Complex{T}}(A.c)
+    if 1 in dims_t
+        for j in axes(Ŷ, 2)
+            Ŷ[:, j] = _bmp_radix2_fft(Ŷ[:, j])
         end
     end
+    if 2 in dims_t
+        for i in axes(Ŷ, 1)
+            Ŷ[i, :] = _bmp_radix2_fft(Ŷ[i, :])
+        end
+    end
+    all(isfinite, Ŷ) || throw(ArgumentError("the transform overflowed"))
 
+    err = zeros(T, size(A.c))
+    if length(dims_t) == 2
+        x_inf, r_1 = _fiber_inf_and_l1(A.c, A.r, T)
+        fill!(err, _fft_err(bn, x_inf, r_1))
+    elseif dims_t[1] == 1
+        for j in axes(err, 2)
+            x_inf, r_1 = _fiber_inf_and_l1(view(A.c, :, j), view(A.r, :, j), T)
+            err[:, j] .= _fft_err(bn, x_inf, r_1)
+        end
+    else
+        for i in axes(err, 1)
+            x_inf, r_1 = _fiber_inf_and_l1(view(A.c, i, :), view(A.r, i, :), T)
+            err[i, :] .= _fft_err(bn, x_inf, r_1)
+        end
+    end
     return BallMatrix(Ŷ, err)
 end
 
