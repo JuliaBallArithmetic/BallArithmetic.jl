@@ -713,8 +713,9 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     `blas_rounding_cases.jl` on nighthawk: 0 entries of `_product_down_up` on the wrong side
     for dense `Float64` and `Float32`, n from 1 to 150, and for views, adjoint, transpose,
     triangular, diagonal, symmetric and rectangular factors at n = 2, 3, 8, 64.
-    **Open:** `MMul2` is a stub that warns "Not Implemented" (thesis, Algorithm 9): implement
-    or remove. `MMul3` and `MMul5` rest on the products `mA·mB` and `|mA|·|mB|` being computed
+    `MMul2`, a stub that warned "Not Implemented" (thesis, Algorithm 9), is removed (Isaia,
+    2026-10-12).
+    **Open:** `MMul3` and `MMul5` rest on the products `mA·mB` and `|mA|·|mB|` being computed
     in the same order (Remark 1 of Rump's paper).
 
 37. **Routes to the real ball product compared, 2026-10-12** (Isaia: whether to substitute the

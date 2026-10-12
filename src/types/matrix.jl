@@ -484,7 +484,6 @@ function Base.:-(J::UniformScaling{Ball{T, NT}},
 end
 
 include("MMul/abs_preserving_structure.jl")
-include("MMul/MMul2.jl")
 include("MMul/MMul3.jl")
 include("MMul/MMul4.jl")
 include("MMul/MMul5.jl")
