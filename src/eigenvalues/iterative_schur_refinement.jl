@@ -537,7 +537,11 @@ function _refine_schur_impl(A::AbstractMatrix, Q0::Matrix, T0::Matrix,
     HP_real = real(HP)
 
     # Determine tolerance
-    target_tol = tol > 0 ? HP_real(tol) : HP_real(100) * eps(HP_real)
+    # The default: 100 rounding units in BigFloat. In the other arithmetics the defects stall a
+    # little above that for larger n (their operations are not correctly rounded), so the
+    # default grows with the order.
+    target_tol = tol > 0 ? HP_real(tol) :
+                 hp === BigFloat ? HP_real(100) * eps(HP_real) : HP_real(100 * n) * eps(HP_real)
 
     # Compute initial norm for relative tolerance
     A_norm = _frobenius_norm(A_high)
