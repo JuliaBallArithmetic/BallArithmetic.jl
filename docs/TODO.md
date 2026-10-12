@@ -791,3 +791,23 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     `evbox(Hermitian(M))` returns a `Vector{Ball{Float64, Float64}}` and is inferred as `Vector`
     (the test asserted the inference and errored at 0aeeef3; the assertion is removed, the
     type of the value is still tested).
+
+39. **RigorousInvariantMeasures against this branch, 2026-10-12.** `run_rim_tests.sh` on
+    nighthawk, BallArithmetic at 96dff9d (suite 182,949 passed, none failed,
+    `rigour_suite68.out`; RigorousPseudospectra 300 of 300), RIM at afd7284 on its branch
+    `ballarithmetic-0.4` with its uncommitted changes, on a local clone without
+    `test/Manifest.toml`, which pins the registered BallArithmetic 0.3.0 (a first run with it
+    loaded 0.3.0 and says nothing about this branch).
+    RIM as it is: 1,545 passed, 6 errored. Five from `res.verified` on a `KrawczykResult`
+    (`src/Basis/NewChebyshev.jl:739`), now `certified`; one from an FFT of 9 points
+    (`ext/FFTWExt/FourierObservables.jl`), which `ball_fft` refuses.
+    With the edits of `rim_patch.py`: 1,582 passed, none failed (`rim_tests5.nighthawk.out`).
+    The edits: `res.certified`; `verified_cholesky(Float64, …)` for
+    `verified_cholesky(…; use_bigfloat = false)` at three places, with `chol.certified` for
+    `chol.success` (also in `test/TestChebyshev.jl`); and in `_fourier_coeffs_no_aliasing` the
+    transform on a grid of `nextpow(2, M)` points, keeping the frequencies
+    0, 1, …, K, −K, …, −1 (Isaia: RIM always takes a bigger FFT and saves those). They are in
+    `~/scratch/rim_ballarithmetic_names.patch` on nighthawk and are not applied to RIM.
+    Not looked at: `interval_fft` in RIM says FFTW computes the midpoints, and the default
+    method of `fft(::BallVector)` is now the package's own transform; the compat entry
+    `BallArithmetic = "0.3, 0.4"`; GKWExperiments.
