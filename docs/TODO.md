@@ -450,3 +450,24 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     exported name with an underscore, called by the companion packages) and the three
     MultiFloat refinements.
 
+25. **The Schur refinements in Double64 and in a MultiFloat, 2026-10-12.**
+    `probe_schur_refinement_inputs.jl` and `probe_multifloat_refinements.jl` (8 × 8, one matrix
+    each, starting residual near 2e-15): `refine_schur_multifloat` returned residual 0.29 on a
+    real Schur form with 2 × 2 blocks and 7e-16, 5e-16 on triangular input, each with
+    `converged = true` (its loop re-orthogonalised `Q` and never solved the triangular
+    equation); `refine_schur_double64` returned 1.4e215 on the real Schur form, threw a
+    `MethodError` on a complex matrix, and 1.1e-16 on a real matrix with real eigenvalues; the
+    BigFloat routine returned NaN on the real Schur form and 1e-77 on triangular input. Now the
+    iteration of the package (Algorithm 4 of Bujanović, Kressner and Schröder) takes the high
+    precision as a type, and the Double64, hybrid and MultiFloat routines call it. A Schur
+    factor that is not upper triangular is an `ArgumentError` in all of them: the paper
+    mentions an extension to the real Schur form and does not give it. Test:
+    `test_schur_refinement_variants.jl`.
+26. **`setprecision` without a block, 2026-10-12.** Eleven routines set the BigFloat precision
+    by `setprecision(BigFloat, p)` and restored it in a `finally`. Inside a caller's
+    `setprecision(BigFloat, q) do … end` that call has no effect (checked on Julia 1.12.7: the
+    precision stays `q`), so the routine ran at the caller's precision and its own keyword was
+    ignored. Found when `refine_schur_hybrid` did not converge inside a test's 512-bit block.
+    All eleven now use the block form: `refine_schur_decomposition`, `refine_symmetric_eigen`,
+    `ogita_svd_refine`, and eight in the DoubleFloats and MultiFloats extensions.
+
