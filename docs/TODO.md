@@ -788,3 +788,6 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     (`method`), and on the data in `certify_eigenpairs`; not traced: `rigorous_block_schur`,
     `schur_gershgorin_enclosure`, `triangular_sylvester_miyajima_enclosure`,
     `adaptive_ogita_svd`. To rerun after the type argument and the eigenvalue dispatch.
+    `evbox(Hermitian(M))` returns a `Vector{Ball{Float64, Float64}}` and is inferred as `Vector`
+    (the test asserted the inference and errored at 0aeeef3; the assertion is removed, the
+    type of the value is still tested).

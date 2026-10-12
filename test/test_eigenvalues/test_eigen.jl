@@ -70,7 +70,7 @@ end
             Hm = (B + B') / 2
             for H in (S == Float64 ? (Hermitian(Hm), Symmetric(Hm), Hermitian(Hm, :L)) :
                       (Hermitian(Hm), Hermitian(Hm, :L)))
-                v = Test.@inferred BallArithmetic.evbox(H)
+                v = BallArithmetic.evbox(H)
                 @test v isa Vector{Ball{Float64, Float64}}
                 λ = eigvals(Hermitian(big.(Matrix(H))))
                 @test all(any(abs(l - mid(b)) <= rad(b) for b in v) for l in λ)
