@@ -83,8 +83,8 @@ function project_onto_eigenspace(v::AbstractVector,
                                   hermitian::Bool=false,
                                   left_eigenvectors::Union{Nothing, AbstractMatrix}=nothing)
     n = length(v)
-    @assert size(V, 1) == n "Eigenvector matrix must have same row dimension as vector"
-    @assert maximum(indices) <= size(V, 2) "Indices out of bounds"
+    size(V, 1) == n || throw(DimensionMismatch("Eigenvector matrix must have same row dimension as vector"))
+    maximum(indices) <= size(V, 2) || throw(ArgumentError("Indices out of bounds"))
 
     # Extract relevant eigenvectors
     V_S = V[:, indices]
@@ -109,7 +109,7 @@ function project_onto_eigenspace(v::AbstractVector,
             end
             W_S = V_inv[indices, :]  # Extract rows corresponding to eigenspace
         else
-            @assert size(left_eigenvectors) == size(V') "Left eigenvectors must be n × n"
+            size(left_eigenvectors) == size(V') || throw(DimensionMismatch("Left eigenvectors must be n × n"))
             W_S = left_eigenvectors[indices, :]
         end
 
@@ -170,8 +170,8 @@ function project_onto_schur_subspace(v::AbstractVector,
                                       Q::AbstractMatrix,
                                       indices::UnitRange{Int})
     n = length(v)
-    @assert size(Q, 1) == n "Schur matrix must have same row dimension as vector"
-    @assert maximum(indices) <= size(Q, 2) "Indices out of bounds"
+    size(Q, 1) == n || throw(DimensionMismatch("Schur matrix must have same row dimension as vector"))
+    maximum(indices) <= size(Q, 2) || throw(ArgumentError("Indices out of bounds"))
 
     # Extract Schur vectors
     Q_S = Q[:, indices]
@@ -230,8 +230,8 @@ function verified_project_onto_eigenspace(v::BallVector,
                                           indices::UnitRange{Int};
                                           hermitian::Bool=false)
     n = length(v)
-    @assert size(V, 1) == n "Eigenvector matrix must have same row dimension as vector"
-    @assert maximum(indices) <= size(V, 2) "Indices out of bounds"
+    size(V, 1) == n || throw(DimensionMismatch("Eigenvector matrix must have same row dimension as vector"))
+    maximum(indices) <= size(V, 2) || throw(ArgumentError("Indices out of bounds"))
 
     if !hermitian
         error("Verified projection for non-normal matrices not yet implemented. " *
@@ -329,7 +329,7 @@ function compute_eigenspace_projector(V::AbstractMatrix,
                                       hermitian::Bool=false,
                                       left_eigenvectors::Union{Nothing, AbstractMatrix}=nothing)
     n = size(V, 1)
-    @assert maximum(indices) <= size(V, 2) "Indices out of bounds"
+    maximum(indices) <= size(V, 2) || throw(ArgumentError("Indices out of bounds"))
 
     V_S = V[:, indices]
 
@@ -374,7 +374,7 @@ P = compute_schur_projector(F.Z, 1:3)  # Project onto first 3-dimensional invari
 ```
 """
 function compute_schur_projector(Q::AbstractMatrix, indices::UnitRange{Int})
-    @assert maximum(indices) <= size(Q, 2) "Indices out of bounds"
+    maximum(indices) <= size(Q, 2) || throw(ArgumentError("Indices out of bounds"))
 
     Q_S = Q[:, indices]
     return Q_S * Q_S'

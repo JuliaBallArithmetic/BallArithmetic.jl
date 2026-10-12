@@ -157,11 +157,11 @@ using BallArithmetic
         v = [1.0, 2.0]
 
         # Out of bounds indices
-        @test_throws AssertionError project_onto_eigenspace(v, F.vectors, 1:3; hermitian=true)
+        @test_throws ArgumentError project_onto_eigenspace(v, F.vectors, 1:3; hermitian=true)
 
         # Dimension mismatch
         v_wrong = [1.0, 2.0, 3.0]
-        @test_throws AssertionError project_onto_eigenspace(v_wrong, F.vectors, 1:1; hermitian=true)
+        @test_throws DimensionMismatch project_onto_eigenspace(v_wrong, F.vectors, 1:1; hermitian=true)
     end
 
     @testset "Non-Hermitian eigenspace projection" begin

@@ -145,7 +145,10 @@ function _certify_generalized_eigenvalues(A::BallMatrix{T}, B::BallMatrix{T}, ge
     coupling_defect = bY * B * bX - I
     coupling_defect_norm = upper_bound_L_inf_opnorm(coupling_defect)
     @debug "norm coupling defect" coupling_defect_norm
-    @assert coupling_defect_norm < 1 "It is not possible to verify the eigenvalues with this precision"
+    # the hypothesis of the theorem; an explicit error, since assertions may be compiled out
+    coupling_defect_norm < 1 ||
+        error("It is not possible to verify the eigenvalues with this precision: the bound " *
+              "of ‖Y B X − I‖_∞ is $coupling_defect_norm, not below 1")
 
     D_mid = BallMatrix(Diagonal(gev.values))
     projected_residual_mid = bY * (A * bX - B * bX * D_mid)
@@ -212,10 +215,10 @@ function _certify_eigenvalues(A::BallMatrix{T}, gev::Eigen) where {T}
     inverse_defect = bY * bX - I
     inverse_defect_norm = upper_bound_L_inf_opnorm(inverse_defect)
     @debug "norm inverse defect" inverse_defect_norm
-    @assert inverse_defect_norm < 1 "It is not possible to verify the eigenvalues with this precision",
-        inverse_defect_norm,
-        norm(X_mid, 2),
-        norm(Y_mid, 2)
+    # the hypothesis of the theorem; an explicit error, since assertions may be compiled out
+    inverse_defect_norm < 1 ||
+        error("It is not possible to verify the eigenvalues with this precision: the bound " *
+              "of ‖Y X − I‖_∞ is $inverse_defect_norm, not below 1")
 
     D_mid = BallMatrix(Diagonal(gev.values))
 

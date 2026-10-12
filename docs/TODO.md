@@ -583,6 +583,9 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     `verified_*_gla`) fail with "This conversion breaks rigour" or a `MethodError`, which
     refuses but does not say why. Not covered by the sweep: functions whose first argument
     is not a ball matrix, keyword options, and whether the results are correct, which the
-    sweep does not check. Also seen and not changed: `_certify_generalized_eigenvalues`
-    and `rigorous_eigenvalues` stop with `@assert` when the defect is not below 1.
+    sweep does not check.
+    The nineteen `@assert` of the package are explicit errors now, since an assertion may be
+    compiled out: the defect below 1 in `rigorous_eigenvalues` and
+    `rigorous_generalized_eigenvalues`, the triangular matrix of the four substitutions, the
+    sizes and indices of the Riesz projections (`ArgumentError`, `DimensionMismatch`).
 

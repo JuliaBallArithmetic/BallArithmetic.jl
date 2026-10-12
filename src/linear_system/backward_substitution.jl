@@ -3,10 +3,11 @@ using LinearAlgebra
 #TODO: Vectorize?
 
 function backward_substitution(A::BallMatrix{T, NT}, v::BallVector{T, NS}) where {T, NT, NS}
-    @assert istriu(A.c) && istriu(A.r)
+    istriu(A.c) && istriu(A.r) ||
+        throw(ArgumentError("the matrix must be upper triangular, midpoints and radii"))
 
     m, k = size(A)
-    @assert m == k
+    m == k || throw(DimensionMismatch("the matrix must be square, got $m × $k"))
 
     RT = promote_type(NT, NS)
     sol = Vector{Ball{T, RT}}(undef, m)
@@ -22,10 +23,11 @@ function backward_substitution(A::BallMatrix{T, NT}, v::BallVector{T, NS}) where
 end
 
 function backward_substitution(A::BallMatrix{T, NT}, B::BallMatrix{T, NS}) where {T, NT, NS}
-    @assert istriu(A.c) && istriu(A.r)
+    istriu(A.c) && istriu(A.r) ||
+        throw(ArgumentError("the matrix must be upper triangular, midpoints and radii"))
 
     m, k = size(A)
-    @assert m == k
+    m == k || throw(DimensionMismatch("the matrix must be square, got $m × $k"))
 
     RT = promote_type(NT, NS)
     sol = fill(Ball{T, RT}(0.0, 0.0), size(B))
@@ -41,10 +43,11 @@ function backward_substitution(A::BallMatrix{T, NT}, B::BallMatrix{T, NS}) where
 end
 
 function forward_substitution(A::BallMatrix{T, NT}, v::BallVector{T, NS}) where {T, NT, NS}
-    @assert istril(A.c) && istril(A.r)
+    istril(A.c) && istril(A.r) ||
+        throw(ArgumentError("the matrix must be lower triangular, midpoints and radii"))
 
     m, k = size(A)
-    @assert m == k
+    m == k || throw(DimensionMismatch("the matrix must be square, got $m × $k"))
 
     RT = promote_type(NT, NS)
     sol = Vector{Ball{T, RT}}(undef, m)
@@ -60,10 +63,11 @@ function forward_substitution(A::BallMatrix{T, NT}, v::BallVector{T, NS}) where 
 end
 
 function forward_substitution(A::BallMatrix{T, NT}, B::BallMatrix{T, NS}) where {T, NT, NS}
-    @assert istril(A.c) && istril(A.r)
+    istril(A.c) && istril(A.r) ||
+        throw(ArgumentError("the matrix must be lower triangular, midpoints and radii"))
 
     m, k = size(A)
-    @assert m == k
+    m == k || throw(DimensionMismatch("the matrix must be square, got $m × $k"))
 
     RT = promote_type(NT, NS)
     sol = fill(Ball{T, RT}(0.0, 0.0), size(B))
