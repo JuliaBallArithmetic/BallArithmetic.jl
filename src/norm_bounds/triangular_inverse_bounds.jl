@@ -50,11 +50,27 @@ function _triangular_data(U::AbstractMatrix)
     return [_abs_lo(float(U[i, i])) for i in axes(U, 1)], _abs_hi.(float.(U))
 end
 
+# the same data for a ball matrix: a lower bound of |u_ii| and an upper bound of |u_ij| over the
+# balls. The balls below the diagonal must be the point zero, so that every matrix of the ball
+# is upper triangular.
+function _triangular_data(U::BallMatrix{T}) where {T}
+    size(U, 1) == size(U, 2) || throw(DimensionMismatch("U must be square"))
+    Uc, Ur = mid(U), rad(U)
+    all(iszero(Uc[i, j]) && iszero(Ur[i, j]) for j in axes(U, 2) for i in (j + 1):size(U, 1)) ||
+        throw(ArgumentError("U must be upper triangular: a ball below the diagonal is not the " *
+                            "point zero"))
+    dlo = [max(zero(T), sub_down(_abs_lo(Uc[i, i]), Ur[i, i])) for i in axes(U, 1)]
+    return dlo, add_up.(_abs_hi.(Uc), Ur)
+end
+
 """
     triangular_inverse_inf_norm_bound(U)
 
 An upper bound of `‖U⁻¹‖_∞` for an upper triangular matrix `U` with exact entries, `Inf` when a
-diagonal entry is zero. With `y` the solution of
+diagonal entry is zero. For a ball matrix `U`, upper triangular with the balls below the diagonal
+equal to the point zero, the bound holds for every matrix of the ball, and it is `Inf` when a
+ball on the diagonal contains zero: the recursion below is then run with a lower bound of
+`|u_ii|` and upper bounds of `|u_ij|` over the balls. With `y` the solution of
 
     |u_ii| y_i = 1 + Σ_{j>i} |u_ij| y_j,    i = m, m−1, …, 1,
 

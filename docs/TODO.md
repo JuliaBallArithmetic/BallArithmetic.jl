@@ -555,3 +555,34 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     not a verified enclosure. To do when the audit is public: evaluate the bound that holds
     for FFTW's algorithms, with its roots, in place of the radix-2 constant, and cite it.
 
+33. **Every exported function on real, complex and BigFloat balls, 2026-10-12.**
+    `audit_input_types.jl` (scratch, nighthawk) calls each exported function that has a method
+    for a ball matrix, alone, with a second one, or with a ball vector, on 4 × 4 inputs of the
+    four kinds Float64, complex Float64, BigFloat, complex BigFloat: 340 calls per shape, for
+    the shapes square, 6 × 4 and upper triangular. It reports the calls that throw and the
+    calls on BigFloat input whose result holds Float64 numbers. Fixed from it:
+    - `adaptive_ogita_svd` rounded a matrix given in BigFloat to the working precision of
+      each level without enlarging the radii (at 53 bits, 12 of the 16 entries of a random
+      matrix were outside the converted ball), so what it certified at Float64 was not about
+      the matrix given. `_convert_to_precision` now puts the rounding error into the radii.
+      The first level is still Float64, so the result for a BigFloat matrix has Float64
+      numbers when the tolerance is met there.
+    - `compute_preconditioner` threw on a complex matrix; `PreconditionerResult{CT, T, F}`.
+    - `oishi_2023_sigma_min_bound`, `rump_oishi_2024_sigma_min_bound` and the two block size
+      searches threw on a complex matrix; the lower bound of `|d|` on the diagonal was
+      rounded to nearest for a complex `d` and is rounded down.
+    - `rigorous_generalized_eigenvalues` and `gevbox` threw in BigFloat for want of
+      `eigen(A, B)`; they take the approximation that `verifyeigall(A, B)` uses.
+    - `triangular_inverse_inf/one/two_norm_bound` on a ball matrix gave a `DomainError` or
+      "U must be upper triangular" for a triangular one; they have a method for ball
+      matrices, with the proof unchanged.
+    Left as they are: the routines stated for real interval matrices refuse complex ones
+    with an `ArgumentError` (Horáček's methods, `det_gershgorin`,
+    `verified_linear_solve_hmatrix`, Theorem 11.13); the routines for plain matrices given a
+    ball matrix (`polar_newton`, `polar_qdwh`, `cholesky_qr2`, `triangular_eigenvectors`,
+    `verified_*_gla`) fail with "This conversion breaks rigour" or a `MethodError`, which
+    refuses but does not say why. Not covered by the sweep: functions whose first argument
+    is not a ball matrix, keyword options, and whether the results are correct, which the
+    sweep does not check. Also seen and not changed: `_certify_generalized_eigenvalues`
+    and `rigorous_eigenvalues` stop with `@assert` when the defect is not below 1.
+

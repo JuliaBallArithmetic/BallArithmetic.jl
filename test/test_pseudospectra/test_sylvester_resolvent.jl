@@ -27,6 +27,37 @@ using BallArithmetic
         @test triangular_inverse_two_norm_bound(Ub) ≥ opnorm(Float64.(inv(Ub)), 2) * tol
     end
 
+    @testset "Triangular inverse bounds on a ball matrix" begin
+        rng = MersenneTwister(20261012)
+        setprecision(BigFloat, 256) do
+            for S in (Float64, ComplexF64, BigFloat, Complex{BigFloat}), _ in 1:10
+                Uc = triu(randn(rng, S, 5, 5)) + 3I
+                Ur = triu(rand(rng, real(S), 5, 5)) .* real(S)(0.05)
+                U = BallMatrix(Uc, Ur)
+                b = (triangular_inverse_inf_norm_bound(U), triangular_inverse_one_norm_bound(U),
+                    triangular_inverse_two_norm_bound(U))
+                @test all(x -> x isa real(S) && isfinite(x), b)
+                # matrices of the ball: the midpoint and corners of the radii
+                for _ in 1:8
+                    V = Uc + Ur .* (S <: Complex ? cis.(2π .* rand(rng, 5, 5)) :
+                                    rand(rng, (-1, 1), 5, 5))
+                    Vi = inv(Complex{BigFloat}.(V))
+                    @test opnorm(Vi, Inf) <= b[1]
+                    @test opnorm(Vi, 1) <= b[2]
+                    @test sqrt(opnorm(Vi, 1) * opnorm(Vi, Inf)) <= b[3] * (1 + big(2.0)^-40)
+                end
+            end
+        end
+        # a ball on the diagonal that contains zero: no bound
+        @test triangular_inverse_inf_norm_bound(BallMatrix([1.0 2.0; 0.0 0.5], [0.0 0.0; 0.0 0.6])) == Inf
+        # a ball below the diagonal that is not the point zero
+        @test_throws ArgumentError triangular_inverse_inf_norm_bound(BallMatrix([1.0 2.0; 0.0 1.0],
+            [0.0 0.0; 1e-300 0.0]))
+        # a point ball matrix gives the bound of the plain matrix
+        P = triu(randn(rng, 6, 6)) + 4I
+        @test triangular_inverse_two_norm_bound(BallMatrix(P)) == triangular_inverse_two_norm_bound(P)
+    end
+
     @testset "The similarity S(X)" begin
         @test psi_squared(0.0) == 1.0
         for (k, m) in ((1, 1), (2, 5), (4, 3))
