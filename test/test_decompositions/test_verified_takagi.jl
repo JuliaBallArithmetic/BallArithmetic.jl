@@ -136,7 +136,7 @@ using BallArithmetic
     end
 
     @testset "the factors computed at higher precision lie in the enclosure" begin
-        for n in (3, 8), (kw, tol) in ((Float64, (;), 1e-9), (BigFloat, (;), 1e-60))
+        for n in (3, 8), (AT, kw, tol) in ((Float64, (;), 1e-9), (BigFloat, (;), 1e-60))
             B = randn(ComplexF64, n, n)
             A = B + transpose(B)
             r = verified_takagi(AT, A; kw...)
