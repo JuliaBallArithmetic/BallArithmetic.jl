@@ -1,6 +1,7 @@
 using Test
 using LinearAlgebra
 using BallArithmetic
+using Distributed
 
 # Regression tests for the contour certification after the rigour audit of 2026-10-10
 # (docs/audit/rigour_audit_2026-10-10.md, item C1). The certified contour is the polygon inscribed
@@ -231,5 +232,37 @@ _rc_circle_max(d, c, r; n = 200_000) =
         @test _RC.bound_resolvent_schur(2.0, NaN) == Inf
         # rounded outward: 1/(1 − 0.1) is not representable
         @test _RC.bound_resolvent_schur(1.0, 0.1) >= setprecision(() -> 1 / (1 - big(0.1)), 256)
+    end
+end
+
+# The distributed driver has four kinds of worker (`dowork`, `dowork_ogita`,
+# `dowork_ogita_bigfloat`, `dowork_parametric`); the suite ran the first only, and checked that
+# its log was not empty (export audit, 2026-10-13). Here the bound of each is compared with the
+# maximum of the resolvent on the polygon.
+@testset "distributed driver: the bound of every kind of worker holds on the polygon" begin
+    N = 64
+    d = ComplexF64[(1 + 1e-2) * cis(π / N), 0, 0.3, -0.2]
+    A = BallMatrix(Matrix(Diagonal(d)))
+    circle = _RC.CertificationCircle(0.0, 1.0; samples = N)
+    truth = _rc_polygon_max(d, 0.0, 1.0, N)
+    serial = _RC.run_certification(A, circle; η = 0.5, log_io = devnull)
+    pids = addprocs(1)
+    try
+        pool = WorkerPool(pids)
+        for kw in ((;), (; use_ogita_cache = true), (; use_bigfloat_ogita = true))
+            res = _RC.run_certification(A, circle, pool; η = 0.5, log_io = devnull, kw...)
+            @test res.resolvent_schur >= truth * (1 - 1e-9)
+            @test res.resolvent_schur <= 2 * serial.resolvent_schur
+        end
+        # the parametric worker may decline, as the serial parametric driver may; a bound it
+        # returns must hold
+        out = try
+            _RC.run_certification(A, circle, pool; η = 0.5, log_io = devnull, use_parametric = true)
+        catch e
+            e
+        end
+        @test out isa Exception || out.resolvent_schur >= truth * (1 - 1e-9)
+    finally
+        rmprocs(pids)
     end
 end

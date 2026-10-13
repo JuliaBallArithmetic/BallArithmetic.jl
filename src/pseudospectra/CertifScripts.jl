@@ -26,10 +26,9 @@ export dowork, dowork_ogita, dowork_ogita_bigfloat, adaptive_arcs!, bound_res_or
        choose_snapshot_to_load, save_snapshot!, configure_certification!, set_schur_matrix!,
        compute_schur_and_error, CertificationCircle, points_on, run_certification,
        run_certification_ogita, poly_from_roots, polyconv,
-       _clear_bf_ogita_cache!, _bf_ogita_cache_stats, _set_center_svd_cache!,
 # Parametric certifier exports
        dowork_parametric, run_certification_parametric,
-       set_parametric_config!, _parametric_cache_stats, _clear_parametric_cache!,
+       set_parametric_config!,
 # Gram-weighted certification
        GramTransform, gram_transform, apply_gram_transform
 

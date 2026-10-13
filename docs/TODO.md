@@ -1122,3 +1122,26 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       (`_spectral_norm_bound` is called twice inside `ogita_svd_refine`, for its stopping
       test and its reported `residual_norm`).
 
+50. **Exports of `CertifScripts`, 2026-10-13** (continuing item 47; each export counted in
+    `src`, `ext`, `test` and the clones under `~/Code` on bemtivi).
+    - The five names beginning with an underscore are no longer exported:
+      `_clear_bf_ogita_cache!`, `_bf_ogita_cache_stats`, `_set_center_svd_cache!`,
+      `_parametric_cache_stats`, `_clear_parametric_cache!`. No other clone names them; the
+      tests call them qualified.
+    - `dowork`, `dowork_parametric`, `configure_certification!`, `adaptive_arcs!`,
+      `save_snapshot!`, `points_on`, `set_parametric_config!` are named in no test; they are
+      the pieces of the distributed driver in `ext/DistributedExt.jl`, which the suite ran
+      with the plain worker only, checking that the log was not empty. A test is added for
+      the four kinds of worker against the maximum of the resolvent on the polygon. **Not
+      run at the time of writing.**
+    - **Open:** GKWExperiments does `using BallArithmetic.CertifScripts`, so every export of
+      the module enters its namespace, and it uses `dowork`, `adaptive_arcs!`,
+      `bound_res_original`, `choose_snapshot_to_load`, `save_snapshot!`,
+      `configure_certification!`, `set_schur_matrix!`, `points_on`, `poly_from_roots`,
+      `polyconv` and the unexported `_polynomial_matrix`; PlateauExperiment names `dowork`.
+      Whether the worker functions and the two polynomial helpers should stay exported is
+      tied to that package and is left for the audit of the dependents.
+    - **Open:** `circle_resolvent_bound`, `dowork_ogita`, `dowork_parametric`,
+      `set_parametric_config!`, `polygon_sagitta`, `GramTransform`, `apply_gram_transform`
+      are used in no other clone.
+
