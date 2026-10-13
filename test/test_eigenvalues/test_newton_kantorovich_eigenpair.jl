@@ -79,7 +79,7 @@ end
             end
             # a symmetric matrix through the Hermitian route
             S = Matrix(Symmetric(M + M'))
-            rs = certify_eigenpairs(S; hermitian = true)
+            rs = certify_eigenpairs(S)
             @test rs.n_certified == 7
             Fs = eigen(Hermitian(BigFloat.(S)))
             for p in rs
@@ -180,7 +180,7 @@ end
 
     @testset "Batch certify_eigenpairs" begin
         A = BallMatrix([4.0 1.0; 1.0 3.0])
-        result = certify_eigenpairs(A; hermitian=true)
+        result = certify_eigenpairs(A)
 
         @test result.n_total == 2
         @test result.n_certified == 2
@@ -255,7 +255,7 @@ end
     @testset "Non-hermitian batch" begin
         A_mid = [2.0 1.0; 0.5 3.0]
         A = BallMatrix(A_mid)
-        result = certify_eigenpairs(A; hermitian=false)
+        result = certify_eigenpairs(A)
 
         @test result.n_total == 2
         @test result.n_certified == 2
@@ -273,12 +273,14 @@ end
     # the eigenvalues of the midpoint are real numbers and the certified pairs are complex:
     # this threw a MethodError on the element type of the result
     B = ComplexF64[2 1im 0; -1im 3 0.5; 0 0.5 -1]
-    rs = certify_eigenpairs(B; hermitian = true)
+    rs = certify_eigenpairs(B)
     @test rs.n_certified == 3
     μ = eigvals(Hermitian(B))
     @test all(any(abs(l - mid(p.eigenvalue)) <= rad(p.eigenvalue) + 1e-12 for p in rs) for l in μ)
+    # the keyword that chose the eigendecomposition is gone: it is chosen from the midpoint
+    @test_throws MethodError certify_eigenpairs(B; hermitian = true)
     # with radii the statement is for every matrix of the ball, Hermitian or not
-    rb = certify_eigenpairs(BallMatrix(B, fill(1e-9, 3, 3)); hermitian = true)
+    rb = certify_eigenpairs(BallMatrix(B, fill(1e-9, 3, 3)))
     @test rb.n_certified == 3
     X = B + 1e-9 .* [0 1 0; 1 0 0; 0 0 0]
     @test all(any(abs(l - mid(p.eigenvalue)) <= rad(p.eigenvalue) for p in rb) for l in eigvals(X))

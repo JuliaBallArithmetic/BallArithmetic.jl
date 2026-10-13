@@ -221,17 +221,18 @@ function certify_eigenpair(
 end
 
 """
-    certify_eigenpairs(A; indices=nothing, hermitian=false, norm_method=:fast)
+    certify_eigenpairs(A; indices=nothing, norm_method=:fast)
 
 Certify all (or selected) eigenpairs of matrix `A`.
 
 # Arguments
 - `A`: square matrix (plain or `BallMatrix`)
 - `indices`: optional vector of eigenvalue indices to certify
-- `hermitian::Bool`: if `true`, the approximate eigenpairs that are then certified come from
-  the Hermitian eigendecomposition of the midpoint. It changes the approximations only: the
-  certification is the same and is for every matrix of the ball
 - `norm_method::Symbol`: `:fast` or `:svd`
+
+The approximate eigenpairs come from the eigendecomposition of the midpoint, the Hermitian one
+when the midpoint is Hermitian; each is then certified by [`certify_eigenpair`](@ref), for every
+matrix of the ball.
 
 # Returns
 [`NKEigenpairsResult`](@ref) containing individual results plus summary counts.
@@ -239,14 +240,16 @@ Certify all (or selected) eigenpairs of matrix `A`.
 function certify_eigenpairs(
     A::Union{AbstractMatrix, BallMatrix};
     indices::Union{Nothing, AbstractVector{Int}} = nothing,
-    hermitian::Bool = false,
     norm_method::Symbol = :fast
 )
     A_ball = A isa BallMatrix ? A : BallMatrix(A)
     A_mid = mid(A_ball)
     N = size(A_mid, 1)
 
-    # Eigendecomposition
+    # The approximate eigenpairs that are then certified. They are an oracle: the certification
+    # is the same whatever they are and is for every matrix of the ball, so the best one
+    # available is taken, the Hermitian eigendecomposition when the midpoint is Hermitian.
+    hermitian = ishermitian(A_mid)
     if hermitian
         eig = eigen(Hermitian(A_mid))
     else
