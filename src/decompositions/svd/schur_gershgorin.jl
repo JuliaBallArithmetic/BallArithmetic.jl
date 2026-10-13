@@ -281,7 +281,7 @@ function _schur_gershgorin(kind::_SpectrumKind, A::BallMatrix{T, NT}) where {T, 
     remainder = transformed - block
 
     # Rigorous upper bound on ‖remainder‖₂.  We must NOT fold in the
-    # block-separation estimate `r2_infty_bound_by_blocks` here: that quantity
+    # block-separation estimate `r2_infty_bound_by_blocks` (removed on 2026-10-14) here: that quantity
     # bounds the Sylvester / invariant-subspace correction ‖X‖ ≈ ‖offdiag‖/sep,
     # which is a *different* and generally *smaller* value than ‖remainder‖₂ for
     # well-separated clusters.  Taking `min(collatz, block_bound)` therefore
@@ -487,39 +487,4 @@ function sep_clusters(ints, compA::UnitRange{Int}, compB::UnitRange{Int})
     T = radtype(typeof(hullA))
     gap = sub_down(sub_down(dist_down(mid(hullA), mid(hullB)), rad(hullA)), rad(hullB))
     return gap <= zero(T) ? zero(T) : gap
-end
-
-function r2_infty_bound_by_blocks(H::BallMatrix{T}, intervals, clusters::Vector{UnitRange{Int}}) where {T}
-    P = length(clusters)
-    P == 0 && return zero(T)
-
-    absH = upper_abs(H)
-    row_sums = zeros(T, P)
-
-    for p in 1:P
-        for q in 1:P
-            p == q && continue
-            sep = sep_clusters(intervals, clusters[p], clusters[q])
-            if sep == zero(T)
-                return convert(T, Inf)
-            end
-            E∞ = block_infty_upper(absH, clusters[p], clusters[q])
-            contribution = div_up(E∞, sep)
-            row_sums[p] = add_up(row_sums[p], contribution)
-        end
-    end
-
-    return maximum(row_sums)
-end
-
-function block_infty_upper(absH::AbstractMatrix{T}, rows, cols) where {T}
-    smax = zero(T)
-    for i in rows
-        s = zero(T)
-        for j in cols
-            s = add_up(s, absH[i, j])
-        end
-        smax = max(smax, s)
-    end
-    return smax
 end

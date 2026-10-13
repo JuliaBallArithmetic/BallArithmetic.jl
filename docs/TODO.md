@@ -1223,7 +1223,11 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     - `off_diagonal_abs`: its docstring said "Returns a matrix containing the off-diagonal
       elements"; it returns upper bounds of their moduli as a point ball matrix. Docstring
       corrected.
-    - **Open:** `r2_infty_bound_by_blocks` has no docstring and no reference. It returns
+    - **Removed, 2026-10-14** (Isaia): `r2_infty_bound_by_blocks` and its helper
+      `block_infty_upper`. No caller in `src`, `ext`, the tests (which name it in a comment
+      only) or the other clones on bemtivi. `sep_clusters`, which `block_schur.jl` calls,
+      stays. What was recorded about it:
+    - `r2_infty_bound_by_blocks` had no docstring and no reference. It returns
       `max_p Σ_{q≠p} ‖|H|_{pq}‖_∞ / sep(p, q)`, with `sep` the distance between the hulls of
       two groups of balls. What that quantity bounds is stated nowhere; a comment in
       `test_vbd_remainder_norm.jl` records that it was once taken as a bound of the
