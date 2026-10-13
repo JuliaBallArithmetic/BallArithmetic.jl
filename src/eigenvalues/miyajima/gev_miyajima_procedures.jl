@@ -133,7 +133,7 @@ end
 
 Compute rigorous ball matrix enclosure of B * X using Miyajima's procedures.
 
-For complex matrices: Uses `_cprod` (Algorithm from Oishi-Rump) followed by
+For complex matrices: Uses `_cprod` (Algorithm 2 of Miyajima (2010), attributed there to Oishi) followed by
 `_ccr` (Algorithm 5 from Miyajima2010) to collapse rectangular bounds to
 ball form with directed rounding.
 

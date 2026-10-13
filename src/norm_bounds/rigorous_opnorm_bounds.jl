@@ -36,7 +36,7 @@ upper_abs(A::AbstractMatrix{<:Union{Float32, Float64, Complex{Float32}, Complex{
 #     ρ(M) ≤ max_i (Mx)_i / x_i      for every positive vector x
 #
 # (L. Collatz, Einschließungssatz für die charakteristischen Zahlen von Matrizen, Math. Z. 48
-# (1942) 221-226; used in this form in (3.3) of Rump (2011), quoted at
+# (1942) 221-226, doi 10.1007/BF01180013; used in this form in (3.3) of Rump (2011), quoted at
 # `collatz_upper_bound_L2_opnorm`). The hypothesis is x > 0 in every component, so the iterate is
 # kept strictly positive: it is normalised by its largest entry and floored at eps, which is
 # allowed because ANY positive vector gives a bound, and the iteration only chooses a good one.

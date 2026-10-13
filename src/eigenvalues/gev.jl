@@ -92,7 +92,7 @@ Base.iterate(result::RigorousEigenvaluesResult, state) =
     rigorous_generalized_eigenvalues(A::BallMatrix, B::BallMatrix)
 
 Compute a set of balls whose union contains the eigenvalues of the generalised
-problem `A * x = λ * B * x`, following Ref. [Miyajima2012](@cite).  The
+problem `A * x = λ * B * x`, by Theorem 1 of Miyajima (2010), below.  The
 returned [`RigorousGeneralizedEigenvaluesResult`](@ref) exposes both the
 balls and the norm bounds used during certification.
 
@@ -108,7 +108,11 @@ eigenvalues, which lie in the discs.
 
 # References
 
-* [Miyajima2012](@cite) Miyajima, JCAM 246, 9 (2012)
+S. Miyajima, *Fast enclosure for all eigenvalues in generalized eigenvalue problems*,
+J. Comput. Appl. Math. **233**(11) (2010) 2994-3004, doi 10.1016/j.cam.2009.11.048,
+Theorem 1 ([Miyajima2010](@cite)): for an arbitrary `Y`, with `R₁ = Y(AX̃ − BX̃D̃)` and
+`R₂ = YBX̃ − I`, if `‖R₂‖_∞ < 1` then every eigenvalue is within `ε = ‖R₁‖_∞/(1 − ‖R₂‖_∞)` of
+one of the diagonal entries of `D̃`.
 """
 function rigorous_generalized_eigenvalues(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
     gev = try
@@ -184,7 +188,7 @@ end
     rigorous_eigenvalues(H::Hermitian)
 
 Compute a set of balls whose union contains the eigenvalues of `A`, following
-Ref. [Miyajima2012](@cite).  The returned [`RigorousEigenvaluesResult`](@ref) exposes both the
+Theorem 1 of Miyajima (2010), below, with `B = I`.  The returned [`RigorousEigenvaluesResult`](@ref) exposes both the
 balls and the norm bounds used during certification.
 
 **What is certified.** The returned balls have the computed eigenvalues as centres and one common
@@ -205,7 +209,11 @@ The type of the argument decides the kind of ball:
 
 # References
 
-* [Miyajima2012](@cite) Miyajima, JCAM 246, 9 (2012)
+S. Miyajima, *Fast enclosure for all eigenvalues in generalized eigenvalue problems*,
+J. Comput. Appl. Math. **233**(11) (2010) 2994-3004, doi 10.1016/j.cam.2009.11.048,
+Theorem 1 ([Miyajima2010](@cite)): for an arbitrary `Y`, with `R₁ = Y(AX̃ − BX̃D̃)` and
+`R₂ = YBX̃ − I`, if `‖R₂‖_∞ < 1` then every eigenvalue is within `ε = ‖R₁‖_∞/(1 − ‖R₂‖_∞)` of
+one of the diagonal entries of `D̃`.
 """
 function rigorous_eigenvalues(A::BallMatrix{T}) where {T}
     F = eigen(A.c)

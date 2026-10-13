@@ -14,7 +14,7 @@ matrix is handled).
 # References
 
 L. Collatz, *Einschließungssatz für die charakteristischen Zahlen von Matrizen*, Math. Z. **48**
-(1942) 221-226.
+(1942) 221-226, doi 10.1007/BF01180013.
 
 S. M. Rump, *Verified bounds for singular values, in particular for the spectral norm of a matrix
 and its inverse*, BIT Numer. Math. **51** (2011) 367-384, doi 10.1007/s10543-010-0294-0, where the

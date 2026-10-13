@@ -31,7 +31,7 @@ This package focuses on **verified numerical linear algebra**, implementing algo
 Matrix products are computed using rounding-mode-controlled algorithms following [Rump 1999](https://link.springer.com/article/10.1023/A:1022374804152):
 
 - **MMul3, MMul4, MMul5** - Different precision/speed tradeoffs for matrix multiplication
-- **Oishi-Rump product** - Rounding-controlled complex matrix multiplication
+- **Oishi product** - Rounding-controlled complex matrix multiplication (`oishi_MMul`)
 - Supports both `Float64` and `BigFloat` precision
 
 ### Verified Eigenvalue Enclosures

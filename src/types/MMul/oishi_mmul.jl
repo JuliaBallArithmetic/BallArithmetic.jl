@@ -3,7 +3,7 @@
 
 Compute outward lower/upper enclosures for the real and imaginary parts of the
 complex matrix product `F*G` using directed-rounding (rounding-mode controlled)
-evaluation in the sense of Oishi–Rump.
+evaluation, Algorithm 2 (cprod) of Miyajima (2010), which the paper attributes to Oishi (2001).
 
 Returns `(Hrl, Hru, Hil, Hiu, T)`, where `Hrl ≤ Re(F*G) ≤ Hru` and
 `Hil ≤ Im(F*G) ≤ Hiu` hold entrywise, and `T` is the promoted underlying real
@@ -60,12 +60,14 @@ _cprod(F::AbstractMatrix{<:Complex}, G::AbstractMatrix{<:Complex}) =
 Advanced API — collapse rectangular enclosures for `Re(F*G)` and `Im(F*G)` to a
 complex ball enclosure `BallMatrix(Hc, Hr)`.
 
-Centers are midpoints `Rc = (Hru+Hrl)/2`, `Ic = (Hiu+Hil)/2` computed with
-`RoundNearest`. Radii are the outward 2-norm of the half-widths:
-`Hr = sqrt(((Hru-Hrl)/2).^2 + ((Hiu-Hil)/2).^2)` computed with `RoundUp`.
+Algorithm 3 (ccr) of Miyajima (2010): the real and the imaginary bounds are each converted
+by Algorithm 5 ([`_cr`](@ref)), `Rc = fl△(Hrl + 0.5(Hru − Hrl))`, `Rr = fl△(Rc − Hrl)` and the
+same for the imaginary part, and the radius is `Hr = fl△(|Rr + i Ir|)`, so that
+`[Hrl, Hru] + i[Hil, Hiu] ⊆ ⟨Rc + i Ic, Hr⟩`.
 
-This implements the ball conversion step used with the Oishi–Rump
-rounding-mode controlled product and the Miyajima 2010 procedures.
+S. Miyajima, *Fast enclosure for all eigenvalues in generalized eigenvalue problems*,
+J. Comput. Appl. Math. **233**(11) (2010) 2994-3004, doi 10.1016/j.cam.2009.11.048
+([Miyajima2010](@cite)).
 
 Reference:
 - S. Oishi, “Fast enclosure of matrix eigenvalues and singular values via rounding mode controlled
@@ -420,7 +422,7 @@ end
     oishi_MMul(F, G)
 
 High-level wrapper: compute a complex ball enclosure of the product `F*G`
-via the Oishi–Rump rounding-mode controlled method. Internally calls
+by the rounding-mode controlled product of Oishi (2001). Internally calls
 `_oishi_MMul_up_lo` to get componentwise rectangular bounds, then `_ccr`
 to convert them into a `BallMatrix`.
 

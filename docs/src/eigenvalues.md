@@ -5,7 +5,7 @@ This page documents verified eigenvalue computation, Sylvester equation solvers,
 ## Overview
 
 We implement several algorithms to compute rigorous enclosures of eigenvalues, following
-Ref. [Miyajima2012](@cite). The interested reader may refer to the treatment in
+Ref. [Miyajima2010](@cite). The interested reader may refer to the treatment in
 [Eigenvalues in Arb](https://fredrikj.net/blog/2018/12/eigenvalues-in-arb/) for a deeper discussion on the topic.
 
 ## Standard Eigenvalue Problems

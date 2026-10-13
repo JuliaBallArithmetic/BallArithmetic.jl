@@ -874,3 +874,45 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     and the kind of enclosure from the type.
     Suite at 21bb3ec: 182,986 passed, none failed (`rigour_suite73.out`); RigorousPseudospectra
     300 of 300.
+
+42. **Citations against Crossref (step 5), 2026-10-13.** `check_bib.py` and
+    `check_docstring_dois.py` (scratch scripts, run on bemtivi).
+    - The 22 DOIs written in `src`, `ext`, the README and the documentation pages each resolve
+      to the paper named beside them, with the same journal, volume, pages and year.
+    - `docs/src/refs.bib`, which the references page prints in full, had 29 entries. Wrong:
+      `RumpOishi2001` gave Rump and Oishi as authors of the paper on rounding mode controlled
+      computation, which is by Oishi alone, with a DOI that does not exist (now `Oishi2001`);
+      `BujanovicKressnerSchroder2022` gave volume 95 (2024), it is 92(1) (2023), with a DOI
+      that does not exist; `MiyajimaSylvester2013`, `MartinPetersWilkinson1971` and
+      `KnightKaiser1979` carried the DOI of another paper; `RumpOgita2024Verified` had the
+      title "Error-free transformations and verified matrix decompositions" in Numerical
+      Algorithms, the paper is "Verified Error Bounds for Matrix Decompositions", SIAM J.
+      Matrix Anal. Appl. 45(4) (2024) 2155-2183 (now `RumpOgita2024`);
+      `NakatsukasaBaiGygi2010` said SIAM J. Sci. Comput. 32, it is SIAM J. Matrix Anal. Appl.
+      31(5); `Yamamoto2015` said Numer. Math. 131, 297-322, it is Electron. Trans. Numer.
+      Anal. 44 (2015) 306-326 (checked on the journal's page; now `YamamotoEtAl2015`);
+      `Higham1996` was the second edition, of 2002 (now `Higham2002`);
+      `FukayaKannanBallardDongata2020`, "LU-Cholesky QR Algorithms for Thin QR Decomposition"
+      by Fukaya, Kannan, Ballard and Dongarra in SIAM J. Sci. Comput. 42, matches no paper:
+      that title is by Terao, Ozaki and Ogita, Parallel Computing 92 (2020) 102571. The last
+      one, `MartinPetersWilkinson1971` and `KnightKaiser1979` are cited nowhere in the package
+      and are removed; the others are corrected, and DOIs added to `Rump2010` and
+      `BrisebarreMullerPicot2023`. 26 entries; those with a DOI agree with Crossref.
+    - `rigorous_eigenvalues` and `rigorous_generalized_eigenvalues` cited "Miyajima, JCAM 246,
+      9 (2012)", which is no paper, under the key of Miyajima (2012), J. Comput. Appl. Math.
+      236, 2545-2552. That paper gives one radius for each eigenvalue (its Theorem 3). What
+      the routines compute, one common radius `‖R₁‖∞/(1 − ‖R₂‖∞)`, is Theorem 1 of Miyajima
+      (2010), J. Comput. Appl. Math. 233, 2994-3004 (read in the library copy); the docstrings
+      now cite and state it.
+    - Collatz (1942) now carries its DOI.
+    - `types/MMul/oishi_mmul.jl` read against Algorithms 2 to 7 of Miyajima (2010) in the
+      library copy: `_cprod`, `_ccr`, `_ccrprod`, `_cr`, `_iprod`, `_ciprod` are those
+      algorithms line by line (in the printed Algorithm 2 the real part reads
+      `F_r G_r + (−F_r) G_i` in the text extracted from the PDF; the code has `(−F_i) G_i`);
+      `_ccrprod_prime`, `_iprod_right`, `_ciprod_prime` are the same with the factors in the
+      other order and are ours. The docstring of `_ccr` described a centre rounded to nearest
+      and a radius from the half-widths, which the code no longer does; corrected. The product
+      was called "Oishi-Rump" in four places; the paper is by Oishi alone (Crossref), and
+      Miyajima attributes the algorithm to Oishi. Oishi (2001) itself was not read.
+    Not checked: that each theorem or algorithm number quoted in a docstring is the one in the
+    paper, beyond those read during the audit; `RevolTheveny2013`, which is not on Crossref.
