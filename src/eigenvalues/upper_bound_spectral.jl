@@ -24,5 +24,6 @@ function collatz_upper_bound(A::BallMatrix{T}; iterates = 10) where {T}
     m, k = size(A)
     m == k || throw(DimensionMismatch("collatz_upper_bound needs a square matrix, got $m by $k"))
     absA = upper_abs(A)
-    return _collatz_quotient_up(x -> absA * x, m, real(eltype(A.c)), iterates)
+    return _collatz_quotient_up(x -> absA * x, x -> _product_up(absA, x), m, real(eltype(A.c)),
+        iterates)
 end

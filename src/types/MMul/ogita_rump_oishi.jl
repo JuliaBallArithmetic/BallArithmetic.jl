@@ -139,9 +139,7 @@ function mmul_ogita_rump_oishi_2005(A::BallMatrix{T, S}, B::BallMatrix{T, S}) wh
 
     # the accuracy term needs an upper bound on sum_i |a_i| |b_i|, one GEMM on the moduli
     absA, absB = _modulus_up(mA), _modulus_up(mB)
-    absprod = setrounding(T, RoundUp) do
-        absA * absB
-    end::Matrix{T}
+    absprod = _product_up(absA, absB)::Matrix{T}
     # N summands per entry: k for a real product, 2k for a complex one, whose real and imaginary
     # parts are each a difference or sum of two real dot products of length k
     N = S <: Complex ? 2k : k
@@ -348,7 +346,10 @@ end
 # Σ_t |A_t||B_t|, rounded up, and the number of products in the real or the imaginary part of an
 # entry, whichever is larger.
 function _abs_products(terms, ::Type{T}) where {T}
-    absprod = mapfoldl(((A, B, _),) -> _product_up(_modulus_up(Matrix(A)), _modulus_up(Matrix(B))),
+    # an upper bound of |A||B|: the BLAS product upward, or the Dot2Err bound where the BLAS does
+    # not follow the rounding mode (`_product_up` cannot be used there, it calls this function)
+    up(X, Y) = _blas_fallback(T) ? _product_down_up_dot2err(X, Y)[2] : _product_up(X, Y)
+    absprod = mapfoldl(((A, B, _),) -> up(_modulus_up(Matrix(A)), _modulus_up(Matrix(B))),
         _add_up, terms)
     N = sum((eltype(A) <: Complex || eltype(B) <: Complex ? 2 : 1) * size(A, 2)
     for (A, B, _) in terms)

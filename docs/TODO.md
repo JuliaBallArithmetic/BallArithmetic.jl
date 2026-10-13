@@ -1015,7 +1015,21 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     `src/types/MMul/MMul4.jl`, which use the entrywise directed operations for `Float32` and
     `Float64` where the check failed; the three `MMul4` methods share `_mmul4`. The test
     sets the flag to `false` and compares with the rounding-mode form.
-    **To do:** the 16 other `setrounding` blocks outside `src/types/MMul` have not been read
-    for array sums. The check does not cover `BigFloat`, views or sparse matrices.
+    The 16 other `setrounding` blocks outside `src/types/MMul`, read 2026-10-13: 12 are the
+    scalar `BigFloat` operations of `rounding.jl`, one is commented out, one is `_sum_radius`
+    (has the fallback), one is the last product of `_collatz_quotient_up`, now passed by its
+    two callers through `_product_up`, and one is in `ext/CUDAExt.jl`, a comprehension of
+    scalar differences under `RoundUp`, **not changed**.
+    **The BLAS itself (Isaia, 2026-10-13: "if the load-time multiplication fails, we could
+    fall back to the prodK route"). Written, not yet run:** `NumericalTest.BLAS_ROUNDING_OK`
+    is set to `false` by `__init__` when `rounding_test` fails on all the threads and on one
+    (before, three warnings and nothing else). `_product_down_up`, `_product_up`,
+    `_product_down` and `_sum_product_up` then return the ends of `_accurate_product_sum`,
+    the splitting of Lange and Rump with Dot2 where it declines, for `Float32` and
+    `Float64`; the threads are left as they were. When the test fails on all the threads and
+    passes on one, the BLAS stays on one thread and the rounding mode is used, as before.
+    `rounding_test` is one `Float64` `gemm` of size 1024; it does not exercise `gemv`,
+    `Float32` or the triangular and diagonal products.
+    **To do:** the check does not cover `BigFloat`, views or sparse matrices.
     Suite at 6c3ccb6 on nighthawk: 183,158 passed, none failed (`rigour_suite78.out`);
     RigorousPseudospectra 300 of 300.

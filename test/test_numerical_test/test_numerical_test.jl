@@ -53,4 +53,49 @@ end
     finally
         NT.ARRAY_ROUNDING_OK[] = true
     end
+
+    # where the BLAS does not follow the rounding mode the products are bounded without it
+    @test NT.BLAS_ROUNDING_OK[]
+    refnorm = (upper_bound_L2_opnorm(A), BallArithmetic.collatz_upper_bound(A))
+    NT.BLAS_ROUNDING_OK[] = false
+    try
+        setprecision(BigFloat, 256) do
+            # bounds of a point product against the product in BigFloat
+            for (P1, Q1) in ((P, Q), (Float32.(P), Float32.(Q)), (P, Q[:, 1]))
+                exact = big.(P1) * big.(Q1)
+                down, up = BallArithmetic._product_down_up_prodk(P1, Q1)
+                @test all(down .<= exact .<= up)
+                @test all(BallArithmetic._product_down(P1, Q1) .<= exact)
+                @test all(exact .<= BallArithmetic._product_up(P1, Q1))
+                @test maximum(up .- down) <= 64 * eps(eltype(P1)) * maximum(abs, exact)
+            end
+            @test all(BallArithmetic._sum_product_up(X, P, Q) .>= big.(X) .+ big.(P) * big.(Q))
+            # every product routine: the result contains the product of members of the factors
+            # (for a point factor the member is the factor)
+            sgn(F) = F isa BallMatrix ?
+                     Complex{BigFloat}.(mid(F)) .+ big.(rad(F)) .* 0.999 .* rand((-1, 1), size(F)...) :
+                     Complex{BigFloat}.(F)
+            cases = ((BallArithmetic.MMul4, A, B), (BallArithmetic.MMul4, mid(A), B),
+                (BallArithmetic.MMul4, A, mid(B)), (BallArithmetic.MMul4, mid(A), mid(B)),
+                (BallArithmetic.MMul3, A, B), (BallArithmetic.MMul5, A, B),
+                (oishi_MMul, mid(Ac), mid(Bc)), (*, A, B), (*, Ac, Bc), (*, Ac, B),
+                (*, A, mid(Bc)), (*, A32, A32), (*, U, U), (*, U, A))
+            for (f, F, G) in cases
+                D = f(F, G)
+                outside = 0
+                for _ in 1:4
+                    Z = sgn(F) * sgn(G)
+                    outside += count(abs.(Z .- Complex{BigFloat}.(Matrix(mid(D)))) .>
+                                     big.(Matrix(rad(D))))
+                end
+                @test outside == 0
+            end
+        end
+        # the norm bounds that take a product upward
+        @test upper_bound_L2_opnorm(A) >= opnorm(mid(A))
+        @test upper_bound_L2_opnorm(A) <= 1.01 * refnorm[1]
+        @test BallArithmetic.collatz_upper_bound(A) <= 1.01 * refnorm[2]
+    finally
+        NT.BLAS_ROUNDING_OK[] = true
+    end
 end

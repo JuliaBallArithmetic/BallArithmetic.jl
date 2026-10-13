@@ -48,17 +48,22 @@ function __init__()
         if NumericalTest.rounding_test(N, K)
             @info "OpenBLAS is giving correct rounding on a ($K,$K) test matrix on $N threads"
         else
-            @warn "OpenBLAS is not rounding correctly on the test matrix"
-            @warn "The number of BLAS threads was set to 1 to ensure rounding mode is consistent"
-            if !NumericalTest.rounding_test(1, K)
-                @warn "The rounding test failed on 1 thread"
+            @warn "OpenBLAS is not rounding correctly on the test matrix on $N threads"
+            # `rounding_test(1, K)` leaves the BLAS on one thread
+            if NumericalTest.rounding_test(1, K)
+                @warn "The number of BLAS threads was set to 1 to ensure rounding mode is consistent"
+            else
+                BLAS.set_num_threads(N)
+                _blas_rounding_failed()
             end
         end
     else
-        BLAS.set_num_threads(1)
-        @warn "The number of BLAS threads was set to 1 to ensure rounding mode is consistent"
-        if !NumericalTest.rounding_test(1, 1024)
-            @warn "The rounding test failed on 1 thread"
+        N = BLAS.get_num_threads()
+        if NumericalTest.rounding_test(1, 1024)
+            @warn "The number of BLAS threads was set to 1 to ensure rounding mode is consistent"
+        else
+            BLAS.set_num_threads(N)
+            _blas_rounding_failed()
         end
     end
 
@@ -75,6 +80,16 @@ function __init__()
                "matrices (MMul3, MMul4, MMul5, oishi_MMul), fall back to entrywise directed " *
                "operations for Float32 and Float64."
     end
+end
+
+# The BLAS does not follow the rounding mode even on one thread: the products are bounded without
+# it from here on (Isaia, 2026-10-13), see `NumericalTest.BLAS_ROUNDING_OK`.
+function _blas_rounding_failed()
+    NumericalTest.BLAS_ROUNDING_OK[] = false
+    @error "The rounding test of the BLAS failed on 1 thread as well. Products of Float32 and " *
+           "Float64 matrices are not evaluated under a rounding mode on this machine: they are " *
+           "enclosed by the splitting scheme of Lange and Rump (prodK) and the Dot2 " *
+           "accumulation of Ogita, Rump and Oishi, which is slower."
 end
 
 using RoundingEmulator, MacroTools, SetRounding

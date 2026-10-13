@@ -2,6 +2,7 @@
 # The product of two floating-point matrices with the rounding mode downward and upward:
 # `fl▽(AB)` and `fl△(AB)` in the notation of Rump's papers, entrywise below and above `AB`.
 function _product_down_up(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
+    _blas_fallback(T) && return _product_down_up_prodk(A, B)
     up = setrounding(T, RoundUp) do
         A * B
     end
@@ -14,16 +15,38 @@ end
 # `fl△(AB)` alone: an entrywise upper bound of the product, and of `AB` itself when `A` and `B`
 # are non-negative. The products that are still formed under a rounding mode go through this
 # function and `_product_down_up`, so that the dependence on the BLAS is in one place.
-_product_up(A::AbstractVecOrMat{T}, B::AbstractVecOrMat{T}) where {T <: AbstractFloat} =
-    setrounding(T, RoundUp) do
+function _product_up(A::AbstractVecOrMat{T}, B::AbstractVecOrMat{T}) where {T <: AbstractFloat}
+    _blas_fallback(T) && return _product_down_up_prodk(A, B)[2]
+    return setrounding(T, RoundUp) do
         A * B
     end
+end
+
+# Where the BLAS failed the rounding test at load time, even on one thread
+# (`NumericalTest.BLAS_ROUNDING_OK`), the three functions here do not use the rounding mode: the
+# product is enclosed by `_accurate_product_sum`, the splitting scheme of Lange and Rump with the
+# Dot2 accumulation where it declines, whose statements are in rounding to nearest and for a BLAS
+# product that only adds and multiplies, and the ends of the enclosure are returned.
+_blas_fallback(::Type{T}) where {T} =
+    T <: Union{Float32, Float64} && !NumericalTest.BLAS_ROUNDING_OK[]
+
+function _product_down_up_prodk(A::AbstractVecOrMat{T}, B::AbstractVecOrMat{T}) where {T}
+    size(A, 2) == size(B, 1) ||
+        throw(DimensionMismatch("product of sizes $(size(A)) and $(size(B))"))
+    Am = A isa AbstractVector ? reshape(A, :, 1) : A
+    Bm = B isa AbstractVector ? reshape(B, :, 1) : B
+    C = _accurate_product_sum(((Am, Bm, 1),))
+    down, up = sub_down.(mid(C), rad(C)), add_up.(mid(C), rad(C))
+    return B isa AbstractVector ? (vec(down), vec(up)) : (down, up)
+end
 
 # `fl▽(AB)` alone.
-_product_down(A::AbstractVecOrMat{T}, B::AbstractVecOrMat{T}) where {T <: AbstractFloat} =
-    setrounding(T, RoundDown) do
+function _product_down(A::AbstractVecOrMat{T}, B::AbstractVecOrMat{T}) where {T <: AbstractFloat}
+    _blas_fallback(T) && return _product_down_up_prodk(A, B)[1]
+    return setrounding(T, RoundDown) do
         A * B
     end
+end
 
 # Sums, differences and multiples of matrices rounded upward or downward. A product above is an
 # OpenBLAS call and follows the rounding mode by the build of OpenBLAS that the package loads; a
@@ -85,7 +108,7 @@ end
 function _sum_product_up(X::AbstractVecOrMat{T}, A::AbstractVecOrMat{T},
         B::AbstractVecOrMat{T}) where {T <: AbstractFloat}
     # the sum is Julia's own loop: entry by entry where the check at load time failed
-    _entrywise_rounding(T) && return add_up.(X, _product_up(A, B))
+    (_entrywise_rounding(T) || _blas_fallback(T)) && return add_up.(X, _product_up(A, B))
     return setrounding(T, RoundUp) do
         X + A * B
     end

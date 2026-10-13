@@ -55,6 +55,17 @@ end
 using RoundingEmulator: add_up, sub_up, sub_down, mul_up
 
 """
+    BLAS_ROUNDING_OK
+
+Whether [`rounding_test`](@ref) passed when the package was loaded, on all the BLAS threads or,
+failing that, on one. When it is `false` the products of `Float32` and `Float64` matrices that
+the package bounds from below and from above are not evaluated under a rounding mode: they are
+enclosed by the splitting scheme of Lange and Rump (INTLAB's `prodK`), with the Dot2 accumulation
+of Ogita, Rump and Oishi where the scheme declines, which do not use the rounding mode.
+"""
+const BLAS_ROUNDING_OK = Ref(true)
+
+"""
     ARRAY_ROUNDING_OK
 
 Whether [`array_rounding_test`](@ref) passed when the package was loaded. The sums of matrices

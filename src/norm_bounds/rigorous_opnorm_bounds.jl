@@ -40,10 +40,12 @@ upper_abs(A::AbstractMatrix{<:Union{Float32, Float64, Complex{Float32}, Complex{
 # `collatz_upper_bound_L2_opnorm`). The hypothesis is x > 0 in every component, so the iterate is
 # kept strictly positive: it is normalised by its largest entry and floored at eps, which is
 # allowed because ANY positive vector gives a bound, and the iteration only chooses a good one.
-# What must be rounded is the last step alone: `mulM(x)` is evaluated with the rounding mode
-# upward (a product of nonnegative arrays, so every entry is an upper bound) and each quotient
-# with `div_up`. A result that is not a number is returned as Inf, never as NaN.
-function _collatz_quotient_up(mulM, n::Integer, ::Type{RT}, iterates::Integer) where {RT <: AbstractFloat}
+# What must be rounded is the last step alone: `mulM_up(x)` is an entrywise upper bound of `Mx`,
+# formed by the callers with `_product_up` (a product of nonnegative arrays with the rounding mode
+# upward, or its replacement where the BLAS does not follow the mode), and each quotient is
+# taken with `div_up`. A result that is not a number is returned as Inf, never as NaN.
+function _collatz_quotient_up(mulM, mulM_up, n::Integer, ::Type{RT},
+        iterates::Integer) where {RT <: AbstractFloat}
     n == 0 && return zero(RT)
     x = ones(RT, n)
     for _ in 1:iterates
@@ -53,9 +55,7 @@ function _collatz_quotient_up(mulM, n::Integer, ::Type{RT}, iterates::Integer) w
         x = max.(y ./ smax, eps(RT))
     end
     # the assertion gives the compiler the type that the closure hides from it
-    y = setrounding(RT, RoundUp) do
-        mulM(x)
-    end::Vector{RT}
+    y = mulM_up(x)::Vector{RT}
     lam = zero(RT)
     for i in 1:n
         q = div_up(y[i], x[i])
@@ -95,7 +95,8 @@ function collatz_upper_bound_L2_opnorm(A::BallMatrix{T}; iterates = 5) where {T}
     k = size(A, 2)
     RT = real(eltype(A.c))
     absA = upper_abs(A)
-    lam = _collatz_quotient_up(x -> absA' * (absA * x), k, RT, iterates)
+    lam = _collatz_quotient_up(x -> absA' * (absA * x),
+        x -> _product_up(absA', _product_up(absA, x)), k, RT, iterates)
     # asserted: inference gives Union{Float64, BigFloat} for RoundingEmulator's sqrt_up
     return (isfinite(lam) ? sqrt_up(lam) : RT(Inf))::RT
 end
