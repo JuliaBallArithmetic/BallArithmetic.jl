@@ -993,6 +993,14 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     Not measured: another CPU or operating system, another Julia version, a sum whose
     operands are views, structured or sparse matrices, `BigFloat` (where the mode is MPFR's
     and is read at every operation), and code where the compiler can see constant operands.
-    **To do:** a test in the suite that compares each of these array forms with the directed
-    operations entry by entry, so that a Julia version or a machine on which they differ
-    fails the suite; until then the agreement is known for one machine at one date.
+    **Done, 7a0f6e0** (Isaia: the check belongs to `using BallArithmetic`, not only to the
+    test suite): `NumericalTest.array_rounding_test` compares these array forms with the
+    directed operations entry by entry, for `Float64` and `Float32`, dense and `Symmetric`;
+    `__init__` runs it after the OpenBLAS check and says the outcome. On nighthawk the forms
+    agree, the check takes 0.0009 s and the package loads in 2.2 s (`load_check.jl`). Where
+    it fails, the sums of ball matrices fall back to the entrywise directed operations and an
+    error is logged.
+    **To do:** the products `MMul3`, `MMul4`, `MMul5` and `oishi_MMul` add and subtract
+    matrices under a rounding mode after their BLAS products and have no fallback: on a
+    machine where the check fails they are not rigorous, which the logged error says. The
+    check does not cover `BigFloat`, views or sparse matrices.
