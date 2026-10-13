@@ -967,6 +967,32 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     A sum or a difference keeps a `Symmetric` radius when the midpoints are `Hermitian` or
     `Symmetric` and the radii `Symmetric` (2ed7865, 621783b): broadcasting had returned a
     dense radius.
-    This rests on Julia's own array loops honouring the rounding mode, which is not BLAS;
-    the measurement above is on one machine. The forms measured wrong on 2026-10-12 (a
-    block inside a loop or a comprehension over a vector of structs) are not used.
+    What this rests on is item 46.
+
+46. **A matrix sum under a rounding mode is not covered by the OpenBLAS build** (Isaia,
+    2026-10-13: to be kept in view).
+    The package trusts two different things when it sets a rounding mode, and only the first
+    has a mechanism behind it.
+    - **Products** (`A * B` on `Float32`, `Float64` matrices) are OpenBLAS calls. The build
+      loaded by the package, with `CONSISTENT_FPCSR`, makes every BLAS thread take the
+      rounding mode of the caller; the module checks one product when it is loaded, and the
+      probes of items 36 and 45 found no entry on the wrong side.
+    - **Sums and other array operations** (`A + B`, `ϵ * M`, `M - N`, `(C1 + C2) / 2` inside
+      a `setrounding` block: `_sum_radius`, `_sum_product_up`, the last lines of `MMul4`,
+      `MMul3`, `MMul5`, the Oishi product) are Julia's own loops, compiled by Julia, and run
+      in the thread that set the mode. The OpenBLAS flag has no part in them. That they
+      round in the mode that was set is a property of the code the Julia compiler emits, and
+      Julia does not document it as guaranteed: the compiler assumes the default rounding
+      mode when it folds constants and rewrites expressions.
+    What was measured, on nighthawk only, Julia 1.12.7:
+    - a rounding-mode block inside a loop or a comprehension over a vector of structs:
+      wrong side in 106,249 of 200,000 (2026-10-12); such forms were removed from the package;
+    - six scalar forms: 0 of 200,000 (2026-10-12);
+    - the whole-array form of the radius of a sum: the same value as the directed operations
+      in all 10,100,000 entries (item 45).
+    Not measured: another CPU or operating system, another Julia version, a sum whose
+    operands are views, structured or sparse matrices, `BigFloat` (where the mode is MPFR's
+    and is read at every operation), and code where the compiler can see constant operands.
+    **To do:** a test in the suite that compares each of these array forms with the directed
+    operations entry by entry, so that a Julia version or a machine on which they differ
+    fails the suite; until then the agreement is known for one machine at one date.
