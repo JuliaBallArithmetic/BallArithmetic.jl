@@ -846,3 +846,28 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     - Dependents: GKWExperiments calls `rigorous_block_schur(A; hermitian = hermitian)`
       (`src/EigenspaceCertification.jl:249`) and exports `miyajima_vbd`; its compat entry is
       `BallArithmetic = "0.1.1"`. Not run.
+
+41. **Sampling check of the spectral enclosures, 2026-10-13.** `check_spectral_enclosures.jl`
+    on nighthawk, for `schur_gershgorin_enclosure`, `miyajima2014a_schurnewton`,
+    `rigorous_block_schur` and `rigorous_block_schur(vbd_method = :nsd)`. Ball matrices with
+    midpoint general, symmetric, symmetric with two clusters, triangular with a clustered
+    diagonal, complex general, complex Hermitian; n = 3, 6, 12; radius 0, 1e-12, 1e-8, 1e-4,
+    1e-2 times the largest entry; 12 ball matrices for each, 5 matrices of each ball (for a
+    real ball one with the skew sign pattern, two corners, two random), eigenvalues at 256 bits.
+    At 7e1cfce and again at 21bb3ec, the same counts: 4,320 ball matrices, none threw, none
+    with an infinite radius; 151,200 eigenvalues, 0 outside the union of `cluster_intervals`,
+    0 outside the union of the discs of `block_enclosure`; 21,600 checks of the groups of
+    overlapping block discs, 0 with a number of eigenvalues other than the summed
+    multiplicities; 680,400 entries of `Q⁻¹XQ`, 0 outside `similar`. With every radius of
+    `cluster_intervals` divided by 10, 9,706 of the 151,200 eigenvalues are outside at 7e1cfce
+    and 9,782 at 21bb3ec.
+    By type, at 21bb3ec: `Hermitian(M)` real and complex, `Symmetric(M)`, and a real ball
+    matrix stored as `Diagonal`, 1,440 cases for the first and third routine: every result
+    has real intervals, 20,160 eigenvalues, 0 outside.
+    Not covered: n above 12, radii above 1e-2, defective midpoints, BigFloat input, and the
+    quantities of the results that are norms (`remainder_norm`, `projected_residual_norm`,
+    `perturbation_norm`).
+    Since 21bb3ec the basis is chosen from the midpoint (eigenvectors when it is Hermitian)
+    and the kind of enclosure from the type.
+    Suite at 21bb3ec: 182,986 passed, none failed (`rigour_suite73.out`); RigorousPseudospectra
+    300 of 300.
