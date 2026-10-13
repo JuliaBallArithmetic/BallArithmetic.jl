@@ -833,11 +833,14 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       "the svd routines certify a numerical svd, they never build S'*S". The routine is
       removed.)
     - `certify_eigenpairs(B; hermitian = true)` threw a `MethodError` for a complex Hermitian
-      `B`; corrected. The keyword there selects the eigendecomposition the approximations come
-      from; the certification is for every matrix of the ball.
+      `B`; corrected. The keyword only selected the eigendecomposition the approximations come
+      from; since 37d796c it is removed and the Hermitian eigendecomposition is taken whenever
+      the midpoint is Hermitian (Isaia, 2026-10-13: "we are certifying an oracle. If the
+      midpoint is hermitian, we certify the best possible oracle"). The certification is for
+      every matrix of the ball.
     - Read, not changed: `compute_spectral_projector_hermitian` (the Hermitian midpoint gives
       the approximate basis; the statement is the general one).
-    - **Open:** in `riesz_projections.jl` the keyword `hermitian` of `project_onto_eigenspace`,
+    - **To do (the last `hermitian` keyword of the package):** in `riesz_projections.jl` the keyword `hermitian` of `project_onto_eigenspace`,
       `compute_eigenspace_projector` and `verified_project_onto_eigenspace` means that the
       projection is the orthogonal one onto the span of the chosen columns, and
       `verified_project_onto_eigenspace(...; hermitian = false)` throws "not yet implemented":
