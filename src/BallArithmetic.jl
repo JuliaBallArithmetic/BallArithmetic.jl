@@ -159,7 +159,6 @@ export RigorousBlockSchurResult, rigorous_block_schur, extract_cluster_block,
        verify_block_schur_properties, estimate_block_separation
 include("eigenvalues/verified_gev.jl")
 export GEVResult, verify_generalized_eigenpairs, compute_beta_bound
-export eigenvalue_intervals_disjoint
 include("eigenvalues/spectral_projection_schur.jl")
 export SchurSpectralProjectorResult, compute_spectral_projector_schur,
        compute_spectral_projector_hermitian, project_vector_spectral,

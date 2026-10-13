@@ -201,6 +201,30 @@ _rc_circle_max(d, c, r; n = 200_000) =
         @test out isa Exception || out.resolvent_schur >= _rc_polygon_max(d, 0.0, 1.0, N) * (1 - 1e-9)
     end
 
+    # the BigFloat driver with Ogita refinement was exported and named in no test (export audit,
+    # 2026-10-13): the bound it returns must hold on the polygon, as for the other drivers
+    @testset "run_certification_ogita: the bound holds on the polygon" begin
+        N = 64
+        for δ in (1e-2, 1e-6)
+            d = ComplexF64[(1 + δ) * cis(π / N), 0, 0.3]
+            circle = _RC.CertificationCircle(0.0, 1.0; samples = N)
+            res = _RC.run_certification_ogita(BallMatrix(Matrix(Diagonal(d))), circle;
+                η = 0.5, log_io = devnull)
+            @test res.resolvent_schur >= _rc_polygon_max(d, 0.0, 1.0, N) * (1 - 1e-9)
+            plain = _RC.run_certification(BallMatrix(Matrix(Diagonal(d))), circle;
+                η = 0.5, log_io = devnull)
+            @test res.resolvent_schur <= 2 * plain.resolvent_schur
+        end
+        # a matrix that is not normal: the bound for the original matrix against the resolvent
+        # norm at the vertices of the polygon, in floating point
+        A = [0.5 2.0 0.0; 0.0 -0.4 1.5; 0.0 0.0 0.2im]
+        circle = _RC.CertificationCircle(0.0, 1.0; samples = N)
+        res = _RC.run_certification_ogita(A, circle; η = 0.5, log_io = devnull)
+        worst = maximum(opnorm(inv(cis(2π * j / N) * I - A)) for j in 0:(N - 1))
+        @test Float64(res.resolvent_original) >= worst * (1 - 1e-9)
+        @test isfinite(Float64(res.resolvent_original))
+    end
+
     @testset "bound_resolvent_schur" begin
         @test _RC.bound_resolvent_schur(2.0, 0.5) >= 4.0
         @test _RC.bound_resolvent_schur(2.0, 1.0) == Inf

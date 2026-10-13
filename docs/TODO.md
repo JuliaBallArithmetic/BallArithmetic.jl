@@ -1045,3 +1045,22 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     **To do:** the check does not cover `BigFloat`, views or sparse matrices.
     Suite at 6c3ccb6 on nighthawk: 183,158 passed, none failed (`rigour_suite78.out`);
     RigorousPseudospectra 300 of 300.
+
+47. **Export audit, 2026-10-13** (`export_inventory`, a scan on bemtivi of the 298 exported
+    names at b50fdcc: definition, mentions in `test/`, mentions in the other clones).
+    - `eigenvalue_intervals_disjoint` was exported and defined nowhere since 12349c7, which
+      rewrote `verify_generalized_eigenpairs`; the export is removed.
+    - `run_certification_ogita` was exported and named in no test (its evaluator is tested
+      through `dowork_ogita_bigfloat`). A test is added: its bound against the maximum of the
+      resolvent on the polygon. **Not yet run.**
+    - Exported functions of `CertifScripts` named in no test, **not examined**: `dowork`,
+      `adaptive_arcs!`, `save_snapshot!`, `configure_certification!`, `points_on`,
+      `polyconv` (they may be exercised through `run_certification` and the Distributed
+      extension; that has not been checked by coverage).
+    - `CertifScripts` exports three names that begin with an underscore:
+      `_clear_bf_ogita_cache!`, `_bf_ogita_cache_stats`, `_set_center_svd_cache!`, and
+      `_parametric_cache_stats`, `_clear_parametric_cache!`. **Open.**
+    - `polyconv` and `poly_from_roots` are polynomial helpers exported from the certification
+      module; GKWExperiments imports `polyconv` from there. **Open.**
+    - The scan's docstring column (164 of 298 names with no citation in the docstring) counts
+      result types and enum values and has not been read name by name. **Open.**
