@@ -1185,3 +1185,13 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       `_ciprod`, `_ciprod_prime` of Miyajima (2010) in `oishi_mmul.jl`. Each is either an
       entry point that should be exported and documented or code to remove; not decided.
 
+53. **The docs benchmark scripts removed, 2026-10-14** (Isaia: "I think we can remove the docs
+    benchmark scripts"). `docs/src/literate` is deleted, 36 tracked files:
+    `benchmark_common.jl`, `benchmark_test2` to `5`, `benchmark_spectral_gap`,
+    `resolvent_benchmark.jl`, `run_benchmarks.jl`, with the `.tex`, `.pdf` and LaTeX build
+    files of four of them. Their helpers `certify_ogita` and `certify_bigfloat` reported
+    `1/(Σ[end] − residual_norm)` as a rigorous bound (item 49). No docs page, `docs/make.jl`
+    or the README referred to the directory.
+    Kept (Isaia, the same day): `ext/CuTileExt.jl` and the twelve functions of item 52, work
+    in progress.
+
