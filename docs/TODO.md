@@ -934,3 +934,18 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     not symmetric; the routine could take `Symmetric` point matrices, or keep the statement
     about the symmetric matrices of the balls, which is what Miyajima, Ogita, Rump and Oishi
     (2010) need when the entries are only known within a radius.
+
+44. **Return types, rerun 2026-10-13** (`audit_return_types.jl` on nighthawk at cdcc7e8;
+    positional calls on `Float64` arguments of nine shapes). 198 exported functions (212 at
+    f50b4e8). The field that says the proof went through is `certified` in 20 structs;
+    `converged` in the 5 floating-point iterations; `spectrum_covered` and
+    `PreconditionerResult.success` as in item 38. Calls whose return type is not inferred as
+    concrete: 16 (22 at f50b4e8). `evbox` and `gevbox` are no longer among them. Remaining:
+    `certify_eigenpairs` (real or complex by the data); `compute_preconditioner` (by its
+    method); `rigorous_svd`, `rigorous_svd_m4` (with or without the block diagonalisation);
+    `verified_cholesky`, `verified_lu`, `verified_polar`, `verified_qr`, `verified_svd`, which
+    the leading type argument did not make inferable; `adaptive_ogita_svd`,
+    `rigorous_block_schur`, `schur_gershgorin_enclosure`,
+    `triangular_sylvester_miyajima_enclosure`, `rigorous_eigenvalues`,
+    `rigorous_generalized_eigenvalues`. None of these was traced to the statement that loses
+    the type.
