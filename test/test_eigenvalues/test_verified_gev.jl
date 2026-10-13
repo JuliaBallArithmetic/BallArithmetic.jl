@@ -325,15 +325,19 @@ _sym(X::AbstractMatrix) = Symmetric(X)
         A = BallMatrix([4.0 1.0; 1.0 3.0])
         B = BallMatrix([2.0 0.5; 0.5 2.0])
         F = eigen(Symmetric(mid(A)), Symmetric(mid(B)))
-        # not symmetric
+        # the symmetry is stated by the types: a plain matrix or a plain ball matrix is refused,
+        # whether its entries are symmetric or not
+        @test_throws ArgumentError verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        @test_throws ArgumentError verify_generalized_eigenpairs(mid(A), mid(B), F.vectors, F.values)
+        @test_throws ArgumentError verify_generalized_eigenpairs(BallMatrix([4.0 1.0; 1.5 3.0]),
+            B, F.vectors, F.values)
+        # of a matrix whose two triangles differ one triangle is read, as `Symmetric` does
         res = verify_generalized_eigenpairs(_sym(BallMatrix([4.0 1.0; 1.5 3.0])), _sym(B), F.vectors,
             F.values)
-        @test !res.certified
-        @test occursin("symmetric", res.message)
-        @test all(isinf, res.separation_bounds)
+        @test res.certified
         res = verify_generalized_eigenpairs(_sym(BallMatrix(mid(A), [0.0 1e-3; 0.0 0.0])), _sym(B),
             F.vectors, F.values)
-        @test !res.certified
+        @test res.certified
         # not sorted
         res = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors[:, [2, 1]], F.values[[2, 1]])
         @test !res.certified

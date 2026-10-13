@@ -11,12 +11,14 @@ using Random
     rng = MersenneTwister(20261013)
     setprecision(BigFloat, 256) do
         herm(S, n) = (B = randn(rng, S, n, n); (B + B') / 2)
-        # a Hermitian matrix within the tolerances of (M, R), at their ends
+        # a Hermitian matrix within the tolerances of (M, R), near their ends
         function hmember(M, R)
             n = size(M, 1)
             E = zeros(Complex{BigFloat}, n, n)
             for j in 1:n, i in 1:j
-                e = big(R[i, j]) * (i == j || eltype(M) <: Real ? big(rand(rng, (-1, 1))) :
+                # just inside the tolerance: a phase computed in floating point has modulus 1
+                # only up to rounding
+                e = big(R[i, j]) * 0.999 * (i == j || eltype(M) <: Real ? big(rand(rng, (-1, 1))) :
                      cis(big(2pi * rand(rng))))
                 E[i, j] = e
                 E[j, i] = conj(e)
