@@ -83,79 +83,50 @@ function bdd_R2(Y::AbstractMatrix{T}, Z::BallMatrix{RT, NT}) where {T, RT, NT}
 end
 
 """
-    miyajima_algorithm_1_procedure_1(A::BallMatrix, B::BallMatrix)
+    miyajima2010_algorithm1_steps1to3(A::BallMatrix, B::BallMatrix)
 
-Implement Procedure 1 of Algorithm 1 from Miyajima's generalized eigenvalue
-verification method. Computes:
-1. Approximate generalized eigenvectors X from mid(A), mid(B)
-2. Ball enclosure Z for B * X using Miyajima's rigorous matrix multiplication
-3. Left action Y = inv(mid(Z))
-4. Bound on coupling defect R₂ = ‖Y * Z - I‖∞
+Steps 1 to 3 of Algorithm 1 of Miyajima (2010) for the pencil `A x = λ B x`, with the approximate
+eigenvectors `X̃` and eigenvalues taken from `eigen(mid(A), mid(B))`:
 
-Uses Miyajima's `_cprod` (complex product with directed rounding) and `_ccr`
-(collapse rectangular bounds to ball form) for maximum rigor, particularly
-important for BigFloat computations.
+- Step 1: `Z = ⟨Z_c, Z_r⟩` with `B X̃ ∈ Z`, by Algorithm 2 (`cprod`, [`_cprod`](@ref)) for the
+  bounds of the real and of the imaginary part and Algorithm 3 (`ccr`, [`_ccr`](@ref)) for the
+  ball;
+- Step 2: `Y ≈ Z_c⁻¹`, in floating point;
+- Step 3: `ε₂ ≥ ‖R₂‖_∞`, `R₂ = Y B X̃ − I`, by inequality (8) of Corollary 1 ([`bdd_R2`](@ref)).
 
-Returns a tuple (X, Y, Z, bdd_coupling) where:
-- X: Approximate right eigenvectors (midpoint computation)
-- Y: Left action matrix (inverse of mid(B*X))
-- Z: Ball enclosure of B * X (computed via Miyajima procedures)
-- eigenvalues: Approximate eigenvalues
-- coupling_bound: Rigorous upper bound on ‖Y * Z - I‖∞
+Returns `(X, Y, Z, eigenvalues, coupling_bound)` with `coupling_bound = ε₂`. Step 4 of the
+algorithm is the test `ε₂ < 1`, which proves that `B`, `X̃` and `Y` are nonsingular; Steps 5 and 6,
+the bound `ε₁ ≥ ‖R₁‖_∞` by Procedure 1 or 2 of the paper and `ε = ε₁/(1 − ε₂)`, are not done
+here. (This function was named `miyajima_algorithm_1_procedure_1`; Procedure 1 of the paper is
+the enclosure of `R₁`, which it does not compute.)
 
-# References
-* Miyajima (2010): Fast verified matrix multiplication
-* Miyajima (2012): Numerical enclosure for generalized eigenvalue problems
+The paper states the algorithm for point matrices. Here `B` may have a positive radius: the bounds
+of Step 1 are then those of `⟨mid(B), rad(B)⟩ X̃`, by the kernel `ccrprod′` of Procedure 2
+([`_ccrprod_prime`](@ref)), so that `B̃ X̃ ∈ Z` and `‖Y B̃ X̃ − I‖_∞ ≤ ε₂` for every `B̃` of the ball,
+which is our use of the paper's kernel and not a statement of the paper. `A` enters through the
+approximate eigenvectors only.
+
+# Reference
+
+S. Miyajima, *Fast enclosure for all eigenvalues in generalized eigenvalue problems*,
+J. Comput. Appl. Math. **233**(11) (2010) 2994-3004, doi 10.1016/j.cam.2009.11.048.
 """
-function miyajima_algorithm_1_procedure_1(A::BallMatrix{T, NT},
-                                           B::BallMatrix{T, NT}) where {T, NT}
-    # Compute approximate generalized eigenvalues/vectors from midpoints
+function miyajima2010_algorithm1_steps1to3(A::BallMatrix{T, NT},
+        B::BallMatrix{T, NT}) where {T, NT}
     gev = eigen(mid(A), mid(B))
-    Xmid = gev.vectors
+    CT = Complex{T}
+    Xmid = CT.(gev.vectors)
 
-    # Compute rigorous enclosure for B * X using Miyajima's procedures
-    # This provides maximum rigor with directed rounding (essential for BigFloat)
-    Z = _rigorous_matrix_product(mid(B), Xmid, T, NT)
+    # Step 1: bounds of the real and the imaginary part of ⟨mid(B), rad(B)⟩ X̃, then the ball
+    Zrl, Zru, Zil, Ziu, _ = _ccrprod_prime(CT.(mid(B)), rad(B), Xmid)
+    Z, _ = _ccr(Zrl, Zru, Zil, Ziu)
 
-    # Compute left action Y = inv(mid(B * X))
+    # Step 2
     Y = inv(mid(Z))
 
-    # Compute rigorous bound on coupling defect ‖Y * Z - I‖∞
-    # This uses Higham-style γ factors for a priori error bounds
+    # Step 3
     bdd_coupling = bdd_R2(Y, Z)
 
     return (X = Xmid, Y = Y, Z = Z, eigenvalues = gev.values,
-            coupling_bound = bdd_coupling)
-end
-
-"""
-    _rigorous_matrix_product(B::AbstractMatrix, X::AbstractMatrix, ::Type{T}, ::Type{NT})
-
-Compute rigorous ball matrix enclosure of B * X using Miyajima's procedures.
-
-For complex matrices: Uses `_cprod` (Algorithm 2 of Miyajima (2010), attributed there to Oishi) followed by
-`_ccr` (Algorithm 5 from Miyajima2010) to collapse rectangular bounds to
-ball form with directed rounding.
-
-For real matrices: Promotes to complex and uses the same procedure for consistency.
-
-This ensures maximum rigor for all precision types (Float64, BigFloat, etc.).
-"""
-function _rigorous_matrix_product(B::AbstractMatrix{BT}, X::AbstractMatrix{XT},
-                                    ::Type{T}, ::Type{NT}) where {BT, XT, T, NT}
-    # Promote to complex to use Miyajima's _cprod procedure
-    # This works for both real and complex inputs
-    CT = Complex{T}
-    B_complex = CT.(B)
-    X_complex = CT.(X)
-
-    # Use Miyajima's rigorous complex product with directed rounding
-    # Returns rectangular bounds: Hrl ≤ Re(B*X) ≤ Hru, Hil ≤ Im(B*X) ≤ Hiu
-    Hrl, Hru, Hil, Hiu, _ = _cprod(B_complex, X_complex)
-
-    # Collapse rectangular bounds to ball form (midpoint + radius)
-    # Algorithm 5 from Miyajima2010
-    Z_ball, _ = _ccr(Hrl, Hru, Hil, Hiu)
-
-    return Z_ball
+        coupling_bound = bdd_coupling)
 end

@@ -1195,3 +1195,37 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     Kept (Isaia, the same day): `ext/CuTileExt.jl` and the twelve functions of item 52, work
     in progress.
 
+54. **The twelve kept functions, read 2026-10-14** (item 52; Isaia: work in progress, to be
+    checked and kept). Run 83 at 42470c2 first: 183,807 passed, none failed
+    (`rigour_suite83.out`), RigorousPseudospectra 300 of 300.
+    - `miyajima_algorithm_1_procedure_1`, read against the paper (Miyajima 2010, Section 4):
+      it did not compute Procedure 1, which is the enclosure of `R₁` (`encR1ci`); it computed
+      Steps 1 to 3 of Algorithm 1 (`Z_c`, `Z_r`, `Y`, `ε₂`). And it took ball matrices but used
+      `mid(B)` only, so its `Z` and its bound were for the midpoint. Renamed
+      `miyajima2010_algorithm1_steps1to3`, with a docstring that lists the steps and the
+      reference; `Z` is now the enclosure of `⟨mid(B), rad(B)⟩X̃` by `_ccrprod_prime`, the
+      kernel `ccrprod′` of Procedure 2, which is our use of it. `_rigorous_matrix_product`,
+      its one helper, is gone. Test: members of the ball of `B` in BigFloat. **Not run at the
+      time of writing.**
+    - Not implemented anywhere with the paper's kernels: Steps 5 and 6, that is Procedure 1
+      (`cprod`, `ciprod′`, `ciprod`) and Procedure 2 (`cprod`, `ccrprod′`, `ccr`, `ccrprod`).
+      `rigorous_generalized_eigenvalues` applies Theorem 1 with products of ball matrices.
+      The four kernels `_ccrprod`, `_ccrprod_prime`, `_ciprod`, `_ciprod_prime` exist and are
+      tested on sampled members (`test_MMul.jl`).
+    - `rigorous_contour.jl` (`compute_enclosure`, `bound_resolvent`, the two exclusion
+      circles): read; the discs' bounds are `certify_svd` on `T − B(c, r)I`, the closure of a
+      chain is decided with distances rounded up and sums of radii rounded down, and the
+      docstring says that the bounds are for the Schur factor of the midpoint and not for `A`.
+      Not changed.
+    - `svd_bound_L2_resolvent`: `svd_bound_L2_opnorm_inverse(A − λI)`, the reciprocal of the
+      lower end of the smallest singular value rounded up, `Inf` when that end is not
+      positive. Not changed.
+    - `off_diagonal_abs`: its docstring said "Returns a matrix containing the off-diagonal
+      elements"; it returns upper bounds of their moduli as a point ball matrix. Docstring
+      corrected.
+    - **Open:** `r2_infty_bound_by_blocks` has no docstring and no reference. It returns
+      `max_p Σ_{q≠p} ‖|H|_{pq}‖_∞ / sep(p, q)`, with `sep` the distance between the hulls of
+      two groups of balls. What that quantity bounds is stated nowhere; a comment in
+      `test_vbd_remainder_norm.jl` records that it was once taken as a bound of the
+      remainder norm and underestimated it. It cannot be checked until it has a statement.
+

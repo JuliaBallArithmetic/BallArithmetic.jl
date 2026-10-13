@@ -6,7 +6,10 @@
 using LinearAlgebra: diag
 
 """
-Returns a matrix containing the off-diagonal elements
+    off_diagonal_abs(A::BallMatrix)
+
+A point ball matrix whose off-diagonal entries are upper bounds of the moduli of the off-diagonal
+entries of every matrix of the ball `A` ([`upper_abs`](@ref)), and whose diagonal is zero.
 """
 function off_diagonal_abs(A::BallMatrix)
     B = deepcopy(upper_abs(A))

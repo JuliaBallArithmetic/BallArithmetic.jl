@@ -8,7 +8,7 @@ using BallArithmetic
     A = BallMatrix([2.0 0.1 0.0; 0.1 3.0 0.05; 0.0 0.05 1.0])
     B = BallMatrix(Matrix{Float64}(I, 3, 3))
 
-    result = BallArithmetic.miyajima_algorithm_1_procedure_1(A, B)
+    result = BallArithmetic.miyajima2010_algorithm1_steps1to3(A, B)
 
     @test hasfield(typeof(result), :X)
     @test hasfield(typeof(result), :Y)
@@ -29,6 +29,33 @@ using BallArithmetic
     YZ_mid = result.Y * mid(result.Z)
     YZ_error = opnorm(YZ_mid - I, Inf)
     @test YZ_error < result.coupling_bound
+end
+
+@testset "Steps 1 to 3 of Algorithm 1 of Miyajima (2010): B X̃ in Z and ‖Y B X̃ − I‖_∞ ≤ ε₂ on the ball of B" begin
+    rng = MersenneTwister(20261014)
+    setprecision(BigFloat, 512) do
+        for S in (Float64, ComplexF64), n in (3, 10), ε in (0.0, 1e-12, 1e-6)
+            Am = randn(rng, S, n, n)
+            Bm = randn(rng, S, n, n) + 4I
+            Br = ε .* rand(rng, n, n)
+            r = BallArithmetic.miyajima2010_algorithm1_steps1to3(BallMatrix(Am), BallMatrix(Bm, Br))
+            @test r.coupling_bound < 1
+            X, Y = Complex{BigFloat}.(r.X), Complex{BigFloat}.(r.Y)
+            Zc, Zr = Complex{BigFloat}.(mid(r.Z)), big.(rad(r.Z))
+            outside = 0
+            worst = big(0.0)
+            for _ in 1:20
+                # a member of the ball of B, at 0.999 of the radii
+                E = S <: Complex ? cis.(big.(2pi .* rand(rng, n, n))) : big.(rand(rng, (-1, 1), n, n))
+                Bt = Complex{BigFloat}.(Bm) .+ big.(Br) .* 0.999 .* E
+                BX = Bt * X
+                outside += count(abs.(BX .- Zc) .> Zr)
+                worst = max(worst, opnorm(Y * BX - I, Inf))
+            end
+            @test outside == 0
+            @test worst <= r.coupling_bound
+        end
+    end
 end
 
 @testset "bdd_R2: inequality (8) of Miyajima (2010) is above ‖Y Z̃ − I‖_∞ on the ball" begin
