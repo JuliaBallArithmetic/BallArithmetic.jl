@@ -49,13 +49,6 @@ and a bound of the resolvent on a contour around the group.
 - [`compute_spectral_projector_schur`](@ref) - Schur-based projector
 - [`compute_spectral_projector_hermitian`](@ref) - Hermitian case
 
-### Eigenspace Projection
-
-- [`project_onto_eigenspace`](@ref) - Project vector onto eigenspace
-- [`project_onto_schur_subspace`](@ref) - Project onto Schur subspace
-- [`compute_eigenspace_projector`](@ref) - Compute eigenspace projection matrix
-- [`compute_schur_projector`](@ref) - Compute Schur subspace projector
-
 ### Result Types
 
 - [`SchurSpectralProjectorResult`](@ref) - Schur-based result

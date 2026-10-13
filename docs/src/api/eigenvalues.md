@@ -95,12 +95,3 @@ certify_schur_decomposition
 newton_schulz_orthogonalize!
 ```
 
-## Riesz Projections
-
-```@docs
-project_onto_eigenspace
-project_onto_schur_subspace
-compute_eigenspace_projector
-compute_schur_projector
-```
-

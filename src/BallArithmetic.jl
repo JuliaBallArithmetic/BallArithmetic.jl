@@ -160,10 +160,6 @@ export RigorousBlockSchurResult, rigorous_block_schur, extract_cluster_block,
 include("eigenvalues/verified_gev.jl")
 export GEVResult, verify_generalized_eigenpairs, compute_beta_bound
 export eigenvalue_intervals_disjoint
-include("eigenvalues/riesz_projections.jl")
-export project_onto_eigenspace, project_onto_schur_subspace,
-       compute_eigenspace_projector,
-       compute_schur_projector
 include("eigenvalues/spectral_projection_schur.jl")
 export SchurSpectralProjectorResult, compute_spectral_projector_schur,
        compute_spectral_projector_hermitian, project_vector_spectral,

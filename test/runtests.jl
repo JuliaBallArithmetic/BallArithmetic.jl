@@ -42,7 +42,6 @@ using Test
     include("test_eigenvalues/test_verified_gev.jl")
     include("test_eigenvalues/test_miyajima_gev_enclosure.jl")
     include("test_eigenvalues/test_gev_coherence.jl")
-    include("test_eigenvalues/test_riesz_projections.jl")
     include("test_eigenvalues/test_iterative_schur_refinement.jl")
     include("test_eigenvalues/test_rump_lange_2023.jl")
     include("test_eigenvalues/test_newton_kantorovich_eigenpair.jl")

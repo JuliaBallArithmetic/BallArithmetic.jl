@@ -56,7 +56,6 @@ Features include:
 - Generalized eigenvalue problem (Ax = λBx)
 - Schur decomposition refinement
 - Spectral projector computation
-- Riesz projection interfaces
 
 ### Verified SVD and Norm Bounds
 

@@ -856,7 +856,13 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       Loan) are on the routines that are not verified and are for the definition of the
       projection. No caller in `src`, `ext`, or in the clones under `~/Code` and `~/Write` on
       bemtivi. The routine, its export, its API entry and its tests are deleted.
-      **Open, Isaia's to decide:** in the two routines that are not verified,
+      **The rest of the file removed too, 2026-10-13** (Isaia: "remove them also"):
+      `project_onto_eigenspace`, `project_onto_schur_subspace`,
+      `compute_eigenspace_projector`, `compute_schur_projector`, floating-point
+      approximations with no bound and no caller; `src/eigenvalues/riesz_projections.jl`,
+      its test file, its exports and its entries in the docs and the README are deleted. The
+      question below no longer arises.
+      **Was open:** in the two routines that are not verified,
       `project_onto_eigenspace` and `compute_eigenspace_projector`, the keyword `hermitian`
       still selects the orthogonal projection against the oblique one built from the left
       eigenvectors; both branches are implemented.
