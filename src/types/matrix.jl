@@ -133,6 +133,20 @@ function LinearAlgebra.adjoint(M::BallMatrix)
     return BallMatrix(mid(M)', rad(M)')
 end
 
+# The radius of an entrywise operation, formed entry by entry with `f`. Broadcasting over a
+# `Symmetric` or `Hermitian` matrix returns a dense matrix; here, when every argument is stored as
+# `Symmetric` or `Hermitian` on the same triangle, `f` is applied to the stored data and the result
+# is `Symmetric` on that triangle. `f` must give the same value at (i, j) and (j, i) for arguments
+# with that symmetry, which holds when it depends on its arguments through their moduli. On the
+# diagonal a `Hermitian` matrix is the real part of its stored entry, whose modulus is not larger
+# than that of the stored entry, so the value is an upper bound there too.
+function _radius_entrywise(f, Xs...)
+    if all(X -> X isa Union{Symmetric, Hermitian}, Xs) && allequal(X.uplo for X in Xs)
+        return Symmetric(f.(map(parent, Xs)...), Symbol(first(Xs).uplo))
+    end
+    return f.(Xs...)
+end
+
 # Operations
 """
     Base.:+(A::BallMatrix, B::BallMatrix)
@@ -148,7 +162,7 @@ function Base.:+(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
 
     C = mA + mB
     ϵ = machine_epsilon(T)
-    R = add_up.(add_up.(mul_up.(ϵ, abs.(C)), rA), rB)
+    R = _radius_entrywise((c, a, b) -> add_up(add_up(mul_up(ϵ, abs(c)), a), b), C, rA, rB)
     BallMatrix(C, R)
 end
 
@@ -170,7 +184,7 @@ function Base.:-(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
 
     C = mA - mB
     ϵ = machine_epsilon(T)
-    R = add_up.(add_up.(mul_up.(ϵ, abs.(C)), rA), rB)
+    R = _radius_entrywise((c, a, b) -> add_up(add_up(mul_up(ϵ, abs(c)), a), b), C, rA, rB)
     BallMatrix(C, R)
 end
 
@@ -189,8 +203,9 @@ end
 function _scale_ball_array(m, r::T, Ac, Ar) where {T}
     B = m * Ac
     am = abs_up(m)
-    R = add_up.(_product_roundoff.(B),
-        add_up.(mul_up.(add_up.(abs_up.(Ac), Ar), r), mul_up.(Ar, am)))
+    R = _radius_entrywise(
+        (b, ac, ar) -> add_up(_product_roundoff(b),
+            add_up(mul_up(add_up(abs_up(ac), ar), r), mul_up(ar, am))), B, Ac, Ar)
     return B, R
 end
 
@@ -259,7 +274,7 @@ function Base.:+(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFlo
     C = mA + B
 
     ϵ = machine_epsilon(T)
-    R = add_up.(mul_up.(ϵ, abs.(C)), rA)
+    R = _radius_entrywise((c, a) -> add_up(mul_up(ϵ, abs(c)), a), C, rA)
     BallMatrix(C, R)
 end
 
@@ -288,7 +303,7 @@ function Base.:-(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFlo
     C = mA - B
 
     ϵ = machine_epsilon(T)
-    R = add_up.(mul_up.(ϵ, abs.(C)), rA)
+    R = _radius_entrywise((c, a) -> add_up(mul_up(ϵ, abs(c)), a), C, rA)
     BallMatrix(C, R)
 end
 
@@ -306,7 +321,7 @@ function Base.:-(B::AbstractMatrix{T}, A::BallMatrix{T}) where {T <: AbstractFlo
     C = B - mA
 
     ϵ = machine_epsilon(T)
-    R = add_up.(mul_up.(ϵ, abs.(C)), rA)
+    R = _radius_entrywise((c, a) -> add_up(mul_up(ϵ, abs(c)), a), C, rA)
     BallMatrix(C, R)
 end
 
