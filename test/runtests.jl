@@ -13,6 +13,7 @@ using Test
     include("test_types/test_ogita_rump_oishi.jl")
     include("test_types/test_lange_rump_products.jl")
     include("test_types/test_hermitian_ball_matrix.jl")
+    include("test_types/test_structured_ball_matrix.jl")
     include("test_types/test_rigour_foundations.jl")
     include("test_types/test_vector.jl")
     include("test_types/test_matrix.jl")
