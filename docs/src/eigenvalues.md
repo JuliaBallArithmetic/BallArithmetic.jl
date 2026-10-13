@@ -13,7 +13,7 @@ Ref. [Miyajima2010](@cite). The interested reader may refer to the treatment in
 ### Main Functions
 
 - [`rigorous_eigenvalues`](@ref) - General eigenvalue verification
-- [`verifysvdall`](@ref) - all singular values and singular subspaces (Rump and Lange 2023); for a Hermitian matrix, `verifyeigall(A; method = :rumplange2023)`
+- [`verifysvdall`](@ref) - all singular values and singular subspaces (Rump and Lange 2023); for a Hermitian matrix, `verifyeigall(HermitianBallMatrix(A))`
 
 ### Result Types
 

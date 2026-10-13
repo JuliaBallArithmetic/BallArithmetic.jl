@@ -159,8 +159,10 @@ discs in a unitary basis of `mid(A)`, grouped into blocks.
 The type of the argument decides the kind of enclosure. For a `BallMatrix` the
 clusters are discs of the complex plane: with positive radii it is an open set of
 matrices, which contains matrices that are not Hermitian, whatever its midpoint.
-For a point matrix that is Hermitian by its type, `Hermitian(M)` or `Symmetric(M)`
-with `M` real, the eigenvalues are real and the clusters are real intervals. The same
+For a [`HermitianBallMatrix`](@ref), the Hermitian matrices within the tolerances,
+and for a point matrix that is Hermitian by its type (`Hermitian(M)`, or
+`Symmetric(M)` with `M` real), the eigenvalues are real and the clusters are real
+intervals; the statement is then for those Hermitian matrices only. The same
 holds for a real ball matrix stored as `Diagonal` in midpoint and radius, the type of
 the matrix of singular value enclosures of [`rigorous_svd`](@ref): every matrix in it
 is a real diagonal matrix, whose eigenvalues are its diagonal entries.
@@ -208,10 +210,12 @@ const _RealDiagonalBallMatrix{T} = BallMatrix{T, T, Ball{T, T}, <:Diagonal, <:Di
 
 _spectrum_kind(::BallMatrix) = _ComplexDiscs()
 _spectrum_kind(::_RealDiagonalBallMatrix) = _RealIntervals()
+_spectrum_kind(::HermitianBallMatrix) = _RealIntervals()
 
-schur_gershgorin_enclosure(A::BallMatrix) = _schur_gershgorin(_spectrum_kind(A), A)
+schur_gershgorin_enclosure(A::BallMatrix) =
+    _schur_gershgorin(_spectrum_kind(A), _dense_hull(A))
 schur_gershgorin_enclosure(H::_HermitianPointMatrix) =
-    _schur_gershgorin(_RealIntervals(), BallMatrix(Matrix(H)))
+    schur_gershgorin_enclosure(HermitianBallMatrix(H))
 
 # The unitary basis the enclosure is transported to. It is an approximation and takes no part in
 # what is claimed: any basis gives discs that contain the spectrum, a good one gives small discs.

@@ -7,7 +7,7 @@
 #
 # Each routine is named for the algorithm or the section of the paper it implements. The paper
 # calls its eigenvalue algorithm `verifyeigall`, as Rump (2022) does for general matrices; here it
-# is reached through `verifyeigall(A; method = :rumplange2023)`.
+# is reached through `verifyeigall(A)` for a `HermitianBallMatrix` `A`.
 
 export VerifySvdAllResult, verifysvdall
 
@@ -275,8 +275,8 @@ _rumplange2023_eig_failed(Xs::Matrix{S}, ::Type{T}) where {S, T} = (n = size(Xs,
     _rumplange2023(A::BallMatrix; kappa = 0) -> VerifyEigAllResult
 
 [`_rumplange2023_eig`](@ref) with its result in the fields of a [`VerifyEigAllResult`](@ref);
-reached through [`verifyeigall`](@ref) with `method = :rumplange2023`. The statements are for
-the Hermitian matrices of the ball `A`.
+reached through [`verifyeigall`](@ref) for a [`HermitianBallMatrix`](@ref), of which `A` is the
+dense ball matrix that contains it. The statements are for the Hermitian matrices of `A`.
 
 - `clusters` is the partition of Theorem 4.2; `centers[i]` and `radii[i]` describe the smallest
   interval containing the intervals of cluster `i`, which holds exactly `length(clusters[i])`

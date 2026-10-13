@@ -4,6 +4,10 @@ using LinearAlgebra
 using Random
 using GenericLinearAlgebra
 
+# the symmetry of the pencil is stated by the types of the arguments
+_sym(X::BallMatrix) = HermitianBallMatrix(X)
+_sym(X::AbstractMatrix) = Symmetric(X)
+
 @testset "Verified Generalized Eigenvalue Problems" begin
     @testset "Beta Bound Computation" begin
         # Simple diagonal SPD matrix
@@ -39,7 +43,7 @@ using GenericLinearAlgebra
         λ̃ = F.values
 
         # Verify
-        result = verify_generalized_eigenpairs(A, B, X̃, λ̃)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), X̃, λ̃)
 
         @test result.certified
         @test length(result.eigenvalue_intervals) == 2
@@ -68,7 +72,7 @@ using GenericLinearAlgebra
         expected = [4.0/2.0, 9.0/3.0, 16.0/4.0]
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
 
         @test result.certified
 
@@ -91,7 +95,7 @@ using GenericLinearAlgebra
                         0.0 0.0 2.0], fill(1e-8, 3, 3))
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
 
         @test result.certified
         @test length(result.eigenvalue_intervals) == 3
@@ -115,7 +119,7 @@ using GenericLinearAlgebra
         B = BallMatrix([2.0 0.0; 0.0 2.0], fill(1e-10, 2, 2))
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
 
         @test result.certified
 
@@ -162,7 +166,7 @@ using GenericLinearAlgebra
         B = BallMatrix(Bc, fill(r, 3, 3))
 
         F = eigen(Symmetric(Ac), Symmetric(Bc))
-        res = verify_generalized_eigenpairs(A, B, Matrix(F.vectors), collect(F.values))
+        res = verify_generalized_eigenpairs(_sym(A), _sym(B), Matrix(F.vectors), collect(F.values))
 
         @test res.certified
         @test res.separation_bounds[1] == res.global_bound
@@ -195,7 +199,7 @@ using GenericLinearAlgebra
                 N = randn(rng, n, n)
                 Bc = Matrix(Symmetric(N' * N + n * I))
                 F = eigen(Symmetric(Ac), Symmetric(Bc))
-                res = verify_generalized_eigenpairs(BallMatrix(Ac), BallMatrix(Bc),
+                res = verify_generalized_eigenpairs(_sym(BallMatrix(Ac)), _sym(BallMatrix(Bc)),
                     Matrix(F.vectors), collect(F.values))
                 @test res.certified
                 @test all(isfinite, res.eigenvector_radii)
@@ -222,7 +226,7 @@ using GenericLinearAlgebra
             Ac = BigFloat[4 1 0; 1 3 1; 0 1 5]
             Bc = BigFloat[2 1 0; 1 3 0; 0 0 1]
             F = eigen(Symmetric(Float64.(Ac)), Symmetric(Float64.(Bc)))
-            res = verify_generalized_eigenpairs(BallMatrix(Ac), BallMatrix(Bc), F.vectors,
+            res = verify_generalized_eigenpairs(_sym(BallMatrix(Ac)), _sym(BallMatrix(Bc)), F.vectors,
                 F.values)
             @test res isa GEVResult{BigFloat}
             @test res.certified
@@ -261,11 +265,11 @@ using GenericLinearAlgebra
                 Bc = Matrix(Symmetric(N' * N + n * I))
                 F = eigen(Symmetric(Ac), Symmetric(Bc))
                 # plain matrices: the paper's version is the default
-                res = verify_generalized_eigenpairs(Ac, Bc, Matrix(F.vectors),
+                res = verify_generalized_eigenpairs(_sym(Ac), _sym(Bc), Matrix(F.vectors),
                     collect(F.values))
                 @test res isa GEVResult{T}
                 @test res.certified
-                same = verify_generalized_eigenpairs(BallMatrix(Ac), BallMatrix(Bc),
+                same = verify_generalized_eigenpairs(_sym(BallMatrix(Ac)), _sym(BallMatrix(Bc)),
                     Matrix(F.vectors), collect(F.values); method = :paper)
                 @test same.separation_bounds == res.separation_bounds
                 Lb = cholesky(Symmetric(BigFloat.(Bc))).L
@@ -291,7 +295,7 @@ using GenericLinearAlgebra
         A = [6.0 0.0 0.0; 0.0 9.0 0.0; 0.0 0.0 16.0]
         B = [2.0 0.0 0.0; 0.0 3.0 0.0; 0.0 0.0 4.0]
         F = eigen(Symmetric(A), Symmetric(B))
-        res = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        res = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
         @test res.certified
         @test res.separation_bounds[1] == res.global_bound
         @test res.separation_bounds[2] == res.global_bound
@@ -303,15 +307,15 @@ using GenericLinearAlgebra
         end
         # matrices with radii, and other number types, are for method = :ball
         @test_throws ArgumentError verify_generalized_eigenpairs(
-            BallMatrix(A, fill(1e-12, 3, 3)), BallMatrix(B), F.vectors, F.values;
+            _sym(BallMatrix(A, fill(1e-12, 3, 3))), _sym(BallMatrix(B)), F.vectors, F.values;
             method = :paper)
         @test_throws ArgumentError verify_generalized_eigenpairs(
-            BallMatrix(BigFloat.(A)), BallMatrix(BigFloat.(B)), F.vectors, F.values;
+            _sym(BallMatrix(BigFloat.(A))), _sym(BallMatrix(BigFloat.(B))), F.vectors, F.values;
             method = :paper)
-        @test_throws ArgumentError verify_generalized_eigenpairs(A, B, F.vectors, F.values;
+        @test_throws ArgumentError verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values;
             method = :other)
         # B indefinite
-        res = verify_generalized_eigenpairs(A, [1.0 0.0 0.0; 0.0 -1.0 0.0; 0.0 0.0 1.0],
+        res = verify_generalized_eigenpairs(_sym(A), _sym([1.0 0.0 0.0; 0.0 -1.0 0.0; 0.0 0.0 1.0]),
             F.vectors, F.values)
         @test !res.certified
         @test occursin("Theorem 10", res.message)
@@ -322,26 +326,26 @@ using GenericLinearAlgebra
         B = BallMatrix([2.0 0.5; 0.5 2.0])
         F = eigen(Symmetric(mid(A)), Symmetric(mid(B)))
         # not symmetric
-        res = verify_generalized_eigenpairs(BallMatrix([4.0 1.0; 1.5 3.0]), B, F.vectors,
+        res = verify_generalized_eigenpairs(_sym(BallMatrix([4.0 1.0; 1.5 3.0])), _sym(B), F.vectors,
             F.values)
         @test !res.certified
         @test occursin("symmetric", res.message)
         @test all(isinf, res.separation_bounds)
-        res = verify_generalized_eigenpairs(BallMatrix(mid(A), [0.0 1e-3; 0.0 0.0]), B,
+        res = verify_generalized_eigenpairs(_sym(BallMatrix(mid(A), [0.0 1e-3; 0.0 0.0])), _sym(B),
             F.vectors, F.values)
         @test !res.certified
         # not sorted
-        res = verify_generalized_eigenpairs(A, B, F.vectors[:, [2, 1]], F.values[[2, 1]])
+        res = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors[:, [2, 1]], F.values[[2, 1]])
         @test !res.certified
         @test occursin("increasing", res.message)
         # B not positive definite: Theorem 4 does not apply
         Bi = BallMatrix([1.0 0.0; 0.0 -1.0])
         Fi = eigen(mid(A), mid(Bi))
-        res = verify_generalized_eigenpairs(A, Bi, real.(Fi.vectors), sort(real.(Fi.values)))
+        res = verify_generalized_eigenpairs(_sym(A), _sym(Bi), real.(Fi.vectors), sort(real.(Fi.values)))
         @test !res.certified
         # complex data
         @test_throws ArgumentError verify_generalized_eigenpairs(
-            BallMatrix(complex(mid(A))), BallMatrix(complex(mid(B))), F.vectors, F.values)
+            _sym(BallMatrix(complex(mid(A)))), _sym(BallMatrix(complex(mid(B)))), F.vectors, F.values)
     end
 
     @testset "successful results really contain the whole input ball" begin
@@ -357,7 +361,7 @@ using GenericLinearAlgebra
 
             F = eigen(Symmetric(Ac), Symmetric(Bc))
             p = sortperm(F.values)
-            res = verify_generalized_eigenpairs(A, B, Matrix(F.vectors)[:, p],
+            res = verify_generalized_eigenpairs(_sym(A), _sym(B), Matrix(F.vectors)[:, p],
                 collect(F.values)[p])
             res.certified || continue
 
@@ -387,7 +391,7 @@ using GenericLinearAlgebra
         X̃ = F.vectors
         λ̃ = F.values
 
-        result = verify_generalized_eigenpairs(A, B, X̃, λ̃)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), X̃, λ̃)
 
         @test result.certified
 
@@ -411,7 +415,7 @@ using GenericLinearAlgebra
         B = BallMatrix(B_center, fill(1e-8, n, n))
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
 
         @test result.certified
         @test length(result.eigenvalue_intervals) == n
@@ -428,7 +432,7 @@ using GenericLinearAlgebra
         B = BallMatrix([3.0 0.5; 0.5 3.0], fill(0.05, 2, 2))  # 5% uncertainty
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
 
         @test result.certified
 
@@ -443,14 +447,14 @@ using GenericLinearAlgebra
     @testset "Error Handling: Non-Square Matrices" begin
         A = BallMatrix(randn(3, 2), fill(1e-10, 3, 2))
         B = BallMatrix(Matrix{Float64}(I, 3, 3), fill(1e-10, 3, 3))
-        @test_throws DimensionMismatch verify_generalized_eigenpairs(A, B, randn(3, 3),
+        @test_throws DimensionMismatch verify_generalized_eigenpairs(_sym(A), _sym(B), randn(3, 3),
             randn(3))
     end
 
     @testset "Error Handling: Dimension Mismatch" begin
         A = BallMatrix(Matrix{Float64}(I, 3, 3), fill(1e-10, 3, 3))
         B = BallMatrix(Matrix{Float64}(I, 3, 3), fill(1e-10, 3, 3))
-        @test_throws DimensionMismatch verify_generalized_eigenpairs(A, B, randn(3, 2),
+        @test_throws DimensionMismatch verify_generalized_eigenpairs(_sym(A), _sym(B), randn(3, 2),
             randn(3))
     end
 
@@ -468,7 +472,7 @@ using GenericLinearAlgebra
         λ̃ = randn(2)
         λ̃ = sort(λ̃)  # Sort for separation algorithm
 
-        result = verify_generalized_eigenpairs(A, B, X̃, λ̃)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), X̃, λ̃)
 
         # Should fail or give very large bounds
         if result.certified
@@ -487,7 +491,7 @@ using GenericLinearAlgebra
         B = BallMatrix(Matrix{Float64}(I, 3, 3), fill(1e-10, 3, 3))
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
 
         @test result.certified
 
@@ -505,7 +509,7 @@ using GenericLinearAlgebra
         B = BallMatrix([2.0 0.5; 0.5 2.0], fill(1e-10, 2, 2))
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
 
         # Check all diagnostic fields are present and reasonable
         @test result.beta > 0

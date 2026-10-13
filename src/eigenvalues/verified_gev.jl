@@ -48,7 +48,8 @@ their approximations `λ̃₁ ≤ … ≤ λ̃ₙ` are both in increasing order.
 - `residual_norm::T`: an upper bound of `‖A X̃ − B X̃ D̃‖₂`.
 - `message::String`: empty on success.
 
-All the statements hold for every symmetric `A` and every symmetric `B` in the given balls.
+All the statements hold for every symmetric `A` and every symmetric `B` within the tolerances of
+the arguments.
 """
 struct GEVResult{T}
     certified::Bool
@@ -185,7 +186,14 @@ symmetric and `B` real symmetric positive definite: Algorithm 1 of Miyajima, Ogi
 Oishi (2010). `X̃` is the matrix of the approximate eigenvectors and `λ̃` the vector of the
 approximate eigenvalues, in increasing order, as returned by
 `eigen(Symmetric(mid(A)), Symmetric(mid(B)))`. Positive definiteness of `B` is proved, not
-assumed. The bounds hold for every symmetric `A` and every symmetric `B` in the given balls.
+assumed.
+
+That `A` and `B` are symmetric is the hypothesis of the theorem, and it is stated by the types
+of the arguments: each is a point matrix that is `Symmetric` (or real `Hermitian`) by its type,
+or a [`HermitianBallMatrix`](@ref), and the bounds then hold for every symmetric `A` and every
+symmetric `B` within the tolerances. A plain matrix or a plain ball matrix is refused: a ball
+matrix with positive radii contains matrices that are not symmetric. For a pencil without
+symmetry see [`miyajima_gev_enclosure`](@ref) and [`verifyeigall`](@ref).
 
 With `R_g := A X̃ − B X̃ D̃`, `D̃ := diag(λ̃)`, and `G_g := X̃ᵀ B X̃`:
 
@@ -209,8 +217,8 @@ Every scalar operation is rounded in the direction that keeps the bound.
 # The two versions
 
 `method = :paper` is Algorithm 1 as the paper computes it, for `A` and `B` in floating point
-(`Float32` or `Float64`, radius zero); it is the default when `A` and `B` are passed as plain
-matrices:
+(`Float32` or `Float64`, radius zero); it is the default when both have radius zero in one of
+those types:
 
   - `β` by Theorem 10, from a floating-point Cholesky factor `L̃` of `B`, an approximate inverse
     `X_L` of it obtained by substitution, and the a priori bounds of Theorems 8 and 9;
@@ -226,15 +234,15 @@ factorisation with `γₙ`, citing Higham, whose Theorem 10.3 has `γₙ₊₁`;
 `γₙ₊₁`. The paper does not write the formula of the enclosure of `R_g`; here column `j` of
 `B X̃ D̃` is enclosed by the products of `λ̃ⱼ` with `Z̲` and `Z̄`, rounded outwards.
 
-`method = :ball`, the default for ball matrices, gives the same four steps for matrices with
-radii and for any floating-point type: `R_g` and `G_g` are enclosed by ball products, the two
+`method = :ball`, the default otherwise, gives the same four steps for matrices with
+tolerances and for any floating-point type: `R_g` and `G_g` are enclosed by ball products, the two
 norms of Theorem 4 are bounded by [`upper_bound_L2_opnorm`](@ref), and `β` comes from
 [`compute_beta_bound`](@ref) (Remark 2 of the paper leaves the method for `β` open). It does
 not use Technique 2 or Theorem 10.
 
-The input is checked: a `DimensionMismatch` or an `ArgumentError` for wrong sizes or complex
-data; a result with `certified = false` when the midpoints or the radii of `A` or `B` are not
-symmetric, or `λ̃` is not sorted.
+The input is checked: a `DimensionMismatch` or an `ArgumentError` for wrong sizes, complex data
+or arguments that are not of the symmetric kinds; a result with `certified = false` when `λ̃` is
+not sorted.
 
 # Reference
 
@@ -242,8 +250,36 @@ S. Miyajima, T. Ogita, S. M. Rump and S. Oishi, "Fast verification for all eigen
 symmetric positive definite generalized eigenvalue problems", Reliable Computing 14 (2010),
 24-45.
 """
-function verify_generalized_eigenpairs(A::BallMatrix{T}, B::BallMatrix{T},
-        X̃::AbstractMatrix{<:Real}, λ̃::AbstractVector{<:Real}; method::Symbol = :ball) where {T}
+function verify_generalized_eigenpairs(
+        A::Union{HermitianBallMatrix{T}, _HermitianPointMatrix{T}},
+        B::Union{HermitianBallMatrix{T}, _HermitianPointMatrix{T}},
+        X̃::AbstractMatrix{<:Real}, λ̃::AbstractVector{<:Real};
+        method::Union{Nothing, Symbol} = nothing) where {T <: AbstractFloat}
+    Ah, Bh = _dense_hull(HermitianBallMatrix(A)), _dense_hull(HermitianBallMatrix(B))
+    if method === nothing
+        method = (T <: Union{Float32, Float64} && iszero(rad(Ah)) && iszero(rad(Bh))) ? :paper :
+                 :ball
+    end
+    return _gev_symmetric(Ah, Bh, X̃, λ̃, method)
+end
+
+# a plain matrix or a plain ball matrix: the hypothesis of the theorem is not stated
+function verify_generalized_eigenpairs(A::AbstractMatrix, B::AbstractMatrix,
+        X̃::AbstractMatrix, λ̃::AbstractVector; kwargs...)
+    throw(ArgumentError(
+        "verify_generalized_eigenpairs is for a symmetric pencil with B positive definite, " *
+        "and the symmetry is stated by the types: pass Symmetric(A), Symmetric(B) for " *
+        "matrices with exact entries, or HermitianBallMatrix(A), HermitianBallMatrix(B) for " *
+        "tolerances, whose statements are for the symmetric matrices within them. A ball " *
+        "matrix with positive radii contains matrices that are not symmetric; for a pencil " *
+        "without symmetry use miyajima_gev_enclosure or verifyeigall(A, B). Got " *
+        "$(typeof(A)) and $(typeof(B))"))
+end
+
+# Algorithm 1 for the symmetric matrices of the dense ball matrices A and B, whose midpoints and
+# radii are symmetric
+function _gev_symmetric(A::BallMatrix{T}, B::BallMatrix{T},
+        X̃::AbstractMatrix{<:Real}, λ̃::AbstractVector{<:Real}, method::Symbol) where {T}
     method in (:ball, :paper) || throw(ArgumentError("method must be :ball or :paper"))
     n = size(A, 1)
     (size(A) == (n, n) && size(B) == (n, n)) ||
@@ -307,13 +343,6 @@ function verify_generalized_eigenpairs(A::BallMatrix{T}, B::BallMatrix{T},
 end
 
 
-# floating-point matrices: the paper's own setting
-function verify_generalized_eigenpairs(A::AbstractMatrix{T}, B::AbstractMatrix{T},
-        X̃::AbstractMatrix{<:Real}, λ̃::AbstractVector{<:Real};
-        method::Symbol = :paper) where {T <: AbstractFloat}
-    return verify_generalized_eigenpairs(BallMatrix(Matrix(A)), BallMatrix(Matrix(B)), X̃, λ̃;
-        method)
-end
 
 # Theorem 5 from τᵢ ≥ β‖r⁽ⁱ⁾‖₂ and 0 ≤ μᵢ ≤ √gᵢ, then Steps 3 and 4 of Algorithm 1
 function _gev_steps_3_4(λ::Vector{T}, X::Matrix{T}, β::T, δ::T, τ::Vector{T}, μ::Vector{T},

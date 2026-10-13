@@ -81,13 +81,14 @@ statement that the result carries.
 
 1. The verified block diagonalisation gives the clusters, their intervals and the basis:
    [`miyajima2014a_schurnewton`](@ref) (Schur form followed by a Newton step for the decoupling)
-   for a ball matrix, [`schur_gershgorin_enclosure`](@ref) for a point matrix that is Hermitian
-   by its type, `Hermitian(M)` or `Symmetric(M)` with `M` real (`vbd_method = :schur_newton` or
+   for a ball matrix, [`schur_gershgorin_enclosure`](@ref) for a [`HermitianBallMatrix`](@ref)
+   or a point matrix that is Hermitian by its type (`vbd_method = :schur_newton` or
    `:nsd`; `:auto` takes `:nsd` when the midpoint is Hermitian, which is a choice of basis and
    not a statement about the ball). The clusters and intervals of the
    result are the certified ones of that routine: discs of the complex plane for a ball matrix,
    which with positive radii contains matrices that are not Hermitian, and real intervals for
-   a Hermitian point matrix.
+   a Hermitian ball matrix, where the statement is for the Hermitian matrices within the
+   tolerances.
 2. `Q` is that basis and `Q_inv` an approximate inverse in floating point (the adjoint for a
    unitary basis).
 3. `T = Q_inv A Q` in ball arithmetic, with the blocks that `block_structure` drops set to zero:
@@ -112,9 +113,9 @@ computed `S̃` and the residual of its solve is the lemma "Residual control of S
 `S − S̃ = −(I + R₂)⁻¹((I + R₂)S̃ − R₁)` stated in [`RigorousBlockSchurResult`](@ref).
 """
 rigorous_block_schur(A::BallMatrix; kwargs...) =
-    _rigorous_block_schur(_spectrum_kind(A), A; kwargs...)
+    _rigorous_block_schur(_spectrum_kind(A), _dense_hull(A); kwargs...)
 rigorous_block_schur(H::_HermitianPointMatrix; kwargs...) =
-    _rigorous_block_schur(_RealIntervals(), BallMatrix(Matrix(H)); kwargs...)
+    rigorous_block_schur(HermitianBallMatrix(H); kwargs...)
 
 # The block diagonalisation chosen by `vbd_method = :auto`. A unitary basis diagonalises a
 # Hermitian midpoint; another matrix needs the decoupling Newton step. Like the basis itself this

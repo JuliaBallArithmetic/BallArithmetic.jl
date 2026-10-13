@@ -211,7 +211,7 @@ which does not mean that the matrix is regular. How each is evaluated:
    rounded) by `verifylss`, all of whose lower ends must be nonnegative; an inverse with an
    entry equal to zero is therefore not recognised;
 4. with enclosures of the eigenvalues of the symmetric ball matrix `A_Δᵀ A_Δ − A_cᵀ A_c` by
-   `verifyeigall(...; method = :rumplange2023)`, all of whose lower ends must be nonnegative.
+   `verifyeigall` on that [`HermitianBallMatrix`](@ref) (Rump and Lange 2023), all of whose lower ends must be nonnegative.
 """
 function is_singular_sufficient_condition(A::BallMatrix{T}; conditions = 1:4) where {T}
     n = size(A, 1)
@@ -236,7 +236,8 @@ function is_singular_sufficient_condition(A::BallMatrix{T}; conditions = 1:4) wh
             else
                 Δ, C = BallMatrix(AΔ), BallMatrix(Ac)
                 S = _symmetric_part_ball(Δ' * Δ - C' * C, identity)
-                r = verifyeigall(S; method = :rumplange2023)
+                # every matrix Δ*Δ − C*C is Hermitian: the hypothesis of the method
+                r = verifyeigall(HermitianBallMatrix(S))
                 all(r.certified) && sum(length, r.clusters) == n &&
                     all(sub_down(real(r.centers[k]), r.radii[k]) >= 0 for k in eachindex(r.radii))
             end

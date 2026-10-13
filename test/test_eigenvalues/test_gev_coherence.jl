@@ -12,6 +12,10 @@ Tests consistency with:
 4. Floating-point solutions
 """
 
+# the symmetry of the pencil is stated by the types of the arguments
+_sym(X::BallMatrix) = HermitianBallMatrix(X)
+_sym(X::AbstractMatrix) = Symmetric(X)
+
 @testset "GEV Coherence Tests" begin
     @testset "Coherence with standard eigenvalue problem (B = I)" begin
         # When B = I, generalized problem reduces to standard Ax = λx
@@ -20,7 +24,7 @@ Tests consistency with:
 
         # Solve as GEV
         F_gev = eigen(Symmetric(A.c), Symmetric(B_identity.c))
-        result_gev = verify_generalized_eigenpairs(A, B_identity, F_gev.vectors, F_gev.values)
+        result_gev = verify_generalized_eigenpairs(_sym(A), _sym(B_identity), F_gev.vectors, F_gev.values)
 
         # Compare with standard eigenvalue problem
         true_eigenvalues = eigvals(Symmetric(A.c))
@@ -47,7 +51,7 @@ Tests consistency with:
         sort!(expected_eigenvalues)
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
 
         # 6/2 and 9/3 are both exactly 3: a double eigenvalue. Algorithm 1 bounds the two
         # copies by the global δ of Theorem 4 and the simple eigenvalue 4 by its own ε.
@@ -72,7 +76,7 @@ Tests consistency with:
         B = BallMatrix(Diagonal([2.0, 3.0, 4.0]), fill(1e-10, 3, 3))
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
 
         @test result.certified
         @test all(==(result.global_bound), result.separation_bounds)
@@ -91,7 +95,7 @@ Tests consistency with:
         expected = sort([2.0 / 2.0, 9.0 / 3.0, 32.0 / 4.0])   # [1.0, 3.0, 8.0]
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
 
         @test result.certified
         for i in 1:3
@@ -113,8 +117,8 @@ Tests consistency with:
         F = eigen(Symmetric(A.c), Symmetric(B.c))
         F_scaled = eigen(Symmetric(A_scaled.c), Symmetric(B_scaled.c))
 
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
-        result_scaled = verify_generalized_eigenpairs(A_scaled, B_scaled,
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
+        result_scaled = verify_generalized_eigenpairs(_sym(A_scaled), _sym(B_scaled),
             F_scaled.vectors, F_scaled.values)
 
         @test result.certified && result_scaled.certified
@@ -140,7 +144,7 @@ Tests consistency with:
         B = BallMatrix([2.0 0.0 0.0; 0.0 2.5 0.0; 0.0 0.0 3.0], fill(1e-8, 3, 3))
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
 
         @test result.certified
 
@@ -161,7 +165,7 @@ Tests consistency with:
         B = BallMatrix([2.0 0.5; 0.5 2.0], fill(1e-10, 2, 2))
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
 
         @test result.certified
 
@@ -183,7 +187,7 @@ Tests consistency with:
         B = BallMatrix([3.0 0.0; 0.0 3.0], fill(1e-12, 2, 2))
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
 
         @test result.certified
 
@@ -209,7 +213,7 @@ Tests consistency with:
         B = BallMatrix([2.0 0.2 0.0; 0.2 2.5 0.1; 0.0 0.1 3.0], fill(1e-10, 3, 3))
 
         F = eigen(Symmetric(A.c), Symmetric(B.c))
-        result = verify_generalized_eigenpairs(A, B, F.vectors, F.values)
+        result = verify_generalized_eigenpairs(_sym(A), _sym(B), F.vectors, F.values)
 
         @test result.certified
 
@@ -228,7 +232,7 @@ Tests consistency with:
 
         # Good approximation (from eigen)
         F_good = eigen(Symmetric(A.c), Symmetric(B.c))
-        result_good = verify_generalized_eigenpairs(A, B, F_good.vectors, F_good.values)
+        result_good = verify_generalized_eigenpairs(_sym(A), _sym(B), F_good.vectors, F_good.values)
 
         # Poor approximation (random vectors and eigenvalues)
         X_poor = randn(2, 2)
@@ -236,7 +240,7 @@ Tests consistency with:
         X_poor = Matrix(X_poor)
         λ_poor = sort(randn(2))
 
-        result_poor = verify_generalized_eigenpairs(A, B, X_poor, λ_poor)
+        result_poor = verify_generalized_eigenpairs(_sym(A), _sym(B), X_poor, λ_poor)
 
         # Good approximation should have smaller residual
         if result_poor.certified
@@ -254,12 +258,12 @@ Tests consistency with:
 
         # Solver 1: Standard eigen
         F1 = eigen(Symmetric(A.c))
-        result1 = verify_generalized_eigenpairs(A, B, F1.vectors, F1.values)
+        result1 = verify_generalized_eigenpairs(_sym(A), _sym(B), F1.vectors, F1.values)
 
         # Solver 2: SVD-based (A = UΣV', eigenvalues are Σ²)
         # For this test, just use eigen again but verify independently
         F2 = eigen(Symmetric(A.c))
-        result2 = verify_generalized_eigenpairs(A, B, F2.vectors, F2.values)
+        result2 = verify_generalized_eigenpairs(_sym(A), _sym(B), F2.vectors, F2.values)
 
         @test result1.certified && result2.certified
 

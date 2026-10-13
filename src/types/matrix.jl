@@ -23,8 +23,93 @@ types used for the midpoints (`CM`) and radii (`RM`).
 
 Users typically construct instances through the `BallMatrix`
 constructors below rather than specifying these parameters explicitly.
+
+# What set of matrices a ball matrix is
+
+A ball matrix with midpoint `M` and radius `R` is the set of the matrices `X` with
+`|X − M| ≤ R` entrywise. With positive radii it is an open set of matrices, whatever `M` is: it
+contains matrices that are not Hermitian, not symmetric, not triangular.
+
+The storage types `CM` and `RM` say more, and the routines dispatch on them.
+
+1. `M` and `R` plain matrices: the set above. Enclosures of eigenvalues are discs of the complex
+   plane.
+2. `M` stored as `Hermitian` (or real `Symmetric`), `R` a plain matrix: the same set, around a
+   Hermitian midpoint. The enclosures are still discs; the approximations that are certified are
+   those of a Hermitian matrix.
+3. `M` stored as `Hermitian` (or real `Symmetric`) and `R` stored as `Symmetric`: a
+   [`HermitianBallMatrix`](@ref). A `Symmetric` radius holds one tolerance for each pair `{i, j}`,
+   which is the freedom of a Hermitian perturbation, and by the convention of this package such a
+   ball matrix is the set of the Hermitian matrices `X` with `|X − M| ≤ R`. That the matrix is
+   Hermitian is then a hypothesis the caller has stated by building this type; enclosures of
+   eigenvalues are real intervals, and the statements of the routines are for the Hermitian
+   matrices within the tolerances and for no others.
+
+The third is a convention and not a consequence of the entrywise definition: the entrywise ball
+around a Hermitian midpoint with a symmetric radius contains matrices that are not Hermitian. For
+storage as `Diagonal` or triangular the restriction does follow from the definition, since the
+entries outside the structure are zero with radius zero.
+
+Sums, differences and real multiples of ball matrices of the third kind are of the third kind;
+products are not, and are returned with plain storage.
 """
 const BallMatrix{T, NT, BT, CM, RM} = BallArray{T, 2, NT, BT, CM, RM}
+
+# A midpoint stored as Hermitian, or as real Symmetric; a radius stored as Symmetric (a real
+# Hermitian matrix is the same thing).
+const _HermitianCentre{T} = Union{Hermitian{T, <:AbstractMatrix{T}},
+    Hermitian{Complex{T}, <:AbstractMatrix{Complex{T}}}, Symmetric{T, <:AbstractMatrix{T}}}
+const _SymmetricRadius{T} = Union{Symmetric{T, <:AbstractMatrix{T}},
+    Hermitian{T, <:AbstractMatrix{T}}}
+
+# A point matrix that is Hermitian by its type, or real symmetric.
+const _HermitianPointMatrix{T <: AbstractFloat} = _HermitianCentre{T}
+
+"""
+    HermitianBallMatrix{T}
+
+The [`BallMatrix`](@ref) whose midpoint is stored as `Hermitian` (or real `Symmetric`) and whose
+radius is stored as `Symmetric`: the set of the Hermitian matrices `X` with `|X − M| ≤ R`
+entrywise. Building one states the hypothesis that the matrix is Hermitian; the routines that
+receive it return real intervals for its eigenvalues, and their statements are for the Hermitian
+matrices within the tolerances. See [`BallMatrix`](@ref) for the convention.
+
+    HermitianBallMatrix(M, R; uplo = :U)
+    HermitianBallMatrix(M; uplo = :U)
+    HermitianBallMatrix(A::BallMatrix; uplo = :U)
+
+`BallMatrix(Hermitian(M, uplo), Symmetric(R, uplo))`, with radius zero in the second form and
+`M = mid(A)`, `R = rad(A)` in the third. Only the triangle `uplo` of `M` and of `R` is read, as
+`Hermitian` and `Symmetric` do; the other triangle is not compared with it. On the diagonal the
+midpoint is the real part of that of `M`, with the same radius.
+"""
+const HermitianBallMatrix{T} = BallMatrix{
+    T, NT, BT, CM, RM} where {NT, BT, CM <: _HermitianCentre{T}, RM <: _SymmetricRadius{T}}
+
+function HermitianBallMatrix(M::AbstractMatrix{NT}, R::AbstractMatrix{T};
+        uplo::Symbol = :U) where {T <: AbstractFloat, NT <: Union{T, Complex{T}}}
+    size(M) == size(R) || throw(DimensionMismatch("midpoint $(size(M)) and radius $(size(R))"))
+    size(M, 1) == size(M, 2) || throw(DimensionMismatch("a Hermitian matrix is square"))
+    # `Hermitian` reads the real part of the diagonal of `M`. A Hermitian matrix has a real
+    # diagonal entry d, and |d − Re m| ≤ |d − m| ≤ r, so the radius is kept as it is.
+    return BallMatrix(Hermitian(Matrix{NT}(M), uplo), Symmetric(Matrix{T}(R), uplo))
+end
+HermitianBallMatrix(M::AbstractMatrix{NT}; uplo::Symbol = :U) where {NT <: Union{AbstractFloat, Complex{<:AbstractFloat}}} =
+    HermitianBallMatrix(M, zeros(real(NT), size(M)); uplo)
+HermitianBallMatrix(A::BallMatrix; uplo::Symbol = :U) =
+    HermitianBallMatrix(Matrix(mid(A)), Matrix(rad(A)); uplo)
+# already of the kind
+HermitianBallMatrix(A::HermitianBallMatrix) = A
+# a point matrix that is Hermitian by its type keeps its own triangle
+HermitianBallMatrix(H::_HermitianCentre{T}) where {T <: AbstractFloat} =
+    BallMatrix(H, Symmetric(zeros(T, size(H)), Symbol(H.uplo)))
+
+# The dense ball matrix that contains every matrix of the set: for a Hermitian ball matrix the two
+# triangles are written out, so every Hermitian matrix within the tolerances is in it.
+_dense_hull(A::BallMatrix) = A
+_dense_hull(A::HermitianBallMatrix) = BallMatrix(Matrix(mid(A)), Matrix(rad(A)))
+
+export HermitianBallMatrix
 
 """
     DenseBallMatrix{T, NT}

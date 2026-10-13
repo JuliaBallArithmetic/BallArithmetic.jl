@@ -1126,7 +1126,7 @@ end
 # `rigorous_symmetric_eigen_bigfloat` was removed on 2026-10-11: it gave every entry of the
 # eigenvector matrix the radius "orthogonality defect plus norm of rad(A)", with no eigenvalue
 # gap. Verified eigenvalues and bases of invariant subspaces of a Hermitian ball matrix, at any
-# precision, are `verifyeigall(A; method = :rumplange2023)`.
+# precision, are `verifyeigall(A)` for a `HermitianBallMatrix` `A`.
 
 #==============================================================================#
 # Stub functions for Double64 extension (DoubleFloatsExt)

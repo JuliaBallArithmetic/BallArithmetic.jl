@@ -101,7 +101,7 @@ end
     end
     @testset "through verifyeigall" begin
         A = hermitian([-2.0, -1.0, 0.5, 0.5 + 1e-12, 3.0, 4.0], Float64)
-        r = verifyeigall(BallMatrix(A); method = :rumplange2023)
+        r = verifyeigall(HermitianBallMatrix(A))
         @test r isa VerifyEigAllResult
         @test r.spectrum_covered && all(r.certified)
         λ = setprecision(() -> eigvals(Hermitian(big.(A))), BigFloat, 1024)
@@ -117,7 +117,7 @@ end
         @test 1e-6 < maximum(rad(r.similarity)) < 1e-1
         # with the threshold it is one cluster with a narrow invariant subspace, and the block
         # resolvent floor of a Hermitian matrix is then the distance to the spectrum
-        k = verifyeigall(BallMatrix(A); method = :rumplange2023, kappa = 1e-8)
+        k = verifyeigall(HermitianBallMatrix(A); kappa = 1e-8)
         @test sort(length.(k.clusters)) == [1, 1, 1, 1, 2]
         @test maximum(rad(k.similarity)) < 1e-12
         f = block_resolvent_floor(k)
@@ -128,7 +128,7 @@ end
             @test 0 < s <= truth * (1 + 1e-10)
             @test s >= 0.99 * truth
         end
-        @test_throws MethodError verifyeigall(BallMatrix(A); method = :rumplange2023, maxiter = 3)
+        @test_throws MethodError verifyeigall(HermitianBallMatrix(A); maxiter = 3)
         @test_throws ArgumentError BallArithmetic._rumplange2023_eig(BallMatrix(randn(rng, 2, 3)))
     end
 end

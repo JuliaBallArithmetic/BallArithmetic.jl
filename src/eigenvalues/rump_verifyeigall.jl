@@ -969,8 +969,11 @@ visible in the name rather than buried in a docstring:
 | `:rump2022aschur` | [`_rump2022a_schur`](@ref) | Theorem 2.2 in the frame of a Schur decomposition in place of the eigenvector matrix of the paper's step 1, without the recursion of step 6; a deviation, named for it |
 | `:rump2022aschurstep6` | [`_rump2022a_schur_step6`](@ref) | the Schur frame followed by the recursion of step 6 on the columns left uncertified; a deviation, named for it |
 | `:rump2022aconditioned` | [`_rump2022a_conditioned`](@ref) | the eigenvector frame when its condition number is at most `kappa_max`, the Schur frame otherwise, and the same rule in the recursion of step 6; a deviation, named for it |
-| `:rumplange2023` | [`_rumplange2023`](@ref) | Algorithm `verifyeigall` of Rump and Lange (2023) for a Hermitian matrix: residual bounds, clusters, refinement by Rayleigh quotients, orthonormal bases of the invariant subspaces; the statements are for the Hermitian matrices of the ball; its one keyword is the clustering threshold `kappa` |
 | `:miyajima2014a` | [`_miyajima2014a_alg1`](@ref) | Algorithms 1 and 2 of Miyajima (2014): Gershgorin discs on the pencil transformed by an approximate generalised eigendecomposition, each cluster certified by Brouwer's theorem on a Newton operator |
+
+For a Hermitian matrix the algorithm of Rump and Lange (2023) is reached by the type of the
+argument, `verifyeigall(A)` with `A` a [`HermitianBallMatrix`](@ref) or `Hermitian(M)`; it is
+not a method of a plain ball matrix.
 
 The Neumann variant is kept because it does not need the solve to
 succeed, so it still returns a result where the solve declines; where both succeed, the
@@ -1011,6 +1014,30 @@ function verifyeigall(B::BallMatrix{T}; method::Union{Nothing, Symbol} = nothing
     return (q.spectrum_covered || _rump2022a_columns(q) > _rump2022a_columns(r)) ? q : r
 end
 
+"""
+    verifyeigall(A::HermitianBallMatrix; kappa = 0) -> VerifyEigAllResult
+    verifyeigall(H::Hermitian; kappa = 0)
+
+Verified inclusions of all eigenvalues and of orthonormal bases of the invariant subspaces of a
+Hermitian matrix, by the algorithm `verifyeigall` of Rump and Lange (2023); see
+[`_rumplange2023`](@ref) for the fields of the result. For a [`HermitianBallMatrix`](@ref) the
+statements hold for every Hermitian matrix within the tolerances, as in the paper ("the results
+are true for every symmetric or Hermitian A ∈ **A**"), and for no other matrix of the entrywise
+ball. `kappa` is the clustering threshold.
+
+# Reference
+
+S. M. Rump and M. Lange, *Fast computation of error bounds for all eigenpairs of a Hermitian and
+all singular pairs of a rectangular matrix with emphasis on eigen- and singular value clusters*,
+J. Comput. Appl. Math. **434** (2023) 115332, doi 10.1016/j.cam.2023.115332.
+"""
+function verifyeigall(A::HermitianBallMatrix; kappa::Real = 0)
+    size(A, 1) == size(A, 2) || throw(ArgumentError("verifyeigall expects a square matrix"))
+    return _rumplange2023(_dense_hull(A); kappa)
+end
+verifyeigall(H::_HermitianPointMatrix; kappa::Real = 0) =
+    verifyeigall(HermitianBallMatrix(H); kappa)
+
 function _verifyeigall_method(B::BallMatrix, method::Symbol; kwargs...)
     method === :rump2022a && return _rump2022a(B; kwargs...)
     method === :rump2022aneumann && return _rump2022aneumann(B; kwargs...)
@@ -1018,13 +1045,17 @@ function _verifyeigall_method(B::BallMatrix, method::Symbol; kwargs...)
     method === :rump2022aschur && return _rump2022a_schur(B; kwargs...)
     method === :rump2022aschurstep6 && return _rump2022a_schur_step6(B; kwargs...)
     method === :rump2022aconditioned && return _rump2022a_conditioned(B; kwargs...)
-    method === :rumplange2023 && return _rumplange2023(B; kwargs...)
+    method === :rumplange2023 && throw(ArgumentError(
+        "verifyeigall: the method of Rump and Lange (2023) is for a Hermitian matrix, and a " *
+        "ball matrix with positive radii contains matrices that are not Hermitian. State the " *
+        "hypothesis in the type: verifyeigall(HermitianBallMatrix(A)), whose statements are " *
+        "for the Hermitian matrices within the tolerances"))
     method === :miyajima2014a &&
         return _miyajima2014a_alg1(B, BallMatrix(Matrix{eltype(mid(B))}(I, size(B)...)))
     throw(ArgumentError("verifyeigall: unknown method $(repr(method)); the implemented " *
                         "methods are :rump2022a, :rump2022aneumann, :rump2022adiscclusters, " *
                         ":rump2022aschur, :rump2022aschurstep6, :rump2022aconditioned, " *
-                        ":rumplange2023 and :miyajima2014a"))
+                        "and :miyajima2014a"))
 end
 
 """

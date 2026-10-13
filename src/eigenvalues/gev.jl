@@ -202,10 +202,10 @@ The type of the argument decides the kind of ball:
 - for a `BallMatrix` the balls are discs of the complex plane, with complex centres, also when
   the matrix is real and the computed eigenvalues are real: matrices in the input ball may have
   complex eigenvalues, which lie in the discs;
-- for a point matrix that is Hermitian by its type, `Hermitian(M)` or `Symmetric(M)` with `M`
-  real, the eigenvalues are real and the balls are real intervals. There is no such method for
-  a ball matrix: with positive radii it is an open set of matrices, which contains matrices
-  that are not Hermitian.
+- for a [`HermitianBallMatrix`](@ref), the Hermitian matrices within the tolerances, and for a
+  point matrix that is Hermitian by its type (`Hermitian(M)`, or `Symmetric(M)` with `M` real),
+  the eigenvalues are real and the balls are real intervals: every eigenvalue of every
+  Hermitian matrix within the tolerances lies in their union.
 
 # References
 
@@ -223,17 +223,16 @@ function rigorous_eigenvalues(A::BallMatrix{T}) where {T}
     return _certify_eigenvalues(A, Eigen(Vector{CT}(F.values), Matrix{CT}(F.vectors)))
 end
 
-# A point matrix that is Hermitian by its type, or real symmetric. A ball matrix with positive
-# radii is an open set of matrices and contains matrices that are not Hermitian, so it has no
-# such method: it goes to the general one above.
-const _HermitianPointMatrix{T} = Union{
-    Hermitian{T, <:AbstractMatrix{T}}, Hermitian{Complex{T}, <:AbstractMatrix{Complex{T}}},
-    Symmetric{T, <:AbstractMatrix{T}}} where {T <: AbstractFloat}
-
-function rigorous_eigenvalues(H::_HermitianPointMatrix)
-    # the matrix the wrapper stands for, exactly: its stored triangle mirrored
-    return _certify_eigenvalues(BallMatrix(Matrix(H)), eigen(H))
+# A Hermitian ball matrix: the statement is for the Hermitian matrices within the tolerances, whose
+# eigenvalues are real, so the discs of the theorem are cut down to real intervals. The
+# certification runs on the dense ball matrix that contains them all, with the eigendecomposition
+# of the Hermitian midpoint, whose eigenvalues are real numbers.
+function rigorous_eigenvalues(A::HermitianBallMatrix)
+    D = _dense_hull(A)
+    return _certify_eigenvalues(D, eigen(Hermitian(mid(D))))
 end
+# a point matrix that is Hermitian by its type: the same with radius zero
+rigorous_eigenvalues(H::_HermitianPointMatrix) = rigorous_eigenvalues(HermitianBallMatrix(H))
 
 """
     evbox(A::BallMatrix)
