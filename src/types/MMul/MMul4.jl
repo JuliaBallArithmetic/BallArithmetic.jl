@@ -1,77 +1,4 @@
 
-function MMul4(A::BallMatrix{T, T}, B::BallMatrix{T, T}) where {T <: AbstractFloat}
-    mA, rA = mid(A), rad(A)
-    mB, rB = mid(B), rad(B)
-
-    C2, rC = setrounding(T, RoundUp) do
-        abs_mA = abs_preserving_structure(mA)
-        abs_mB = abs_preserving_structure(mB)
-        rC = abs_mA * rB + rA * (abs_mB + rB)
-        C2 = mA * mB + rC
-        return C2, rC
-    end
-
-    C1 = setrounding(T, RoundDown) do
-        C1 = mA * mB - rC
-        return C1
-    end
-
-    mC, rC = setrounding(T, RoundUp) do
-        mC = (C1 + C2) / 2
-        rC = mC - C1
-        return mC, rC
-    end
-    return BallMatrix(mC, rC)
-end
-
-function MMul4(A::AbstractMatrix{T}, B::BallMatrix{T, T}) where {T <: AbstractFloat}
-    mA = mid(A)
-    mB, rB = mid(B), rad(B)
-
-    C2, rC = setrounding(T, RoundUp) do
-        abs_mA = abs_preserving_structure(mA)
-        rC = abs_mA * rB
-        C2 = mA * mB + rC
-        return C2, rC
-    end
-
-    C1 = setrounding(T, RoundDown) do
-        C1 = mA * mB - rC
-        return C1
-    end
-
-    mC, rC = setrounding(T, RoundUp) do
-        mC = (C1 + C2) / 2
-        rC = mC - C1
-        return mC, rC
-    end
-    BallMatrix(mC, rC)
-end
-
-function MMul4(A::BallMatrix{T, T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
-    mA, rA = mid(A), rad(A)
-    mB = mid(B)
-
-    C2, rC = setrounding(T, RoundUp) do
-        abs_mB = abs_preserving_structure(mB)
-        rC = rA * abs_mB
-        C2 = mA * mB + rC
-        return C2, rC
-    end
-
-    C1 = setrounding(T, RoundDown) do
-        C1 = mA * mB - rC
-        return C1
-    end
-
-    mC, rC = setrounding(T, RoundUp) do
-        mC = (C1 + C2) / 2
-        rC = mC - C1
-        return mC, rC
-    end
-    return BallMatrix(mC, rC)
-end
-
 # The product of two floating-point matrices with the rounding mode downward and upward:
 # `fl▽(AB)` and `fl△(AB)` in the notation of Rump's papers, entrywise below and above `AB`.
 function _product_down_up(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
@@ -92,24 +19,108 @@ _product_up(A::AbstractVecOrMat{T}, B::AbstractVecOrMat{T}) where {T <: Abstract
         A * B
     end
 
+# `fl▽(AB)` alone.
+_product_down(A::AbstractVecOrMat{T}, B::AbstractVecOrMat{T}) where {T <: AbstractFloat} =
+    setrounding(T, RoundDown) do
+        A * B
+    end
+
+# Sums, differences and multiples of matrices rounded upward or downward. A product above is an
+# OpenBLAS call and follows the rounding mode by the build of OpenBLAS that the package loads; a
+# sum, a difference, a multiple by a scalar are Julia's own loops, and that they follow the mode is
+# checked when the package is loaded (`NumericalTest.check_array_rounding`). Where that check
+# failed, for `Float32` and `Float64`, they are formed entry by entry with the directed operations
+# of RoundingEmulator. Every sum that the product routines form under a rounding mode goes through
+# these functions.
+_entrywise_rounding(::Type{T}) where {T} =
+    T <: Union{Float32, Float64} && !NumericalTest.ARRAY_ROUNDING_OK[]
+
+function _add_up(X::AbstractVecOrMat{T}, Y::Union{T, AbstractVecOrMat{T}}) where {T <: AbstractFloat}
+    _entrywise_rounding(T) && return add_up.(X, Y)
+    return setrounding(T, RoundUp) do
+        X .+ Y
+    end
+end
+function _add_down(X::AbstractVecOrMat{T}, Y::Union{T, AbstractVecOrMat{T}}) where {T <: AbstractFloat}
+    _entrywise_rounding(T) && return add_down.(X, Y)
+    return setrounding(T, RoundDown) do
+        X .+ Y
+    end
+end
+function _sub_up(X::AbstractVecOrMat{T}, Y::AbstractVecOrMat{T}) where {T <: AbstractFloat}
+    _entrywise_rounding(T) && return sub_up.(X, Y)
+    return setrounding(T, RoundUp) do
+        X .- Y
+    end
+end
+function _sub_down(X::AbstractVecOrMat{T}, Y::AbstractVecOrMat{T}) where {T <: AbstractFloat}
+    _entrywise_rounding(T) && return sub_down.(X, Y)
+    return setrounding(T, RoundDown) do
+        X .- Y
+    end
+end
+# `fl△(αX)` for a scalar `α ≥ 0` and `X ≥ 0`
+function _scale_up(α::T, X::AbstractVecOrMat{T}) where {T <: AbstractFloat}
+    _entrywise_rounding(T) && return mul_up.(α, X)
+    return setrounding(T, RoundUp) do
+        α .* X
+    end
+end
+
+# The ball with the bounds `L ≤ U`: centre `M = fl△((L + U)/2)` and radius `fl△(M − L)`. The
+# centre is rounded upward, so `U − M ≤ M − L` and the radius covers both ends.
+function _centre_radius_up(L::AbstractVecOrMat{T}, U::AbstractVecOrMat{T}) where {T <: AbstractFloat}
+    if _entrywise_rounding(T)
+        M = div_up.(add_up.(L, U), T(2))
+        return M, sub_up.(M, L)
+    end
+    return setrounding(T, RoundUp) do
+        M = (L .+ U) ./ 2
+        M, M .- L
+    end
+end
+
 # `fl△(X + AB)`: an entrywise upper bound of `X + AB` when `A` and `B` are non-negative, the sum
 # under the rounding mode as well as the product.
 function _sum_product_up(X::AbstractVecOrMat{T}, A::AbstractVecOrMat{T},
         B::AbstractVecOrMat{T}) where {T <: AbstractFloat}
     # the sum is Julia's own loop: entry by entry where the check at load time failed
-    NumericalTest.ARRAY_ROUNDING_OK[] || return add_up.(X, _product_up(A, B))
+    _entrywise_rounding(T) && return add_up.(X, _product_up(A, B))
     return setrounding(T, RoundUp) do
         X + A * B
     end
 end
 
-function MMul4(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
-    C1, C2 = _product_down_up(mid(A), mid(B))
-
-    mC, rC = setrounding(T, RoundUp) do
-        mC = (C1 + C2) / 2
-        rC = mC - C1
-        return mC, rC
+# Rump, Numer. Algorithms 61 (2012), MMul4: with the radius `R` of the product,
+# `[fl▽(mA mB) − R, fl△(mA mB) + R]` rounded outward, then the centre and the radius of that
+# interval. The four methods differ only in `R`.
+function _mmul4(mA::AbstractMatrix{T}, mB::AbstractMatrix{T}, R) where {T <: AbstractFloat}
+    C1, C2 = _product_down_up(mA, mB)
+    if R !== nothing
+        C1, C2 = _sub_down(C1, R), _add_up(C2, R)
     end
+    mC, rC = _centre_radius_up(C1, C2)
     return BallMatrix(mC, rC)
 end
+
+function MMul4(A::BallMatrix{T, T}, B::BallMatrix{T, T}) where {T <: AbstractFloat}
+    mA, rA = mid(A), rad(A)
+    mB, rB = mid(B), rad(B)
+    abs_mA = abs_preserving_structure(mA)
+    abs_mB = abs_preserving_structure(mB)
+    # R = fl△(|mA| rB + rA (|mB| + rB))
+    R = _sum_product_up(_product_up(abs_mA, rB), rA, _add_up(abs_mB, rB))
+    return _mmul4(mA, mB, R)
+end
+
+function MMul4(A::AbstractMatrix{T}, B::BallMatrix{T, T}) where {T <: AbstractFloat}
+    mB, rB = mid(B), rad(B)
+    return _mmul4(A, mB, _product_up(abs_preserving_structure(A), rB))
+end
+
+function MMul4(A::BallMatrix{T, T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
+    mA, rA = mid(A), rad(A)
+    return _mmul4(mA, B, _product_up(rA, abs_preserving_structure(B)))
+end
+
+MMul4(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat} = _mmul4(A, B, nothing)

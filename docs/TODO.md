@@ -1000,9 +1000,14 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     agree, the check takes 0.0009 s and the package loads in 2.2 s (`load_check.jl`). Where
     it fails, the sums of ball matrices fall back to the entrywise directed operations and an
     error is logged.
-    **To do:** the products `MMul3`, `MMul4`, `MMul5` and `oishi_MMul` add and subtract
-    matrices under a rounding mode after their BLAS products and have no fallback: on a
-    machine where the check fails they are not rigorous, which the logged error says. The
-    check does not cover `BigFloat`, views or sparse matrices.
+    The products `MMul3`, `MMul4`, `MMul5` and `oishi_MMul` add and subtract matrices under
+    a rounding mode after their BLAS products and had no fallback. **Written, 2026-10-13,
+    not yet run:** every such sum goes through `_add_up`, `_add_down`, `_sub_up`,
+    `_sub_down`, `_scale_up`, `_centre_radius_up` and `_sum_product_up` in
+    `src/types/MMul/MMul4.jl`, which use the entrywise directed operations for `Float32` and
+    `Float64` where the check failed; the three `MMul4` methods share `_mmul4`. The test
+    sets the flag to `false` and compares with the rounding-mode form.
+    **To do:** the 16 other `setrounding` blocks outside `src/types/MMul` have not been read
+    for array sums. The check does not cover `BigFloat`, views or sparse matrices.
     Suite at 6c3ccb6 on nighthawk: 183,158 passed, none failed (`rigour_suite78.out`);
     RigorousPseudospectra 300 of 300.

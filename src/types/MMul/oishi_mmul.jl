@@ -32,18 +32,12 @@ function _oishi_MMul_up_lo(F::AbstractMatrix{<:Complex}, G::AbstractMatrix{<:Com
     Gr, Gi = real.(G), imag.(G)
 
     # lower bounds (RoundDown)
-    Hrl, Hil = setrounding(T, RoundDown) do
-        Hrl = Fr * Gr + (-Fi) * Gi            # Re = Fr*Gr - Fi*Gi
-        Hil = Fr * Gi + Fi * Gr             # Im = Fr*Gi + Fi*Gr
-        return Hrl, Hil
-    end
+    Hrl = _add_down(_product_down(Fr, Gr), _product_down(-Fi, Gi))   # Re = Fr*Gr - Fi*Gi
+    Hil = _add_down(_product_down(Fr, Gi), _product_down(Fi, Gr))    # Im = Fr*Gi + Fi*Gr
 
     # upper bounds (RoundUp)
-    Hru, Hiu = setrounding(T, RoundUp) do
-        Hru = Fr * Gr + (-Fi) * Gi
-        Hiu = Fr * Gi + Fi * Gr
-        return Hru, Hiu
-    end
+    Hru = _add_up(_product_up(Fr, Gr), _product_up(-Fi, Gi))
+    Hiu = _add_up(_product_up(Fr, Gi), _product_up(Fi, Gr))
 
     return Hrl, Hru, Hil, Hiu, T
 end
@@ -129,18 +123,9 @@ function _ccrprod(J::AbstractMatrix{<:Complex},
         Hr = T.(Hr)
     end
 
-    R, Kru, Kiu = setrounding(T, RoundUp) do
-        R = (abs.(real(J)) + abs.(imag(J))) * Hr
-        Kru = Mru + R
-        Kiu = Miu + R
-        return R, Kru, Kiu
-    end
-
-    Krl, Kil = setrounding(T, RoundDown) do
-        Krl = Mrl - R
-        Kil = Mil - R
-        return Krl, Kil
-    end
+    R = _product_up(_add_up(abs.(real(J)), abs.(imag(J))), Hr)
+    Kru, Kiu = _add_up(Mru, R), _add_up(Miu, R)
+    Krl, Kil = _sub_down(Mrl, R), _sub_down(Mil, R)
 
     return Krl, Kru, Kil, Kiu, T
 end
@@ -179,19 +164,9 @@ function _ccrprod_prime(
         J = CT.(J)
     end
 
-    R, Kru, Kiu = setrounding(T, RoundUp) do
-        S = abs.(real(J)) .+ abs.(imag(J))
-        R = Hr * S
-        Kru = Mru + R
-        Kiu = Miu + R
-        return R, Kru, Kiu
-    end
-
-    Krl, Kil = setrounding(T, RoundDown) do
-        Krl = Mrl - R
-        Kil = Mil - R
-        return Krl, Kil
-    end
+    R = _product_up(Hr, _add_up(abs.(real(J)), abs.(imag(J))))
+    Kru, Kiu = _add_up(Mru, R), _add_up(Miu, R)
+    Krl, Kil = _sub_down(Mrl, R), _sub_down(Mil, R)
 
     return Krl, Kru, Kil, Kiu, T
 end
@@ -278,16 +253,9 @@ function _iprod(
     Gc = T.(Gc)
     Gr = T.(Gr)
 
-    R, Hu = setrounding(T, RoundUp) do
-        R = abs.(F) * Gr
-        Hu = F * Gc + R
-        return R, Hu
-    end
-
-    Hl = setrounding(T, RoundDown) do
-        Hl = F * Gc - R
-        return Hl
-    end
+    R = _product_up(abs.(F), Gr)
+    Hl, Hu = _product_down_up(F, Gc)
+    Hl, Hu = _sub_down(Hl, R), _add_up(Hu, R)
 
     return Hl, Hu, T
 end
@@ -309,16 +277,9 @@ function _iprod_right(
     Gr = T.(Gr)
     F = T.(F)
 
-    R, Hu = setrounding(T, RoundUp) do
-        absF = abs.(F)
-        R = Gr * absF
-        Hu = Gc * F + R
-        return R, Hu
-    end
-
-    Hl = setrounding(T, RoundDown) do
-        Gc * F - R
-    end
+    R = _product_up(Gr, abs.(F))
+    Hl, Hu = _product_down_up(Gc, F)
+    Hl, Hu = _sub_down(Hl, R), _add_up(Hu, R)
 
     return Hl, Hu
 end
@@ -355,17 +316,8 @@ function _ciprod(J::AbstractMatrix{<:Complex},
     Mril, Mriu, _ = _iprod(Jr, Hic, Hir)
     Miil, Miiu, _ = _iprod(Ji, Hic, Hir)
 
-    Krl, Kil = setrounding(T, RoundDown) do
-        Krl = Mrrl - Miiu
-        Kil = Mirl + Mril
-        return Krl, Kil
-    end
-
-    Kru, Kiu = setrounding(T, RoundUp) do
-        Kru = Mrru - Miil
-        Kiu = Miru + Mriu
-        return Kru, Kiu
-    end
+    Krl, Kil = _sub_down(Mrrl, Miiu), _add_down(Mirl, Mril)
+    Kru, Kiu = _sub_up(Mrru, Miil), _add_up(Miru, Mriu)
 
     return Krl, Kru, Kil, Kiu, T
 end
@@ -403,17 +355,8 @@ function _ciprod_prime(
     Mril, Mriu = _iprod_right(Hic, Hir, Jr, T)
     Miil, Miiu = _iprod_right(Hic, Hir, Ji, T)
 
-    Krl, Kil = setrounding(T, RoundDown) do
-        Krl = Mrrl - Miiu
-        Kil = Mirl + Mril
-        return Krl, Kil
-    end
-
-    Kru, Kiu = setrounding(T, RoundUp) do
-        Kru = Mrru - Miil
-        Kiu = Miru + Mriu
-        return Kru, Kiu
-    end
+    Krl, Kil = _sub_down(Mrrl, Miiu), _add_down(Mirl, Mril)
+    Kru, Kiu = _sub_up(Mrru, Miil), _add_up(Miru, Mriu)
 
     return Krl, Kru, Kil, Kiu, T
 end

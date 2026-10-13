@@ -39,10 +39,8 @@ function MMul5(A::BallMatrix{T, T}, B::BallMatrix{T, T}) where {T <: AbstractFlo
     Γ = abs_mA * abs_mB + abs_rhoA * abs_rhoB
     ϵ = machine_epsilon(T)
     η_val = subnormal_min(T)
-    rC = setrounding(T, RoundUp) do
-        γ = (k + 1) * eps.(Γ) .+ η_val / ϵ
-        rC = (abs_mA + rA) * (abs_mB + rB) - Γ + 2γ
-        return rC
-    end
+    # all upward: γ = (k + 1) eps.(Γ) + η/ϵ, rC = (|mA| + rA)(|mB| + rB) − Γ + 2γ
+    γ = _add_up(_scale_up(T(k + 1), eps.(Γ)), η_val / ϵ)
+    rC = _add_up(_sub_up(_product_up(_add_up(abs_mA, rA), _add_up(abs_mB, rB)), Γ), 2 * γ)
     BallMatrix(mC, rC)
 end

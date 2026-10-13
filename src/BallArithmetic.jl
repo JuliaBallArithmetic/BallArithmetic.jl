@@ -71,9 +71,9 @@ function __init__()
     else
         @error "On this machine Julia's array operations under a rounding mode do NOT round as the mode says, for: " *
                join(failed, "; ") *
-               ". The sums of ball matrices fall back to entrywise directed operations. The " *
-               "matrix products of ball matrices (MMul3, MMul4, MMul5, oishi_MMul) add and " *
-               "subtract matrices under a rounding mode and are NOT rigorous on this machine."
+               ". The sums of ball matrices, and the sums inside the matrix products of ball " *
+               "matrices (MMul3, MMul4, MMul5, oishi_MMul), fall back to entrywise directed " *
+               "operations for Float32 and Float64."
     end
 end
 

@@ -148,9 +148,7 @@ function mmul_ogita_rump_oishi_2005(A::BallMatrix{T, S}, B::BallMatrix{T, S}) wh
     acc = _accuracy_term(_modulus_up(mC), absprod, N, T, S <: Complex)
 
     # the interval part, as in MMul4; the assertion gives the compiler the type the closure hides
-    rC = setrounding(T, RoundUp) do
-        acc .+ absA * rB .+ rA * (absB .+ rB)
-    end::Matrix{T}
+    rC = _sum_product_up(_add_up(acc, _product_up(absA, rB)), rA, _add_up(absB, rB))::Matrix{T}
     return BallMatrix(mC, rC)
 end
 
@@ -350,9 +348,8 @@ end
 # Σ_t |A_t||B_t|, rounded up, and the number of products in the real or the imaginary part of an
 # entry, whichever is larger.
 function _abs_products(terms, ::Type{T}) where {T}
-    absprod = setrounding(T, RoundUp) do
-        sum(_modulus_up(Matrix(A)) * _modulus_up(Matrix(B)) for (A, B, _) in terms)
-    end
+    absprod = mapfoldl(((A, B, _),) -> _product_up(_modulus_up(Matrix(A)), _modulus_up(Matrix(B))),
+        _add_up, terms)
     N = sum((eltype(A) <: Complex || eltype(B) <: Complex ? 2 : 1) * size(A, 2)
     for (A, B, _) in terms)
     return absprod, N

@@ -36,13 +36,11 @@ function MMul3(A::BallMatrix{T, T}, B::BallMatrix{T, T}) where {T <: AbstractFlo
     mC = mA * mB
     ϵ = machine_epsilon(T)
     η_val = subnormal_min(T)
-    rC = setrounding(T, RoundUp) do
-        abs_mB = abs_preserving_structure(mB)
-        abs_mA = abs_preserving_structure(mA)
-        rprimeB = ((k + 2) * ϵ * abs_mB + rB)
-        rC = abs_mA * rprimeB + rA * (abs_mB + rB) .+ η_val / ϵ
-        return rC
-    end
+    abs_mB = abs_preserving_structure(mB)
+    abs_mA = abs_preserving_structure(mA)
+    # all upward: r'B = (k + 2)ϵ|mB| + rB, rC = |mA| r'B + rA (|mB| + rB) + η/ϵ
+    rprimeB = _add_up(_scale_up((k + 2) * ϵ, abs_mB), rB)
+    rC = _add_up(_sum_product_up(_product_up(abs_mA, rprimeB), rA, _add_up(abs_mB, rB)), η_val / ϵ)
     BallMatrix(mC, rC)
 end
 
@@ -53,13 +51,11 @@ function MMul3(A::BallMatrix{T, T}, B::AbstractMatrix{T}) where {T <: AbstractFl
     mC = mA * B
     ϵ = machine_epsilon(T)
     η_val = subnormal_min(T)
-    rC = setrounding(T, RoundUp) do
-        abs_B = abs_preserving_structure(B)
-        abs_mA = abs_preserving_structure(mA)
-        rprimeB = ((k + 2) * ϵ * abs_B)
-        rC = abs_mA * rprimeB + rA * abs_B .+ η_val / ϵ
-        return rC
-    end
+    abs_B = abs_preserving_structure(B)
+    abs_mA = abs_preserving_structure(mA)
+    # all upward: r'B = (k + 2)ϵ|B|, rC = |mA| r'B + rA |B| + η/ϵ
+    rprimeB = _scale_up((k + 2) * ϵ, abs_B)
+    rC = _add_up(_sum_product_up(_product_up(abs_mA, rprimeB), rA, abs_B), η_val / ϵ)
     BallMatrix(mC, rC)
 end
 
@@ -70,13 +66,11 @@ function MMul3(A::AbstractMatrix{T}, B::BallMatrix{T, T}) where {T <: AbstractFl
     mC = A * mB
     ϵ = machine_epsilon(T)
     η_val = subnormal_min(T)
-    rC = setrounding(T, RoundUp) do
-        abs_mB = abs_preserving_structure(mB)
-        abs_A = abs_preserving_structure(A)
-        rprimeB = ((k + 2) * ϵ * abs_mB + rB)
-        rC = abs_A * rprimeB .+ η_val / ϵ
-        return rC
-    end
+    abs_mB = abs_preserving_structure(mB)
+    abs_A = abs_preserving_structure(A)
+    # all upward: r'B = (k + 2)ϵ|mB| + rB, rC = |A| r'B + η/ϵ
+    rprimeB = _add_up(_scale_up((k + 2) * ϵ, abs_mB), rB)
+    rC = _add_up(_product_up(abs_A, rprimeB), η_val / ϵ)
     BallMatrix(mC, rC)
 end
 
@@ -86,12 +80,10 @@ function MMul3(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractF
     mC = A * B
     ϵ = machine_epsilon(T)
     η_val = subnormal_min(T)
-    rC = setrounding(T, RoundUp) do
-        abs_B = abs_preserving_structure(B)
-        abs_A = abs_preserving_structure(A)
-        rprimeB = ((k + 2) * ϵ * abs_B)
-        rC = abs_A * rprimeB .+ η_val / ϵ
-        return rC
-    end
+    abs_B = abs_preserving_structure(B)
+    abs_A = abs_preserving_structure(A)
+    # all upward: r'B = (k + 2)ϵ|B|, rC = |A| r'B + η/ϵ
+    rprimeB = _scale_up((k + 2) * ϵ, abs_B)
+    rC = _add_up(_product_up(abs_A, rprimeB), η_val / ϵ)
     BallMatrix(mC, rC)
 end

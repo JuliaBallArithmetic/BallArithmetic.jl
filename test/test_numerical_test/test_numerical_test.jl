@@ -26,8 +26,25 @@ end
     H = BallMatrix(Hermitian(randn(9, 9)), Symmetric(rand(9, 9) .* 1e-9))
     X, P, Q = rand(9, 9), rand(9, 9), rand(9, 9)
     ref = (rad(A + B), rad(A - B), rad(A + mid(B)), rad(H + H), BallArithmetic._sum_product_up(X, P, Q))
+    # the products: every routine, ball and point factors, real and complex
+    Ac = BallMatrix(randn(ComplexF64, 9, 9), rand(9, 9) .* 1e-9)
+    Bc = BallMatrix(randn(ComplexF64, 9, 9), rand(9, 9) .* 1e-9)
+    A32 = BallMatrix(randn(Float32, 9, 9), rand(Float32, 9, 9) .* 1.0f-5)
+    U = BallMatrix(UpperTriangular(randn(9, 9)), UpperTriangular(rand(9, 9) .* 1e-9))
+    products = (() -> BallArithmetic.MMul4(A, B), () -> BallArithmetic.MMul4(mid(A), B),
+        () -> BallArithmetic.MMul4(A, mid(B)), () -> BallArithmetic.MMul4(mid(A), mid(B)),
+        () -> BallArithmetic.MMul3(A, B), () -> BallArithmetic.MMul3(mid(A), B),
+        () -> BallArithmetic.MMul3(A, mid(B)), () -> BallArithmetic.MMul3(mid(A), mid(B)),
+        () -> BallArithmetic.MMul5(A, B), () -> oishi_MMul(mid(Ac), mid(Bc)),
+        () -> A * B, () -> Ac * Bc, () -> Ac * B, () -> A * mid(Bc), () -> A32 * A32,
+        () -> U * U, () -> U * A)
+    refprod = map(f -> f(), products)
     NT.ARRAY_ROUNDING_OK[] = false
     try
+        for (f, C) in zip(products, refprod)
+            D = f()
+            @test mid(D) == mid(C) && rad(D) == rad(C)
+        end
         @test rad(A + B) == ref[1]
         @test rad(A - B) == ref[2]
         @test rad(A + mid(B)) == ref[3]
