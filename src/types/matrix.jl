@@ -26,31 +26,32 @@ constructors below rather than specifying these parameters explicitly.
 
 # What set of matrices a ball matrix is
 
-A ball matrix with midpoint `M` and radius `R` is the set of the matrices `X` with
-`|X − M| ≤ R` entrywise. With positive radii it is an open set of matrices, whatever `M` is: it
-contains matrices that are not Hermitian, not symmetric, not triangular.
+A ball matrix is the set of the matrices whose stored entries lie in the stored balls: an entry
+with midpoint `m` and radius `r` ranges over `|x − m| ≤ r`, and an entry that is not stored has
+no tolerance of its own. The storage types `CM` and `RM` therefore say what the set is, and the
+routines dispatch on them.
 
-The storage types `CM` and `RM` say more, and the routines dispatch on them.
+- Midpoint and radius stored as plain matrices: every entry is stored, and the set is the
+  matrices `X` with `|X − M| ≤ R` entrywise. With positive radii it is an open set of matrices,
+  whatever `M` is: it contains matrices that are not Hermitian, not symmetric, not triangular.
+  Enclosures of its eigenvalues are discs of the complex plane.
+- Midpoint and radius stored as `Diagonal`, or as triangular: the entries outside the structure
+  are zero and are not stored, so every matrix of the set is diagonal, or triangular.
+- Midpoint stored as `Hermitian` (or real `Symmetric`) and radius stored as `Symmetric`: one
+  triangle is stored, with one tolerance for each pair `{i, j}`, and the other triangle is
+  determined by it. Every matrix of the set is Hermitian: it is the Hermitian matrices `X` with
+  `|X − M| ≤ R`, a [`HermitianBallMatrix`](@ref). Enclosures of its eigenvalues are real
+  intervals, and the statements of the routines are for these Hermitian matrices.
+- Midpoint stored as `Hermitian` and radius stored as a plain matrix: every entry has its own
+  tolerance, so the perturbation has no structure and the set is the full entrywise ball around a
+  Hermitian midpoint. The enclosures are discs; what the storage of the midpoint changes is the
+  approximation that is certified, which is that of a Hermitian matrix.
 
-1. `M` and `R` plain matrices: the set above. Enclosures of eigenvalues are discs of the complex
-   plane.
-2. `M` stored as `Hermitian` (or real `Symmetric`), `R` a plain matrix: the same set, around a
-   Hermitian midpoint. The enclosures are still discs; the approximations that are certified are
-   those of a Hermitian matrix.
-3. `M` stored as `Hermitian` (or real `Symmetric`) and `R` stored as `Symmetric`: a
-   [`HermitianBallMatrix`](@ref). A `Symmetric` radius holds one tolerance for each pair `{i, j}`,
-   which is the freedom of a Hermitian perturbation, and by the convention of this package such a
-   ball matrix is the set of the Hermitian matrices `X` with `|X − M| ≤ R`. That the matrix is
-   Hermitian is then a hypothesis the caller has stated by building this type; enclosures of
-   eigenvalues are real intervals, and the statements of the routines are for the Hermitian
-   matrices within the tolerances and for no others.
+A routine that writes a structured ball matrix out as a dense one computes on a larger set for the
+Hermitian kind (the two triangles then vary independently) and on the same set for the diagonal
+and triangular kinds; the statement it returns is the one of the kind it was given.
 
-The third is a convention and not a consequence of the entrywise definition: the entrywise ball
-around a Hermitian midpoint with a symmetric radius contains matrices that are not Hermitian. For
-storage as `Diagonal` or triangular the restriction does follow from the definition, since the
-entries outside the structure are zero with radius zero.
-
-Sums, differences and real multiples of ball matrices of the third kind are of the third kind;
+Sums, differences and real multiples of Hermitian ball matrices are Hermitian ball matrices;
 products are not, and are returned with plain storage.
 """
 const BallMatrix{T, NT, BT, CM, RM} = BallArray{T, 2, NT, BT, CM, RM}
@@ -72,7 +73,7 @@ The [`BallMatrix`](@ref) whose midpoint is stored as `Hermitian` (or real `Symme
 radius is stored as `Symmetric`: the set of the Hermitian matrices `X` with `|X − M| ≤ R`
 entrywise. Building one states the hypothesis that the matrix is Hermitian; the routines that
 receive it return real intervals for its eigenvalues, and their statements are for the Hermitian
-matrices within the tolerances. See [`BallMatrix`](@ref) for the convention.
+matrices within the tolerances. See [`BallMatrix`](@ref) for the definition of the set.
 
     HermitianBallMatrix(M, R; uplo = :U)
     HermitianBallMatrix(M; uplo = :U)
