@@ -87,10 +87,10 @@ end
     @test length(result.clusters) >= 2
     @test length(result.diagonal_blocks) >= 2
 
-    # Verify basic properties (residual scales with radii for interval matrices): the radii
-    # are 0.3 in four entries, and the bound came out 3.0000000000000324 on nighthawk with the
-    # block diagonalisation of a ball matrix (Schur form and Newton step)
-    @test result.projected_residual_norm < 4.0
+    # Verify basic properties (residual scales with radii for interval matrices)
+    @test result.projected_residual_norm < 2.0
+    # the midpoint is symmetric, so the unitary basis is used; the enclosure is still discs
+    @test eltype(result.cluster_intervals) == Ball{Float64, ComplexF64}
     @test result.inverse_defect_norm < 1e-9
 
     # If we have at least 2 clusters, test block extraction

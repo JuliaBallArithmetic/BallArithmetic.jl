@@ -166,7 +166,8 @@ the matrix of singular value enclosures of [`rigorous_svd`](@ref): every matrix 
 is a real diagonal matrix, whose eigenvalues are its diagonal entries.
 
 The midpoint matrix is reduced by a unitary Schur form, or by an eigenvalue
-decomposition for a Hermitian point matrix; the enclosure is transported to that basis
+decomposition when the midpoint is Hermitian, which only chooses the basis and does
+not change the kind of enclosure; the enclosure is transported to that basis
 as `Ã = Z*AZ`, a ball product against the input ball so input radii propagate. `Z`
 is unitary only up to rounding, so the residual `R₂ = Z*Z − I` is formed and
 `‖R₂‖_∞ < 1` required, and the per-row slack `βᵢ = ‖row_i(R₂)‖₁‖Ã‖_∞/(1−‖R₂‖_∞)`
@@ -212,8 +213,13 @@ schur_gershgorin_enclosure(A::BallMatrix) = _schur_gershgorin(_spectrum_kind(A),
 schur_gershgorin_enclosure(H::_HermitianPointMatrix) =
     _schur_gershgorin(_RealIntervals(), BallMatrix(Matrix(H)))
 
-# the unitary basis the enclosure is transported to
-_unitary_reduction(::_ComplexDiscs, M) = _schur_diagonalisation(M)
+# The unitary basis the enclosure is transported to. It is an approximation and takes no part in
+# what is claimed: any basis gives discs that contain the spectrum, a good one gives small discs.
+# So this choice may look at the midpoint, which the kind of enclosure may not: for a Hermitian
+# midpoint the eigenvectors are used also when the matrix is a ball matrix, whose enclosure
+# stays discs of the complex plane.
+_unitary_reduction(::_ComplexDiscs, M) =
+    ishermitian(M) ? _hermitian_diagonalisation(M) : _schur_diagonalisation(M)
 _unitary_reduction(::_RealIntervals, M) = _hermitian_diagonalisation(M)
 # a disc, or its intersection with the real line
 _spectral_ball_type(::_ComplexDiscs, ::Type{T}) where {T} = Ball{T, Complex{T}}

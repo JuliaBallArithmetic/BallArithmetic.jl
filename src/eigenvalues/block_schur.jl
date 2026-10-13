@@ -83,7 +83,8 @@ statement that the result carries.
    [`miyajima2014a_schurnewton`](@ref) (Schur form followed by a Newton step for the decoupling)
    for a ball matrix, [`schur_gershgorin_enclosure`](@ref) for a point matrix that is Hermitian
    by its type, `Hermitian(M)` or `Symmetric(M)` with `M` real (`vbd_method = :schur_newton` or
-   `:nsd`; `:auto` chooses by the type of the argument). The clusters and intervals of the
+   `:nsd`; `:auto` takes `:nsd` when the midpoint is Hermitian, which is a choice of basis and
+   not a statement about the ball). The clusters and intervals of the
    result are the certified ones of that routine: discs of the complex plane for a ball matrix,
    which with positive radii contains matrices that are not Hermitian, and real intervals for
    a Hermitian point matrix.
@@ -115,10 +116,11 @@ rigorous_block_schur(A::BallMatrix; kwargs...) =
 rigorous_block_schur(H::_HermitianPointMatrix; kwargs...) =
     _rigorous_block_schur(_RealIntervals(), BallMatrix(Matrix(H)); kwargs...)
 
-# the block diagonalisation chosen by `vbd_method = :auto`: a unitary basis diagonalises a
-# matrix with a real spectrum by its type; a general matrix needs the decoupling Newton step
-_default_vbd(::_RealIntervals) = :nsd
-_default_vbd(::_ComplexDiscs) = :schur_newton
+# The block diagonalisation chosen by `vbd_method = :auto`. A unitary basis diagonalises a
+# Hermitian midpoint; another matrix needs the decoupling Newton step. Like the basis itself this
+# is a choice of approximation, so it looks at the midpoint; the kind of enclosure does not.
+_default_vbd(::_RealIntervals, A) = :nsd
+_default_vbd(::_ComplexDiscs, A) = ishermitian(mid(A)) ? :nsd : :schur_newton
 
 function _rigorous_block_schur(kind::_SpectrumKind, A::BallMatrix{RT, NT};
                                block_structure::Symbol = :quasi_triangular,
@@ -139,7 +141,7 @@ function _rigorous_block_schur(kind::_SpectrumKind, A::BallMatrix{RT, NT};
     # a unitary basis leaves all the non-normality in the off-diagonal (huge coupling), so
     # default to Schur+Newton, which decouples between clusters and confines the
     # non-normality to the diagonal blocks.  Hermitian ⇒ NSD (a unitary basis diagonalizes).
-    vbd_method == :auto && (vbd_method = _default_vbd(kind))
+    vbd_method == :auto && (vbd_method = _default_vbd(kind, A))
 
     # Step 1: Compute VBD to identify clusters and get basis
     vbd = if vbd_method == :schur_newton
