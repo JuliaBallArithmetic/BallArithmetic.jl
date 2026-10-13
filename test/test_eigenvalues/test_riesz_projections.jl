@@ -1,6 +1,7 @@
 using Test
 using LinearAlgebra
 using BallArithmetic
+using Random
 
 @testset "Riesz Projection Interfaces" begin
 
@@ -238,7 +239,7 @@ using BallArithmetic
         V = BallMatrix(F.vectors, fill(1e-12, 2, 2))
 
         # Project onto first eigenspace
-        v_proj = verified_project_onto_eigenspace(v, V, 1:1; hermitian=true)
+        v_proj = verified_project_onto_eigenspace(v, V, 1:1)
 
         @test length(v_proj) == 2
         @test all(isfinite.(v_proj.c))
@@ -251,15 +252,32 @@ using BallArithmetic
         end
     end
 
-    @testset "Verified projection error for non-hermitian" begin
-        A_mid = [2.0 1.0; 0.0 3.0]
-        F = eigen(A_mid)
-
+    @testset "Verified projection: the orthogonal projection for every member" begin
+        # the routine encloses V_S (V_S' V_S)^-1 V_S' v for every v and V of the balls; the columns
+        # here are eigenvectors of a matrix that is not normal, so they are not orthogonal
+        rng = MersenneTwister(5)
+        setprecision(BigFloat, 256) do
+            for (n, idx) in ((2, 1:1), (5, 2:3), (6, 1:4))
+                Vm = n == 2 ? eigen([2.0 1.0; 0.0 3.0]).vectors : randn(rng, n, n)
+                vm = randn(rng, n)
+                Vr, vr = fill(1e-10, n, n), fill(1e-10, n)
+                p = verified_project_onto_eigenspace(BallVector(vm, vr), BallMatrix(Vm, Vr), idx)
+                outside = 0
+                for _ in 1:20
+                    W = big.(Vm) .+ big.(Vr) .* rand(rng, (-1, 1), n, n)
+                    w = big.(vm) .+ big.(vr) .* rand(rng, (-1, 1), n)
+                    WS = W[:, idx]
+                    z = WS * ((WS' * WS) \ (WS' * w))
+                    outside += count(abs.(z .- big.(mid(p))) .> big.(rad(p)))
+                end
+                @test outside == 0
+                @test maximum(rad(p)) < 1e-6
+            end
+        end
+        # there is no keyword: the routine has one meaning
         v = BallVector([1.0, 1.0], [1e-12, 1e-12])
-        V = BallMatrix(F.vectors, fill(1e-12, 2, 2))
-
-        # Non-hermitian verified projection not implemented - should error
-        @test_throws ErrorException verified_project_onto_eigenspace(v, V, 1:1; hermitian=false)
+        V = BallMatrix([1.0 1.0; 0.0 1.0], fill(1e-12, 2, 2))
+        @test_throws MethodError verified_project_onto_eigenspace(v, V, 1:1; hermitian = false)
     end
 
 end

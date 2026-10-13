@@ -183,60 +183,47 @@ end
 
 
 """
-    verified_project_onto_eigenspace(v::BallVector, V::BallMatrix, indices::UnitRange{Int};
-                                     hermitian::Bool=false)
+    verified_project_onto_eigenspace(v::BallVector, V::BallMatrix, indices::UnitRange{Int})
 
-Rigorously verified projection of interval vector onto eigenspace with error bounds.
+An enclosure of the orthogonal projection of `v` onto the span of the columns `indices` of `V`.
 
-Similar to [`project_onto_eigenspace`](@ref) but uses interval arithmetic to provide
-rigorous bounds on the projection result accounting for uncertainties in both the
-vector and eigenvector matrix.
+With `V_S = V[:, indices]`, the vector returned contains
 
-# Arguments
-- `v::BallVector`: Interval vector to project
-- `V::BallMatrix`: Interval matrix of eigenvectors
-- `indices::UnitRange{Int}`: Column indices of eigenvectors
-- `hermitian::Bool=false`: If true, assumes V is orthogonal
+    V_S (V_S† V_S)⁻¹ V_S† v
 
-# Returns
-`BallVector` containing the projected vector with rigorous error bounds.
+for every vector in the ball `v` and every matrix in the ball `V`. The columns need not be
+orthonormal; they have to be linearly independent for every matrix of the ball, which is part of
+what is proved, and the routine throws when it cannot prove it.
+
+This is the projection onto the eigenspace of a matrix, the Riesz projection, when the columns
+of `V` are eigenvectors of a normal matrix, whose eigenspaces are mutually orthogonal. For a
+matrix that is not normal the Riesz projection is oblique and is not what this routine encloses;
+the package has no verified routine for it.
+
+The Gram system `G c = V_S† v`, `G = V_S† V_S`, is solved by [`krawczyk_linear_system`](@ref).
+Where that does not verify, an approximate solution `c̃` and `R ≈ G⁻¹` give the bound
+
+    ‖c − c̃‖₂ ≤ ‖R‖₂ ‖V_S† v − G c̃‖₂ / (1 − ‖I − R G‖₂),    valid when ‖I − R G‖₂ < 1,
+
+which follows from `G⁻¹ = (R G)⁻¹ R` and the Neumann series of `(R G)⁻¹`; the norms are upper
+bounds over the balls.
 
 # Example
 ```julia
 using BallArithmetic, LinearAlgebra
 
-# Matrix with small uncertainties
-A = BallMatrix([4.0 1.0; 1.0 3.0], fill(1e-10, 2, 2))
-F = eigen(Symmetric(A.c))
-
-# Vector with uncertainties
+F = eigen(Symmetric([4.0 1.0; 1.0 3.0]))
 v = BallVector([1.0, 2.0], [1e-10, 1e-10])
-
-# Verified projection
-V_ball = BallMatrix(F.vectors)
-v_proj = verified_project_onto_eigenspace(v, V_ball, 1:1; hermitian=true)
+V = BallMatrix(F.vectors, fill(1e-12, 2, 2))
+p = verified_project_onto_eigenspace(v, V, 1:1)
 ```
-
-# Notes
-- Uses interval arithmetic throughout for rigorous error bounds
-- The Gram system `G·c = V_S†·v` is solved rigorously via `krawczyk_linear_system`;
-  if Krawczyk does not verify, a Neumann-series residual bound is used as fallback
-- Result contains all possible projections for vectors/eigenvectors in input intervals
-- More expensive than non-verified version due to interval arithmetic overhead
-- Currently only supports hermitian case (non-normal requires Sylvester solver)
 """
 function verified_project_onto_eigenspace(v::BallVector,
                                           V::BallMatrix,
-                                          indices::UnitRange{Int};
-                                          hermitian::Bool=false)
+                                          indices::UnitRange{Int})
     n = length(v)
     size(V, 1) == n || throw(DimensionMismatch("Eigenvector matrix must have same row dimension as vector"))
     maximum(indices) <= size(V, 2) || throw(ArgumentError("Indices out of bounds"))
-
-    if !hermitian
-        error("Verified projection for non-normal matrices not yet implemented. " *
-              "Requires verified Sylvester equation solver.")
-    end
 
     # Extract relevant eigenvectors
     V_S = V[:, indices]

@@ -846,6 +846,14 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       `verified_project_onto_eigenspace(...; hermitian = false)` throws "not yet implemented":
       an exposed option that is not implemented, and a keyword whose name says something
       else than what it does.
+      **Written, 2026-10-13, not yet run:** `verified_project_onto_eigenspace` has no keyword
+      and no unimplemented branch; its docstring says what it encloses, the orthogonal
+      projection onto the span of the chosen columns for every member of the two balls, and
+      that this is the Riesz projection for a normal matrix only. The test samples members.
+      **Open, Isaia's to decide:** in the two routines that are not verified,
+      `project_onto_eigenspace` and `compute_eigenspace_projector`, the keyword `hermitian`
+      still selects the orthogonal projection against the oblique one built from the left
+      eigenvectors; both branches are implemented.
     - Dependents: GKWExperiments calls `rigorous_block_schur(A; hermitian = hermitian)`
       (`src/EigenspaceCertification.jl:249`) and exports `miyajima_vbd`; its compat entry is
       `BallArithmetic = "0.1.1"`. Not run.
