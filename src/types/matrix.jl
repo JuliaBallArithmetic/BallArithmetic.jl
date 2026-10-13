@@ -147,6 +147,19 @@ function _radius_entrywise(f, Xs...)
     return f.(Xs...)
 end
 
+# The radius of a sum or difference with computed midpoint `C`: `ϵ|C|` for the rounding of the
+# midpoint plus the radii of the operands, with the rounding mode upward (Isaia, 2026-10-13: the
+# rounding mode is trusted here as it is for the products). The moduli are taken outside the block
+# and keep the storage of `C`, and the sums are matrix sums, so for a `Hermitian` or `Symmetric`
+# `C` and `Symmetric` radii only the stored triangle is worked on and the result is `Symmetric`.
+function _sum_radius(::Type{T}, ϵ, C, radii...) where {T}
+    absC = abs_preserving_structure(C)
+    R = setrounding(T, RoundUp) do
+        foldl(+, radii; init = ϵ * absC)
+    end
+    return R isa Hermitian ? Symmetric(parent(R), Symbol(R.uplo)) : R
+end
+
 # Operations
 """
     Base.:+(A::BallMatrix, B::BallMatrix)
@@ -162,7 +175,7 @@ function Base.:+(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
 
     C = mA + mB
     ϵ = machine_epsilon(T)
-    R = _radius_entrywise((c, a, b) -> add_up(add_up(mul_up(ϵ, abs(c)), a), b), C, rA, rB)
+    R = _sum_radius(T, ϵ, C, rA, rB)
     BallMatrix(C, R)
 end
 
@@ -184,7 +197,7 @@ function Base.:-(A::BallMatrix{T}, B::BallMatrix{T}) where {T <: AbstractFloat}
 
     C = mA - mB
     ϵ = machine_epsilon(T)
-    R = _radius_entrywise((c, a, b) -> add_up(add_up(mul_up(ϵ, abs(c)), a), b), C, rA, rB)
+    R = _sum_radius(T, ϵ, C, rA, rB)
     BallMatrix(C, R)
 end
 
@@ -274,7 +287,7 @@ function Base.:+(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFlo
     C = mA + B
 
     ϵ = machine_epsilon(T)
-    R = _radius_entrywise((c, a) -> add_up(mul_up(ϵ, abs(c)), a), C, rA)
+    R = _sum_radius(T, ϵ, C, rA)
     BallMatrix(C, R)
 end
 
@@ -303,7 +316,7 @@ function Base.:-(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFlo
     C = mA - B
 
     ϵ = machine_epsilon(T)
-    R = _radius_entrywise((c, a) -> add_up(mul_up(ϵ, abs(c)), a), C, rA)
+    R = _sum_radius(T, ϵ, C, rA)
     BallMatrix(C, R)
 end
 
@@ -321,7 +334,7 @@ function Base.:-(B::AbstractMatrix{T}, A::BallMatrix{T}) where {T <: AbstractFlo
     C = B - mA
 
     ϵ = machine_epsilon(T)
-    R = _radius_entrywise((c, a) -> add_up(mul_up(ϵ, abs(c)), a), C, rA)
+    R = _sum_radius(T, ϵ, C, rA)
     BallMatrix(C, R)
 end
 
