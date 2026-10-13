@@ -287,6 +287,9 @@ end
         # the M4 route returns Theorem 11's values, not Theorem 7's
         @test mid.(r4.singular_values) == mid.(thm11)
         @test rad.(r4.singular_values) == rad.(thm11)
+        # Theorem 11 has no left frame and no residual: the fields say so
+        @test r4.U === nothing && r4.residual === nothing
+        @test r4.residual_norm == Inf && r4.left_orthogonality_defect == Inf
         @test mid.(r1.singular_values) != mid.(thm11)
         # and it still encloses the truth
         strue = svdvals(BigFloat.(mid(A)))

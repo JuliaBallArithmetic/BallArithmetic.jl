@@ -141,7 +141,6 @@ include("decompositions/svd/schur_gershgorin.jl")
 include("decompositions/svd/miyajima_2014a_schurnewton.jl")
 include("decompositions/svd/svd.jl")
 include("decompositions/svd/adaptive_ogita_svd.jl")
-include("decompositions/svd/precision_cascade_svd.jl")
 export Miyajima2014aSchurNewtonResult, miyajima2014a_schurnewton, block_enclosure
 export SchurGershgorinResult, RigorousSVDResult, schur_gershgorin_enclosure, rigorous_svd, svdbox, svd_bounds, svd_lower_bound_sigma_min, overlap_components,
        rigorous_svd_gpu, rigorous_svd_m4,
@@ -149,8 +148,7 @@ export SchurGershgorinResult, RigorousSVDResult, schur_gershgorin_enclosure, rig
        ogita_iterations_for_precision, ogita_svd_refine_multifloat,
        SVDMethod, MiyajimaAuto, MiyajimaM1, MiyajimaM3, MiyajimaM4, certify_svd,
        clear_svd_cache!, svd_cache_stats, set_svd_cache!
-export PrecisionCascadeSVDResult, ogita_svd_cascade
-export svd_bigfloat, ogita_svd_cascade_gla
+export svd_bigfloat
 export ogita_svd_refine_fast, ogita_svd_refine_hybrid
 # `gev_invariant_subspaces` was removed on 2026-10-12: the eigenvalues and deflating subspaces of a
 # pencil are enclosed by `verifyeigall(A, B)` (Algorithms 1 and 2 of Miyajima 2014).

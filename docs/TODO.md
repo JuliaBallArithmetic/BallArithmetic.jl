@@ -1064,3 +1064,34 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       module; GKWExperiments imports `polyconv` from there. **Open.**
     - The scan's docstring column (164 of 298 names with no citation in the docstring) counts
       result types and enum values and has not been read name by name. **Open.**
+
+48. **The precision cascade of the SVD removed, 2026-10-13** (found by searching the source
+    for "placeholder" and "stub"). `ogita_svd_cascade` (MultiFloats extension) and
+    `ogita_svd_cascade_gla` (GenericLinearAlgebra extension) returned a
+    `PrecisionCascadeSVDResult` whose field `σ_min`, documented as "Certified minimum singular
+    value" and in `docs/src/decompositions.md` as "a rigorous lower bound", was
+    `Σ[end] - residual_norm` with `residual_norm = sqrt(sum(abs2, A - U*Diagonal(Σ)*V'))`
+    evaluated in `BigFloat` rounding to nearest. No rounding is bounded, and the inequality
+    `σ_min(A) ≥ σ̃_n − ‖A − ŨΣ̃Ṽ*‖` needs `Ũ`, `Ṽ` unitary, which computed factors are not;
+    their defects did not enter. Neither routine was called in `src`, nor in the clones under
+    `~/Code` and `~/Write` on bemtivi. Deleted: `src/decompositions/svd/precision_cascade_svd.jl`
+    (`PrecisionCascadeSVDResult`, `_ogita_iteration!`), the two routines and
+    `_ogita_iteration_gla!` in the extensions, `test_precision_cascade_svd.jl`,
+    `test_precision_cascade_core.jl`, the cascade testsets of `test_gla_svd.jl`, the section
+    "SVD Certification Methods" of `docs/src/decompositions.md` with its timing tables.
+    `svd_bigfloat` stays, declared in `svd.jl` and documented as an approximation.
+    Certified singular values in `BigFloat` are `rigorous_svd` on a `BigFloat` ball matrix.
+    - In the same pass: `rigorous_svd_m4` returned point zero matrices in the fields `U` and
+      `residual`, which Theorem 11 of Miyajima (2014) does not provide; they are `nothing`
+      now. Two comment blocks were stale: one said the Theorem 11 method "falls back to M1
+      bounds" (it throws and points to the right routine), the other stated Parlett's bound
+      with `2ρᵢ`, the error that the code under it had been corrected for.
+    - **Open:** `docs/src/literate/warmstart_investigation.md` still names the two removed
+      routines in a code block. The exported refiners named for an arithmetic
+      (`refine_schur_double64`, `refine_schur_hybrid`, `refine_schur_multifloat`,
+      `refine_symmetric_eigen_double64`, `_hybrid`, `_multifloat`, `ogita_svd_refine_fast`,
+      `_hybrid`, `_multifloat`) are approximations, say so in most docstrings, have no caller
+      outside tests except `ogita_svd_refine_multifloat` and
+      `refine_symmetric_eigen_multifloat` (one each), and the SVD three carry timing claims
+      ("~30× faster") with no script named. Not changed.
+

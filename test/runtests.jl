@@ -54,8 +54,6 @@ using Test
     include("test_decompositions/test_svd/test_svd_theorems.jl")
     include("test_decompositions/test_svd/test_adaptive_ogita_svd.jl")
     include("test_decompositions/test_svd/test_subepsilon_certification.jl")
-    include("test_decompositions/test_svd/test_precision_cascade_svd.jl")
-    include("test_decompositions/test_svd/test_precision_cascade_core.jl")
     include("test_decompositions/test_svd/test_gla_svd.jl")
     include("test_decompositions/test_svd/test_miyajima_2014a_schurnewton.jl")
     include("test_decompositions/test_svd/test_vbd_remainder_norm.jl")

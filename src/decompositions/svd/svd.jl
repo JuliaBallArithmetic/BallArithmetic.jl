@@ -75,7 +75,8 @@ the singular values themselves the struct exposes the residual and
 orthogonality defect bounds that underpin the certification.
 """
 struct RigorousSVDResult{UT, ST, ΣT, VT, ET, RT, VBDT}
-    """Ball enclosure of the left singular vectors."""
+    """Ball enclosure of the left singular vectors; `nothing` from the Theorem 11 route
+    ([`rigorous_svd_m4`](@ref)), which has none."""
     U::UT
     """Certified singular values returned as floating-point balls."""
     singular_values::ST
@@ -83,7 +84,7 @@ struct RigorousSVDResult{UT, ST, ΣT, VT, ET, RT, VBDT}
     Σ::ΣT
     """Ball enclosure of the right singular vectors."""
     V::VT
-    """Residual enclosure `U * Σ * V' - A`."""
+    """Residual enclosure `U * Σ * V' - A`; `nothing` from the Theorem 11 route."""
     residual::ET
     """Upper bound on `‖residual‖₂`."""
     residual_norm::RT
@@ -103,6 +104,16 @@ Base.lastindex(result::RigorousSVDResult, i::Int) = lastindex(result.singular_va
 Base.getindex(result::RigorousSVDResult, inds...) = getindex(result.singular_values, inds...)
 Base.iterate(result::RigorousSVDResult) = iterate(result.singular_values)
 Base.iterate(result::RigorousSVDResult, state) = iterate(result.singular_values, state)
+
+"""
+    svd_bigfloat(A::AbstractMatrix{T}) where T<:Union{BigFloat, Complex{BigFloat}}
+
+A floating-point singular value decomposition of a `BigFloat` matrix, by the `svd` of
+GenericLinearAlgebra.jl, at the current precision. An approximation with no error bound: it is
+the starting point that [`rigorous_svd`](@ref) certifies for a `BigFloat` ball matrix. The method
+is defined in the GenericLinearAlgebra extension.
+"""
+function svd_bigfloat end
 
 # BigFloat SVD cache for warm-starting Ogita refinement
 # This cache stores the most recently computed SVD for reuse with nearby matrices
@@ -481,16 +492,6 @@ function _compute_svd_bounds(::MiyajimaM1, S::Vector, normE, normF, normG, ::Typ
     return svdbounds_down, svdbounds_up
 end
 
-#=
-Miyajima 2014, Theorem 11 (M4): Eigendecomposition-based bounds
-
-This method works on D̂ + Ê = (AV)ᵀAV where D̂ is diagonal.
-For well-separated singular values, it can give tighter bounds through
-Gershgorin isolation.
-
-For now, this falls back to M1 bounds but with the note that the VBD
-result can be used for further refinement of isolated singular values.
-=#
 # MiyajimaM4 never reaches this function: `rigorous_svd` routes it to `rigorous_svd_m4`, which
 # has the (AV)'AV quantities Theorem 11 needs and which this signature does not carry. It used to
 # return MiyajimaM1's bounds behind a warning, so a caller asking for Theorem 11 was given
@@ -508,41 +509,25 @@ function _diagonal_ball_matrix(values::Vector{Ball{T, NT}}) where {T, NT}
     return BallMatrix(Diagonal(mids), Diagonal(rads))
 end
 
-#=
-Miyajima 2014, Theorem 11 (M4): Eigendecomposition-based singular value verification
+"""
+    rigorous_svd_m4(A::BallMatrix; apply_vbd = true) -> RigorousSVDResult
 
-WHAT M4 VERIFIES:
-  - Rigorous bounds on ALL singular values σᵢ(A)
+The singular values of `A` enclosed by Theorem 11 of Miyajima (2014), the algorithm his numerical
+section labels M4, as a [`RigorousSVDResult`](@ref); the theorem and its hypotheses are stated at
+[`_miyajima2014_thm11`](@ref), which this routine calls.
 
-WHAT M4 DOES NOT VERIFY:
-  - Left singular vectors U (returned as placeholder zeros)
-  - Right singular vectors V (approximate, used only for verification)
-  - SVD residual ‖A - UΣVᵀ‖ (returned as Inf)
+The theorem uses one frame, the eigenvectors of `A'A`, and says nothing about left singular
+vectors or about a residual `UΣV' − A`. The fields `U` and `residual` of the result are therefore
+`nothing`, and `residual_norm` and `left_orthogonality_defect` are `Inf`. `V` is the approximate
+frame as a point matrix, with `right_orthogonality_defect` an upper bound of `‖V'V − I‖₂`.
 
-This is BY DESIGN per Miyajima's method. The singular value bounds come from
-Gershgorin/Parlett analysis on (AV)ᵀAV, requiring only the orthogonality
-defect F = VᵀV - I. No U computation or residual bound is needed or provided.
+# Reference
 
-THEORY:
-  D̂ + Ê = (AV)ᵀAV  where D̂ is diagonal, V from eigendecomposition of AᵀA
-
-For isolated eigenvalues (Gershgorin disc doesn't overlap others), we can
-use Parlett's theorem (Theorem 3 in the paper) for tighter bounds.
-
-The bounds are:
-  ζᵢᴹ = √((D̂ᵢᵢ - hᵢ) / (1 + ‖F‖))   (lower, if D̂ᵢᵢ ≥ hᵢ)
-  ζ̄ᵢᴹ = √((D̂ᵢᵢ + hᵢ) / (1 - ‖F‖))   (upper)
-
-where hᵢ is the tighter of either:
-  - fᵢ = row sum of |Ê| (Gershgorin radius)
-  - gᵢ = ‖Êe⁽ⁱ⁾‖² / (2ρᵢ) via Parlett's theorem (if isolated)
-
-Reference: Miyajima, S. "Verified bounds for all the singular values of matrix"
-           Japan J. Indust. Appl. Math. (2014) 31:513–539
-=#
+S. Miyajima, *Verified bounds for all the singular values of matrix*, Japan J. Indust. Appl.
+Math. **31** (2014) 513-539, doi 10.1007/s13160-014-0145-5.
+"""
 function rigorous_svd_m4(A::BallMatrix{T}; apply_vbd::Bool = true) where {T}
     m, n = size(A)
-    q = min(m, n)
     # Theorem 11 lives in `_miyajima2014_thm11`; this routine only packages it as a
     # RigorousSVDResult. It used to carry a second copy of the theorem which divided Parlett's
     # bound by 2*rho_i instead of rho_i, and which had no cluster branch, so a clustered index
@@ -567,6 +552,7 @@ function rigorous_svd_m4(A::BallMatrix{T}; apply_vbd::Bool = true) where {T}
         vbd = schur_gershgorin_enclosure(adjoint(Σ) * Σ)
     end
 
-    return RigorousSVDResult(BallMatrix(zeros(T, m, q)), singular_values, Σ, V,
-        BallMatrix(zeros(T, m, n)), T(Inf), normF, T(Inf), vbd)
+    # no left frame and no residual: `nothing`, where there used to be zero matrices with zero
+    # radius, which a reader of the fields would take for enclosures
+    return RigorousSVDResult(nothing, singular_values, Σ, V, nothing, T(Inf), normF, T(Inf), vbd)
 end
