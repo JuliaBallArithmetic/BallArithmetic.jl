@@ -1004,3 +1004,5 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     matrices under a rounding mode after their BLAS products and have no fallback: on a
     machine where the check fails they are not rigorous, which the logged error says. The
     check does not cover `BigFloat`, views or sparse matrices.
+    Suite at 6c3ccb6 on nighthawk: 183,158 passed, none failed (`rigour_suite78.out`);
+    RigorousPseudospectra 300 of 300.
