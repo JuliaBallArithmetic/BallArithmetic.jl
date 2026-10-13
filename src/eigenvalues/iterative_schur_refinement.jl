@@ -1128,72 +1128,7 @@ end
 # gap. Verified eigenvalues and bases of invariant subspaces of a Hermitian ball matrix, at any
 # precision, are `verifyeigall(A)` for a `HermitianBallMatrix` `A`.
 
-#==============================================================================#
-# Stub functions for Double64 extension (DoubleFloatsExt)
-#==============================================================================#
-
-"""
-    refine_schur_double64(A, Q0, T0; max_iterations = 10, tol = 0)
-
-[`refine_schur_decomposition`](@ref) with `Double64` (about 32 digits) as the high precision in
-place of BigFloat: the same iteration, Algorithm 4 of Bujanović, Kressner and Schröder, on the
-upper triangular Schur factor `T0`. Returns a [`SchurRefinementResult`](@ref) with factors in
-`Double64`; its two norms are floating-point diagnostics, not bounds. Requires DoubleFloats.jl.
-"""
-function refine_schur_double64 end
-
-"""
-    refine_schur_hybrid(A, Q0, T0; d64_iterations = 10, bf_iterations = 5, precision_bits = 256)
-
-[`refine_schur_double64`](@ref) followed by [`refine_schur_decomposition`](@ref) in BigFloat at
-`precision_bits`, started from its result. Requires DoubleFloats.jl.
-"""
-function refine_schur_hybrid end
-
-"""
-    refine_symmetric_eigen_double64(A, Q0, λ0; max_iterations = 10, tol = 0)
-
-[`refine_symmetric_eigen`](@ref) with `Double64` (about 32 digits) as the high precision in
-place of BigFloat: the same iteration, RefSyEv of Ogita and Aishima (2018). Returns a
-[`SymmetricEigenRefinementResult`](@ref) with `Q` and `λ` in `Double64`; its two norms are
-floating-point diagnostics, not bounds. Requires DoubleFloats.jl.
-"""
-function refine_symmetric_eigen_double64 end
-
-"""
-    refine_symmetric_eigen_hybrid(A, Q0, λ0; d64_iterations = 10, bf_iterations = 5, precision_bits = 256)
-
-[`refine_symmetric_eigen_double64`](@ref) followed by [`refine_symmetric_eigen`](@ref) in
-BigFloat at `precision_bits`, started from its result. Requires DoubleFloats.jl.
-"""
-function refine_symmetric_eigen_hybrid end
-
-#==============================================================================#
-# Stub functions for MultiFloat extension (MultiFloatsExt)
-#==============================================================================#
-
-"""
-    refine_schur_multifloat(A, Q0, T0; precision = :x2, max_iterations = 10, tol = 0)
-
-[`refine_schur_decomposition`](@ref) with a MultiFloat (`:x2`, `:x4`, `:x8`) as the high
-precision in place of BigFloat. Returns a [`SchurRefinementResult`](@ref) with factors in that
-type; its two norms are floating-point diagnostics, not bounds. Requires MultiFloats.jl.
-"""
-function refine_schur_multifloat end
-
-"""
-    refine_symmetric_eigen_multifloat(A, Q0, λ0; precision = :x2, max_iterations = 10, tol = 0)
-
-[`refine_symmetric_eigen`](@ref) with a MultiFloat (`:x2`, `:x4`, `:x8`) as the high precision
-in place of BigFloat. Returns a [`SymmetricEigenRefinementResult`](@ref) with `Q` and `λ` in
-that type; its two norms are floating-point diagnostics, not bounds. Requires MultiFloats.jl.
-"""
-function refine_symmetric_eigen_multifloat end
-
 # Export functions
 export SchurRefinementResult, refine_schur_decomposition, rigorous_schur_bigfloat, certify_schur_decomposition
 export newton_schulz_orthogonalize!, solve_triangular_matrix_equation
 export SymmetricEigenRefinementResult, refine_symmetric_eigen
-export refine_schur_double64, refine_schur_hybrid
-export refine_symmetric_eigen_double64, refine_symmetric_eigen_hybrid
-export refine_schur_multifloat, refine_symmetric_eigen_multifloat

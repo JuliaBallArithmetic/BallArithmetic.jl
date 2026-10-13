@@ -15,16 +15,6 @@ Each method computes both a numerical approximation and a **rigorous error bound
 | Polar | `verified_polar` | Polar decomposition |
 | Takagi | `verified_takagi` | Takagi factorization |
 
-## Recommended Extensions
-
-BallArithmetic supports several extension packages that provide different performance characteristics:
-
-| Extension | Package | Use Case |
-|-----------|---------|----------|
-| **GenericLinearAlgebra** | `GenericLinearAlgebra.jl` | **Recommended** - Native BigFloat SVD, fastest and most accurate |
-| **MultiFloats** | `MultiFloats.jl` | SIMD-accelerated multi-precision (Float64x2, Float64x4) |
-| **DoubleFloats** | `DoubleFloats.jl` | Fast Double64 arithmetic (~106 bits) |
-
 ## Rigorous vs Non-Rigorous Results
 
 Each decomposition method returns:

@@ -145,11 +145,10 @@ export Miyajima2014aSchurNewtonResult, miyajima2014a_schurnewton, block_enclosur
 export SchurGershgorinResult, RigorousSVDResult, schur_gershgorin_enclosure, rigorous_svd, svdbox, svd_bounds, svd_lower_bound_sigma_min, overlap_components,
        rigorous_svd_gpu, rigorous_svd_m4,
        OgitaSVDRefinementResult, AdaptiveSVDResult, ogita_svd_refine, adaptive_ogita_svd,
-       ogita_iterations_for_precision, ogita_svd_refine_multifloat,
+       ogita_iterations_for_precision,
        SVDMethod, MiyajimaAuto, MiyajimaM1, MiyajimaM3, MiyajimaM4, certify_svd,
        clear_svd_cache!, svd_cache_stats, set_svd_cache!
 export svd_bigfloat
-export ogita_svd_refine_fast, ogita_svd_refine_hybrid
 # `gev_invariant_subspaces` was removed on 2026-10-12: the eigenvalues and deflating subspaces of a
 # pencil are enclosed by `verifyeigall(A, B)` (Algorithms 1 and 2 of Miyajima 2014).
 include("eigenvalues/block_schur.jl")
@@ -166,10 +165,6 @@ include("eigenvalues/iterative_schur_refinement.jl")
 export SchurRefinementResult, refine_schur_decomposition, rigorous_schur_bigfloat,
        newton_schulz_orthogonalize!
 export SymmetricEigenRefinementResult, refine_symmetric_eigen
-export refine_schur_double64, refine_schur_hybrid, refine_schur_multifloat
-export refine_symmetric_eigen_double64, refine_symmetric_eigen_hybrid,
-       refine_symmetric_eigen_multifloat
-export ogita_svd_refine_fast, ogita_svd_refine_hybrid, ogita_svd_refine_multifloat
 include("eigenvalues/ordschur_ball.jl")
 include("eigenvalues/newton_kantorovich_eigenpair.jl")
 export NKEigenpairResult, NKEigenpairsResult, certify_eigenpair, certify_eigenpairs

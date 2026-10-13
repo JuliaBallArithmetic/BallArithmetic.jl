@@ -95,7 +95,6 @@ using Test
     include("test_decompositions/test_extension_variants.jl")
     include("test_exported_primitives.jl")
     include("test_fft/test_ball_fft.jl")
-    include("test_schur_refinement_variants.jl")
 
     # Certification
     include("test_certification/test_certifscripts.jl")
@@ -106,6 +105,5 @@ using Test
     include("test_interval_arithmetic_ext/test_interval_arithmetic_ext.jl")
     include("test_arbnumerics_ext/test_arbnumerics_ext.jl")
     include("test_fft_ext/test_fft.jl")
-    include("test_doublefloats_ext/test_doublefloats_ext.jl")
     include("test_linear_programming_ext/test_shaving_lp.jl")
 end

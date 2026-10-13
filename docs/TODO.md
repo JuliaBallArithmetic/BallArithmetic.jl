@@ -1095,3 +1095,30 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       `refine_symmetric_eigen_multifloat` (one each), and the SVD three carry timing claims
       ("~30× faster") with no script named. Not changed.
 
+49. **The refiners named for an arithmetic removed, 2026-10-13** (Isaia, asked how far to go
+    after item 48: all nine and the benchmarks; and "remove the norm bound in Multifloat").
+    Deleted: `refine_schur_double64`, `refine_schur_hybrid`, `refine_schur_multifloat`,
+    `refine_symmetric_eigen_double64`, `refine_symmetric_eigen_hybrid`,
+    `refine_symmetric_eigen_multifloat`, `ogita_svd_refine_fast`, `ogita_svd_refine_hybrid`,
+    `ogita_svd_refine_multifloat`; with them `ext/DoubleFloatsExt.jl` and
+    `ext/MultiFloatsExt.jl`, which held nothing else (`_spectral_norm_bound_mf`, a
+    floating-point `√(‖·‖₁‖·‖_∞)` under the name of a bound, went with the second);
+    `test_schur_refinement_variants.jl` and `test_doublefloats_ext/`.
+    DoubleFloats and MultiFloats were in `[deps]` and `src` never loaded them: they are removed
+    from `[deps]`, `[compat]` and `[extensions]` (they stay in `test/Project.toml`, where the
+    tests pass `Double64` and a MultiFloat as `oracle` to the verified decompositions).
+    Docs: `benchmark_warmstart_circle.*`, `benchmark_test1.*`, `warmstart_investigation.md`
+    deleted; the Double64, hybrid and MultiFloat helpers cut from `benchmark_common.jl`; the
+    section "Recommended Extensions" cut from `docs/src/decompositions.md`.
+    **Not run at the time of writing.**
+    - **Open, found while cutting:** the helpers that remain in
+      `docs/src/literate/benchmark_common.jl` and `resolvent_benchmark.jl`, `certify_ogita`
+      and `certify_bigfloat`, report `1/(Σ[end] − residual_norm)` from `ogita_svd_refine` as a
+      bound, under the comment "Rigorous lower bound"; `residual_norm` there is
+      `_spectral_norm_bound` of `adaptive_ogita_svd.jl`, a floating-point
+      `√(‖·‖₁‖·‖_∞)`, and the factors are not unitary. The tracked `.tex` and `.pdf` of
+      `benchmark_test2` to `4` and `benchmark_spectral_gap` carry columns computed that way.
+      The scripts are docs only; nothing in `src` uses that formula for a statement
+      (`_spectral_norm_bound` is called twice inside `ogita_svd_refine`, for its stopping
+      test and its reported `residual_norm`).
+

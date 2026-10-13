@@ -580,50 +580,6 @@ function _convert_to_precision(A::BallMatrix{T}, precision_bits::Int) where {T}
     return BallMatrix(c, r)
 end
 
-#==============================================================================#
-# Stub functions for Double64 extension (DoubleFloatsExt)
-#==============================================================================#
-
-"""
-    ogita_svd_refine_fast(A, U, Σ, V; max_iterations=2, certify_with_bigfloat=true, bigfloat_precision=256)
-
-Fast SVD refinement using Double64 arithmetic (~106 bits precision).
-Requires DoubleFloats.jl to be loaded.
-
-This is ~30× faster than pure BigFloat refinement because:
-1. Double64 uses native Float64 operations with error compensation
-2. No memory allocation per arithmetic operation (unlike BigFloat)
-
-See `DoubleFloatsExt` module for implementation details.
-"""
-function ogita_svd_refine_fast end
-
-"""
-    ogita_svd_refine_hybrid(A, U, Σ, V; d64_iterations=2, bf_iterations=1, precision_bits=256)
-
-Hybrid SVD refinement: Double64 for bulk iterations, BigFloat for final polish.
-Requires DoubleFloats.jl to be loaded.
-
-Expected speedup: ~2× for 256-bit precision compared to pure BigFloat.
-"""
-function ogita_svd_refine_hybrid end
-
-#==============================================================================#
-# Stub functions for MultiFloat extension (MultiFloatsExt)
-#==============================================================================#
-
-"""
-    ogita_svd_refine_multifloat(A, U, Σ, V; precision=:x2, max_iterations=2,
-                                 certify_with_bigfloat=true, bigfloat_precision=256)
-
-Fast SVD refinement using MultiFloats arithmetic.
-Requires MultiFloats.jl to be loaded.
-
-Precision options: `:x2` (~106 bits), `:x4` (~212 bits), `:x8` (~424 bits)
-"""
-function ogita_svd_refine_multifloat end
-
 # Export new functions
 export OgitaSVDRefinementResult, AdaptiveSVDResult
 export ogita_svd_refine, adaptive_ogita_svd, ogita_iterations_for_precision
-export ogita_svd_refine_fast, ogita_svd_refine_hybrid, ogita_svd_refine_multifloat

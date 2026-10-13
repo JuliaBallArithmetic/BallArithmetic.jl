@@ -12,7 +12,7 @@ using Dates
 
 # Determine which tests to run
 if isempty(ARGS)
-    tests_to_run = [1, 2, 3, 4, 5]
+    tests_to_run = [2, 3, 4, 5]
 else
     tests_to_run = parse.(Int, ARGS)
 end
@@ -25,13 +25,6 @@ println("="^70)
 
 # Run selected tests
 results = Dict{Int, Any}()
-
-if 1 in tests_to_run
-    println("\n>>> Running Test 1...")
-    include("benchmark_test1.jl")
-    results[1] = run_test1()
-    test1_to_latex(results[1])
-end
 
 if 2 in tests_to_run
     println("\n>>> Running Test 2...")
@@ -132,7 +125,6 @@ This benchmark compares four families of methods:
 
 Individual test results are in separate files:
 \begin{itemize}
-    \item \texttt{benchmark\_test1.tex}: Size and nonnormality scaling
     \item \texttt{benchmark\_test2.tex}: Radius breakdown analysis
     \item \texttt{benchmark\_test3.tex}: Parametric configuration comparison
     \item \texttt{benchmark\_test4.tex}: Warm-start effectiveness
