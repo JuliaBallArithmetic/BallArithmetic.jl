@@ -8,20 +8,6 @@ _bigfloat_type(::Type{Complex{T}}) where {T <: Real} = Complex{BigFloat}
 _to_bigfloat(M::AbstractMatrix{T}) where {T} = convert.(_bigfloat_type(T), M)
 _to_bigfloat(v::AbstractVector{T}) where {T} = convert.(_bigfloat_type(T), v)
 
-# Helper to get the working float type (Float64 or BigFloat)
-function _working_type(::Type{T}, use_bigfloat::Bool) where {T <: Real}
-    use_bigfloat ? BigFloat : Float64
-end
-function _working_type(::Type{Complex{T}}, use_bigfloat::Bool) where {T <: Real}
-    use_bigfloat ? Complex{BigFloat} : ComplexF64
-end
-function _to_working(M::AbstractMatrix{T}, use_bigfloat::Bool) where {T}
-    use_bigfloat ? _to_bigfloat(M) : convert.(T <: Complex ? ComplexF64 : Float64, M)
-end
-function _to_working(v::AbstractVector{T}, use_bigfloat::Bool) where {T}
-    use_bigfloat ? _to_bigfloat(v) : convert.(T <: Complex ? ComplexF64 : Float64, v)
-end
-
 # Runs `f` in the working arithmetic of the exported decompositions: Float64, or BigFloat at
 # `precision_bits`.
 # Whether the enclosure runs in BigFloat. `arithmetic` is the leading type argument of the

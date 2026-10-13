@@ -108,7 +108,6 @@ include("types/matrix.jl")
 export BallMatrix
 include("types/vector.jl")
 export BallVector
-include("types/triangularize.jl")
 
 export oishi_MMul
 

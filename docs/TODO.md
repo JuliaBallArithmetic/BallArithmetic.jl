@@ -1166,3 +1166,22 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       comment of the field `residual_norm` now say estimate. Its two calls are the stopping
       test and that diagnostic.
 
+52. **Private functions that nothing calls, 2026-10-14** (a scan of the 656 function
+    definitions of `src` and `ext` for names that are not exported and occur nowhere else in
+    the code, docstrings and comments excluded).
+    - Deleted, no caller and no test: `src/linear_system/Krawczyk.jl` (a file that was not
+      included: `krawczyk` computed `inv(A.c) * v.c` and stopped);
+      `src/types/triangularize.jl` (`_triangularize` wrapped midpoint and radius in
+      `UpperTriangular`, which drops the lower triangle, and its docstring said it kept "the
+      original enclosure guarantees"); `_working_type` and `_to_working` in `verified_lu.jl`.
+    - **Open, Isaia's:** `ext/CuTileExt.jl` (commit 4860f9d, "rigorous GPU GEMM
+      extensions"): its one entry point `_cutile_mmul4` is called by nothing, named in no
+      test and in no docs page. Not touched.
+    - **Open:** not exported, not called in `src` or `ext`, named in tests, used in no other
+      clone: `compute_enclosure` and `bound_resolvent` (`rigorous_contour.jl`, whose type
+      `Enclosure` is exported), `_compute_exclusion_circle_level_set_ode` and `_priori` (same
+      file), `svd_bound_L2_resolvent`, `r2_infty_bound_by_blocks`, `off_diagonal_abs`,
+      `miyajima_algorithm_1_procedure_1`, and the four kernels `_ccrprod`, `_ccrprod_prime`,
+      `_ciprod`, `_ciprod_prime` of Miyajima (2010) in `oishi_mmul.jl`. Each is either an
+      entry point that should be exported and documented or code to remove; not decided.
+
