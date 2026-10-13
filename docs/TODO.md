@@ -949,3 +949,24 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     `triangular_sylvester_miyajima_enclosure`, `rigorous_eigenvalues`,
     `rigorous_generalized_eigenvalues`. None of these was traced to the statement that loses
     the type.
+
+45. **Matrix sums under the rounding mode again, 2026-10-13** (Isaia: "back to the rounding
+    mode; we have decided to trust OpenBLAS with the thread rounding flag").
+    776c18a had replaced the rounding-mode block of `A ± B` by `add_up` and `mul_up` entry
+    by entry. `sum_radius_forms.jl` on nighthawk, one Julia thread, random dense matrices,
+    minimum of 5 runs: the two forms give the same radius in every entry for n = 100, 300,
+    1000, 3000 (10,100,000 entries); the time of the radius is 0.000029, 0.00014, 0.0014,
+    0.050 s under the mode and 0.00019, 0.0017, 0.019, 0.18 s entry by entry.
+    Now the radius of `A ± B` is formed under `RoundUp` (`_sum_radius`), and so are the sums
+    `X + PQ` of a radius and a product in `rump_ogita_2024.jl` and `rump_lange_2023.jl`
+    (`_sum_product_up`, beside `_product_up`). Kept with the directed operations: scalar
+    formulas, the diagonal updates of `A ± λI`, the scalar multiple of a ball matrix, and
+    the routines converted before 776c18a (the theorems of Miyajima (2014) and of Rump
+    (2011), `schur_gershgorin.jl`, `miyajima_2014a.jl`, `rump_verifyeigall.jl`, the norm
+    bounds), where a formula was also corrected at the time.
+    A sum or a difference keeps a `Symmetric` radius when the midpoints are `Hermitian` or
+    `Symmetric` and the radii `Symmetric` (2ed7865, 621783b): broadcasting had returned a
+    dense radius.
+    This rests on Julia's own array loops honouring the rounding mode, which is not BLAS;
+    the measurement above is on one machine. The forms measured wrong on 2026-10-12 (a
+    block inside a loop or a comprehension over a vector of structs) are not used.

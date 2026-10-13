@@ -186,7 +186,7 @@ function _rumplange2023_eig(A::BallMatrix{T}; kappa::Real = 0, oracle = nothing)
     n2m, n2r = _rumplange2023_coldots(Xs, (Xs,), zeros(T, n, n))
     n2lo = T[sub_down(real(n2m[j]), n2r[j]) for j in 1:n]
     P1, P2, RP = _two_term_product_sum(((Am, Xs, one(T)),))
-    RP = add_up.(RP, _product_up(Ar, absX))
+    RP = _sum_product_up(RP, Ar, absX)
     qm, qr = _rumplange2023_coldots(Xs, (P1, P2), RP)
     all(>(0), n2lo) || return _rumplange2023_eig_failed(Xs, T)
     rho = [Ball(real(qm[j]), qr[j]) / Ball(real(n2m[j]), n2r[j]) for j in 1:n]
@@ -196,7 +196,7 @@ function _rumplange2023_eig(A::BallMatrix{T}; kappa::Real = 0, oracle = nothing)
 
     # E ∋ ÃX̃ − X̃Λ̃
     Eb = _accurate_product_sum(((Am, Xs, one(T)), (Xs, Matrix{S}(Diagonal(lam)), -one(T))))
-    E = BallMatrix(mid(Eb), add_up.(rad(Eb), _product_up(Ar, absX)))
+    E = BallMatrix(mid(Eb), _sum_product_up(rad(Eb), Ar, absX))
     e2 = _column_norms2_up(E)
     normE = sqrt_up.(e2)
     delta = T[div_up(normE[j], sqrt_down(n2lo[j])) for j in 1:n]
@@ -414,7 +414,7 @@ function verifysvdall(A::BallMatrix{T}; kappa::Real = 0, oracle = nothing) where
     y2lo = T[sub_down(real(y2m[j]), y2r[j]) for j in 1:n]
     all(>(0), y2lo) || return failed()
     Q1, Q2, RQ = _two_term_product_sum(((Am, Ys, one(T)),))
-    RQ = add_up.(RQ, _product_up(Ar, absY))
+    RQ = _sum_product_up(RQ, Ar, absY)
     qm, qr = _rumplange2023_coldots(Xs, (Q1, Q2), RQ)
     z2 = [Ball(real(x2m[j]), x2r[j]) + Ball(real(y2m[j]), y2r[j]) for j in 1:n]
     z2lo = T[sub_down(mid(z), rad(z)) for z in z2]
@@ -425,9 +425,9 @@ function verifysvdall(A::BallMatrix{T}; kappa::Real = 0, oracle = nothing) where
 
     Σ = Matrix{S}(Diagonal(sig))
     Eb = _accurate_product_sum(((Am, Ys, one(T)), (Xs, Σ, -one(T))))
-    E = BallMatrix(mid(Eb), add_up.(rad(Eb), _product_up(Ar, absY)))
+    E = BallMatrix(mid(Eb), _sum_product_up(rad(Eb), Ar, absY))
     Fb = _accurate_product_sum(((Matrix{S}(Am'), Xs, one(T)), (Ys, Σ, -one(T))))
-    F = BallMatrix(mid(Fb), add_up.(rad(Fb), _product_up(Matrix{T}(transpose(Ar)), absX)))
+    F = BallMatrix(mid(Fb), _sum_product_up(rad(Fb), Matrix{T}(transpose(Ar)), absX))
     g2 = add_up.(_column_norms2_up(E), _column_norms2_up(F))
     normG = sqrt_up.(g2)
     delta = T[div_up(normG[j], sqrt_down(y2lo[j])) for j in 1:n]

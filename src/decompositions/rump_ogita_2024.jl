@@ -205,10 +205,10 @@ function _rumpogita2024_lu(A::BallMatrix{T}; oracle = nothing) where {T}
     if m >= n
         # P1 + P2 ± RP ∋ Ã[p, :] X_U, m × n; its leading block enters I_E
         P1, P2, RP = _two_term_product_sum(((Am, XU, one(T)),))
-        RP = add_up.(RP, _product_up(Ar, absXU))
+        RP = _sum_product_up(RP, Ar, absXU)
         Eb = _accurate_product_sum(((XL, P1[1:k, :], one(T)), (XL, P2[1:k, :], one(T)),
             (Id, Id, -one(T))))
-        E = BallMatrix(mid(Eb), add_up.(rad(Eb), _product_up(absXL, RP[1:k, :])))
+        E = BallMatrix(mid(Eb), _sum_product_up(rad(Eb), absXL, RP[1:k, :]))
         fE = _rumpogita2024_alg3_2(E)
         fE === nothing && return nothing
         # L = (Ã[p, :] X_U)(I + UinvE)
@@ -224,9 +224,9 @@ function _rumpogita2024_lu(A::BallMatrix{T}; oracle = nothing) where {T}
     else
         # Q1 + Q2 ± RQ ∋ X_L Ã[p, q], m × n; C1 + C2 ± RC ∋ B X_U for I_E
         C1, C2, RC = _two_term_product_sum(((Am[:, 1:k], XU, one(T)),))
-        RC = add_up.(RC, _product_up(Ar[:, 1:k], absXU))
+        RC = _sum_product_up(RC, Ar[:, 1:k], absXU)
         Eb = _accurate_product_sum(((XL, C1, one(T)), (XL, C2, one(T)), (Id, Id, -one(T))))
-        E = BallMatrix(mid(Eb), add_up.(rad(Eb), _product_up(absXL, RC)))
+        E = BallMatrix(mid(Eb), _sum_product_up(rad(Eb), absXL, RC))
         fE = _rumpogita2024_alg3_2(E)
         fE === nothing && return nothing
         # L = L̃ (I + F)⁻¹ (I + LE), with X_L L̃ = I + F
@@ -237,7 +237,7 @@ function _rumpogita2024_lu(A::BallMatrix{T}; oracle = nothing) where {T}
         L = _triangular_ball(W + W * fE.LE, :L; unit = true)
         # U = (I + LinvE)(X_L Ã[p, q])
         Q1, Q2, RQ = _two_term_product_sum(((XL, Am, one(T)),))
-        RQ = add_up.(RQ, _product_up(absXL, Ar))
+        RQ = _sum_product_up(RQ, absXL, Ar)
         Qb = BallMatrix(Q1) + BallMatrix(Q2, RQ)
         U = _triangular_ball(Qb + fE.LinvE * Qb, :U)
         return (; L, U, p, q)
@@ -310,9 +310,9 @@ function _rumpogita2024_cholesky(A::BallMatrix{T}; oracle = nothing) where {T}
     XGa = Matrix{S}(XG')
     # C1 + C2 ± RC ∋ Ã X_G, then E ∋ X_G* (Ã X_G) − I
     C1, C2, RC = _two_term_product_sum(((Am, XG, one(T)),))
-    RC = add_up.(RC, _product_up(Ar, absXG))
+    RC = _sum_product_up(RC, Ar, absXG)
     Eb = _accurate_product_sum(((XGa, C1, one(T)), (XGa, C2, one(T)), (Id, Id, -one(T))))
-    E = BallMatrix(mid(Eb), add_up.(rad(Eb), _product_up(Matrix{T}(transpose(absXG)), RC)))
+    E = BallMatrix(mid(Eb), _sum_product_up(rad(Eb), Matrix{T}(transpose(absXG)), RC))
     fE = _rumpogita2024_alg3_2(E)
     fE === nothing && return nothing
     Dh = _rumpogita2024_sqrt_diagonal(fE.UE, S)
@@ -396,15 +396,15 @@ function _rumpogita2024_qr(A::BallMatrix{T}; full::Bool = false, oracle = nothin
     absXR = _modulus_up(XR)
     # C1 + C2 ± RC ∋ Ã X_R
     C1, C2, RC = _two_term_product_sum(((Am, XR, one(T)),))
-    RC = add_up.(RC, _product_up(Ar, absXR))
+    RC = _sum_product_up(RC, Ar, absXR)
     # E ∋ C*C − I
     C1a, C2a = Matrix{S}(C1'), Matrix{S}(C2')
     Eb = _accurate_product_sum(((C1a, C1, one(T)), (C1a, C2, one(T)), (C2a, C1, one(T)),
         (C2a, C2, one(T)), (Id, Id, -one(T))))
     absC = add_up.(_modulus_up(C1), _modulus_up(C2))
     RCt, absCt = Matrix{T}(transpose(RC)), Matrix{T}(transpose(absC))
-    E = BallMatrix(mid(Eb), add_up.(add_up.(rad(Eb), _product_up(RCt, absC)),
-        add_up.(_product_up(absCt, RC), _product_up(RCt, RC))))
+    E = BallMatrix(mid(Eb), _sum_product_up(
+        _sum_product_up(_sum_product_up(rad(Eb), RCt, absC), absCt, RC), RCt, RC))
     fE = _rumpogita2024_alg3_2(E)
     fE === nothing && return nothing
     D = _rumpogita2024_sqrt_diagonal(fE.UE, S)
@@ -434,7 +434,7 @@ function _rumpogita2024_qr(A::BallMatrix{T}; full::Bool = false, oracle = nothin
     M = BallMatrix(vcat(Matrix{S}(Am'), N), vcat(Matrix{T}(transpose(Ar)), zeros(T, k, m)))
     # the residual of Q̃₂: [−Ã*Q̃₂; αI − N Q̃₂]
     top = _accurate_product_sum(((Matrix{S}(Am'), Q2t, -one(T)),))
-    top = BallMatrix(mid(top), add_up.(rad(top), _product_up(Matrix{T}(transpose(Ar)), _modulus_up(Q2t))))
+    top = BallMatrix(mid(top), _sum_product_up(rad(top), Matrix{T}(transpose(Ar)), _modulus_up(Q2t)))
     Ik = Matrix{T}(I, k, k)
     bot = _accurate_product_sum(((N, Q2t, -one(T)), (α * Ik, Ik, one(T))))
     sol = verifylss(M, BallMatrix(vcat(mid(top), mid(bot)), vcat(rad(top), rad(bot))))

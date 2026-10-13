@@ -92,6 +92,14 @@ _product_up(A::AbstractVecOrMat{T}, B::AbstractVecOrMat{T}) where {T <: Abstract
         A * B
     end
 
+# `fl△(X + AB)`: an entrywise upper bound of `X + AB` when `A` and `B` are non-negative, the sum
+# under the rounding mode as well as the product.
+_sum_product_up(X::AbstractVecOrMat{T}, A::AbstractVecOrMat{T},
+    B::AbstractVecOrMat{T}) where {T <: AbstractFloat} =
+    setrounding(T, RoundUp) do
+        X + A * B
+    end
+
 function MMul4(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
     C1, C2 = _product_down_up(mid(A), mid(B))
 
