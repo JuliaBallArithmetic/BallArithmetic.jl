@@ -916,3 +916,21 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       Miyajima attributes the algorithm to Oishi. Oishi (2001) itself was not read.
     Not checked: that each theorem or algorithm number quoted in a docstring is the one in the
     paper, beyond those read during the audit; `RevolTheveny2013`, which is not on Crossref.
+
+43. **The README and the documentation pages against the package, 2026-10-13.**
+    `check_doc_names.jl` on nighthawk: of 145 names that the pages document, link to or call,
+    five in the README are not defined: `miyajima_eigenvalue_bounds`,
+    `rump_2022a_eigenvalue_bounds`, `rump_lange_2023`, `verified_gev_enclosure` (its table of
+    eigenvalue routines) and `krawczyk_linear_solve` (its example). The table now lists the
+    routines that exist with the result each cites, and the example, run on nighthawk, uses
+    `rigorous_eigenvalues` and `krawczyk_linear_system`.
+    **Not done:** the pages under `docs/src` were not read against the code; the documentation
+    was not built; `docs/src/decompositions.md` has timing tables headed "(GLA)" whose
+    numbers were not rerun; `docs/src/literate/benchmark_warmstart_circle.tex` names
+    `oishi_2023_solve_double64`, to be checked.
+    **To decide (Isaia):** `verify_generalized_eigenpairs(A, B, …)` takes ball matrices and
+    states its bounds "for every symmetric `A` and every symmetric `B` in the given balls",
+    the theorem being for a symmetric definite pencil. By the rule of item 40 a ball matrix is
+    not symmetric; the routine could take `Symmetric` point matrices, or keep the statement
+    about the symmetric matrices of the balls, which is what Miyajima, Ogita, Rump and Oishi
+    (2010) need when the entries are only known within a radius.

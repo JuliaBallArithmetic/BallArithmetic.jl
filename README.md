@@ -38,17 +38,22 @@ Matrix products are computed using rounding-mode-controlled algorithms following
 
 Multiple algorithms for computing rigorous eigenvalue bounds:
 
-| Algorithm | Reference | Description |
-|-----------|-----------|-------------|
-| `miyajima_eigenvalue_bounds` | Miyajima 2012 | Block-diagonalization approach |
-| `rump_2022a_eigenvalue_bounds` | Rump 2022a | Individual eigenvector error bounds |
-| `rump_lange_2023` | Rump-Lange 2023 | Schur-based eigenvalue enclosure |
-| `verified_gev_enclosure` | Various | Generalized eigenvalue problem Ax = λBx |
+| Routine | Reference | What it returns |
+|---------|-----------|-----------------|
+| `rigorous_eigenvalues`, `evbox` | Miyajima (2010), Theorem 1 | Discs with one common radius whose union contains the eigenvalues of every matrix of the ball |
+| `rigorous_generalized_eigenvalues`, `gevbox`, `miyajima_gev_enclosure` | Miyajima (2010), Theorem 1 | The same for the pencil `Ax = λBx` |
+| `verifyeigall` | Rump (2022); Miyajima (2014) for a pencil | Discs with the number of eigenvalues each holds, and enclosures of bases of the invariant subspaces |
+| `verify_generalized_eigenpairs` | Miyajima, Ogita, Rump and Oishi (2010) | Error bounds for all the eigenpairs of a symmetric definite pencil |
+| `certify_eigenpairs` | a contraction argument, stated in the docstring | Enclosure of each eigenpair |
+| `verifysvdall` | Rump and Lange (2023) | Enclosures of all singular values and of bases of the singular subspaces |
+
+A ball matrix with positive radii is an open set of matrices, so the enclosures of its
+eigenvalues are discs of the complex plane; real intervals are returned for a point matrix that
+is `Hermitian`, or real `Symmetric`, by its type.
 
 Features include:
 - Standard eigenvalue problem (Ax = λx)
 - Generalized eigenvalue problem (Ax = λBx)
-- Hermitian-optimized variants
 - Schur decomposition refinement
 - Spectral projector computation
 - Riesz projection interfaces
@@ -88,13 +93,14 @@ A = BallMatrix([1.0 2.0; 3.0 4.0])
 # Add uncertainty
 A_uncertain = A + Ball(0.0, 0.01) * I
 
-# Compute verified eigenvalues
-result = miyajima_eigenvalue_bounds(A_uncertain)
+# Discs whose union contains the eigenvalues of every matrix of the ball
+result = rigorous_eigenvalues(A_uncertain)
 println("Eigenvalue enclosures: ", result.eigenvalues)
 
 # Solve a linear system with verification
 b = BallVector([1.0, 2.0])
-x = krawczyk_linear_solve(A, b)
+x = krawczyk_linear_system(A, b)
+x.certified        # the solution of every system of the ball lies in x.solution
 ```
 
 ## Precision Support
