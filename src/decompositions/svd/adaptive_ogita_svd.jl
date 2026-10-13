@@ -18,13 +18,12 @@ alternates that refinement with a certification at increasing precision, is ours
 """
     _spectral_norm_bound(A::AbstractMatrix)
 
-Compute an upper bound on the spectral norm (2-norm) using:
-    ‖A‖₂ ≤ √(‖A‖∞ · ‖A‖₁)
-
-where ‖A‖∞ = max row sum of |A| and ‖A‖₁ = max column sum of |A|.
-
-This bound is valid for any matrix and computable for BigFloat (unlike opnorm(..., 2)
-which requires svdvals and fails for BigFloat).
+The floating-point value of `√(‖A‖∞ ‖A‖₁)`, with `‖A‖∞` the largest row sum of `|A|` and `‖A‖₁`
+the largest column sum. In exact arithmetic that quantity is an upper bound of `‖A‖₂`; here the
+sums, the product and the root are rounded to nearest and no rounding is accounted for, so the
+value returned is **an estimate and not a bound**. It is used for the stopping test of the
+refinement and for the diagnostic `residual_norm` of its result, and for nothing that is stated.
+An upper bound of the spectral norm is [`upper_bound_L2_opnorm`](@ref) on a ball matrix.
 """
 function _spectral_norm_bound(A::AbstractMatrix{T}) where T
     m, n = size(A)
@@ -57,7 +56,7 @@ struct OgitaSVDRefinementResult{T, UT, ΣT, VT}
     V::VT                      # Refined right singular vectors
     iterations::Int            # Number of refinement iterations performed
     precision_used::Int        # Precision (bits) used for refinement
-    residual_norm::T           # Final residual norm
+    residual_norm::T           # floating-point estimate of ‖A − UΣV'‖₂ (`_spectral_norm_bound`), not a bound
     converged::Bool            # Whether refinement converged
 end
 

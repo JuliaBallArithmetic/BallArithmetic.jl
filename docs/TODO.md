@@ -1145,3 +1145,24 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       `set_parametric_config!`, `polygon_sagitta`, `GramTransform`, `apply_gram_transform`
       are used in no other clone.
 
+51. **Readers of a refinement's `residual_norm`, 2026-10-14.** Runs first: 81 at b174536,
+    184,307 passed, none failed; 82 at 10a2e01, 183,816 passed, none failed
+    (`rigour_suite81.out`, `rigour_suite82.out`); RigorousPseudospectra 300 of 300 in both;
+    `structured_ball_ops.nighthawk.tsv` at 10a2e01, 336 rows, none with a member outside, an
+    exception or a result that is not a ball matrix. (The audit after run 82 had failed to
+    load: the untracked `Manifest.toml` of the worktree on nighthawk still listed the two
+    deleted extensions; `Pkg.resolve()` there.)
+    - `CertifScripts.jl`, the Ogita worker: `refined.residual_norm` decides whether the
+      refined SVD is used as the approximation; `certify_svd` then certifies it. Read, not
+      changed.
+    - `_compute_schur_bigfloat_refined` built ball matrices of the Schur factors whose radii
+      were the refinement's floating-point diagnostics ("Create BallMatrix with refinement
+      errors as radii") and passed them to `_schur_defects`. The defects computed that way
+      hold for the midpoints, so nothing false was returned, and the radii only enlarged them.
+      The routine was called nowhere in `src` (`compute_schur_and_error` uses
+      `_compute_schur_bigfloat_direct`); it and its tests are deleted.
+    - `_spectral_norm_bound` (`adaptive_ogita_svd.jl`): its docstring said "Compute an upper
+      bound on the spectral norm"; it is a floating-point evaluation. The docstring and the
+      comment of the field `residual_norm` now say estimate. Its two calls are the stopping
+      test and that diagnostic.
+

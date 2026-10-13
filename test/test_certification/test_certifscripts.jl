@@ -433,63 +433,6 @@ end
 end
 
 # ==============================================================
-# _compute_schur_bigfloat_refined
-# ==============================================================
-
-@testset "_compute_schur_bigfloat_refined" begin
-    CS = BallArithmetic.CertifScripts
-
-    @testset "basic 3x3 BigFloat" begin
-        old_prec = precision(BigFloat)
-        setprecision(BigFloat, 256)
-        try
-            A_mid = Complex{BigFloat}[1 0.5 0; 0.1 2 0.3; 0 0.2 3]
-            A = BallArithmetic.BallMatrix(A_mid)
-
-            S_nt, errF, errT, norm_Z, norm_Z_inv = CS._compute_schur_bigfloat_refined(A)
-
-            @test size(S_nt.T) == (3, 3)
-            @test size(S_nt.Z) == (3, 3)
-            @test length(S_nt.values) == 3
-
-            # T should be upper triangular
-            @test norm(tril(S_nt.T, -1)) < BigFloat(10)^(-30)
-
-            # Bounds should be reasonable (refined path may be less precise than direct)
-            errF_val = BigFloat(errF)
-            errT_val = BigFloat(errT)
-            @test errF_val < BigFloat(1)  # orthogonality defect < 1
-            @test errT_val < BigFloat(1)
-
-            # norm bounds
-            @test norm_Z >= 1
-            @test norm_Z_inv >= 1
-        finally
-            setprecision(BigFloat, old_prec)
-        end
-    end
-
-    @testset "consistency with direct path" begin
-        old_prec = precision(BigFloat)
-        setprecision(BigFloat, 256)
-        try
-            A_mid = Complex{BigFloat}[2 1; 0 3]
-            A = BallArithmetic.BallMatrix(A_mid)
-
-            S_direct, errF_d, errT_d, _, _ = CS._compute_schur_bigfloat_direct(A)
-            S_refined, errF_r, errT_r, _, _ = CS._compute_schur_bigfloat_refined(A)
-
-            # Both should find the same eigenvalues
-            ev_d = sort(real.(S_direct.values))
-            ev_r = sort(real.(S_refined.values))
-            @test ev_d ≈ ev_r atol = BigFloat(10)^(-10)
-        finally
-            setprecision(BigFloat, old_prec)
-        end
-    end
-end
-
-# ==============================================================
 # _evaluate_sample_ogita_bigfloat
 # ==============================================================
 

@@ -1267,47 +1267,6 @@ function _compute_schur_bigfloat_direct(A::BallMatrix{BigFloat}; polynomial = no
         _schur_defects(A, BallMatrix(S.Z), BallMatrix(S.T), upper_bound_L2_opnorm; polynomial)...)
 end
 
-"""
-    _compute_schur_bigfloat_refined(A; polynomial = nothing)
-
-Compute BigFloat Schur decomposition by refining a Float64 seed.
-Seeds from Float64 Schur, then refines iteratively in BigFloat.
-May fail for matrices with eigenvalues below ~10⁻¹⁶.
-"""
-function _compute_schur_bigfloat_refined(A::BallMatrix{BigFloat}; polynomial = nothing)
-    n = size(A, 1)
-
-    # Step 1: Compute Float64 Schur decomposition
-    A_f64 = Complex{Float64}.(A.c)
-    S_f64 = LinearAlgebra.schur(A_f64)
-
-    # Step 2: Refine to BigFloat using iterative refinement
-    target_precision = precision(BigFloat)
-    # the order of the eigenvalues of the Float64 Schur form is kept
-    result = refine_schur_decomposition(A.c, S_f64.Z, S_f64.T;
-        method = :bujanovicetal2023unordered,
-        target_precision = target_precision,
-        max_iterations = 20)
-
-    if !result.converged
-        @warn "Schur refinement did not fully converge. Residual: $(result.residual_norm)"
-    end
-
-    # Build BigFloat Schur factorization
-    Q_big = result.Q
-    T_big = result.T
-
-    # Create BallMatrix with refinement errors as radii
-    Q_error = BigFloat(result.orthogonality_defect)
-    A_norm = LinearAlgebra.norm(A.c)
-    T_error = BigFloat(result.residual_norm) * A_norm
-
-    bZ = BallMatrix(Q_big, fill(Q_error, n, n))
-    bT = BallMatrix(T_big, fill(T_error, n, n))
-    return ((T = T_big, Z = Q_big, values = diag(T_big)),
-        _schur_defects(A, bZ, bT, upper_bound_L2_opnorm; polynomial)...)
-end
-
 # ---------------------------------------------------------------------------------------------
 # What every driver does, once: the serial, the Ogita, the parametric and the distributed one
 # (ext/DistributedExt.jl) differ only in how a sample is evaluated.
