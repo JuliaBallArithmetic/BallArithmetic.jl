@@ -850,6 +850,12 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       and no unimplemented branch; its docstring says what it encloses, the orthogonal
       projection onto the span of the chosen columns for every member of the two balls, and
       that this is the Riesz projection for a normal matrix only. The test samples members.
+      **Removed, 2026-10-13** (Isaia: "the verified routines are correctly referenced in
+      literature? If not, remove them"): `verified_project_onto_eigenspace` cited no result
+      for its enclosure; the references of the file (Kato; Stewart and Sun; Golub and Van
+      Loan) are on the routines that are not verified and are for the definition of the
+      projection. No caller in `src`, `ext`, or in the clones under `~/Code` and `~/Write` on
+      bemtivi. The routine, its export, its API entry and its tests are deleted.
       **Open, Isaia's to decide:** in the two routines that are not verified,
       `project_onto_eigenspace` and `compute_eigenspace_projector`, the keyword `hermitian`
       still selects the orthogonal projection against the oblique one built from the left

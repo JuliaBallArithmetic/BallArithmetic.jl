@@ -1,7 +1,6 @@
 using Test
 using LinearAlgebra
 using BallArithmetic
-using Random
 
 @testset "Riesz Projection Interfaces" begin
 
@@ -227,57 +226,6 @@ using Random
         # Second eigenvector should be zeroed (or close to it since it's not in range)
         e2 = F.vectors[:, 2]
         @test norm(P * e2) < 1e-10  # Second eigenvector projected to zero
-    end
-
-    @testset "Verified projection - hermitian case" begin
-        # Create hermitian ball matrix
-        A_mid = [3.0 1.0; 1.0 2.0]
-        F = eigen(Symmetric(A_mid))
-
-        # Create ball vector and matrix
-        v = BallVector([1.0, 2.0], [1e-12, 1e-12])
-        V = BallMatrix(F.vectors, fill(1e-12, 2, 2))
-
-        # Project onto first eigenspace
-        v_proj = verified_project_onto_eigenspace(v, V, 1:1)
-
-        @test length(v_proj) == 2
-        @test all(isfinite.(v_proj.c))
-        @test all(v_proj.r .>= 0)
-
-        # The projection should be close to the non-verified result
-        v_proj_exact = project_onto_eigenspace(v.c, F.vectors, 1:1; hermitian=true)
-        for i in 1:2
-            @test abs(v_proj.c[i] - v_proj_exact[i]) < 1e-8
-        end
-    end
-
-    @testset "Verified projection: the orthogonal projection for every member" begin
-        # the routine encloses V_S (V_S' V_S)^-1 V_S' v for every v and V of the balls; the columns
-        # here are eigenvectors of a matrix that is not normal, so they are not orthogonal
-        rng = MersenneTwister(5)
-        setprecision(BigFloat, 256) do
-            for (n, idx) in ((2, 1:1), (5, 2:3), (6, 1:4))
-                Vm = n == 2 ? eigen([2.0 1.0; 0.0 3.0]).vectors : randn(rng, n, n)
-                vm = randn(rng, n)
-                Vr, vr = fill(1e-10, n, n), fill(1e-10, n)
-                p = verified_project_onto_eigenspace(BallVector(vm, vr), BallMatrix(Vm, Vr), idx)
-                outside = 0
-                for _ in 1:20
-                    W = big.(Vm) .+ big.(Vr) .* rand(rng, (-1, 1), n, n)
-                    w = big.(vm) .+ big.(vr) .* rand(rng, (-1, 1), n)
-                    WS = W[:, idx]
-                    z = WS * ((WS' * WS) \ (WS' * w))
-                    outside += count(abs.(z .- big.(mid(p))) .> big.(rad(p)))
-                end
-                @test outside == 0
-                @test maximum(rad(p)) < 1e-6
-            end
-        end
-        # there is no keyword: the routine has one meaning
-        v = BallVector([1.0, 1.0], [1e-12, 1e-12])
-        V = BallMatrix([1.0 1.0; 0.0 1.0], fill(1e-12, 2, 2))
-        @test_throws MethodError verified_project_onto_eigenspace(v, V, 1:1; hermitian = false)
     end
 
 end

@@ -100,7 +100,6 @@ newton_schulz_orthogonalize!
 ```@docs
 project_onto_eigenspace
 project_onto_schur_subspace
-verified_project_onto_eigenspace
 compute_eigenspace_projector
 compute_schur_projector
 ```
