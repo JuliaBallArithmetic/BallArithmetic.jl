@@ -219,6 +219,14 @@ function LinearAlgebra.adjoint(M::BallMatrix)
     return BallMatrix(mid(M)', rad(M)')
 end
 
+"""
+    transpose(M::BallMatrix)
+
+The transpose of `M`: midpoint and radius transposed. Without this method the generic one
+returns a lazy wrapper around `M`, which is not a `BallMatrix`.
+"""
+LinearAlgebra.transpose(M::BallMatrix) = BallMatrix(transpose(mid(M)), transpose(rad(M)))
+
 # The radius of an entrywise operation, formed entry by entry with `f`. Broadcasting over a
 # `Symmetric` or `Hermitian` matrix returns a dense matrix; here, when every argument is stored as
 # `Symmetric` or `Hermitian` on the same triangle, `f` is applied to the stored data and the result
@@ -229,6 +237,13 @@ end
 function _radius_entrywise(f, Xs...)
     if all(X -> X isa Union{Symmetric, Hermitian}, Xs) && allequal(X.uplo for X in Xs)
         return Symmetric(f.(map(parent, Xs)...), Symbol(first(Xs).uplo))
+    end
+    # Diagonal and triangular storage: the entries outside the structure are zero with radius
+    # zero and stay so, where broadcasting `f` over them would give them the radius `f(0, …)`;
+    # `f` is applied to the stored entries only
+    all(X -> X isa Diagonal, Xs) && return Diagonal(f.(map(X -> X.diag, Xs)...))
+    for W in (UpperTriangular, LowerTriangular)
+        all(X -> X isa W, Xs) && return W(f.(map(parent, Xs)...))
     end
     return f.(Xs...)
 end
@@ -432,6 +447,17 @@ function Base.:-(B::AbstractMatrix{<:Union{T, Complex{T}}},
     BallMatrix(C, R)
 end
 
+# Mutable copies of the midpoint (with entries of type TT, negated for λI − A) and of the radius,
+# for A ± λI. A midpoint stored as Hermitian or as real Symmetric keeps that storage under a real
+# shift; a shift that is not real gives a matrix that is not Hermitian, and the copies are dense.
+function _shift_storage(A::BallMatrix, ::Type{TT}, real_shift::Bool; negate::Bool = false) where {TT}
+    c = negate ? -A.c : A.c
+    if !real_shift && c isa Union{Hermitian, Symmetric{<:Real}}
+        return Matrix{TT}(c), Matrix(A.r)
+    end
+    return LinearAlgebra.copymutable_oftype(c, TT), copy(A.r)
+end
+
 """
     +(A::BallMatrix, J::UniformScaling)
 
@@ -442,10 +468,8 @@ radii are enlarged to maintain a valid enclosure.
 function Base.:+(A::BallMatrix{T}, J::UniformScaling) where {T}
     # Uniform scalings only apply to square matrices.
     LinearAlgebra.checksquare(A)
-    B = LinearAlgebra.copymutable_oftype(A.c,
-        Base._return_type(+,
-            Tuple{eltype(A.c), typeof(J)}))
-    R = copy(A.r)
+    B, R = _shift_storage(A, Base._return_type(+, Tuple{eltype(A.c), typeof(J)}),
+        J.λ isa Real)
     @inbounds for i in axes(A, 1)
         # Shift the diagonal by the uniform scaling value.
         B[i, i] += J
@@ -468,8 +492,7 @@ function Base.:+(A::BallMatrix{T},
         J::UniformScaling{Ball{T, NT}}) where {T, NT <: Union{T, Complex{T}}}
     # Uniform scalings require square matrices regardless of scalar type.
     LinearAlgebra.checksquare(A)
-    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c), NT}))
-    R = copy(A.r)
+    B, R = _shift_storage(A, Base._return_type(+, Tuple{eltype(A.c), NT}), NT <: Real)
     @inbounds for i in axes(A, 1)
         # The midpoint of the scaling updates the diagonal entries.
         B[i, i] += J.λ.c
@@ -503,10 +526,8 @@ the stored radii so that the result remains enclosure-safe.
 function Base.:-(A::BallMatrix{T}, J::UniformScaling) where {T}
     # Subtracting a uniform scaling also requires a square input.
     LinearAlgebra.checksquare(A)
-    B = LinearAlgebra.copymutable_oftype(A.c,
-        Base._return_type(-,
-            Tuple{eltype(A.c), typeof(J)}))
-    R = copy(A.r)
+    B, R = _shift_storage(A, Base._return_type(-, Tuple{eltype(A.c), typeof(J)}),
+        J.λ isa Real)
     @inbounds for i in axes(A, 1)
         # Subtract the scaling value from the diagonal entries.
         B[i, i] -= J
@@ -530,8 +551,7 @@ function Base.:-(A::BallMatrix{T},
         J::UniformScaling{Ball{T, NT}}) where {T, NT <: Union{T, Complex{T}}}
     # Same square check for the subtractive variant.
     LinearAlgebra.checksquare(A)
-    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c), NT}))
-    R = copy(A.r)
+    B, R = _shift_storage(A, Base._return_type(+, Tuple{eltype(A.c), NT}), NT <: Real)
     @inbounds for i in axes(A, 1)
         # Remove the midpoint contribution of the scaling from the diagonal.
         B[i, i] -= J.λ.c
@@ -553,16 +573,11 @@ forming expressions such as `λ * I - A` with rigorous error bounds.
 function Base.:-(J::UniformScaling, A::BallMatrix{T}) where {T}
     # Enforce the square requirement before forming `J - A`.
     LinearAlgebra.checksquare(A)
-    B = LinearAlgebra.copymutable_oftype(A.c,
-        Base._return_type(-,
-            Tuple{eltype(A.c), typeof(J)}))
-    R = copy(A.r)
-    # EVERY entry is negated, not only the diagonal: `J - A` had left the off-diagonal entries
-    # equal to `+A[i,j]`, so `I - A` returned the wrong matrix for any A with off-diagonal
-    # entries, and `z*I - A` with it.
-    @inbounds for j in axes(A, 2), i in axes(A, 1)
-        B[i, j] = -B[i, j]
-    end
+    B, R = _shift_storage(A, Base._return_type(-, Tuple{eltype(A.c), typeof(J)}),
+        J.λ isa Real; negate = true)
+    # EVERY entry is negated, not only the diagonal (done in `_shift_storage`): `J - A` had left
+    # the off-diagonal entries equal to `+A[i,j]`, so `I - A` returned the wrong matrix for any A
+    # with off-diagonal entries, and `z*I - A` with it.
     @inbounds for i in axes(A, 1)
         # then the scaling lands on the diagonal
         B[i, i] += J.λ
@@ -587,12 +602,8 @@ function Base.:-(J::UniformScaling{Ball{T, NT}},
 ) where {T, NT <: Union{T, Complex{T}}}
     # Validate the shape before computing the difference.
     LinearAlgebra.checksquare(A)
-    B = LinearAlgebra.copymutable_oftype(A.c, Base._return_type(+, Tuple{eltype(A.c), NT}))
-    R = copy(A.r)
+    B, R = _shift_storage(A, Base._return_type(+, Tuple{eltype(A.c), NT}), NT <: Real; negate = true)
     # every entry is negated, not only the diagonal: see the real-scaling method above
-    @inbounds for j in axes(A, 2), i in axes(A, 1)
-        B[i, j] = -B[i, j]
-    end
     @inbounds for i in axes(A, 1)
         # then the midpoint of the scaling lands on the diagonal
         B[i, i] += J.λ.c

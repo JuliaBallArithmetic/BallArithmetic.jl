@@ -5,7 +5,9 @@ function abs_preserving_structure(A::LinearAlgebra.AbstractTriangular)
     else
         LinearAlgebra.tril!(data)
     end
-    return typeof(A)(data)
+    # the wrapper of A around the real data: `typeof(A)(data)` converted the moduli of a complex
+    # triangular matrix back to complex numbers, and a ball matrix cannot have a complex radius
+    return Base.typename(typeof(A)).wrapper(data)
 end
 
 function abs_preserving_structure(A::LinearAlgebra.Symmetric)
