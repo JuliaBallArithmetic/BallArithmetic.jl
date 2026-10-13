@@ -280,7 +280,8 @@ Add a plain matrix to a `BallMatrix` by combining the midpoints directly
 and inflating the radii to account for the existing uncertainty in `A`
 and the floating-point error introduced by the addition.
 """
-function Base.:+(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
+function Base.:+(A::BallMatrix{T},
+        B::AbstractMatrix{<:Union{T, Complex{T}}}) where {T <: AbstractFloat}
     mA, rA = mid(A), rad(A)
 
     # Apply the operation directly to the midpoint data.
@@ -297,7 +298,8 @@ end
 Commutative counterpart of [`+(::BallMatrix, ::AbstractMatrix)`](@ref),
 allowing the plain matrix to appear on the left-hand side.
 """
-function Base.:+(B::AbstractMatrix{T}, A::BallMatrix{T}) where {T <: AbstractFloat}
+function Base.:+(B::AbstractMatrix{<:Union{T, Complex{T}}},
+        A::BallMatrix{T}) where {T <: AbstractFloat}
     # Swap the arguments so both orders share the same code path.
     return A + B
 end
@@ -309,7 +311,8 @@ Subtract a plain matrix from a `BallMatrix`. The midpoint subtraction is
 performed elementwise while the radius is enlarged to remain enclosure
 safe.
 """
-function Base.:-(A::BallMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
+function Base.:-(A::BallMatrix{T},
+        B::AbstractMatrix{<:Union{T, Complex{T}}}) where {T <: AbstractFloat}
     mA, rA = mid(A), rad(A)
 
     # Subtract the midpoint data directly.
@@ -327,7 +330,8 @@ Subtract a `BallMatrix` from a plain matrix, reusing the implementation
 of [`-(::BallMatrix, ::AbstractMatrix)`](@ref) by swapping the argument
 order.
 """
-function Base.:-(B::AbstractMatrix{T}, A::BallMatrix{T}) where {T <: AbstractFloat}
+function Base.:-(B::AbstractMatrix{<:Union{T, Complex{T}}},
+        A::BallMatrix{T}) where {T <: AbstractFloat}
     mA, rA = mid(A), rad(A)
 
     # Compute the midpoint part of `B - A` directly.

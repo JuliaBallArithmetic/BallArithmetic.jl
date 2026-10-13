@@ -157,6 +157,12 @@ end
             @test rad(A * B) isa Matrix && mid(A * B) isa Matrix
             # a point Hermitian matrix added to the ball keeps it
             @test rad(A + N) isa Symmetric && mid(A + N) isa Hermitian
+            # a plain complex matrix added to a ball matrix gives a ball matrix that contains the sum
+            Z = randn(rng, ComplexF64, n, n)
+            for (C, X) in ((Ad + Z, big.(Matrix(M)) + big.(Z)), (Z - Ad, big.(Z) - big.(Matrix(M))))
+                @test C isa BallMatrix
+                @test all(abs.(X .- big.(mid(C))) .<= big.(rad(C)))
+            end
         end
     end
 end
