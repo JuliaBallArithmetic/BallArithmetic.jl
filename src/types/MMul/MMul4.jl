@@ -94,11 +94,14 @@ _product_up(A::AbstractVecOrMat{T}, B::AbstractVecOrMat{T}) where {T <: Abstract
 
 # `fl△(X + AB)`: an entrywise upper bound of `X + AB` when `A` and `B` are non-negative, the sum
 # under the rounding mode as well as the product.
-_sum_product_up(X::AbstractVecOrMat{T}, A::AbstractVecOrMat{T},
-    B::AbstractVecOrMat{T}) where {T <: AbstractFloat} =
-    setrounding(T, RoundUp) do
+function _sum_product_up(X::AbstractVecOrMat{T}, A::AbstractVecOrMat{T},
+        B::AbstractVecOrMat{T}) where {T <: AbstractFloat}
+    # the sum is Julia's own loop: entry by entry where the check at load time failed
+    NumericalTest.ARRAY_ROUNDING_OK[] || return add_up.(X, _product_up(A, B))
+    return setrounding(T, RoundUp) do
         X + A * B
     end
+end
 
 function MMul4(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
     C1, C2 = _product_down_up(mid(A), mid(B))

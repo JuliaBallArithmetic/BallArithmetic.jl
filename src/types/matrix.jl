@@ -154,6 +154,10 @@ end
 # `C` and `Symmetric` radii only the stored triangle is worked on and the result is `Symmetric`.
 function _sum_radius(::Type{T}, ϵ, C, radii...) where {T}
     absC = abs_preserving_structure(C)
+    # where the check run at load time found that Julia's array sums do not follow the rounding
+    # mode on this machine, entry by entry with the directed operations
+    NumericalTest.ARRAY_ROUNDING_OK[] ||
+        return _radius_entrywise((c, rs...) -> foldl(add_up, rs; init = mul_up(ϵ, c)), absC, radii...)
     R = setrounding(T, RoundUp) do
         foldl(+, radii; init = ϵ * absC)
     end

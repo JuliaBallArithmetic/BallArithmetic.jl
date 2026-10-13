@@ -61,6 +61,20 @@ function __init__()
             @warn "The rounding test failed on 1 thread"
         end
     end
+
+    # Sums, differences and multiples of matrices under a rounding mode are Julia's own loops, not
+    # OpenBLAS calls: the build above does not cover them. They are compared here, entry by entry,
+    # with the directed operations.
+    failed = NumericalTest.check_array_rounding()
+    if isempty(failed)
+        @info "Julia's matrix sums under a rounding mode agree with the directed operations on the test matrices"
+    else
+        @error "On this machine Julia's array operations under a rounding mode do NOT round as the mode says, for: " *
+               join(failed, "; ") *
+               ". The sums of ball matrices fall back to entrywise directed operations. The " *
+               "matrix products of ball matrices (MMul3, MMul4, MMul5, oishi_MMul) add and " *
+               "subtract matrices under a rounding mode and are NOT rigorous on this machine."
+    end
 end
 
 using RoundingEmulator, MacroTools, SetRounding
@@ -243,6 +257,9 @@ export estimate_2norm, find_optimal_split, compare_all_configs
 # iteration, or a verified decomposition of one matrix. Given a ball matrix they refuse, with the
 # reason, in place of the `MethodError` or the "This conversion breaks rigour" that their
 # arithmetic would meet on the way.
+# run once when the package is precompiled, so that the call in `__init__` is compiled
+NumericalTest.check_array_rounding()
+
 for f in (:polar_newton, :polar_newton_schulz, :polar_qdwh, :cholesky_qr2,
     :triangular_eigenvectors,
     :verified_lu, :verified_qr, :verified_cholesky, :verified_polar, :verified_takagi,
