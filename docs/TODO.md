@@ -1309,8 +1309,8 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       f5210c5 (both fixed in c8ffe07, not rerun); `resolvent_comparison` fails to parse,
       `@everywhere using BallArithmetic` inside a function (line 450), as it has since it was
       added in 6aea206. `resolvent_routes` forms its floors inside `setrounding` blocks and
-      takes `mid − rad` in rounding to nearest (line 52). **Open:** whether to keep
-      `resolvent_comparison.jl`.
+      takes `mid − rad` in rounding to nearest (line 52). `resolvent_comparison.jl` removed
+      (Isaia: "Remove").
     - **Type inference** (`trace_return_types.jl`, `return_sites.jl`, `inferred_vs_actual.jl`,
       `inner_lu.jl`, `inner_ops.jl` on nighthawk). At 80adfcb, 16 calls of exported functions
       had a return type that is not concrete (item 44). Two causes in the basic operations:
