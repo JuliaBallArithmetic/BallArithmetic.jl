@@ -28,6 +28,11 @@ divisions), bounded by [`collatz_upper_bound_L2_opnorm`](@ref); `‖D_d⁻¹‖�
 
 The note states the theorem for real matrices. Complex triangular matrices are accepted here:
 the block factorisation, the Neumann series and Lemma 1.2 use only the norm.
+
+# Reference
+S. M. Rump and S. Oishi, *A note on Oishi's lower bound for the smallest singular value of
+linearized Galerkin equations*, Japan J. Indust. Appl. Math. **41**(2) (2024), 1097-1104,
+doi 10.1007/s13160-024-00645-7, Lemma 1.2 and Theorem 1.3.
 """
 function rump_oishi_2024_triangular_bound(T::BallMatrix{RT}, k::Int) where {RT}
     n = size(T, 1)

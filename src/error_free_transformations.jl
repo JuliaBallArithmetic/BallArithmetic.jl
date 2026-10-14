@@ -24,6 +24,10 @@ export two_sum, two_product, split_veltkamp, compensated_terms, compensated_term
 
 The exact product as an unevaluated sum: `x = fl(a*b)` and `y = a*b - x` exactly, so that
 `a*b == x + y` with no rounding lost. Uses one FMA.
+
+# Reference
+T. Ogita, S. M. Rump and S. Oishi, *Accurate sum and dot product*, SIAM J. Sci. Comput. **26**(6)
+(2005), 1955-1988, doi 10.1137/030601818, Algorithm 3.5 (TwoProductFMA).
 """
 @inline function two_product(a::T, b::T) where {T <: AbstractFloat}
     x = a * b
@@ -35,6 +39,12 @@ end
 
 The exact sum as an unevaluated sum: `x = fl(a+b)` and `y = a+b - x` exactly, by Knuth's six
 operations, with no assumption on the relative size of `a` and `b`.
+
+# Reference
+T. Ogita, S. M. Rump and S. Oishi, *Accurate sum and dot product*, SIAM J. Sci. Comput. **26**(6)
+(2005), 1955-1988, doi 10.1137/030601818, Algorithm 3.1 (TwoSum) and Theorem 3.4, where it is
+attributed to D. E. Knuth, *The Art of Computer Programming*, vol. 2, *Seminumerical Algorithms*,
+Addison-Wesley, 1969.
 """
 @inline function two_sum(a::T, b::T) where {T <: AbstractFloat}
     x = a + b
@@ -45,10 +55,17 @@ end
 """
     split_veltkamp(a) -> (hi, lo)
 
-Veltkamp's splitting: `a == hi + lo` exactly, with each half carrying about half the significand,
-so that products of halves are exact in floating point. This is the step that lets an accurate
-matrix product be assembled from ordinary BLAS calls in round-to-nearest, with no directed
-rounding anywhere.
+The splitting of Dekker: `a == hi + lo` exactly, with each half carrying about half the
+significand, so that products of halves are exact in floating point. This is the step that lets
+an accurate matrix product be assembled from ordinary BLAS calls in round-to-nearest, with no
+directed rounding anywhere.
+
+# Reference
+T. Ogita, S. M. Rump and S. Oishi, *Accurate sum and dot product*, SIAM J. Sci. Comput. **26**(6)
+(2005), 1955-1988, doi 10.1137/030601818, Algorithm 3.2 (Split), with `factor = 2^s + 1` and
+`s = ⌈t/2⌉` for `t` bits of precision; there it is attributed to T. J. Dekker, *A floating-point
+technique for extending the available precision*, Numer. Math. **18** (1971), 224-242, and the
+product of two numbers by it (Algorithm 3.3, TwoProduct) to G. W. Veltkamp.
 """
 @inline function split_veltkamp(a::T) where {T <: AbstractFloat}
     # s = ceil(p/2), not floor: with p = 53 and s = 26 the high part keeps 27 bits, two of them
@@ -122,8 +139,12 @@ constant of `|fl(xᵀy) − xᵀy| ≤ γ_N |x|ᵀ|y|` for a real inner product 
 with or without fused multiply-add. Refuses when `N u ≥ 1/2`, where the model does not apply.
 
 For complex data, `gamma_bound(N, Complex{T})` returns `γ_{N+2}`: a complex product has relative
-error at most `√2 γ₂ ≤ γ₃` (Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed.,
-Lemma 3.5), and `(1 + γ₃)(1 + γ_{N−1}) ≤ 1 + γ_{N+2}`.
+error at most `√2 γ₂ ≤ γ₃` (Lemma 3.5 of the reference), and `(1 + γ₃)(1 + γ_{N−1}) ≤ 1 + γ_{N+2}`.
+
+# Reference
+N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, Philadelphia,
+2002, doi 10.1137/1.9780898718027: inequality (3.5) for the inner product, Section 2.6 for the
+fused multiply-add (`n` rounding errors in place of `2n − 1`), Lemma 3.5 for complex arithmetic.
 """
 function gamma_bound(N::Integer, ::Type{T}) where {T <: AbstractFloat}
     u = eps(T) / 2

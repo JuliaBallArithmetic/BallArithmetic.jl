@@ -324,9 +324,11 @@ end
 """
     oishi_2023_optimal_block_size(G::BallMatrix{T}; max_m::Int=100) where {T}
 
-Find the optimal block size m that gives the tightest bound on σ_min.
-
-Returns a tuple (best_m, best_result).
+[`oishi_2023_sigma_min_bound`](@ref) for every block size `m = 1, …, min(max_m, n − 1)`, and the
+`m` whose certified lower bound of `σ_min(G)` is the largest, as `(best_m, best_result)`. Each
+certified result is a valid bound, so the largest is; when none is certified, `best_result` is
+the uncertified one for `m = 1`. The statement and its reference are those of
+`oishi_2023_sigma_min_bound`.
 """
 function oishi_2023_optimal_block_size(G::BallMatrix{T}; max_m::Int=100) where {T}
     n = size(G, 1)

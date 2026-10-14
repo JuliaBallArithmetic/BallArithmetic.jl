@@ -1060,6 +1060,11 @@ polygon, and it is carried to `A` with `errF ≥ ‖Z*Z − I‖` (which equals 
 
 `zmax` must bound `|z|` on the contour; for a circle it is `|centre| + radius`. `Inf` when no
 method applies. `N` is not used.
+
+# Reference
+A. Blumenthal, I. Nisoli and T. Taylor-Crush, *A pseudospectral approach to rigorous numerical
+estimation of resonances of transfer operators*, Found. Comput. Math. (accepted; arXiv:2507.09021),
+Lemma 5.1.
 """
 function bound_res_original(l2pseudo, η, norm_Z, norm_Z_inv, errF, errT, N; zmax, Cbound = 1.0,
         method::Symbol = :best)

@@ -54,7 +54,8 @@ Apply Newton-Schulz iteration to orthogonalize Q in-place.
 The iteration is:
     Q_{k+1} = (1/2) Q_k (3I - Q_k^H Q_k)
 
-This converges quadratically if ‖Q^H Q - I‖₂ < 1.
+It converges quadratically to the unitary factor of the polar decomposition of `Q` when `Q` is
+invertible and `‖Q‖₂ < √3` (Section 2.2.2 of the reference); `‖Q^H Q - I‖₂ < 1` implies both.
 
 # Arguments
 - `Q`: Matrix to orthogonalize (modified in place)
@@ -65,13 +66,12 @@ This converges quadratically if ‖Q^H Q - I‖₂ < 1.
 - Number of iterations performed
 - Final orthogonality defect ‖Q^H Q - I‖_F
 
-# References
-- [BujanovicKressnerSchroder2022](@cite) Section 2.2.2 (Newton-Schulz iteration)
+The iteration and the defect are computed in floating point; the result is an approximation and
+nothing about it is certified.
 
-# NOTE: This is an ORACLE computation - convergence is checked via the defect
-# (‖Q^H Q - I‖_F < tol), which serves as an A POSTERIORI verification. The
-# intermediate computations don't need directed rounding because the final
-# defect measurement validates the orthogonalization quality.
+# Reference
+Z. Bujanović, D. Kressner and C. Schröder, *Iterative refinement of Schur decompositions*,
+Numer. Algorithms **92**(1) (2023), 247-267, doi 10.1007/s11075-022-01327-6, Section 2.2.2.
 """
 function newton_schulz_orthogonalize!(Q::Matrix{T}; max_iter::Int=10, tol=nothing) where T
     n = size(Q, 1)
@@ -353,25 +353,28 @@ end
     solve_triangular_matrix_equation(T_mat::Matrix{T}, E::Matrix{T};
                                      use_recursive::Bool=true, nmin::Int=32, max_entry::Real=1e5) where T
 
-Solve the triangular matrix equation stril(TL - LT) = -E for strictly lower triangular L.
-
-Given an upper triangular matrix T with pairwise distinct diagonal entries and a strictly
-lower triangular matrix E, finds the unique strictly lower triangular matrix L satisfying
-the equation.
+An approximate solution, in floating point, of the triangular matrix equation
+stril(TL - LT) = -E for a strictly lower triangular L, by Algorithm 2 (successive substitution)
+or Algorithm 3 (recursive) of the reference. For an upper triangular T with pairwise distinct
+diagonal entries and a strictly lower triangular E the equation has a unique solution; every entry
+of the computed L whose modulus exceeds `max_entry` is set to zero when it is formed, so the
+result need not satisfy the equation. No bound comes with it.
 
 # Arguments
 - `T_mat`: Upper triangular matrix (n × n) with pairwise distinct diagonal entries
 - `E`: Strictly lower triangular matrix (n × n)
 - `use_recursive`: If true, use recursive block algorithm (default: true)
 - `nmin`: Minimum block size for recursive algorithm (default: 32)
-- `max_entry`: Maximum allowed entry magnitude before truncation (default: 1e5).
-  This prevents instability from clustered eigenvalues (see Example 4 of the paper, which uses 1e-5).
+- `max_entry`: entries of L of larger modulus are set to zero (default: 1e5). The reference
+  does this with the threshold 1e-5 in Example 4, to keep large entries from propagating when
+  eigenvalues are clustered.
 
 # Returns
-Strictly lower triangular matrix L satisfying stril(TL - LT) = -E
+The strictly lower triangular matrix L.
 
-# References
-- [BujanovicKressnerSchroder2022](@cite) Algorithms 2 and 3
+# Reference
+Z. Bujanović, D. Kressner and C. Schröder, *Iterative refinement of Schur decompositions*,
+Numer. Algorithms **92**(1) (2023), 247-267, doi 10.1007/s11075-022-01327-6, Section 2.1 and Algorithms 2 and 3.
 """
 function solve_triangular_matrix_equation(T_mat::Matrix{T}, E::Matrix{T};
                                           use_recursive::Bool=true, nmin::Int=32, max_entry::Real=1e5) where T
