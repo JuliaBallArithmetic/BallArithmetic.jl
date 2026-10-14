@@ -29,7 +29,7 @@ struct SchurGershgorinResult{MT, BT, IT, RT, ET}
     remainder_norm::RT
     """Recentred (Rayleigh-quotient) eigenvalue estimates `diag(mid(transformed))`."""
     eigenvalues::Vector{ET}
-    """Per-block coupling radii `rᵢ = ‖Ñ[Cᵢ,:]‖₂ + β₂` (block-Gershgorin, one per cluster)."""
+    """Per-block coupling radii `rᵢ = min(Σ_{j≠i}‖Ñ[Cᵢ,Cⱼ]‖₂, √(q−1)‖Ñ[Cᵢ,:]‖₂) + β₂`, one per cluster."""
     block_coupling::Vector{RT}
     """Per-block barycentres `cᵢ = mean(diag Pᵢ)` (the within-block recentring)."""
     block_centers::Vector{ET}
@@ -85,8 +85,8 @@ function _inflate_intervals(intervals::AbstractVector{Ball{T, CT}},
             for i in eachindex(intervals)]
 end
 
-# PER-BLOCK enclosure data (draft Thm. enclosure + Prop. blockgersg, with within-block
-# barycentre recentring).  The block-diagonal candidate `Λ = blockdiag(Pᵢ)` may be formed
+# PER-BLOCK enclosure data (the block Gershgorin sets of Feingold and Varga, 1962, with
+# within-block barycentre recentring).  The block-diagonal candidate `Λ = blockdiag(Pᵢ)` may be formed
 # freely (it is a candidate); rigor comes from the two residuals computed here:
 #   * `R₂ = YW − I`  (basis residual, Neumann `‖R₂‖₂ < 1`);
 #   * `R₁ = Y(AW − WΛ)`  (BLOCK residual) ⇒ `M − Λ = (I+R₂)⁻¹R₁`, so the SINGLE slack
@@ -96,7 +96,7 @@ end
 #   * barycentre  `cᵢ = mean(diag Pᵢ)`  and within-block non-normality `nᵢ = ‖Pᵢ − cᵢI‖₂`,
 #       so the barycentre floor `σ_min(Pᵢ − zI) ≥ |z − cᵢ| − nᵢ` gives the explicit disc
 #       `D(cᵢ, nᵢ + ρᵢ)` carrying `|Cᵢ|` eigenvalues;
-#   * the localized coupling `rᵢ` (Prop. blockgersg, `Ñ = M̃ − Λ` = `remainder`,
+#   * the localized coupling `rᵢ` (`Ñ = M̃ − Λ` = `remainder`,
 #       `β₂ = ‖R₂‖₂/(1−‖R₂‖₂)·‖M̃‖₂`): each block charged only its OWN off-block row, never
 #       the worst block's.  Two forms of that row bound are available and BOTH are needed,
 #       because neither dominates the other; `rᵢ` is their minimum.  Writing the eigenvector
@@ -149,6 +149,23 @@ function _vbd_block_data(A::BallMatrix, WB::BallMatrix, YB::BallMatrix,
     return coupling, centres, nonnormality, block_slack
 end
 
+
+# What kind of set the spectrum is enclosed by, decided by the type of the argument.
+abstract type _SpectrumKind end
+"Discs of the complex plane: a general matrix."
+struct _ComplexDiscs <: _SpectrumKind end
+"Intervals of the real line: matrices whose type guarantees a real spectrum."
+struct _RealIntervals <: _SpectrumKind end
+
+# A real ball matrix stored as `Diagonal` in midpoint and radius: its off-diagonal entries are
+# zero with radius zero, so every matrix in it is a real diagonal matrix, whose eigenvalues are
+# its diagonal entries. This is the type of the matrix of singular value enclosures.
+const _RealDiagonalBallMatrix{T} = BallMatrix{T, T, Ball{T, T}, <:Diagonal, <:Diagonal}
+
+_spectrum_kind(::BallMatrix) = _ComplexDiscs()
+_spectrum_kind(::_RealDiagonalBallMatrix) = _RealIntervals()
+_spectrum_kind(::HermitianBallMatrix) = _RealIntervals()
+
 """
     schur_gershgorin_enclosure(A::BallMatrix)
     schur_gershgorin_enclosure(H::Hermitian)
@@ -179,13 +196,17 @@ contiguous; the block-diagonal part of `Ã` and its rigorous remainder follow, w
 `remainder_norm` a rigorous bound on `‖Ã − block‖₂` (the best of the Collatz and
 `‖·‖₁‖·‖∞` estimates).
 
-Each cluster `Cᵢ` also carries a disc `D(cᵢ, nᵢ + rᵢ)` holding `|Cᵢ|` eigenvalues
-counted with multiplicity, with barycentre `cᵢ = mean(diag Pᵢ)`, within-block
-non-normality `nᵢ = ‖Pᵢ − cᵢI‖₂`, and coupling `rᵢ = min(Σ_{j≠i}‖Ñ[Cᵢ,Cⱼ]‖₂,
-√(q−1)‖Ñ[Cᵢ,:]‖₂) + β₂`; that is the block Gershgorin bound of Feingold and Varga
-(1962), Theorem 2, in the form used by `prop:blockgersg` of the companion draft.
-The bare strip norm `‖Ñ[Cᵢ,:]‖₂` alone is **not** a valid radius and was corrected
-in PR #68.
+Each cluster `Cᵢ` also carries a disc `D(cᵢ, nᵢ + rᵢ)`, with barycentre
+`cᵢ = mean(diag Pᵢ)`, within-block non-normality `nᵢ = ‖Pᵢ − cᵢI‖₂`, and coupling
+`rᵢ = min(Σ_{j≠i}‖Ñ[Cᵢ,Cⱼ]‖₂, √(q−1)‖Ñ[Cᵢ,:]‖₂) + β₂`. Every eigenvalue lies in one of
+these discs: by Theorem 2 of the reference every eigenvalue `z` has `σ_min(Pᵢ − zI) ≤ rᵢ`
+for some `i`, its proof needing only a bound of `‖Σ_{j≠i} Ñ[Cᵢ,Cⱼ] w_j‖₂` for
+`‖w_j‖₂ ≤ 1`, which both terms of the minimum are (the second is not in the reference:
+the `q − 1` blocks `w_j` have `‖(w_j)_j‖₂ ≤ √(q−1)`); and
+`σ_min(Pᵢ − zI) ≥ |z − cᵢ| − nᵢ`. Theorem 4 of the reference counts the eigenvalues in a
+union of its sets disjoint from the others, by a continuity argument written for the radii
+`Σ_{j≠i}‖A_ij‖`; for the radii `rᵢ` above, with the strip form and `β₂`, that argument
+has not been written out here.
 
 This is **not** either algorithm of Miyajima (2014), whose name the routine
 formerly carried. That paper certifies clusters by a Brouwer fixed-point test on a
@@ -194,24 +215,12 @@ from infinity-norm row sums) or a genuine block diagonalisation of `B⁻¹A` (§
 neither the fixed-point test nor a diagonalising transformation appears here, and
 the basis is only permuted. For the block-diagonalising route see
 [`miyajima2014a_schurnewton`](@ref).
+
+# Reference
+D. G. Feingold and R. S. Varga, *Block diagonally dominant matrices and generalizations of the
+Gerschgorin circle theorem*, Pacific J. Math. **12**(4) (1962), 1241-1250,
+doi 10.2140/pjm.1962.12.1241, Theorems 2 and 4.
 """
-
-# What kind of set the spectrum is enclosed by, decided by the type of the argument.
-abstract type _SpectrumKind end
-"Discs of the complex plane: a general matrix."
-struct _ComplexDiscs <: _SpectrumKind end
-"Intervals of the real line: matrices whose type guarantees a real spectrum."
-struct _RealIntervals <: _SpectrumKind end
-
-# A real ball matrix stored as `Diagonal` in midpoint and radius: its off-diagonal entries are
-# zero with radius zero, so every matrix in it is a real diagonal matrix, whose eigenvalues are
-# its diagonal entries. This is the type of the matrix of singular value enclosures.
-const _RealDiagonalBallMatrix{T} = BallMatrix{T, T, Ball{T, T}, <:Diagonal, <:Diagonal}
-
-_spectrum_kind(::BallMatrix) = _ComplexDiscs()
-_spectrum_kind(::_RealDiagonalBallMatrix) = _RealIntervals()
-_spectrum_kind(::HermitianBallMatrix) = _RealIntervals()
-
 schur_gershgorin_enclosure(A::BallMatrix) =
     _schur_gershgorin(_spectrum_kind(A), _dense_hull(A))
 schur_gershgorin_enclosure(H::_HermitianPointMatrix) =
@@ -308,9 +317,11 @@ Block-disc enclosure of `σ(A)` from a VBD result (`SchurGershgorinResult` or
 with the barycentre `cᵢ` (`block_centers`), within-block non-normality `nᵢ`
 (`block_nonnormality`) and localized coupling `rᵢ` (`block_coupling`).
 
-From the barycentre floor `σ_min(Pᵢ − zI) ≥ |z − cᵢ| − nᵢ` and the block-Gershgorin region
-`{z : σ_min(Pᵢ − zI) ≤ rᵢ}`, each disc rigorously contains exactly `|Cᵢ|` eigenvalues of `A`
-(a connected component of overlapping discs holds the summed multiplicities).
+From the barycentre floor `σ_min(Pᵢ − zI) ≥ |z − cᵢ| − nᵢ` and the block Gershgorin region
+`{z : σ_min(Pᵢ − zI) ≤ rᵢ}`, every eigenvalue of `A` lies in one of the discs. `mult` is the
+count that Theorem 4 of Feingold and Varga (1962) gives for a union of discs disjoint from the
+others; see [`schur_gershgorin_enclosure`](@ref) for the reference and for what of that count is
+not written out for these radii.
 """
 function block_enclosure(vbd)
     T = eltype(vbd.block_coupling)

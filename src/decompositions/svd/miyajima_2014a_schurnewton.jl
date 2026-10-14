@@ -80,7 +80,7 @@ struct Miyajima2014aSchurNewtonResult{MT, BT, IT, RT, ET}
     beta::RT
     """Condition diagnostic `κ₂ = ‖W‖₂‖W⁻¹‖₂` (`:cheap` Collatz or `:svdbox`)."""
     kappa::RT
-    """Per-block coupling radii `rᵢ = ‖Ñ[Cᵢ,:]‖₂ + β₂` (block-Gershgorin, one per cluster)."""
+    """Per-block coupling radii `rᵢ = min(Σ_{j≠i}‖Ñ[Cᵢ,Cⱼ]‖₂, √(q−1)‖Ñ[Cᵢ,:]‖₂) + β₂`, one per cluster."""
     block_coupling::Vector{RT}
     """Per-block barycentres `cᵢ = mean(diag Pᵢ)` (the within-block recentring)."""
     block_centers::Vector{ET}
