@@ -1259,3 +1259,33 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       `1825`). `vbd.cluster_intervals[cluster[1]]` is the disc of the first diagonal entry of
       a cluster, used as the ball of its eigenvalue.
 
+56. **GKWExperiments: the scripts behind the Dataverse files, read 2026-10-14** (clone on
+    bemtivi, `main` at 07e8333; read only, nothing run). `scripts/prepare_dataverse_K1024.jl`
+    reads `spectral_K1024_P2048.jls` from `scripts/bigfloat_spectral_K1024.jl` and
+    `script1_results.jls` from `scripts/full_certification_50eigs.jl`. Neither calls
+    `certify_gkw_eigenspaces` or `compute_cluster_projector` (item 55).
+    In `bigfloat_spectral_K1024.jl`:
+    - Step 2: the residual `A − QTQ'` and the defect `Q'Q − I` are formed as point matrices in
+      BigFloat rounding to nearest, and `upper_bound_L2_opnorm` is applied to the computed
+      matrices; the rounding of the two products is not in the bound. `compute_schur_and_error`
+      forms them with ball matrices.
+    - Phase 1, `ℓ_j(1)`: the centre comes from a floating-point triangular solve and a
+      floating-point sum; the comment reads "solve error negligible", and the residual of the
+      solve is printed, not bounded.
+    - Phase 1, the radius: `R_S = min(R_neumann, R_sigma)` with
+      `R_sigma = κ (1/ρ)(1 + ‖T₁₂‖ R₂₂)` and `R₂₂ = 1/(sep − ρ)`, `sep` the smallest distance
+      from `λ_j` to the diagonal of `T₂₂`. `R₂₂` stands for a bound of `‖(zI − T₂₂)⁻¹‖₂` on
+      the circle; for a triangular matrix that is not normal the reciprocal of the distance
+      to its diagonal is a lower bound of that norm, not an upper one. `R_neumann` needs
+      `ρ > ‖N‖₂`. Logged (`data/bigfloat_K1024_log.txt`): `j = 1`, `sep = 0.899`, radius
+      `4.52e-316`; `j = 50`, `sep = 1.25e-21`, `ℓ = 1.665e-20`, radius `1.14e-282`. `‖N‖₂` is
+      not logged.
+    - Phase 2, the eigenvalue enclosures and the projector error: from `M_∞` of script 1,
+      the certified resolvent bound, as intended.
+    - `sep` and `eigenvalues_out` are taken from `real(·)` of the diagonal and from `abs`
+      in rounding to nearest.
+    In `InfiniteDimensionalLift.jl`, called by script 1: the lower ends `mid − rad` converted
+    with `Float64(·)` are in `certify_eigenvalue_schur_direct` (line 1597) and
+    `certify_eigenvalue_schur_center_svd` (line 1825), both called by
+    `full_certification_50eigs.jl`. Script 1 has not been read beyond its calls.
+
