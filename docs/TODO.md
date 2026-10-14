@@ -1233,3 +1233,29 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
       `test_vbd_remainder_norm.jl` records that it was once taken as a bound of the
       remainder norm and underestimated it. It cannot be checked until it has a statement.
 
+55. **GKWExperiments against the tip, read 2026-10-14** (the clone on bemtivi, `main` at
+    07e8333, compat `BallArithmetic = "0.3"`; nothing run, nothing changed there). Every name
+    defined or exported by BallArithmetic at v0.3.0 and absent at the tip was searched in its
+    `src`, `test` and `scripts`.
+    - Will not load or will throw: `rigorous_block_schur(A; hermitian = hermitian)`
+      (`EigenspaceCertification.jl:249`), a keyword that is gone; `BallArithmetic._certify_svd`
+      (three calls in `InfiniteDimensionalLift.jl`, one in a script), now `certify_svd`; the
+      `show` method reads `bs.residual_norm` and `bs.orthogonality_defect`, fields that
+      `RigorousBlockSchurResult` no longer has; `export MiyajimaVBDResult, miyajima_vbd`,
+      names that no longer exist.
+    - Still valid: `compute_schur_and_error`, `bound_res_original`, `svdbox`,
+      `svd_bound_L2_opnorm`, `upper_bound_L2_opnorm`, `collatz_upper_bound_L2_opnorm`,
+      `certify_schur_decomposition`, `CertifScripts._polynomial_matrix`, the drivers
+      `run_certification`, `_ogita`, `_parametric`, the result fields `.resolvent_original`,
+      `.minimum_singular_value`, `.circle`, `.clusters`, `.cluster_intervals`, `.Q`, `.A`,
+      `.vbd_result.eigenvalues`.
+    - In GKWExperiments itself, not in BallArithmetic: `compute_cluster_projector` returns
+      `Q * E * Q'` with `E` the identity on the cluster, under the name of the spectral
+      projector; that is the orthogonal projection onto the span of those columns for a
+      unitary `Q`, and the spectral projector only when the form is block diagonal.
+      BallArithmetic's `compute_spectral_projector_schur` solves the Sylvester equation.
+      Three lower ends of singular values are formed as `mid − rad` in BigFloat rounding to
+      nearest and converted with `Float64(·)` (`InfiniteDimensionalLift.jl:1376`, `1597`,
+      `1825`). `vbd.cluster_intervals[cluster[1]]` is the disc of the first diagonal entry of
+      a cluster, used as the ball of its eigenvalue.
+
