@@ -58,20 +58,8 @@ function m_certify_eigenpairs(A)
     end
     # one Newton-Kantorovich enclosure per eigenpair; unverified ones carry no claim
     regions = [(complex(mid(p.eigenvalue)), rad(p.eigenvalue), 1)
-               for p in r.results if p.verified]
+               for p in r.results if p.certified]
     return isempty(regions) ? nothing : regions
-end
-
-function m_rump_lange(A)
-    r = try
-        rump_lange_2023_cluster_bounds(A)
-    catch e
-        return nothing
-    end
-    r.verified || return nothing
-    # the per-eigenvalue balls, read as discs in the plane; their centres are real even when the
-    # spectrum is not, so the radius has to cover the imaginary part as well
-    return [(complex(mid(z)), rad(z), 1) for z in r.eigenvalues]
 end
 
 const METHODS = [
@@ -83,7 +71,6 @@ const METHODS = [
     "miyajima2014a_schurnewton" => A -> m_block(miyajima2014a_schurnewton, A),
     "evbox" => m_evbox,
     "certify_eigenpairs" => m_certify_eigenpairs,
-    "rump_lange_2023" => m_rump_lange,
 ]
 
 # ---------------------------------------------------------------------------------------------
