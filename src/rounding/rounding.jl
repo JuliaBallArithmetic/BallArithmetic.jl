@@ -389,6 +389,12 @@ function pow_up(x::T, e::Integer) where {T <: AbstractFloat}
     end
     return r
 end
+"""
+    pow_down(x, e)
+
+Lower bound of `xᵉ` for `x ≥ 0` and an integer `e ≥ 0`, by `e` products rounded downward; see
+[`pow_up`](@ref).
+"""
 function pow_down(x::T, e::Integer) where {T <: AbstractFloat}
     r = one(T)
     for _ in 1:e
@@ -426,6 +432,13 @@ function dist_up(a::Number, b::Number)
     y = max(abs(sub_up(imag(a), imag(b))), abs(sub_down(imag(a), imag(b))))
     return abs_up(complex(x, y))
 end
+"""
+    dist_down(a, b)
+
+Lower bound of `|a − b|` for real or complex `a`, `b`: each component of the difference is bounded
+below in modulus by directed subtractions, and the modulus of that pair with [`abs_down`](@ref);
+see [`dist_up`](@ref).
+"""
 function dist_down(a::Number, b::Number)
     a, b = promote(complex(float(a)), complex(float(b)))
     T = real(typeof(a))

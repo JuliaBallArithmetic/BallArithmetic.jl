@@ -445,6 +445,16 @@ function _block_diagonal_part(H::BallMatrix, clusters::Vector{UnitRange{Int}})
     return BallMatrix(block_mid, block_rad)
 end
 
+"""
+    overlap_components(balls) -> Vector{Vector{Int}}
+
+The connected components of the graph on `balls` (real intervals or complex discs) in which two
+balls are joined when they may meet, as sorted vectors of indices. Two balls are joined unless
+they are shown disjoint: a lower bound of the distance of the centres ([`dist_down`](@ref))
+exceeding an upper bound of the sum of the radii, or [`intersect_ball`](@ref) returning `nothing`
+for real intervals. So balls in different components are disjoint, and the union of the balls of
+one component is disjoint from the others.
+"""
 function overlap_components(balls::AbstractVector{Ball{T, CT}}) where {T, CT}
     n = length(balls)
     components = Vector{Vector{Int}}()

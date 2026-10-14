@@ -183,6 +183,8 @@ The upper bound of the spectral norm used for the matrices of the approximate so
     OneInfNorm
     FrobeniusNorm
 end
+@doc "[`NormEstimator`](@ref): the spectral norm bounded by `√(‖·‖₁‖·‖_∞)`." OneInfNorm
+@doc "[`NormEstimator`](@ref): the spectral norm bounded by the Frobenius norm." FrobeniusNorm
 
 """
     DInverseEstimator
@@ -201,6 +203,12 @@ How `‖D_z⁻¹‖₂` is bounded for the upper triangular `D_z = zI − T₂�
     NeumannOneInf
     NeumannCollatz2
 end
+@doc """[`DInverseEstimator`](@ref): `‖D_z⁻¹‖₂` by the recursion of
+[`triangular_inverse_two_norm_bound`](@ref).""" TriBacksub
+@doc """[`DInverseEstimator`](@ref): `‖D_z⁻¹‖₂` by the Neumann bound for `D_z = Δ(I + N)` in the norms 1
+and ∞, combined by `‖·‖₂ ≤ √(‖·‖₁‖·‖_∞)`.""" NeumannOneInf
+@doc """[`DInverseEstimator`](@ref): `‖D_z⁻¹‖₂` by the Neumann bound for `D_z = Δ(I + N)` in the spectral
+norm, `‖N‖₂` bounded by [`collatz_upper_bound_L2_opnorm`](@ref).""" NeumannCollatz2
 
 """
     CouplingEstimator
@@ -221,6 +229,11 @@ return finite numbers the first bound is used.
     CouplingARSolve
     CouplingOffDirect
 end
+@doc "[`CouplingEstimator`](@ref): `‖A_z⁻¹RD_z⁻¹‖₂ ≤ ‖A_z⁻¹‖₂‖R‖₂‖D_z⁻¹‖₂`." CouplingNone
+@doc """[`CouplingEstimator`](@ref): `‖A_z⁻¹RD_z⁻¹‖₂ ≤ ‖A_z⁻¹R‖₂‖D_z⁻¹‖₂`, with `‖A_z⁻¹R‖₂` bounded through
+an approximate solution of `A_zY = R` and its residual in ball arithmetic.""" CouplingARSolve
+@doc """[`CouplingEstimator`](@ref): `‖A_z⁻¹RD_z⁻¹‖₂` bounded through an approximate `W` of
+`A_zWD_z = R` and the residual `R − A_zWD_z` in ball arithmetic.""" CouplingOffDirect
 
 """
     ResolventBoundConfig(norm_estimator, d_inv_estimator, coupling_estimator, miyajima_method,

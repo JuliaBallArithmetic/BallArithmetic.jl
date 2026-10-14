@@ -53,8 +53,13 @@ function Base.show(io::IO, R::PolyRange)
         "]  min∈[", R.min_lo, ",", R.min_hi, "] max∈[", R.max_lo, ",", R.max_hi, "])")
 end
 
-# Rigorous Horner evaluation of a real polynomial at a ball x (outward-rounded
-# throughout, so the returned ball encloses {p(t) : t ∈ x}).
+"""
+    ball_horner(coeffs, x::Ball) -> Ball
+
+The polynomial `p(t) = Σₖ coeffs[k] t^(k−1)` (coefficients in ascending order) evaluated by
+Horner's scheme in ball arithmetic at the ball `x`, real or complex: every product and sum is a
+ball operation, so the returned ball contains `p(t)` for every `t` in `x`.
+"""
 function ball_horner(coeffs::AbstractVector{T}, x::Ball) where {T <: Real}
     acc = Ball(zero(T)) * x          # ball zero of the right (possibly complex) type
     @inbounds for k in lastindex(coeffs):-1:firstindex(coeffs)

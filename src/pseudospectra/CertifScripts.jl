@@ -1791,6 +1791,13 @@ function run_certification_parametric(A::AbstractMatrix, circle::CertificationCi
     run_certification_parametric(BallMatrix(A), circle; kwargs...)
 end
 
+"""
+    polyconv(a, b)
+
+The coefficients of the product of the polynomials with coefficients `a` and `b`, both in
+ascending order: the discrete convolution `c[i + j − 1] = Σ a[i] b[j]`, in the arithmetic of the
+entries (rounded to nearest for floating-point entries; no bound comes with it).
+"""
 function polyconv(a::AbstractVector, b::AbstractVector)
     n, m = length(a), length(b)
     c = zeros(promote_type(eltype(a), eltype(b)), n + m - 1)

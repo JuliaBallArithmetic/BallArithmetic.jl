@@ -27,6 +27,11 @@ Enumeration of available preconditioning strategies.
     LDLTFactorization
     IdentityPreconditioner
 end
+@doc "[`PreconditionerType`](@ref): `C = inv(mid(A))` in floating point." MidpointInverse
+@doc "[`PreconditionerType`](@ref): `C` the inverse of the LU factorisation of `mid(A)`, in floating point." LUFactorization
+@doc """[`PreconditionerType`](@ref): `C` the inverse of the LDLᵀ factorisation of the symmetric `mid(A)` with
+the pivoting of Bunch and Kaufman (`bunchkaufman`), in floating point.""" LDLTFactorization
+@doc "[`PreconditionerType`](@ref): `C = I`." IdentityPreconditioner
 
 """
     PreconditionerResult{CT, T, F}
