@@ -234,19 +234,18 @@ LinearAlgebra.transpose(M::BallMatrix) = BallMatrix(transpose(mid(M)), transpose
 # with that symmetry, which holds when it depends on its arguments through their moduli. On the
 # diagonal a `Hermitian` matrix is the real part of its stored entry, whose modulus is not larger
 # than that of the stored entry, so the value is an upper bound there too.
-function _radius_entrywise(f, Xs...)
-    if all(X -> X isa Union{Symmetric, Hermitian}, Xs) && allequal(X.uplo for X in Xs)
-        return Symmetric(f.(map(parent, Xs)...), Symbol(first(Xs).uplo))
-    end
-    # Diagonal and triangular storage: the entries outside the structure are zero with radius
-    # zero and stay so, where broadcasting `f` over them would give them the radius `f(0, …)`;
-    # `f` is applied to the stored entries only
-    all(X -> X isa Diagonal, Xs) && return Diagonal(f.(map(X -> X.diag, Xs)...))
-    for W in (UpperTriangular, LowerTriangular)
-        all(X -> X isa W, Xs) && return W(f.(map(parent, Xs)...))
-    end
-    return f.(Xs...)
+# Diagonal and triangular storage: the entries outside the structure are zero with radius zero and
+# stay so, where broadcasting `f` over them would give them the radius `f(0, …)`; `f` is applied
+# to the stored entries only. The storage is chosen by dispatch on the arguments, so that the type
+# of the result is inferred.
+_radius_entrywise(f, Xs...) = f.(Xs...)
+function _radius_entrywise(f, Xs::Union{Symmetric, Hermitian}...)
+    allequal(X.uplo for X in Xs) || return f.(Xs...)
+    return Symmetric(f.(map(parent, Xs)...), Symbol(first(Xs).uplo))
 end
+_radius_entrywise(f, Xs::Diagonal...) = Diagonal(f.(map(X -> X.diag, Xs)...))
+_radius_entrywise(f, Xs::UpperTriangular...) = UpperTriangular(f.(map(parent, Xs)...))
+_radius_entrywise(f, Xs::LowerTriangular...) = LowerTriangular(f.(map(parent, Xs)...))
 
 # The radius of a sum or difference with computed midpoint `C`: `ϵ|C|` for the rounding of the
 # midpoint plus the radii of the operands, with the rounding mode upward (Isaia, 2026-10-13: the
