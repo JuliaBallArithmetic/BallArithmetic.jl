@@ -511,7 +511,7 @@ end
 
 function generate_latex_report(test1_results, test2_results, test3_results,
                                test4_results, test5_results;
-                               output_file="resolvent_comparison_report.tex")
+                               output_file=joinpath(@__DIR__, "resolvent_comparison.$(gethostname()).tex"))
 
     io = IOBuffer()
 
@@ -930,7 +930,7 @@ end
 # Main benchmark runner
 # ============================================================================
 
-function run_all_benchmarks(; output_file="resolvent_comparison_report.tex",
+function run_all_benchmarks(; output_file=joinpath(@__DIR__, "resolvent_comparison.$(gethostname()).tex"),
                             skip_parallel=false)
     println("="^70)
     println("RESOLVENT CERTIFICATION BENCHMARK SUITE")

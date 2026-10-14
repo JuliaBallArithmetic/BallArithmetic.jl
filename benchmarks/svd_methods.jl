@@ -13,8 +13,8 @@
 # `mid(A)`, each interval widened by `‖R‖₂` through Weyl's inequality. The numbers in
 # `_svd_auto_theorem`'s docstring are the first six rows of this.
 #
-# Run: julia --project=. bench/svd_methods.jl
-# Writes bench/svd_methods.<hostname>.tsv
+# Run: julia --project=. benchmarks/svd_methods.jl
+# Writes benchmarks/svd_methods.<hostname>.tsv
 
 using BallArithmetic
 using LinearAlgebra

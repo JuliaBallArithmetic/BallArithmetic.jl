@@ -22,8 +22,8 @@
 # computes σ_min directly. What they buy is the per-sample order, so the question is the crossover
 # in the number of samples and how much floor is given up.
 #
-# Run: julia --project=. bench/resolvent_routes.jl
-# Writes bench/resolvent_routes.<hostname>.tsv
+# Run: julia --project=. benchmarks/resolvent_routes.jl
+# Writes benchmarks/resolvent_routes.<hostname>.tsv
 
 using BallArithmetic
 using LinearAlgebra

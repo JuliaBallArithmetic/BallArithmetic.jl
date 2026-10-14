@@ -10,8 +10,8 @@
 # reference's own error the "enclosed" count says more about the reference than about the method,
 # and the triangular families are included because for them the spectrum is the diagonal exactly.
 #
-# Run: julia --project=. bench/eigenvalue_enclosures.jl
-# Writes bench/eigenvalue_enclosures.<hostname>.tsv
+# Run: julia --project=. benchmarks/eigenvalue_enclosures.jl
+# Writes benchmarks/eigenvalue_enclosures.<hostname>.tsv
 
 using BallArithmetic
 using LinearAlgebra

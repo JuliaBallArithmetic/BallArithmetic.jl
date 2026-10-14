@@ -4,7 +4,8 @@ Manifest.toml
 /docs/build/
 
 # experiment outputs: data does not live in a code repo
-bench/*.tsv
+benchmarks/*.tsv
+benchmarks/*.tex
 
 # papers are kept in the library, not in the repository; references.bib lists them
 references/*.pdf

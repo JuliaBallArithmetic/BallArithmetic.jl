@@ -1,24 +1,16 @@
-# The three verified block decompositions against each other and against a full eigen
-# certification.
+# The three verified block decompositions against each other.
 #
 #   none       miyajima2014a_schurnewton(refine = :none)       W = the unitary Schur Q, no transformation
 #              (this is what schur_gershgorin_enclosure does: the block-diagonal part of Z*AZ, the whole
 #              strictly-off-block part left as remainder)
 #   entrywise  miyajima2014a_schurnewton(refine = :entrywise)  Newton on X, W <- W(I+X), gated per pair
 #   block      miyajima2014a_schurnewton(refine = :block)      Sylvester / Bavely-Stewart elimination
-#   rump2022a  rump_2022a_eigenvalue_bounds           one ball per eigenvalue, not per cluster
-#
-# rump2022a carries a `verified` flag and declines when its coupling defect reaches one, which it
-# does on a defective matrix; the balls it returns in that case are the floating-point estimates
-# and enclose nothing. The flag is honoured below.
 #
 # Reported per matrix: whether every eigenvalue of the midpoint lies in the union returned, the
-# largest and median enclosure radius, the number of clusters, and the wall clock. The radii of
-# the first three are the discs of block_enclosure; for rump2022a they are the eigenvalue ball
-# radii, which enclose one eigenvalue each and are not the same object, so the comparison is of
-# what each method delivers rather than of like with like.
+# largest and median enclosure radius, the number of clusters, and the wall clock. The radii are
+# the discs of block_enclosure.
 #
-#   julia --project=. bench/vbd_compare.jl
+#   julia --project=. benchmarks/vbd_compare.jl
 
 using BallArithmetic
 using LinearAlgebra, Random, Printf, Statistics
@@ -74,22 +66,6 @@ function main(; n = 24, seed = 20260927)
             rr = [x.radius for x in d]
             @printf("%-14s %-11s %7d %10s %12.4e %12.4e %10.4f\n", name, String(r),
                 length(d), covers(d, λs), maximum(rr), median(rr), t)
-        end
-        try
-            t = @elapsed rres = rump_2022a_eigenvalue_bounds(A)
-            if !rres.verified
-                @printf("%-14s %-11s %7s %10s %12s %12s %10.4f   (declined, coupling defect %.2e)\n",
-                    name, "rump2022a", "-", "declined", "-", "-", t, rres.coupling_defect)
-            else
-                rr = [rad(b) for b in rres.eigenvalues]
-                cov = all(any(abs(λ - mid(b)) <= rad(b) * (1 + 1e-12) for b in rres.eigenvalues)
-                          for λ in λs)
-                @printf("%-14s %-11s %7d %10s %12.4e %12.4e %10.4f\n", name, "rump2022a",
-                    length(rr), cov, maximum(rr), median(rr), t)
-            end
-        catch err
-            @printf("%-14s %-11s %7s %10s %12s %12s %10s   (%s)\n", name, "rump2022a",
-                "-", "-", "-", "-", "-", sprint(showerror, err)[1:min(end, 40)])
         end
         println()
     end
