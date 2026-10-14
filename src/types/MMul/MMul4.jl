@@ -94,12 +94,13 @@ end
 # centre is rounded upward, so `U − M ≤ M − L` and the radius covers both ends.
 function _centre_radius_up(L::AbstractVecOrMat{T}, U::AbstractVecOrMat{T}) where {T <: AbstractFloat}
     if _entrywise_rounding(T)
-        M = div_up.(add_up.(L, U), T(2))
-        return M, sub_up.(M, L)
+        Me = div_up.(add_up.(L, U), T(2))
+        return Me, sub_up.(Me, L)
     end
+    # a name of its own inside the closure: one shared with the branch above is boxed
     return setrounding(T, RoundUp) do
-        M = (L .+ U) ./ 2
-        M, M .- L
+        Mr = (L .+ U) ./ 2
+        Mr, Mr .- L
     end
 end
 
