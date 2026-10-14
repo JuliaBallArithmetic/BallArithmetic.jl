@@ -1289,3 +1289,73 @@ the bound. The frames that exist: the eigenvector matrix (`:rump2022a`), the Sch
     `certify_eigenvalue_schur_center_svd` (line 1825), both called by
     `full_certification_50eigs.jl`. Script 1 has not been read beyond its calls.
 
+
+57. **Exports, benchmarks, inference and docstrings, 2026-10-14** (Isaia: "check the
+    docstrings; are you sure that the exports are not used in RIM or RigorousPseudospectra?
+    check the problem with type inference; unify bench and benchmarks").
+    - **The seven `CertifScripts` exports of item 50 used nowhere else.** The search of item 50
+      covered the clones on bemtivi only. Searched again: `git grep` over every branch of the
+      seven clones on bemtivi, and the working trees under `~/Code` on nighthawk.
+      `SelfConsistentExperiments.jl`, cloned on nighthawk only (branch `expA-sin-coupling`),
+      imports `gram_transform` and `apply_gram_transform` in `docs/literate/circle_core.jl` and
+      `amplitude_core.jl`. `circle_resolvent_bound`, `polygon_sagitta`, `dowork_ogita`,
+      `dowork_parametric` and `set_parametric_config!` were found in no other repository; the
+      last three are used by `ext/DistributedExt.jl`, `dowork_ogita` is tested. Machines other
+      than bemtivi and nighthawk were not searched.
+    - **`bench/` merged into `benchmarks/`** (80adfcb, c8ffe07). Run on nighthawk at 80adfcb
+      (`run_benchmarks.sh`, `benchmarks_run.nighthawk.out`): `svd_methods`, `resolvent_routes`
+      and `vbd_compare` exit 0; `eigenvalue_enclosures` failed on the renamed field
+      `NKEigenpairResult.certified` and called `rump_lange_2023_cluster_bounds`, replaced in
+      f5210c5 (both fixed in c8ffe07, not rerun); `resolvent_comparison` fails to parse,
+      `@everywhere using BallArithmetic` inside a function (line 450), as it has since it was
+      added in 6aea206. `resolvent_routes` forms its floors inside `setrounding` blocks and
+      takes `mid − rad` in rounding to nearest (line 52). **Open:** whether to keep
+      `resolvent_comparison.jl`.
+    - **Type inference** (`trace_return_types.jl`, `return_sites.jl`, `inferred_vs_actual.jl`,
+      `inner_lu.jl`, `inner_ops.jl` on nighthawk). At 80adfcb, 16 calls of exported functions
+      had a return type that is not concrete (item 44). Two causes in the basic operations:
+      `BallMatrix * BallMatrix` was inferred as `Any`, the centre in `_centre_radius_up` being
+      boxed by the `setrounding` closure (fixed in 18058be); `+` and `-` left the radius type
+      open, `_radius_entrywise` choosing the storage by run-time tests (fixed in dcfbb36, by
+      dispatch). And in the six `verified_*` decompositions the working arithmetic was a
+      run-time `Bool` (fixed in 4039dd7: `_working_arithmetic` returns the type).
+      `compute_preconditioner` returns a Union of three concrete types, one per `method`
+      symbol; `certify_eigenpairs` a Union of the real and the complex result, decided by the
+      data; both left.
+      Run 86 at dcfbb36: BallArithmetic 183,843 passed, none failed; RigorousPseudospectra 300
+      of 300; `structured_ball_ops.jl` 336 rows, no member outside. `inferred_vs_actual.jl` at
+      dcfbb36: 8 calls not concrete (16 at 80adfcb). Left besides the two above:
+      `adaptive_ogita_svd` (the parameter of `rigorous_result`), `rigorous_block_schur` (every
+      parameter), `rigorous_svd` and `rigorous_svd_m4` (with or without the block
+      diagonalisation), `triangular_sylvester_miyajima_enclosure` (the radius storage). Not
+      traced further.
+    - **Docstrings** (`dump_docstrings.jl` at 80adfcb: 285 exported names; 70 functions and 14
+      types with a citation, 131 functions and 52 types without, 6 functions and 12 enum values
+      with none). Of the 131, 47 claim no result (rounding primitives, accessors, caches,
+      configurations, snapshots); the other 82 were read. Fixed in 2209367 and caa0fbf: full
+      references for `two_sum`, `two_product`, `split_veltkamp` (whose splitting the paper
+      attributes to Dekker, not Veltkamp), `gamma_bound`, `rump_oishi_2024_triangular_bound`,
+      `newton_schulz_orthogonalize!`, `solve_triangular_matrix_equation`,
+      `bound_res_original`, `oishi_2023_optimal_block_size`; `schur_gershgorin_enclosure`,
+      whose docstring was attached to `_SpectrumKind`, and its count (Feingold-Varga Theorem 4,
+      not 2), with `block_enclosure` and the `block_coupling` field docstrings. **Open:**
+      - the count of Feingold-Varga Theorem 4 for the radii of `_vbd_block_data` (strip form,
+        `β₂`) is not written out;
+      - `range_bisect`: no reference and no proof in the docstring (the file header calls it
+        Moore-Skelboe; Skelboe, BIT 14 (1974) 87-95 exists on Crossref, not read);
+      - no docstring: `ball_horner`, `dist_down`, `pow_down`, `overlap_components`,
+        `polyconv`, and the enum values of `NormEstimator`, `CouplingEstimator`,
+        `DInverseEstimator`, `PreconditionerType`;
+      - a proof in the docstring and no literature reference: `certify_eigenpair`,
+        `compensated_terms2`, `ordschur_ball`, `compute_spectral_projector_schur`,
+        `compute_spectral_coefficient`, `pseudospectrum_cells`, `psi_squared`, the
+        `triangular_inverse_*_bound`, `sigma_min_upper`, `parametric_resolvent_bound` and
+        `sylvester_resolvent_precompute`, `bound_resolvent_schur`, `circle_resolvent_bound`,
+        `polygon_sagitta`;
+      - figures stated without a measurement behind them: `svd_bound_L2_opnorm` (the table of
+        overestimation percentages), `rigorous_svd_gpu` ("typically ~10⁻¹⁰"), `svd_bigfloat`
+        ("faster ... for matrices larger than ~50×50", in a second docstring of the same
+        function), `run_certification_ogita` ("10-100x faster"), `dowork_ogita_bigfloat`
+        ("50-90% cache hit rate");
+      - "Ogita's refinement" without the reference: `adaptive_ogita_svd`, `dowork_ogita`,
+        `dowork_ogita_bigfloat`, `run_certification_ogita`.
