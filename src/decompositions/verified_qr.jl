@@ -68,9 +68,9 @@ function verified_qr(::Type{AT}, A::AbstractMatrix{S};
                      precision_bits::Int=256,
                      compute_full_Q::Bool=false,
         oracle::Union{Nothing, Type} = nothing) where {AT, S<:Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}}
-    bigfloat = _bigfloat_arithmetic(AT) || real(S) === BigFloat
-    return _decomposition_arithmetic(bigfloat, precision_bits) do
-        Ab = _decomposition_input(A, bigfloat)
+    W = _working_arithmetic(AT, S)
+    return _decomposition_arithmetic(W, precision_bits) do
+        Ab = _decomposition_input(A, W)
         T = eltype(rad(Ab))
         m, n = size(Ab)
         r = _rumpogita2024_qr(Ab; full = compute_full_Q, oracle)

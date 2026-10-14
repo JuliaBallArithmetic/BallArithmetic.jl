@@ -8,27 +8,32 @@ _bigfloat_type(::Type{Complex{T}}) where {T <: Real} = Complex{BigFloat}
 _to_bigfloat(M::AbstractMatrix{T}) where {T} = convert.(_bigfloat_type(T), M)
 _to_bigfloat(v::AbstractVector{T}) where {T} = convert.(_bigfloat_type(T), v)
 
-# Runs `f` in the working arithmetic of the exported decompositions: Float64, or BigFloat at
-# `precision_bits`.
-# Whether the enclosure runs in BigFloat. `arithmetic` is the leading type argument of the
-# `verified_*` routines: the enclosure is computed in ball arithmetic, which this package has for Float64 and
-# for BigFloat; another floating-point type can only be the `oracle`.
-function _bigfloat_arithmetic(arithmetic::Type)
-    arithmetic === BigFloat && return true
-    arithmetic === Float64 && return false
+# The working arithmetic of the enclosure, as a type, from the leading type argument
+# `arithmetic` of the `verified_*` routines and the element type `S` of the input: BigFloat when
+# either is BigFloat, else Float64. The enclosure is computed in ball arithmetic, which this
+# package has for Float64 and for BigFloat; another floating-point type can only be the `oracle`.
+# It is a type, chosen by dispatch, so that the type of the result is inferred from the types of
+# the arguments.
+_working_arithmetic(::Type{BigFloat}, ::Type) = BigFloat
+_working_arithmetic(::Type{Float64}, ::Type{S}) where {S} =
+    real(S) === BigFloat ? BigFloat : Float64
+_working_arithmetic(arithmetic::Type, ::Type) =
     throw(ArgumentError("$arithmetic: the enclosure is computed in Float64 or in " *
                         "BigFloat; a Double64 or a MultiFloat type can be given as `oracle`"))
-end
 
-_decomposition_arithmetic(f, use_bigfloat::Bool, precision_bits::Integer) =
-    use_bigfloat ? setprecision(f, BigFloat, precision_bits) : f()
+# Runs `f` in the working arithmetic of the exported decompositions: Float64, or BigFloat at
+# `precision_bits`.
+_decomposition_arithmetic(f, ::Type{BigFloat}, precision_bits::Integer) =
+    setprecision(f, BigFloat, precision_bits)
+_decomposition_arithmetic(f, ::Type{Float64}, precision_bits::Integer) = f()
 
 # The input as a ball matrix in the working arithmetic; called inside
 # `_decomposition_arithmetic`. An entry with more digits than the working precision is rounded
 # to nearest and the rounding error, which is computed exactly at the precision of the entry and
 # then rounded up, goes into the radius, so that the ball contains the input.
-function _decomposition_input(A::AbstractMatrix{S}, use_bigfloat::Bool) where {S}
-    use_bigfloat || return BallMatrix(Matrix{S <: Complex ? ComplexF64 : Float64}(A))
+_decomposition_input(A::AbstractMatrix{S}, ::Type{Float64}) where {S} =
+    BallMatrix(Matrix{S <: Complex ? ComplexF64 : Float64}(A))
+function _decomposition_input(A::AbstractMatrix{S}, ::Type{BigFloat}) where {S}
     p = precision(BigFloat)
     nearest(x::Real) = BigFloat(x; precision = p)
     function excess(x::Real, c::BigFloat)
@@ -146,9 +151,9 @@ function verified_lu(::Type{AT}, A::AbstractMatrix{S};
         precision_bits::Int = 256,
         oracle::Union{Nothing, Type} = nothing) where {AT, S <: Union{
         Float64, ComplexF64, BigFloat, Complex{BigFloat}}}
-    bigfloat = _bigfloat_arithmetic(AT) || real(S) === BigFloat
-    return _decomposition_arithmetic(bigfloat, precision_bits) do
-        Ab = _decomposition_input(A, bigfloat)
+    W = _working_arithmetic(AT, S)
+    return _decomposition_arithmetic(W, precision_bits) do
+        Ab = _decomposition_input(A, W)
         T = eltype(rad(Ab))
         m, n = size(Ab)
         k = min(m, n)

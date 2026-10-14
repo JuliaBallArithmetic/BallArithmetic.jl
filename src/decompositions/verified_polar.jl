@@ -76,9 +76,9 @@ function verified_polar(::Type{AT}, A::AbstractMatrix{S};
     m, n = size(A)
     (right ? m >= n : m <= n) || throw(DimensionMismatch(
         "verified_polar: A = QP needs at least as many rows as columns, A = PQ at most as many"))
-    bigfloat = _bigfloat_arithmetic(AT) || real(S) === BigFloat
-    return _decomposition_arithmetic(bigfloat, precision_bits) do
-        Ab = _decomposition_input(A, bigfloat)
+    W = _working_arithmetic(AT, S)
+    return _decomposition_arithmetic(W, precision_bits) do
+        Ab = _decomposition_input(A, W)
         T = eltype(rad(Ab))
         k = right ? n : m
         r = _rumpogita2024_polar(right ? Ab : _ball_adjoint(Ab); kappa, oracle)

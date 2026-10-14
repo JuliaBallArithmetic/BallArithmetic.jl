@@ -88,9 +88,9 @@ function verified_cholesky(::Type{AT}, A::AbstractMatrix{S};
     if sym_error > 100 * eps(real(S)) * maximum(abs.(A); init = zero(real(S)))
         @warn "Matrix A is not symmetric (error = $sym_error)"
     end
-    bigfloat = _bigfloat_arithmetic(AT) || real(S) === BigFloat
-    return _decomposition_arithmetic(bigfloat, precision_bits) do
-        Hb = _symmetric_part_ball(_decomposition_input(A, bigfloat), conj)
+    W = _working_arithmetic(AT, S)
+    return _decomposition_arithmetic(W, precision_bits) do
+        Hb = _symmetric_part_ball(_decomposition_input(A, W), conj)
         T = eltype(rad(Hb))
         r = _rumpogita2024_cholesky(Hb; oracle)
         r === nothing && return VerifiedCholeskyResult(_unverified_ball(Hb, n, n), false, T(Inf))

@@ -71,9 +71,9 @@ function verified_takagi(::Type{AT}, A::AbstractMatrix{Complex{S}};
     if sym_error > 100 * eps(S) * maximum(abs.(A); init = zero(S))
         @warn "Matrix A is not complex symmetric (error = $sym_error)"
     end
-    bigfloat = _bigfloat_arithmetic(AT) || S === BigFloat
-    return _decomposition_arithmetic(bigfloat, precision_bits) do
-        Sb = _symmetric_part_ball(_decomposition_input(A, bigfloat), identity)
+    W = _working_arithmetic(AT, S)
+    return _decomposition_arithmetic(W, precision_bits) do
+        Sb = _symmetric_part_ball(_decomposition_input(A, W), identity)
         T = eltype(rad(Sb))
         r = _rumpogita2024_takagi(Sb; oracle)
         r === nothing && return VerifiedTakagiResult(_unverified_ball(Sb, n, n),

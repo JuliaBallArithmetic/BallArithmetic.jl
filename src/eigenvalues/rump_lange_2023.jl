@@ -518,9 +518,9 @@ J. Comput. Appl. Math. **434** (2023), 115332, doi 10.1016/j.cam.2023.115332.
 """
 function verified_svd(::Type{AT}, A::AbstractMatrix{S}; precision_bits::Int = 256,
         kappa::Real = 0) where {AT, S <: Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}}
-    bigfloat = _bigfloat_arithmetic(AT) || real(S) === BigFloat
-    return _decomposition_arithmetic(bigfloat, precision_bits) do
-        verifysvdall(_decomposition_input(A, bigfloat); kappa)
+    W = _working_arithmetic(AT, S)
+    return _decomposition_arithmetic(W, precision_bits) do
+        verifysvdall(_decomposition_input(A, W); kappa)
     end
 end
 verified_svd(A::AbstractMatrix; kwargs...) = verified_svd(BigFloat, A; kwargs...)
