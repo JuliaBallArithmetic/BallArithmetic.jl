@@ -64,8 +64,10 @@ end
 # Rigorous radius-type conversion (outward rounding)                #
 #####################################################################
 
-_gram_conv_err(x::Real, y::Real) = abs(x - y)
-_gram_conv_err(x::Complex, y::Complex) = abs(real(x) - real(y)) + abs(imag(x) - imag(y))
+# an upper bound of |x - y|, every operation rounded upward (|re| + |im| bounds the modulus)
+_gram_conv_err(x::Real, y::Real) = x >= y ? sub_up(x, y) : sub_up(y, x)
+_gram_conv_err(x::Complex, y::Complex) =
+    add_up(_gram_conv_err(real(x), real(y)), _gram_conv_err(imag(x), imag(y)))
 
 """
     _gram_convert(M::BallMatrix, T2)
@@ -95,13 +97,23 @@ end
 """
     _gram_promote(A::BallMatrix, T2)
 
-Widen `A` to radius type `T2` (exact when `T2` is the wider type).
+Widen `A` to radius type `T2`. The conversion is exact only when `T2` carries at least the
+precision of `T` (and, for `BigFloat`, the exponent range), so a narrowing raises: an enclosure
+is narrowed with the outward rounding of [`_gram_convert`](@ref), never here.
 """
 function _gram_promote(A::BallMatrix{T, NT}, ::Type{T2}) where {T, NT, T2 <: AbstractFloat}
     T === T2 && return A
+    (precision(T2) >= precision(T) && (T2 === BigFloat || T !== BigFloat)) ||
+        throw(ArgumentError("_gram_promote would narrow $T to $T2, which is not exact"))
     NT2 = NT <: Complex ? Complex{T2} : T2
     return BallMatrix(convert.(NT2, A.c), convert.(T2, A.r))
 end
+
+# A supplied approximate inverse in the working element type `NT`. It is only an approximation,
+# proved to be one by `_verify_inverse` afterwards, so its midpoints are converted to nearest and
+# any radii it carries are dropped.
+_approximate_inverse(X::BallMatrix, ::Type{NT}) where {NT} = BallMatrix(convert.(NT, X.c))
+_approximate_inverse(X::AbstractMatrix, ::Type{NT}) where {NT} = BallMatrix(convert.(NT, collect(X)))
 
 #####################################################################
 # Verified inverses                                                 #
@@ -278,7 +290,11 @@ Hermitian positive definite `G`.
 function _gram_residual_bound(G::AbstractMatrix, L::BallMatrix{WT, NT}) where {WT, NT}
     n = size(G, 1)
     L_adj = L'      # in the storage of L
-    residual = L_adj * L - BallMatrix(convert.(NT, G))
+    # G in the working type of L: each entry converted to nearest, with the bound on the error of
+    # the conversion as its radius (zero where it is exact)
+    Gc = convert.(NT, G)
+    Gr = map(_conversion_error, Gc, G)
+    residual = L_adj * L - BallMatrix(Gc, Gr)
     numerator = upper_bound_L2_opnorm(residual)
 
     # a lower bound of the largest diagonal entry: each conversion to the working type is
@@ -318,7 +334,7 @@ The factor comes from [`verified_cholesky`](@ref), so positive definiteness of
   raises rather than being trusted. Supplying it replaces the `O(n³)` scalar
   back-substitution with a BLAS-speed inverse plus verification. It is not used
   when the factor is a `Diagonal`: then `L⁻¹` is enclosed by the ball reciprocals
-  of its entries.
+  of its entries. Only its midpoints are used, converted to the factor's type.
 - `radius_type = Float64`: radius type of the enclosures handed to the
   certifier.
 - `arithmetic = BigFloat`: the arithmetic of the verified Cholesky, `BigFloat` or `Float64`,
@@ -387,8 +403,8 @@ function gram_transform(gram;
         # L⁻¹ is enclosed directly by the ball reciprocals; a supplied `factor_inv` is not used
         L_inv === nothing && (L_inv = _diagonal_inverse(L))
     elseif factor_inv !== nothing
-        X = factor_inv isa BallMatrix ? factor_inv : BallMatrix(collect(factor_inv))
-        L_inv = _in_factor_storage(L, _verify_inverse(L, _gram_promote(X, WT)))
+        X = _approximate_inverse(factor_inv, eltype(L.c))
+        L_inv = _in_factor_storage(L, _verify_inverse(L, X))
     elseif L_inv === nothing
         L_inv = _in_factor_storage(L, _gram_factor_inverse(L, inverse_method))
     end
@@ -414,16 +430,17 @@ resolvent of `A`:
 
     ‖(A - z)⁻¹‖_G = ‖(Ã - z)⁻¹‖₂    for every z ∉ σ(A) = σ(Ã)
 
-The product is formed in the factor's working precision and then rounded outward
-to `A`'s radius type, so a BigFloat factor still yields a `Float64` enclosure.
+The product is formed in the wider of the factor's type and `A`'s, to which both are
+widened exactly, and then rounded outward to `A`'s radius type: a BigFloat factor still
+yields a `Float64` enclosure, and a `BigFloat` `A` with a `Float64` factor is not narrowed.
 """
 function apply_gram_transform(A::BallMatrix{T, NT}, gt::GramTransform) where {T, NT}
     size(gt.factor, 1) == size(A, 1) ||
         throw(DimensionMismatch("Gram factor has size $(size(gt.factor)) but A has " *
                                 "size $(size(A))"))
-    WT = eltype(gt.factor.r)
-    Aw = _gram_promote(A, WT)
-    transformed = (gt.factor * Aw) * gt.factor_inv
+    WT = promote_type(eltype(gt.factor.r), T)
+    L, L_inv = _gram_promote(gt.factor, WT), _gram_promote(gt.factor_inv, WT)
+    transformed = (L * _gram_promote(A, WT)) * L_inv
     return _gram_convert(transformed, T)
 end
 
