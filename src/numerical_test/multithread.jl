@@ -52,7 +52,7 @@ function rounding_test(n, k)
     return test_up && test_down
 end
 
-using RoundingEmulator: add_up, sub_up, sub_down, mul_up
+using RoundingEmulator: add_up, sub_up, sub_down, mul_up, mul_down
 
 """
     BLAS_ROUNDING_OK
@@ -106,7 +106,7 @@ The forms: the radius of a sum, `ϵ|C| + r_A + r_B` upward; `P + R` upward and `
 with matrix operations and with broadcasting; the centre `(L + U)/2` and the radius `M − L` of
 two bounds, upward; each on dense matrices, on `Symmetric` ones, on `Diagonal` ones, and with
 `C` and `P` dense and the other two `Diagonal` (the sums that a product with a `Diagonal` factor
-leads to).
+leads to); and the products `DC` and `CD` with `D` diagonal, upward and downward.
 """
 function array_rounding_test(::Type{T} = Float64; n::Integer = 48) where {T <: Union{Float32, Float64}}
     C, P = _array_test_matrix(T, n, 1), _array_test_matrix(T, n, 2)
@@ -142,6 +142,15 @@ function array_rounding_test(::Type{T} = Float64; n::Integer = 48) where {T <: U
         Mref = add_up.(Lm, Um) ./ 2
         Matrix(M) == Mref || push!(failed, "$T $tag: (L + U)/2 upward")
         Matrix(Rm) == sub_up.(Mref, Lm) || push!(failed, "$T $tag: M − L upward")
+    end
+    # a product with a `Diagonal` factor is LinearAlgebra's loop, one product per entry, not a
+    # BLAS call
+    D = Diagonal(diag(P))
+    for (mode, ref) in ((RoundUp, mul_up), (RoundDown, mul_down))
+        DC = setrounding(() -> D * C, T, mode)
+        CD = setrounding(() -> C * D, T, mode)
+        (DC == ref.(D.diag, C) && CD == ref.(C, permutedims(D.diag))) ||
+            push!(failed, "$T: Diagonal products $mode")
     end
     return failed
 end
