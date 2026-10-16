@@ -173,6 +173,35 @@ end
 
 _is_diagonal_storage(L::BallMatrix) = L.c isa Diagonal && L.r isa Diagonal
 
+# The storages of a factor that are kept: the products of the change of variables then go to the
+# kernels of that type (a scaling, BLAS `trmm`, `symm`) inside the rounding-mode blocks of the ball
+# product. Any other plain matrix is made dense.
+const _KeptFactorStorage = Union{Diagonal, UpperTriangular, LowerTriangular, Symmetric}
+
+# A dense ball matrix whose midpoints and radii are both upper (lower) triangular, in that storage.
+function _triangular_storage(L::BallMatrix)
+    (L.c isa Matrix && L.r isa Matrix) || return L
+    istriu(L.c) && istriu(L.r) && return BallMatrix(UpperTriangular(L.c), UpperTriangular(L.r))
+    istril(L.c) && istril(L.r) && return BallMatrix(LowerTriangular(L.c), LowerTriangular(L.r))
+    return L
+end
+
+# An enclosure `Li` of L⁻¹ in the storage of the factor `L`. Every member of a ball matrix stored
+# upper (lower) triangular is upper (lower) triangular, and so is its inverse, so the entries of `Li`
+# outside the triangle are exactly zero for every member and are dropped. Every member of one stored
+# `Symmetric` is symmetric, and so is its inverse, so each entry of the stored triangle of `Li`
+# encloses its mirror as well.
+function _in_factor_storage(L::BallMatrix, Li::BallMatrix)
+    if L.c isa UpperTriangular && L.r isa UpperTriangular
+        return BallMatrix(UpperTriangular(Matrix(Li.c)), UpperTriangular(Matrix(Li.r)))
+    elseif L.c isa LowerTriangular && L.r isa LowerTriangular
+        return BallMatrix(LowerTriangular(Matrix(Li.c)), LowerTriangular(Matrix(Li.r)))
+    elseif L.c isa Symmetric && L.r isa Symmetric
+        return BallMatrix(Symmetric(Matrix(Li.c), :U), Symmetric(Matrix(Li.r), :U))
+    end
+    return Li
+end
+
 function _gram_factor_inverse(L::BallMatrix, method::Symbol)
     n = size(L, 1)
     triangular = (istriu(L.c) && istriu(L.r)) || (istril(L.c) && istril(L.r))
@@ -248,8 +277,7 @@ Hermitian positive definite `G`.
 """
 function _gram_residual_bound(G::AbstractMatrix, L::BallMatrix{WT, NT}) where {WT, NT}
     n = size(G, 1)
-    L_adj = _is_diagonal_storage(L) ? BallMatrix(Diagonal(conj.(L.c.diag)), L.r) :
-            BallMatrix(collect(L.c'), collect(L.r'))
+    L_adj = L'      # in the storage of L
     residual = L_adj * L - BallMatrix(convert.(NT, G))
     numerator = upper_bound_L2_opnorm(residual)
 
@@ -279,9 +307,12 @@ The factor comes from [`verified_cholesky`](@ref), so positive definiteness of
   a plain matrix or a `BallMatrix` enclosure. Worth supplying when it is
   analytically known (diagonal weights, banded factors). Note that with
   `factor` the *supplied* factor defines the certified norm `‖Lx‖₂`; it is not
-  checked against `gram`, and `gram` may be omitted entirely. A `Diagonal` factor
-  is kept as a `Diagonal`, and so is the factor of a diagonal `gram`; any other
-  plain matrix is converted to a dense one.
+  checked against `gram`, and `gram` may be omitted entirely. A `Diagonal`,
+  `UpperTriangular`, `LowerTriangular` or `Symmetric` factor keeps its storage, and
+  so do the factor of a diagonal `gram` (`Diagonal`) and the verified Cholesky
+  factor (triangular), so that the products of the change of variables go to the
+  kernels of that type; the inverse is stored the same way. Any other plain matrix
+  is converted to a dense one.
 - `factor_inv = nothing`: an approximate inverse of the factor. It is *verified*
   before use — an unverified inverse would silently break rigor, so a bad one
   raises rather than being trusted. Supplying it replaces the `O(n³)` scalar
@@ -333,10 +364,8 @@ function gram_transform(gram;
     source = :cholesky
 
     if factor !== nothing
-        # a `Diagonal` factor keeps its storage (the products with it are formed entry by
-        # entry with directed products); any other plain matrix is made dense
         L = factor isa BallMatrix ? factor :
-            factor isa Diagonal ? BallMatrix(factor) : BallMatrix(collect(factor))
+            factor isa _KeptFactorStorage ? BallMatrix(factor) : BallMatrix(collect(factor))
         source = :user_factor
         G === nothing || size(L, 1) == size(G, 1) ||
             throw(DimensionMismatch("factor and gram have incompatible sizes"))
@@ -349,7 +378,7 @@ function gram_transform(gram;
             throw(ArgumentError("verified Cholesky of the Gram matrix failed: G " *
                                 "could not be proven positive definite. Try " *
                                 "arithmetic = BigFloat or a larger precision_bits."))
-        L = chol.G
+        L = _triangular_storage(chol.G)
     end
 
     WT = eltype(L.r)
@@ -359,9 +388,9 @@ function gram_transform(gram;
         L_inv === nothing && (L_inv = _diagonal_inverse(L))
     elseif factor_inv !== nothing
         X = factor_inv isa BallMatrix ? factor_inv : BallMatrix(collect(factor_inv))
-        L_inv = _verify_inverse(L, _gram_promote(X, WT))
+        L_inv = _in_factor_storage(L, _verify_inverse(L, _gram_promote(X, WT)))
     elseif L_inv === nothing
-        L_inv = _gram_factor_inverse(L, inverse_method)
+        L_inv = _in_factor_storage(L, _gram_factor_inverse(L, inverse_method))
     end
 
     residual = G === nothing ? nothing : _gram_residual_bound(G, L)

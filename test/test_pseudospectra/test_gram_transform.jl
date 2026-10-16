@@ -57,6 +57,7 @@ end
 
             gt = CS.gram_transform(G)
             @test gt.source === :cholesky
+            @test gt.factor.c isa UpperTriangular && gt.factor_inv.c isa UpperTriangular
             @test gt.gram_residual < 1e-25          # BigFloat Cholesky enclosure
 
             # the factor enclosure contains the exact Cholesky factor
@@ -151,6 +152,27 @@ end
             At = CS.apply_gram_transform(BallMatrix(A), gt)
             @test _encloses(At, Diagonal(big.(d)) * big.(A) * Diagonal(1 ./ big.(d)))
             @test_throws ArgumentError CS.gram_transform(nothing; factor = Diagonal([1.0, 0.0]))
+        end
+
+        @testset "a triangular or symmetric factor keeps its storage" begin
+            Random.seed!(11)
+            n = 12
+            A = randn(n, n)
+            U = UpperTriangular(randn(n, n) + 4I)
+            S = Symmetric(randn(n, n) / 4 + 2I)
+            for (F, W) in ((U, UpperTriangular), (LowerTriangular(Matrix(U')), LowerTriangular),
+                    (S, Symmetric))
+                for method in (:backsub, :verify)
+                    W === Symmetric && method === :backsub && continue
+                    gt = CS.gram_transform(nothing; factor = F, inverse_method = method)
+                    @test gt.factor.c isa W && gt.factor_inv.c isa W
+                    Fb = setprecision(() -> big.(Matrix(F)), BigFloat, 1024)
+                    Fi = setprecision(() -> inv(Fb), BigFloat, 1024)
+                    @test _encloses(gt.factor_inv, Fi)
+                    At = CS.apply_gram_transform(BallMatrix(A), gt)
+                    @test _encloses(At, Fb * big.(A) * Fi)
+                end
+            end
         end
 
         @testset "supplied inverse is verified, not trusted" begin
