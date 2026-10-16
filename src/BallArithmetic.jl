@@ -33,6 +33,9 @@ else
 end
 
 function __init__()
+    # `_log_io` captures `stdout` at precompilation, so the stored stream is dead in every session
+    # that loads the image; point it at this session's stdout before anything logs through it.
+    CertifScripts._reset_log_io!()
     if Sys.ARCH == :x86_64
         @info "Switching to OpenBLAS with ConsistentFPCSR = 1 flag enabled, guarantees
         correct floating point rounding mode over all threads."

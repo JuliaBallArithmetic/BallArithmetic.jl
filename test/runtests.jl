@@ -10,6 +10,7 @@ using Test
     include("test_types/test_convert_promote.jl")
     include("test_types/test_promotion.jl")
     include("test_types/test_mmul5.jl")
+    include("test_types/test_ogita_rump_oishi.jl")
     include("test_types/test_vector.jl")
     include("test_types/test_matrix.jl")
     include("test_types/test_array.jl")
@@ -65,6 +66,8 @@ using Test
     include("test_pseudospectra/test_pseudospectra.jl")
     include("test_pseudospectra/test_sylvester_resolvent.jl")
     include("test_pseudospectra/test_gram_transform.jl")
+    include("test_pseudospectra/test_adaptive_arcs_budget.jl")
+    include("test_pseudospectra/test_log_io_reset.jl")
 
     # Linear system
     include("test_linear_system/test_inflation.jl")

@@ -731,9 +731,37 @@ function _ensure_certification_log(log)
     return log
 end
 
+"""
+    _io_usable(io) -> Bool
+
+Whether `io` can be written to. `isopen` THROWS rather than returning `false` on a stream that was
+never initialised in this session, which is exactly the state `_log_io` is left in by
+precompilation (see [`_reset_log_io!`](@ref)), so the check has to be guarded.
+"""
+function _io_usable(io)
+    try
+        return isopen(io)
+    catch
+        return false
+    end
+end
+
+"""
+    _reset_log_io!()
+
+Point `_log_io` at this session's `stdout`. `const _log_io = Ref{IO}(stdout)` is evaluated when the
+module is precompiled, so the stream it captures belongs to the precompilation process and is dead
+in every session that loads the image: `_log_io[] === stdout` is false and `isopen` on the stored
+value raises `ArgumentError: stream not initialized`. The first `flush(io)` after `check_interval`
+arcs then killed any refinement that had not passed `io` explicitly, on something unrelated to its
+mathematics. Called from `BallArithmetic.__init__`.
+"""
+_reset_log_io!() = (_log_io[] = stdout; nothing)
+
 function _ensure_io(io)
-    io === nothing && return _log_io[]
-    return io
+    io === nothing || return io
+    stored = _log_io[]
+    return _io_usable(stored) ? stored : stdout
 end
 
 function _push_result!(cache, certification_log, result)
@@ -742,9 +770,22 @@ function _push_result!(cache, certification_log, result)
     return nothing
 end
 
+"""
+    _refinable(z_a, z_b) -> Bool
+
+Whether the arc `(z_a, z_b)` can still be bisected: whether its midpoint in the working precision
+differs from both endpoints. Once it does not, splitting returns the arc itself and the refinement
+loop cannot make progress. This is the condition that makes the loop terminate; see
+[`adaptive_arcs!`](@ref).
+"""
+function _refinable(z_a::ComplexF64, z_b::ComplexF64)
+    z_m = (z_a + z_b) / 2
+    return z_m != z_a && z_m != z_b
+end
+
 function _adaptive_arcs_serial!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
         cache::Dict{ComplexF64, Any}, pending, η::Float64, certification_log,
-        snapshot, io, check_interval::Integer, evaluator)
+        snapshot, io, check_interval::Integer, evaluator, maxarcs::Integer)
     io = io === nothing ? stdout : io
     certification_log === nothing && (certification_log = Any[])
 
@@ -753,6 +794,8 @@ function _adaptive_arcs_serial!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
     cycle = true
 
     while !isempty(arcs)
+        processed >= maxarcs &&
+            return (; ok = false, processed, reason = :maxarcs, z = first(arcs[end]))
         z_a, z_b = pop!(arcs)
 
         if haskey(cache, z_a)
@@ -763,6 +806,10 @@ function _adaptive_arcs_serial!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
             σ_a = result.val
         end
 
+        # a floor that is not a positive lower bound cannot certify the arc; bisecting cannot help
+        # because z_a stays an endpoint, and dividing by it would throw or certify on a negative ε
+        σ_a.r < real(σ_a.c) ||
+            return (; ok = false, processed, reason = :nonpositive_floor, z = z_a)
         ℓ = abs(z_b - z_a)
         ε = ℓ / σ_a
 
@@ -773,6 +820,8 @@ function _adaptive_arcs_serial!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
         end
 
         if sup_ε > η
+            _refinable(z_a, z_b) ||
+                return (; ok = false, processed, reason = :arc_not_refinable, z = z_a)
             z_m = (z_a + z_b) / 2
             push!(arcs, (z_m, z_b))
             push!(arcs, (z_a, z_m))
@@ -791,13 +840,13 @@ function _adaptive_arcs_serial!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
         end
     end
 
-    return nothing
+    return (; ok = true, processed, reason = :complete, z = nothing)
 end
 
 function _adaptive_arcs_distributed!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
         cache::Dict{ComplexF64, Any}, pending::Dict{Int, Tuple{ComplexF64, ComplexF64}},
         η::Float64, job_channel, result_channel, certification_log, snapshot, io,
-        check_interval::Integer)
+        check_interval::Integer, maxarcs::Integer)
     certification_log === nothing &&
         throw(ArgumentError("distributed refinement requires a certification log"))
     io = io === nothing ? stdout : io
@@ -827,11 +876,15 @@ function _adaptive_arcs_distributed!(arcs::Vector{Tuple{ComplexF64, ComplexF64}}
     @info "Waited for all pending to be computed, arcs, $(length(arcs)), pending, $(length(pending))"
 
     flush(io)
+    total_processed = 0
     while !isempty(arcs)
         processed = 0
         new = 0
 
         while !isempty(arcs)
+            total_processed + processed >= maxarcs && return (; ok = false,
+                processed = total_processed + processed, reason = :maxarcs,
+                z = first(arcs[end]))
             z_a, z_b = pop!(arcs)
 
             if haskey(cache, z_a)
@@ -844,6 +897,8 @@ function _adaptive_arcs_distributed!(arcs::Vector{Tuple{ComplexF64, ComplexF64}}
                 continue
             end
 
+            σ_a.r < real(σ_a.c) || return (; ok = false,
+                processed = total_processed + processed, reason = :nonpositive_floor, z = z_a)
             ℓ = abs(z_b - z_a)
             ε = ℓ / σ_a
 
@@ -854,6 +909,8 @@ function _adaptive_arcs_distributed!(arcs::Vector{Tuple{ComplexF64, ComplexF64}}
             end
 
             if sup_ε > η
+                _refinable(z_a, z_b) || return (; ok = false,
+                    processed = total_processed + processed, reason = :arc_not_refinable, z = z_a)
                 z_m = (z_a + z_b) / 2
                 push!(arcs, (z_m, z_b))
                 push!(arcs, (z_a, z_m))
@@ -898,25 +955,53 @@ function _adaptive_arcs_distributed!(arcs::Vector{Tuple{ComplexF64, ComplexF64}}
             end
         end
 
+        total_processed += processed
         @info "Restarting refinement cycle with new arcs: $(length(arcs))"
     end
 
     @info "Adaptive refinement complete"
-    return nothing
+    return (; ok = true, processed = total_processed, reason = :complete, z = nothing)
 end
 
 """
-    adaptive_arcs!(arcs, cache, pending, η; kwargs...)
+    adaptive_arcs!(arcs, cache, pending, η; maxarcs = typemax(Int), kwargs...)
+        -> (; ok, processed, reason, z)
 
 Drive the adaptive refinement routine.  When job channels are provided the
 refinement uses asynchronous workers; otherwise the evaluation is carried out
 serially using the supplied evaluator.
+
+An arc `(z_a, z_b)` is accepted when `sup(ℓ/σ(z_a)) ≤ η` with `ℓ = |z_b − z_a|` the chord, and is
+bisected at its midpoint otherwise, so an accepted arc carries `σ ≥ (1 − η)σ(z_a)` along its whole
+length by the 1-Lipschitz property of the smallest singular value.
+
+**Termination.** The loop stops because an arc whose midpoint in the working precision coincides
+with one of its endpoints cannot be refined ([`_refinable`](@ref)): bisecting it would return the
+arc itself. Reaching such an arc while the test still rejects it is reported as
+`reason = :arc_not_refinable` with `z` the endpoint at fault, rather than looping forever. That
+guard alone bounds the recursion, and it needs no state carried between calls, so a run resumed
+from a snapshot cannot loop either.
+
+`maxarcs` bounds the *work* rather than the recursion: refinement stops with
+`reason = :maxarcs` once that many arcs have been processed. It defaults to `typemax(Int)`, so
+every caller that does not set it behaves exactly as before, the recursion being bounded by the
+guard above instead.
+
+The evaluator's `val` must be a ball not containing zero: the test forms `ℓ/σ(z_a)`, and a ball
+straddling zero has no finite reciprocal, so `σ = 0` raises rather than rejecting. A criterion that
+can return zero should return a tiny positive value instead.
+
+Returns `(; ok, processed, reason, z)`: `ok` is true when every arc was accepted, `processed`
+counts the arcs tested (cumulative across refinement cycles in the distributed path), `reason` is
+`:complete`, `:arc_not_refinable` or `:maxarcs`, and `z` is the endpoint at which refinement gave
+up, or `nothing` on success. The samples themselves remain in `cache` and `certification_log`.
 """
 function adaptive_arcs!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
         cache::Dict{ComplexF64, Any}, pending, η::Float64;
         check_interval::Integer = 1000, job_channel = nothing,
         result_channel = nothing, certification_log = nothing,
-        snapshot = nothing, io = nothing, evaluator = nothing)
+        snapshot = nothing, io = nothing, evaluator = nothing,
+        maxarcs::Integer = typemax(Int))
     job_channel = _resolve(job_channel, _job_channel)
     result_channel = _resolve(result_channel, _result_channel)
     certification_log = _ensure_certification_log(certification_log)
@@ -927,11 +1012,11 @@ function adaptive_arcs!(arcs::Vector{Tuple{ComplexF64, ComplexF64}},
         evaluator === nothing &&
             throw(ArgumentError("serial refinement requires an evaluator"))
         return _adaptive_arcs_serial!(arcs, cache, pending, η, certification_log,
-            snapshot, io, check_interval, evaluator)
+            snapshot, io, check_interval, evaluator, maxarcs)
     end
 
     return _adaptive_arcs_distributed!(arcs, cache, pending, η, job_channel,
-        result_channel, certification_log, snapshot, io, check_interval)
+        result_channel, certification_log, snapshot, io, check_interval, maxarcs)
 end
 
 """
