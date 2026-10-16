@@ -160,6 +160,19 @@ function _triangular_inverse(L::BallMatrix)
     end
 end
 
+"""
+    _diagonal_inverse(L::BallMatrix)
+
+Enclosure of `L⁻¹` for a factor stored as `Diagonal`: the ball reciprocal of each diagonal
+entry, which raises when an entry is not proved to be nonzero. `Diagonal` storage, `O(n)`.
+"""
+function _diagonal_inverse(L::BallMatrix)
+    b = [inv(Ball(c, r)) for (c, r) in zip(L.c.diag, L.r.diag)]
+    return BallMatrix(Diagonal(mid.(b)), Diagonal(rad.(b)))
+end
+
+_is_diagonal_storage(L::BallMatrix) = L.c isa Diagonal && L.r isa Diagonal
+
 function _gram_factor_inverse(L::BallMatrix, method::Symbol)
     n = size(L, 1)
     triangular = (istriu(L.c) && istriu(L.r)) || (istril(L.c) && istril(L.r))
@@ -210,30 +223,19 @@ Diagonal fast path: the exact Cholesky factor is `L = diag(√dᵢ)`, enclosed
 entrywise by the rigorous ball `sqrt`, and `L⁻¹ = diag(1/√dᵢ)` by the ball
 reciprocal.  Avoids both the Cholesky and the `O(n³)` inverse, which matters
 because a diagonal weight is the common case (orthogonal-polynomial and Fourier
-bases).
+bases). Both are stored as `Diagonal`, so the products of the change of variables
+cost one directed product per entry of `A`.
 """
 function _diagonal_gram_factor(G::AbstractMatrix{ET}) where {ET}
     RG = real(ET)
-    n = size(G, 1)
     d = real.(diag(G))
-
-    L_c = zeros(RG, n, n)
-    L_r = zeros(RG, n, n)
-    Li_c = zeros(RG, n, n)
-    Li_r = zeros(RG, n, n)
-
-    for i in 1:n
+    for i in eachindex(d)
         d[i] > 0 || throw(ArgumentError("the Gram matrix is not positive definite: " *
                             "diagonal entry $i is $(d[i])"))
-        s = sqrt(Ball(RG(d[i]), zero(RG)))
-        inv_s = Ball(one(RG), zero(RG)) / s
-        L_c[i, i] = s.c
-        L_r[i, i] = s.r
-        Li_c[i, i] = inv_s.c
-        Li_r[i, i] = inv_s.r
     end
-
-    return BallMatrix(L_c, L_r), BallMatrix(Li_c, Li_r)
+    s = [sqrt(Ball(RG(di), zero(RG))) for di in d]
+    L = BallMatrix(Diagonal(mid.(s)), Diagonal(rad.(s)))
+    return L, _diagonal_inverse(L)
 end
 
 """
@@ -246,7 +248,8 @@ Hermitian positive definite `G`.
 """
 function _gram_residual_bound(G::AbstractMatrix, L::BallMatrix{WT, NT}) where {WT, NT}
     n = size(G, 1)
-    L_adj = BallMatrix(collect(L.c'), collect(L.r'))
+    L_adj = _is_diagonal_storage(L) ? BallMatrix(Diagonal(conj.(L.c.diag)), L.r) :
+            BallMatrix(collect(L.c'), collect(L.r'))
     residual = L_adj * L - BallMatrix(convert.(NT, G))
     numerator = upper_bound_L2_opnorm(residual)
 
@@ -276,11 +279,15 @@ The factor comes from [`verified_cholesky`](@ref), so positive definiteness of
   a plain matrix or a `BallMatrix` enclosure. Worth supplying when it is
   analytically known (diagonal weights, banded factors). Note that with
   `factor` the *supplied* factor defines the certified norm `‖Lx‖₂`; it is not
-  checked against `gram`, and `gram` may be omitted entirely.
+  checked against `gram`, and `gram` may be omitted entirely. A `Diagonal` factor
+  is kept as a `Diagonal`, and so is the factor of a diagonal `gram`; any other
+  plain matrix is converted to a dense one.
 - `factor_inv = nothing`: an approximate inverse of the factor. It is *verified*
   before use — an unverified inverse would silently break rigor, so a bad one
   raises rather than being trusted. Supplying it replaces the `O(n³)` scalar
-  back-substitution with a BLAS-speed inverse plus verification.
+  back-substitution with a BLAS-speed inverse plus verification. It is not used
+  when the factor is a `Diagonal`: then `L⁻¹` is enclosed by the ball reciprocals
+  of its entries.
 - `radius_type = Float64`: radius type of the enclosures handed to the
   certifier.
 - `arithmetic = BigFloat`: the arithmetic of the verified Cholesky, `BigFloat` or `Float64`,
@@ -326,7 +333,10 @@ function gram_transform(gram;
     source = :cholesky
 
     if factor !== nothing
-        L = factor isa BallMatrix ? factor : BallMatrix(collect(factor))
+        # a `Diagonal` factor keeps its storage (the products with it are formed entry by
+        # entry with directed products); any other plain matrix is made dense
+        L = factor isa BallMatrix ? factor :
+            factor isa Diagonal ? BallMatrix(factor) : BallMatrix(collect(factor))
         source = :user_factor
         G === nothing || size(L, 1) == size(G, 1) ||
             throw(DimensionMismatch("factor and gram have incompatible sizes"))
@@ -344,7 +354,10 @@ function gram_transform(gram;
 
     WT = eltype(L.r)
 
-    if factor_inv !== nothing
+    if _is_diagonal_storage(L)
+        # L⁻¹ is enclosed directly by the ball reciprocals; a supplied `factor_inv` is not used
+        L_inv === nothing && (L_inv = _diagonal_inverse(L))
+    elseif factor_inv !== nothing
         X = factor_inv isa BallMatrix ? factor_inv : BallMatrix(collect(factor_inv))
         L_inv = _verify_inverse(L, _gram_promote(X, WT))
     elseif L_inv === nothing

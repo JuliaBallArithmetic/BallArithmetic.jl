@@ -48,6 +48,47 @@ function _product_down(A::AbstractVecOrMat{T}, B::AbstractVecOrMat{T}) where {T 
     end
 end
 
+# A product with a `Diagonal` factor has one term per entry, `dᵢbᵢⱼ` or `aᵢⱼdⱼ`, and LinearAlgebra
+# forms it in a Julia loop rather than in the BLAS, a loop that neither check at load time covers
+# (`rounding_test` is on a BLAS product, `array_rounding_test` on sums). Its two ends are formed
+# here entry by entry with the directed products `mul_down` and `mul_up`, which do not use the
+# rounding mode; with one term per entry they are `fl▽(AB)` and `fl△(AB)` exactly. A `Diagonal`
+# times a `Diagonal` stays `Diagonal`, and the cost is one product per stored entry of the other
+# factor, not the `O(n³)` of a dense product.
+function _diagonal_product(f, A::Diagonal, B::AbstractVecOrMat)
+    size(A, 2) == size(B, 1) ||
+        throw(DimensionMismatch("product of sizes $(size(A)) and $(size(B))"))
+    B isa Diagonal && return Diagonal(f.(A.diag, B.diag))
+    return f.(A.diag, B)
+end
+function _diagonal_product(f, A::AbstractMatrix, B::Diagonal)
+    size(A, 2) == size(B, 1) ||
+        throw(DimensionMismatch("product of sizes $(size(A)) and $(size(B))"))
+    return f.(A, permutedims(B.diag))
+end
+
+function _product_down_up(A::Diagonal{T}, B::AbstractMatrix{T}) where {T <: AbstractFloat}
+    return _diagonal_product(mul_down, A, B), _diagonal_product(mul_up, A, B)
+end
+function _product_down_up(A::AbstractMatrix{T}, B::Diagonal{T}) where {T <: AbstractFloat}
+    return _diagonal_product(mul_down, A, B), _diagonal_product(mul_up, A, B)
+end
+function _product_down_up(A::Diagonal{T}, B::Diagonal{T}) where {T <: AbstractFloat}
+    return _diagonal_product(mul_down, A, B), _diagonal_product(mul_up, A, B)
+end
+_product_up(A::Diagonal{T}, B::AbstractVecOrMat{T}) where {T <: AbstractFloat} =
+    _diagonal_product(mul_up, A, B)
+_product_up(A::AbstractMatrix{T}, B::Diagonal{T}) where {T <: AbstractFloat} =
+    _diagonal_product(mul_up, A, B)
+_product_up(A::Diagonal{T}, B::Diagonal{T}) where {T <: AbstractFloat} =
+    _diagonal_product(mul_up, A, B)
+_product_down(A::Diagonal{T}, B::AbstractVecOrMat{T}) where {T <: AbstractFloat} =
+    _diagonal_product(mul_down, A, B)
+_product_down(A::AbstractMatrix{T}, B::Diagonal{T}) where {T <: AbstractFloat} =
+    _diagonal_product(mul_down, A, B)
+_product_down(A::Diagonal{T}, B::Diagonal{T}) where {T <: AbstractFloat} =
+    _diagonal_product(mul_down, A, B)
+
 # Sums, differences and multiples of matrices rounded upward or downward. A product above is an
 # OpenBLAS call and follows the rounding mode by the build of OpenBLAS that the package loads; a
 # sum, a difference, a multiple by a scalar are Julia's own loops, and that they follow the mode is
@@ -110,6 +151,8 @@ function _sum_product_up(X::AbstractVecOrMat{T}, A::AbstractVecOrMat{T},
         B::AbstractVecOrMat{T}) where {T <: AbstractFloat}
     # the sum is Julia's own loop: entry by entry where the check at load time failed
     (_entrywise_rounding(T) || _blas_fallback(T)) && return add_up.(X, _product_up(A, B))
+    # a product with a `Diagonal` factor by the directed products above, then the sum
+    (A isa Diagonal || B isa Diagonal) && return _add_up(X, _product_up(A, B))
     return setrounding(T, RoundUp) do
         X + A * B
     end

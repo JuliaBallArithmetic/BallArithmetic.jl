@@ -36,6 +36,7 @@ end
             # √1, √4, √9 are exact, so the enclosure is a point
             @test all(iszero, gt.factor.r)
             @test gt.factor.c ≈ Diagonal([1.0, 2.0, 3.0])
+            @test gt.factor.c isa Diagonal && gt.factor_inv.c isa Diagonal
             @test gt.gram_residual == 0
             # κ₂(G) = 9/1
             @test gt.cond_gram >= 9
@@ -135,6 +136,21 @@ end
             A = [0.0 1.0; -0.5 0.0]
             At = CS.apply_gram_transform(BallMatrix(A), gt)
             @test _encloses(At, BigFloat.(L) * BigFloat.(A) * inv(BigFloat.(L)))
+        end
+
+        @testset "a Diagonal factor keeps its storage" begin
+            Random.seed!(7)
+            n = 12
+            d = 1 .+ 3 .* rand(n)
+            A = randn(n, n)
+            # the supplied inverse is not used for a Diagonal factor
+            gt = CS.gram_transform(nothing; factor = Diagonal(d),
+                factor_inv = Matrix{Float64}(I, n, n))
+            @test gt.factor.c isa Diagonal && gt.factor_inv.c isa Diagonal
+            @test _encloses(gt.factor_inv, Diagonal(1 ./ big.(d)))
+            At = CS.apply_gram_transform(BallMatrix(A), gt)
+            @test _encloses(At, Diagonal(big.(d)) * big.(A) * Diagonal(1 ./ big.(d)))
+            @test_throws ArgumentError CS.gram_transform(nothing; factor = Diagonal([1.0, 0.0]))
         end
 
         @testset "supplied inverse is verified, not trusted" begin

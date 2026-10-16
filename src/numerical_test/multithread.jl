@@ -104,15 +104,18 @@ check, and it is run when the package is loaded.
 
 The forms: the radius of a sum, `ϵ|C| + r_A + r_B` upward; `P + R` upward and `P − R` downward,
 with matrix operations and with broadcasting; the centre `(L + U)/2` and the radius `M − L` of
-two bounds, upward; each on dense matrices and on `Symmetric` ones.
+two bounds, upward; each on dense matrices, on `Symmetric` ones, on `Diagonal` ones, and with
+`C` and `P` dense and the other two `Diagonal` (the sums that a product with a `Diagonal` factor
+leads to).
 """
 function array_rounding_test(::Type{T} = Float64; n::Integer = 48) where {T <: Union{Float32, Float64}}
     C, P = _array_test_matrix(T, n, 1), _array_test_matrix(T, n, 2)
     rA, rB = abs.(_array_test_matrix(T, n, 3)), abs.(_array_test_matrix(T, n, 4))
     ϵ = eps(T)
     failed = String[]
-    for (tag, wrap) in (("dense", identity), ("Symmetric", Symmetric))
-        c, p, a, b = wrap(abs.(C)), wrap(P), wrap(rA), wrap(rB)
+    for (tag, wrap, wrapr) in (("dense", identity, identity), ("Symmetric", Symmetric, Symmetric),
+        ("Diagonal", Diagonal, Diagonal), ("dense and Diagonal", identity, Diagonal))
+        c, p, a, b = wrap(abs.(C)), wrap(P), wrapr(rA), wrapr(rB)
         cm, pm, am, bm = Matrix(c), Matrix(p), Matrix(a), Matrix(b)
         R = setrounding(T, RoundUp) do
             (ϵ * c + a) + b
