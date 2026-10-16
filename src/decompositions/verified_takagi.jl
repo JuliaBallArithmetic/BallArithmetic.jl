@@ -47,7 +47,7 @@ statement is for its symmetric part `(A + Aᵀ)/2`, enclosed in ball arithmetic.
 
 # Arguments
 - `T`: the arithmetic of the enclosure, `BigFloat` (the default), at `precision_bits`, or
-  `Float64`, as a leading argument. A BigFloat input is always treated in BigFloat.
+  `Float64`, as a leading argument. `Float64` with a BigFloat input raises.
 - `precision_bits`: the BigFloat precision. An input with more digits is rounded to it and the
   rounding is enclosed.
 

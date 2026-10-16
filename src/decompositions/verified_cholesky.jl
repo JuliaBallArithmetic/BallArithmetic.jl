@@ -63,7 +63,7 @@ statement is for its Hermitian part `(A + A*)/2`, enclosed in ball arithmetic.
 - `T`: the arithmetic of the enclosure, `BigFloat` (the default) or `Float64`, as a leading
   argument. In
   BigFloat the computation runs at `precision_bits` and the factor is enclosed to about that
-  precision. A BigFloat input is always treated in BigFloat.
+  precision. `Float64` with a BigFloat input raises.
 - `precision_bits`: the BigFloat precision. A BigFloat input with more digits is rounded to it
   and the rounding is enclosed.
 

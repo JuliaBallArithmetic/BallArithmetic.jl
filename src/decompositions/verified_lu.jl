@@ -9,14 +9,19 @@ _to_bigfloat(M::AbstractMatrix{T}) where {T} = convert.(_bigfloat_type(T), M)
 _to_bigfloat(v::AbstractVector{T}) where {T} = convert.(_bigfloat_type(T), v)
 
 # The working arithmetic of the enclosure, as a type, from the leading type argument
-# `arithmetic` of the `verified_*` routines and the element type `S` of the input: BigFloat when
-# either is BigFloat, else Float64. The enclosure is computed in ball arithmetic, which this
-# package has for Float64 and for BigFloat; another floating-point type can only be the `oracle`.
-# It is a type, chosen by dispatch, so that the type of the result is inferred from the types of
-# the arguments.
+# `arithmetic` of the `verified_*` routines and the element type `S` of the input: the arithmetic
+# asked for. Float64 for a BigFloat input raises, since it would mean either rounding the input to
+# Float64 or running in an arithmetic other than the one asked for (Isaia, 2026-10-16; it used to
+# run in BigFloat). The enclosure is computed in ball arithmetic, which this package has for
+# Float64 and for BigFloat; another floating-point type can only be the `oracle`. It is a type,
+# chosen by dispatch, so that the type of the result is inferred from the types of the arguments.
 _working_arithmetic(::Type{BigFloat}, ::Type) = BigFloat
-_working_arithmetic(::Type{Float64}, ::Type{S}) where {S} =
-    real(S) === BigFloat ? BigFloat : Float64
+function _working_arithmetic(::Type{Float64}, ::Type{S}) where {S}
+    real(S) === BigFloat &&
+        throw(ArgumentError("Float64 arithmetic was asked for a BigFloat input; pass BigFloat, " *
+                            "or convert the input to Float64 explicitly"))
+    return Float64
+end
 _working_arithmetic(arithmetic::Type, ::Type) =
     throw(ArgumentError("$arithmetic: the enclosure is computed in Float64 or in " *
                         "BigFloat; a Double64 or a MultiFloat type can be given as `oracle`"))
@@ -125,7 +130,7 @@ for `m < n` the column permutation of Section 3.4 of the paper.
   argument. In
   BigFloat the computation runs at `precision_bits` and the factors are enclosed to about that
   precision; in Float64 the radii are of the order of the rounding unit times the size of the
-  factors. A BigFloat input is always treated in BigFloat.
+  factors. `Float64` with a BigFloat input raises.
 - `precision_bits`: the BigFloat precision. A BigFloat input with more digits is rounded to it
   and the rounding is enclosed.
 - `oracle`: a floating-point type (`Double64`, a `MultiFloat`) in which the approximate

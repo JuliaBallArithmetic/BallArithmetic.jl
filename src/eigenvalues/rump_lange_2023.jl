@@ -507,8 +507,8 @@ end
 
 [`verifysvdall`](@ref) for a matrix with exact entries, in the arithmetic `T`: enclosures of all
 the singular values and of bases of the singular subspaces, by the method of Rump and Lange
-(2023). `T` is `BigFloat`, at `precision_bits`, or `Float64`; a BigFloat input is always treated
-in BigFloat. `kappa` is the clustering threshold of `verifysvdall`. The arguments are those of
+(2023). `T` is `BigFloat`, at `precision_bits`, or `Float64`; `Float64` with a BigFloat
+input raises. `kappa` is the clustering threshold of `verifysvdall`. The arguments are those of
 [`verified_lu`](@ref) and the other `verified_*` decompositions.
 
 # Reference

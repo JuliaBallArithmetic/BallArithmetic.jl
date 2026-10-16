@@ -133,6 +133,19 @@ using GenericLinearAlgebra
             @test ogita_iterations_for_precision(1024) == 5
         end
 
+        @testset "Float64 arithmetic for a BigFloat input raises" begin
+            A = big.([2.0 1.0; 1.0 3.0])
+            for f in (verified_lu, verified_qr, verified_cholesky, verified_polar, verified_svd)
+                @test_throws ArgumentError f(Float64, A)
+            end
+            @test_throws ArgumentError verified_takagi(Float64, complex.(A))
+            @test_throws ArgumentError BallArithmetic.CertifScripts.gram_transform(A; arithmetic = Float64)
+            # BigFloat for a Float64 input, and each arithmetic for its own input, run
+            @test verified_cholesky(BigFloat, [2.0 1.0; 1.0 3.0]).certified
+            @test verified_cholesky(BigFloat, A).certified
+            @test verified_cholesky(Float64, [2.0 1.0; 1.0 3.0]).certified
+        end
+
         @testset "the routines for matrices with exact entries refuse a ball matrix" begin
             for S in (Float64, ComplexF64), A in (BallMatrix(S[2 1; 1 3]),
                 BallMatrix(S[2 1; 1 3], fill(1e-10, 2, 2)))
