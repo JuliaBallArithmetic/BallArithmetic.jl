@@ -58,8 +58,12 @@ end
 function _diagonal_product(f, A::Diagonal, B::AbstractVecOrMat)
     size(A, 2) == size(B, 1) ||
         throw(DimensionMismatch("product of sizes $(size(A)) and $(size(B))"))
-    B isa Diagonal && return Diagonal(f.(A.diag, B.diag))
     return f.(A.diag, B)
+end
+function _diagonal_product(f, A::Diagonal, B::Diagonal)
+    size(A, 2) == size(B, 1) ||
+        throw(DimensionMismatch("product of sizes $(size(A)) and $(size(B))"))
+    return Diagonal(f.(A.diag, B.diag))
 end
 function _diagonal_product(f, A::AbstractMatrix, B::Diagonal)
     size(A, 2) == size(B, 1) ||

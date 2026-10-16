@@ -168,7 +168,7 @@ entry, which raises when an entry is not proved to be nonzero. `Diagonal` storag
 """
 function _diagonal_inverse(L::BallMatrix)
     b = [inv(Ball(c, r)) for (c, r) in zip(L.c.diag, L.r.diag)]
-    return BallMatrix(Diagonal(mid.(b)), Diagonal(rad.(b)))
+    return BallMatrix(Diagonal([x.c for x in b]), Diagonal([x.r for x in b]))
 end
 
 _is_diagonal_storage(L::BallMatrix) = L.c isa Diagonal && L.r isa Diagonal
@@ -234,7 +234,7 @@ function _diagonal_gram_factor(G::AbstractMatrix{ET}) where {ET}
                             "diagonal entry $i is $(d[i])"))
     end
     s = [sqrt(Ball(RG(di), zero(RG))) for di in d]
-    L = BallMatrix(Diagonal(mid.(s)), Diagonal(rad.(s)))
+    L = BallMatrix(Diagonal([x.c for x in s]), Diagonal([x.r for x in s]))
     return L, _diagonal_inverse(L)
 end
 
