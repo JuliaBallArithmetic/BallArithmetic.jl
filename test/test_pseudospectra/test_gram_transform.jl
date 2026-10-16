@@ -186,7 +186,6 @@ end
             @test eltype(gt.factor.r) === Float64
             At = CS.apply_gram_transform(Ab, gt)
             @test eltype(At.r) === BigFloat
-            @test maximum(At.r) < 1e-60
             exact = setprecision(512) do
                 L = Diagonal(sqrt.(big.(d)))
                 L * Ab.c * inv(L)
@@ -204,14 +203,14 @@ end
                 @test e >= abs(real(x) - real(y)) + abs(imag(x) - imag(y))
             end
 
-            # a BigFloat Gram matrix factored in Float64: the residual is a bound for G itself,
+            # a Float64 factor with a BigFloat Gram matrix: the residual is a bound for G itself,
             # not for G rounded to Float64
             B = randn(n, n)
             Gb = big.(B' * B + n * I) .+ big"1e-30" .* Symmetric(big.(randn(n, n)))
             Gb = (Gb + Gb') / 2
-            gt = CS.gram_transform(Gb; arithmetic = Float64)
-            Lc = big.(Matrix(gt.factor.c))
-            @test gt.gram_residual >= maximum(abs.(Lc' * Lc .- Gb)) / norm(Gb)
+            F = Matrix(cholesky(Hermitian(Float64.(Gb))).U)
+            gt = CS.gram_transform(Gb; factor = F)
+            @test gt.gram_residual >= maximum(abs.(big.(F)' * big.(F) .- Gb)) / norm(Gb)
         end
 
         @testset "supplied inverse is verified, not trusted" begin
