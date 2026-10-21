@@ -36,21 +36,70 @@ function _brisebarreetal2023_bn(n::Integer, ::Type{T}) where {T <: AbstractFloat
     return mul_up(sqrt_up(T(2)), mul_up(T(2)^n, bracket))
 end
 
-# The roots of unity exp(−2πi j/N), j = 0, …, N/2 − 1, each part rounded to nearest: computed
-# in BigFloat with 64 guard bits and rounded once.
+# The roots of unity exp(−2πi j/N), j = 0, …, N/2 − 1, each part rounded to nearest. The bound
+# is proved for that rounding, so the table has to be the correctly rounded one and not merely
+# a close one; the values are computed in BigFloat with 64 guard bits and rounded once.
+#
+# Only the first octant is computed that way. For j ≤ N/8 the angle is θ = 2j/N ≤ 1/4, and the
+# other three quarters of the half-circle come from
+#
+#     cos(π/2 − x) = sin x ,      cos(π − x) = −cos x ,
+#
+# a swap of the two parts and a change of sign, both exact in floating point: the entry a
+# symmetry produces is the same float the direct evaluation would round to, since the two real
+# numbers are equal. The loop over the octant is threaded, which is what makes the large sizes
+# affordable: 2²⁴ takes 0.5 s against 20 s for the straightforward loop, and 2²⁸ about 8 s.
 function _brisebarreetal2023_compute_roots(::Type{T}, N::Int) where {T <: AbstractFloat}
-    w = Vector{Complex{T}}(undef, max(N ÷ 2, 1))
+    n2 = max(N ÷ 2, 1)
+    w = Vector{Complex{T}}(undef, n2)
     p = precision(T)
-    # the rounding to the working precision; for BigFloat that is the precision outside the block
-    nearest(x) = T === BigFloat ? BigFloat(x; precision = p) : T(x)
-    setprecision(BigFloat, p + 64) do
-        for j in 0:(length(w) - 1)
-            θ = BigFloat(2 * j) / N                  # exact: N is a power of two
-            w[j + 1] = Complex{T}(nearest(cospi(θ)), -nearest(sinpi(θ)))
+    oct = N ÷ 8
+    if oct < 8                       # too small for the symmetry to be worth its bookkeeping
+        setprecision(BigFloat, p + 64) do
+            for j in 0:(n2 - 1)
+                θ = BigFloat(2 * j) / N          # exact: N is a power of two
+                w[j + 1] = Complex{T}(_nearest(T, cospi(θ), p), -_nearest(T, sinpi(θ), p))
+            end
         end
+        return w
+    end
+    c = Vector{T}(undef, oct + 1)
+    sn = Vector{T}(undef, oct + 1)
+    nt = max(Threads.nthreads(), 1)
+    chunk = cld(oct + 1, nt)
+    Threads.@threads for t in 1:nt
+        lo = (t - 1) * chunk
+        hi = min(t * chunk - 1, oct)
+        lo > hi && continue
+        setprecision(BigFloat, p + 64) do         # the precision is task local
+            for j in lo:hi
+                θ = BigFloat(2 * j) / N
+                c[j + 1] = _nearest(T, cospi(θ), p)
+                sn[j + 1] = _nearest(T, sinpi(θ), p)
+            end
+        end
+    end
+    @inbounds for j in 0:(n2 - 1)
+        q, r = divrem(j, oct)
+        cj, sj = if q == 0
+            (c[r + 1], sn[r + 1])
+        elseif q == 1
+            (sn[oct - r + 1], c[oct - r + 1])
+        elseif q == 2
+            # at j = N/4 the angle is 1/2 and the cosine is exactly zero, where the direct
+            # evaluation gives +0.0 and the negation would give −0.0
+            (iszero(sn[r + 1]) ? zero(T) : -sn[r + 1], c[r + 1])
+        else
+            (-c[oct - r + 1], sn[oct - r + 1])
+        end
+        w[j + 1] = Complex{T}(cj, -sj)
     end
     return w
 end
+
+# the rounding to the working precision; for BigFloat that is the precision outside the block
+_nearest(::Type{T}, x, p::Integer) where {T <: AbstractFloat} =
+    T === BigFloat ? BigFloat(x; precision = p) : T(x)
 
 # The sizes are powers of two, and the roots of order N are among those of order 2N, so one
 # table serves every size up to its own. The tables for Float64 and Float32 up to this size are
@@ -83,6 +132,14 @@ end
 # multiply-add and the complex sum part by part, in rounding to nearest.
 function _brisebarreetal2023_radix2(x::AbstractVector{Complex{T}}) where {T <: AbstractFloat}
     N = length(x)
+    w, stride = _brisebarreetal2023_roots(T, N)
+    return _brisebarreetal2023_radix2(x, w, stride)
+end
+
+function _brisebarreetal2023_radix2(x::AbstractVector{Complex{T}},
+                                    w::AbstractVector{Complex{T}},
+                                    stride::Integer) where {T <: AbstractFloat}
+    N = length(x)
     n = trailing_zeros(N)
     y = Vector{Complex{T}}(undef, N)
     for j in 0:(N - 1)
@@ -92,7 +149,6 @@ function _brisebarreetal2023_radix2(x::AbstractVector{Complex{T}}) where {T <: A
         end
         y[j + 1] = x[r + 1]
     end
-    w, stride = _brisebarreetal2023_roots(T, N)
     for k in 1:n
         bs = 1 << k
         half = bs >> 1
@@ -266,4 +322,64 @@ function ball_fft(A::BallMatrix{T}, dims = (1, 2);
     return BallMatrix(Ŷ, err)
 end
 
-export ball_fft
+"""
+    BallFFTPlan{T}
+
+A size and the table of roots of unity it needs, so that many transforms of that size share one
+table.  The table of order `N` holds the roots of every smaller power of two as well, which is
+why a plan made for `N` transforms any size dividing it.
+
+Build one with [`plan_ball_fft`](@ref) and pass it to [`ball_fft`](@ref).  Keeping it is what
+makes a large size affordable twice: at `N = 2²⁸` the table is `2²⁷` complex numbers, 2.1 GB
+for `Float64`, and some seconds of `BigFloat` evaluation to build.  Dropping the plan frees it.
+"""
+struct BallFFTPlan{T <: AbstractFloat}
+    n::Int                        # log2 of the size the plan was made for
+    method::Symbol
+    w::Vector{Complex{T}}         # the roots of unity, rounded to nearest
+    stride::Int                   # the step through `w` for the size being transformed
+    bn::T                         # the rounding bound of the transform at this size
+end
+
+Base.length(p::BallFFTPlan) = 1 << p.n
+function Base.show(io::IO, p::BallFFTPlan{T}) where {T}
+    print(io, "BallFFTPlan{", T, "}(N = 2^", p.n, ", method = ", repr(p.method), ")")
+end
+
+"""
+    plan_ball_fft(N; T = Float64, method = :brisebarreetal2023)
+
+The [`BallFFTPlan`](@ref) for transforms of length `N`, a power of two: it computes the table
+of roots once, which is the cost a repeated transform should not pay twice.  `T` is the float
+type of the midpoints.
+"""
+function plan_ball_fft(N::Integer; T::Type{<:AbstractFloat} = Float64,
+                       method::Symbol = :brisebarreetal2023)
+    n = _ball_fft_power_of_two(N)
+    _ball_fft_transform(method)            # rejects an unknown method, and FFTW if absent
+    w, stride = _brisebarreetal2023_roots(T, Int(N))
+    return BallFFTPlan{T}(n, method, w, stride, _brisebarreetal2023_bn(n, T))
+end
+
+"""
+    ball_fft(v::BallVector, plan::BallFFTPlan)
+
+[`ball_fft`](@ref) with the table of `plan`, which must have been made for the length of `v`.
+"""
+function ball_fft(v::BallVector{T}, plan::BallFFTPlan{T}) where {T}
+    N = length(v)
+    n = _ball_fft_power_of_two(N)
+    n == plan.n || throw(ArgumentError(
+        "the plan is for length 2^$(plan.n) and the vector has length $N"))
+    c = Vector{Complex{T}}(v.c)
+    Ŷ = if plan.method === :brisebarreetal2023
+        _brisebarreetal2023_radix2(c, plan.w, plan.stride)
+    else
+        Vector{Complex{T}}(_ball_fft_transform(plan.method)(c))
+    end
+    all(isfinite, Ŷ) || throw(ArgumentError("the transform overflowed"))
+    x_inf, r_1 = _ball_fft_norms(v.c, v.r, T)
+    return BallVector(Ŷ, fill(_ball_fft_radius(plan.bn, x_inf, r_1), N))
+end
+
+export ball_fft, plan_ball_fft, BallFFTPlan

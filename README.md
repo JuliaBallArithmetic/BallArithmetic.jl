@@ -168,6 +168,18 @@ v = BallVector(randn(ComplexF64, 1024), fill(1e-12, 1024))
 y = ball_fft(v)            # every transform of a vector in v is in y
 ```
 
+A transform needs the roots of unity of its size, rounded to nearest, which is what the proof of
+the bound assumes. They are computed once per size and kept; the first octant is evaluated in
+`BigFloat` and the rest of the half-circle follows from a swap of the two parts and a change of
+sign, both exact, so the table is the correctly rounded one. For repeated transforms of one
+size, and above all for a large one, take a plan: it holds the table, so the size is paid once
+and the memory is released with the plan.
+
+```julia
+p = plan_ball_fft(1 << 28)          # the table: 2^27 complex numbers, some seconds to build
+y = ball_fft(v, p)                  # as ball_fft(v), with that table
+```
+
 With FFTW.jl loaded, `fft(v)` on a ball vector or matrix is `ball_fft(v)`, and a second method
 takes the midpoint from FFTW:
 

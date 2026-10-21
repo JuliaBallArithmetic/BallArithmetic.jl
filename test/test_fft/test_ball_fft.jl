@@ -98,3 +98,39 @@ using Random
     end
 
 end
+
+# The table is built from the first octant, the other three quarters of the half-circle coming
+# from a swap and a sign change.  Those are exact, so every entry must be the float the direct
+# evaluation rounds to, and not merely close to it: the bound of the paper is proved for the
+# roots rounded to nearest.  The testset above samples the indices; this one takes them all at
+# a size where the symmetry is in use.
+@testset "ball_fft: the roots from the octant are the rounded ones, every entry" begin
+    for T in (Float64, Float32), N in (2^13, 2^9)
+        w, stride = BallArithmetic._brisebarreetal2023_roots(T, N)
+        setprecision(BigFloat, precision(T) + 128) do
+            for j in 0:(N ÷ 2 - 1)
+                θ = BigFloat(2 * j) / N
+                @test real(w[j * stride + 1]) === T(cospi(θ))
+                @test imag(w[j * stride + 1]) === -T(sinpi(θ))
+            end
+        end
+    end
+end
+
+@testset "ball_fft: a plan transforms as the planless call does" begin
+    for n in (3, 7, 11)
+        N = 2^n
+        v = BallVector([cis(0.3 * j) + 0.1 * j for j in 0:(N - 1)], fill(1e-16, N))
+        a = ball_fft(v)
+        p = plan_ball_fft(N)
+        b = ball_fft(v, p)
+        @test a.c == b.c                      # the same algorithm on the same table
+        @test a.r == b.r
+        @test length(p) == N
+        @test p.bn > 0
+    end
+    p = plan_ball_fft(1024)
+    @test_throws ArgumentError ball_fft(BallVector(ones(ComplexF64, 512), zeros(512)), p)
+    @test_throws ArgumentError plan_ball_fft(1000)
+    @test_throws ArgumentError plan_ball_fft(1024; method = :other)
+end
