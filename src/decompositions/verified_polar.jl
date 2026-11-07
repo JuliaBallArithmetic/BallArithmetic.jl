@@ -22,8 +22,7 @@ positive definite and `Q` with orthonormal columns (rows), `Q` and `P` in the ba
 returned.
 
 # Reference
-S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
-Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 7.
+Section 7 of [RumpOgita2024](@cite).
 
 The flag is called `certified` since version 0.4 and was called `success` in 0.3.0; the
 old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
@@ -66,11 +65,8 @@ r.certified      # A = Q P with Q in r.Q and P in r.P
 ```
 
 # Reference
-S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
-Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 7; S. M. Rump and M. Lange,
-*Fast computation of error bounds for all eigenpairs of a Hermitian and all singular pairs of a
-rectangular matrix with emphasis on eigen- and singular value clusters*, J. Comput. Appl. Math.
-**434** (2023), 115332, doi 10.1016/j.cam.2023.115332.
+Section 7 of [RumpOgita2024](@cite), over the singular value enclosures of
+[RumpLange2023](@cite).
 """
 function verified_polar(::Type{AT}, A::AbstractMatrix{S};
                         precision_bits::Int=256,

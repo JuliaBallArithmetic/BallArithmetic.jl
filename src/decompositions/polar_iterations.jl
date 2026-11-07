@@ -67,6 +67,14 @@ paper reverts to the unaccelerated iteration. A matrix with more rows than colum
 to its triangular factor first (Section 3.1 of the paper).
 
 The result is an approximation with no error bound; see [`verified_polar`](@ref).
+
+# Reference
+
+The iteration, its acceleration parameters and a way of estimating them are
+[Higham1986](@cite), which also proves the convergence quadratic. Theorem 1.1 there is the
+existence statement: for an `m × n` matrix with `m ≥ n` there are a matrix with orthonormal
+columns and a unique Hermitian positive semidefinite factor whose product is it, and the factor
+is positive definite and the first matrix unique when the rank is full.
 """
 function polar_newton(A::AbstractMatrix; maxiter::Integer = 100, tol = nothing)
     return _polar_via_triangular(A) do X
@@ -105,6 +113,10 @@ in `(0, √3)`, and applies to rectangular `A` of full column rank. Throws when 
 [`polar_newton`](@ref); the book states no test for this iteration.
 
 The result is an approximation with no error bound; see [`verified_polar`](@ref).
+
+# Reference
+
+Chapter 8 of [Higham2008](@cite), on the polar decomposition.
 """
 function polar_newton_schulz(A::AbstractMatrix; maxiter::Integer = 100, tol = nothing)
     m, n = size(A)
@@ -161,6 +173,13 @@ machine epsilon. The paper bounds the number of iterations by six for condition 
 factor first, as in [`polar_newton`](@ref).
 
 The result is an approximation with no error bound; see [`verified_polar`](@ref).
+
+# Reference
+
+The dynamically weighted Halley iteration and its QR-based variant are
+[NakatsukasaBaiGygi2010](@cite), which chooses the weights by a max-min problem from `α = ‖A‖₂`
+and a lower bound of `β = σ_min(A)`, and proves the convergence global and asymptotically cubic,
+with at most six iterations reaching `10⁻¹⁶` in exact arithmetic when `κ₂(A) ≤ 10¹⁶`.
 """
 function polar_qdwh(A::AbstractMatrix; maxiter::Integer = 20)
     return _polar_via_triangular(A) do X0
@@ -203,6 +222,11 @@ are of order `u`. For a larger condition number the Cholesky factorisation can b
 the exception of `cholesky` is then thrown.
 
 The result is an approximation with no error bound; see [`verified_qr`](@ref).
+
+# Reference
+
+The roundoff analysis is [YamamotoEtAl2015](@cite), whose standing assumption (2.1) is the
+inequality above.
 """
 function cholesky_qr2(X::AbstractMatrix)
     m, n = size(X)

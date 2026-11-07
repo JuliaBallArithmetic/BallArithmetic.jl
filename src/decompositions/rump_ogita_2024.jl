@@ -34,8 +34,7 @@ which the paper's listing assumes. Every bound is rounded up.
 
 # Reference
 
-S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
-Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 3.1 and Algorithm 3.2.
+Section 3.1 and Algorithm 3.2 of [RumpOgita2024](@cite).
 """
 function _rumpogita2024_alg3_2(E::BallMatrix{T}) where {T}
     m, n = size(E)
@@ -367,8 +366,7 @@ which bounds every entry of `Q₂ − Q̃₂`.
 
 # Reference
 
-S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
-Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 5 and Lemma 5.1.
+Section 5 and Lemma 5.1 of [RumpOgita2024](@cite).
 """
 function _rumpogita2024_qr(A::BallMatrix{T}; full::Bool = false, oracle = nothing) where {T}
     m, n = size(A)
@@ -474,8 +472,7 @@ entries below the diagonal are exact zeros. The paper notes that the replacement
 
 # Reference
 
-S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
-Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 8.
+Section 8 of [RumpOgita2024](@cite).
 """
 function _rumpogita2024_schur(A::BallMatrix{T}; kwargs...) where {T}
     n = size(A, 1)
@@ -542,9 +539,8 @@ value these are `P = Σ σ_j v_j v_j*` and `Q = Σ Ãv_j v_j*/σ_j`.
 
 # Reference
 
-S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
-Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 7; and Rump and Lange (2023)
-for the singular value decomposition, see [`verifysvdall`](@ref).
+Section 7 of [RumpOgita2024](@cite), over the singular value enclosures of
+[RumpLange2023](@cite); see [`verifysvdall`](@ref).
 """
 function _rumpogita2024_polar(A::BallMatrix{T}; kappa::Real = 0, oracle = nothing) where {T}
     m, n = size(A)
@@ -596,8 +592,7 @@ of the norm of the error of `[x; y]`, hence of the modulus of each entry of `x +
 
 # Reference
 
-S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
-Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 9.
+Section 9 of [RumpOgita2024](@cite).
 """
 function _rumpogita2024_takagi(A::BallMatrix{T}; oracle = nothing) where {T}
     n = size(A, 1)

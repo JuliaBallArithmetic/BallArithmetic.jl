@@ -75,18 +75,21 @@ struct AdaptiveSVDResult{T, RigT}
 end
 
 """
-    ogita_iterations_for_precision(target_bits::Int; start_bits::Int=53)
+    ogita_iterations_for_precision(target_bits::Int; start_bits::Int = 53) -> Int
 
-Compute the number of Ogita iterations needed to achieve target precision,
-based on quadratic convergence theory.
+How many steps of Algorithm 1 (RefSVD) of [OgitaAishima2020](@cite)
+[`ogita_svd_refine`](@ref) runs when it is asked to carry an approximate decomposition from
+`start_bits` correct bits, the 53 of Float64 by default, to `target_bits`:
+`ceil(log2(target_bits / start_bits))`, and zero when `target_bits ≤ start_bits`.
 
-With quadratic convergence, each iteration roughly doubles the number of correct bits.
-Starting from Float64 (53 bits), we need ceil(log2(target_bits / start_bits)) iterations.
+The count comes from the quadratic convergence of that algorithm, each step roughly doubling the
+number of correct bits; the paper's Theorem 1 gives the quadratic rate under a closeness
+condition on the initial guess relative to the gaps between the singular values. It is a count of
+steps to run and not a bound on anything: this function checks no hypothesis and the accuracy
+actually reached is not certified by it. What is certified is the enclosure
+[`certify_svd`](@ref) returns from the refined factors, whatever their accuracy.
 
-# Examples
-- 256 bits: ceil(log2(256/53)) = 3 iterations
-- 512 bits: ceil(log2(512/53)) = 4 iterations
-- 1024 bits: ceil(log2(1024/53)) = 5 iterations
+From 53 bits: 3 steps for 256, 4 for 512, 5 for 1024.
 """
 function ogita_iterations_for_precision(target_bits::Int; start_bits::Int=53)
     if target_bits <= start_bits
@@ -164,19 +167,27 @@ function ogita_svd_refine(A::AbstractMatrix{T}, U, Σ, V;
 end
 
 """
-    _ogita_svd_refine_impl(A, U, Σ, V, max_iterations)
+    _ogita_svd_refine_impl(A, U, Σ, V, max_iterations, check_convergence)
+        -> OgitaSVDRefinementResult
 
-Internal implementation of Ogita's iterative SVD refinement.
+Algorithm 1 (RefSVD) of [OgitaAishima2020](@cite) applied to the approximate decomposition
+`A ≈ UΣVᵀ`. The exact factors are written `Û(I + F)` and `V̂(I + G)`; the orthogonality defects
+`I − ÛᵀÛ` and `I − V̂ᵀV̂` together with the projected matrix `ÛᵀAV̂` give linear equations for the
+corrections, and the factors are updated with their solution. The step is a Newton step, so it
+converges quadratically from a modestly accurate start, and all of its cost sits in matrix
+products, which is what lets the refinement be run at a higher precision than the certification.
 
-Based on Algorithm 1 (RefSVD) from:
-Ogita, T. & Aishima, K. (2020), "Iterative refinement for singular value
-decomposition based on matrix multiplication", J. Comput. Appl. Math. 369, 112512.
+The paper states the algorithm for a real `m × n` matrix with `m ≥ n`, simple singular values and
+the full `m × m` left factor. A matrix with fewer rows than columns is sent to the same routine
+as `A*` with the two frames exchanged, and a thin left factor is completed by an approximately
+orthonormal basis of the orthogonal complement before the first step and cut back afterwards.
+`max_iterations` steps are run, or fewer when `check_convergence` is set and the iterate stops
+moving.
 
-The algorithm computes corrections F̃ and G̃ such that:
-  U' = Û(I + F̃)
-  V' = V̂(I + G̃)
-
-This converges quadratically if singular values are well-separated.
+Returns floating-point factors with no error bound, and a `residual_norm` which is the estimate
+of [`_spectral_norm_bound`](@ref) and not a bound either. An enclosure is obtained by handing the
+refined factors to [`certify_svd`](@ref), which is what [`adaptive_ogita_svd`](@ref) does at each
+precision level.
 """
 function _ogita_svd_refine_impl(A::AbstractMatrix{T}, U, Σ, V,
                                 max_iterations::Int,
