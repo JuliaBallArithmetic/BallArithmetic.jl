@@ -97,13 +97,13 @@ end
     mmul_ogita_rump_oishi_2005(A::BallMatrix, B::BallMatrix) -> BallMatrix
 
 Product of two ball matrices whose midpoint is accumulated with error-free transformations and
-whose radius charges the Ogita-Rump-Oishi (2005) accuracy bound rather than the rounding of a BLAS
-product.
+whose radius charges the accuracy bound of [OgitaEtAl2005](@cite) rather than the rounding of a
+BLAS product.
 
 For every `X ∈ A` and `Y ∈ B` the returned ball contains `XY`. The radius is the sum of
 
 * the interval part, `rad(A)(|mid(B)| + rad(B)) + |mid(A)| rad(B)` entrywise, which is what any
-  midpoint-radius product must carry and is identical to [`MMul4`](@ref)'s; and
+  midpoint-radius product must carry and is identical to `MMul4`'s; and
 * the accuracy part, `(u|C| + κ(γ_N² Σᵢ|aᵢ||bᵢ| + 5N·eta))/(1 − u)` with `N` the number of products
   summed, `γ_N = Nu/(1−Nu)`, `eta` the underflow unit and `κ = 1` for real data, `3/2` for complex:
   Proposition 5.5 of the reference with its underflow term, see `_accuracy_term`.
@@ -118,13 +118,13 @@ six additions, both in round-to-nearest. Only the radius is accumulated under `R
 **Cost.** `O(mnk)` scalar operations with no BLAS, threaded over the output columns. Measured on 16
 threads against the ball `*` on complex matrices with radius zero, it is *faster* below about
 `k = 400` — `0.55×` at `k = 200`, `0.41×` at `400` — and `1.32×` at `800`, `3.59×` at `1600`, with the
-radius ratio improving from `0.0075` to `0.0029` over the same range. `*` dispatches to
-[`MMul4`](@ref), which is the default product of the package.
+radius ratio improving from `0.0075` to `0.0029` over the same range. `*` dispatches to `MMul4`,
+which is the default product of the package.
 
 # Reference
 
-T. Ogita, S. M. Rump and S. Oishi, *Accurate sum and dot product*, SIAM J. Sci. Comput. **26**(6)
-(2005) 1955-1988, doi 10.1137/030601818.
+[OgitaEtAl2005](@cite), Proposition 5.5 for the accuracy bound and Algorithm 5.3 (Dot2) for the
+accumulation.
 """
 function mmul_ogita_rump_oishi_2005(A::BallMatrix{T, S}, B::BallMatrix{T, S}) where {T, S}
     mA, rA = mid(A), rad(A)
@@ -237,15 +237,15 @@ end
 """
     _dot2err_ogita_rump_oishi_2005(x, y) -> (res, err)
 
-Algorithm 5.8 (Dot2Err) of Ogita, Rump and Oishi (2005) for two vectors of `Float32` or `Float64`:
+Algorithm 5.8 (Dot2Err) of [OgitaEtAl2005](@cite) for two vectors of `Float32` or `Float64`:
 `res` is the dot product accumulated in twice the working precision and rounded, and
 `res − err ≤ xᵀy ≤ res + err` (Corollary 5.9), also in the presence of underflow. Every operation
-is in rounding to nearest. Where an intermediate result is not finite `err` is `Inf`.
+is in rounding to nearest, so the pair is a bound and not an approximation whatever the BLAS does
+with the rounding mode. Where an intermediate result is not finite `err` is `Inf`.
 
 # Reference
 
-T. Ogita, S. M. Rump and S. Oishi, *Accurate sum and dot product*, SIAM J. Sci. Comput. **26**(6)
-(2005) 1955-1988, doi 10.1137/030601818.
+[OgitaEtAl2005](@cite), Algorithm 5.8 and Corollary 5.9.
 """
 function _dot2err_ogita_rump_oishi_2005(x::AbstractVector{T},
         y::AbstractVector{T}) where {T <: Union{Float32, Float64}}
@@ -276,18 +276,17 @@ end
 
 Entrywise lower and upper bounds of the product of two `Float32` or `Float64` matrices,
 `down ≤ AB ≤ up`, with no change of the rounding mode: each entry is accumulated by Algorithm 5.8
-(Dot2Err) of Ogita, Rump and Oishi (2005) as an unevaluated sum `p + s` with the bound `β` of the
+(Dot2Err) of [OgitaEtAl2005](@cite) as an unevaluated sum `p + s` with the bound `β` of the
 proof of Corollary 5.9 on its distance from the exact entry, underflow included, and
 `p + (s − β)`, `p + (s + β)` are rounded downward and upward by `add_down`, `sub_down`, `add_up`.
 An entry with a non-finite intermediate result gets `(-Inf, Inf)`.
 
-The same role as [`_product_down_up`](@ref), which evaluates the BLAS product twice under
-`RoundDown` and `RoundUp`. `O(mnk)` scalar operations, no BLAS, threaded over the columns.
+The same role as `_product_down_up`, which evaluates the BLAS product twice under `RoundDown` and
+`RoundUp`. `O(mnk)` scalar operations, no BLAS, threaded over the columns.
 
 # Reference
 
-T. Ogita, S. M. Rump and S. Oishi, *Accurate sum and dot product*, SIAM J. Sci. Comput. **26**(6)
-(2005) 1955-1988, doi 10.1137/030601818.
+[OgitaEtAl2005](@cite), Algorithm 5.8 and Corollary 5.9.
 """
 function _product_down_up_dot2err(A::AbstractVecOrMat{T},
         B::AbstractVecOrMat{T}) where {T <: Union{Float32, Float64}}
@@ -363,12 +362,17 @@ end
 unevaluated sum of two matrices: `|Σ_t sgn_t A_t B_t − P1 − P2| ≤ R` entrywise. `P1` is the
 floating-point value and `P2` the accumulated error terms of [`compensated_terms2`](@ref), so
 that a further product with the pair keeps twice the working precision; this is the output of
-the role of `prodK(..., 'OutputTerms', 2)` with `k = 2` in Rump and Ogita (2024).
+the role of `prodK(..., 'OutputTerms', 2)` with `k = 2` in [RumpOgita2024](@cite).
 
-`R = κ(γ_{N+1}² Σ_t |A_t||B_t| + 5N eta)`, `N` the number of products in a part of an entry,
-`κ = 1` for real data and `3/2 ≥ √2` for complex, where the bound holds for the real and for the
-imaginary part: the bound of `compensated_terms2`, with the underflow term of
-`_accuracy_term`.
+For `Float32` and `Float64` the splitting scheme of [LangeRump2026](@cite), which is `prodK`
+itself, is tried first through [`_lange_rump_two_terms`](@ref); where it declines, and for every
+other type, each entry is one Dot2 accumulation of [OgitaEtAl2005](@cite) with the a priori bound
+
+    R = κ(γ_{N+1}² Σ_t |A_t||B_t| + 5N eta),
+
+`N` the number of products in a part of an entry, `κ = 1` for real data and `3/2 ≥ √2` for
+complex, where the bound holds for the real and for the imaginary part: the bound of
+[`compensated_terms2`](@ref), with the underflow term of `_accuracy_term`.
 """
 function _two_term_product_sum(terms)
     # Float32 and Float64: the splitting scheme of Lange and Rump, on the BLAS (`lange_rump.jl`);
@@ -403,7 +407,8 @@ end
 
 A ball matrix containing `Σ_t sgn_t A_t B_t` for `terms` an iterable of `(A_t, B_t, sgn_t)`, point
 matrices: the two terms of [`_two_term_product_sum`](@ref) added, the radius its bound plus the
-rounding of that addition. The role of `[R, E] = prodK(...)` with `k = 2` in Rump and Ogita (2024).
+rounding of that addition. The role of `[R, E] = prodK(...)` with `k = 2` in
+[RumpOgita2024](@cite), whose splitting scheme is [LangeRump2026](@cite).
 """
 function _accurate_product_sum(terms)
     P1, P2, R = _two_term_product_sum(terms)

@@ -23,14 +23,16 @@ This test checks the result of A*A' in different rounding modes,
 running BLAS on `n` threads: the diagonal entries but the last are `1 + u²` exactly, so they
 must be `nextfloat(1.0)` under `RoundUp` and `1.0` under `RoundDown`.
 
+Returns `true` only when both checks hold, so a `false` is a failure of the BLAS to carry the
+rounding mode across its threads and not a statement about the matrix.
+
 This is the example of Section 5.1.3 of the thesis below (Listing 5.2), which reports that
 OpenBLAS 0.1.0 with more than one thread returned `1` under `RoundUp` in the last three
 quarters of the diagonal for `n ≥ 16`.
 
 # Reference
 
-P. Théveny, *Numerical Quality and High Performance in Interval Linear Algebra on Multi-Core
-Processors*, doctoral thesis, École normale supérieure de Lyon, 2014, NNT 2014ENSL0941,
+[Theveny2014](@cite), doctoral thesis, École normale supérieure de Lyon, NNT 2014ENSL0941,
 https://theses.hal.science/tel-01126973.
 """
 function rounding_test(n, k)
@@ -60,8 +62,9 @@ using RoundingEmulator: add_up, sub_up, sub_down, mul_up, mul_down
 Whether [`rounding_test`](@ref) passed when the package was loaded, on all the BLAS threads or,
 failing that, on one. When it is `false` the products of `Float32` and `Float64` matrices that
 the package bounds from below and from above are not evaluated under a rounding mode: they are
-enclosed by the splitting scheme of Lange and Rump (INTLAB's `prodK`), with the Dot2 accumulation
-of Ogita, Rump and Oishi where the scheme declines, which do not use the rounding mode.
+enclosed by the splitting scheme of [LangeRump2026](@cite) (INTLAB's `prodK`), with the Dot2
+accumulation of [OgitaEtAl2005](@cite) where the scheme declines, which do not use the rounding
+mode.
 """
 const BLAS_ROUNDING_OK = Ref(true)
 

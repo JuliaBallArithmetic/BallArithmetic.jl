@@ -2,6 +2,16 @@
 
 Core ball arithmetic types and basic operations.
 
+```@meta
+CurrentModule = BallArithmetic
+```
+
+## The Module
+
+```@docs
+BallArithmetic
+```
+
 ## Ball Type
 
 ```@docs
@@ -19,6 +29,8 @@ sup
 ball_hull
 intersect_ball
 in0
+BallArithmetic.:±
+BallArithmetic._ball_from_bounds
 ```
 
 ## Directed Rounding
@@ -34,7 +46,87 @@ BallArray
 BallMatrix
 BallVector
 HermitianBallMatrix
+DenseBallMatrix
+DenseBallVector
 BallArithmetic._zero_radius
+BallArithmetic._check_axes
+```
+
+The radii are not checked on construction, since the scan would cost more than the arithmetic it
+guards; the axes of the midpoint and radius containers are, that test being `O(1)`. Radii of
+external provenance go through one of the two predicates below first.
+
+```@docs
+isvalid_enclosure
+check_enclosure(::BallArray)
+```
+
+## The `Base` interface of the ball types
+
+What follows is the arithmetic and the array interface that `Ball`, `BallArray`, `BallMatrix` and
+`BallVector` add to `Base`. Every operation returns an enclosure: the midpoint is the
+floating-point result and the radius carries the radii of the operands together with a bound on
+the rounding of the midpoint, accumulated with the directed operations of
+[Arithmetic and Rounding](arithmetic.md). The comparisons are the exception, and the one place
+where a result is *not* a proof of anything about the enclosed sets: they compare midpoints, so
+that balls can be sorted, and a rigorous "certainly less than" is `sup(a) < inf(b)`.
+
+### Scalar arithmetic
+
+```@docs
+Base.:+(::Ball)
+Base.:+(::Ball{T}, ::Ball{T}) where T
+Base.:/(::Ball, ::Ball)
+Base.inv(::Ball{T, T}) where T<:AbstractFloat
+Base.inv(::Ball{T, Complex{T}}) where T<:AbstractFloat
+Base.sqrt(::Ball{T}) where T<:AbstractFloat
+Base.abs(::Ball{T, T}) where T<:AbstractFloat
+Base.conj(::Ball)
+```
+
+### Containment, comparison and conversion
+
+```@docs
+Base.in(::Union{AbstractFloat, Complex{<:AbstractFloat}}, ::Ball)
+Base.in(::Ball{T, T}, ::Ball{T, T}) where T<:AbstractFloat
+Base.in(::Ball{T, Complex{T}}, ::Ball{T, Complex{T}}) where T<:AbstractFloat
+Base.isless(::Ball{T, T}, ::Ball{T, T}) where T<:AbstractFloat
+Base.isless(::Ball{T, T}, ::Number) where T<:AbstractFloat
+Base.:<(::Ball{T, T}, ::Ball{T, T}) where T<:AbstractFloat
+Base.:<=(::Ball{T, T}, ::Ball{T, T}) where T<:AbstractFloat
+Base.:>(::Ball{T, T}, ::Ball{T, T}) where T<:AbstractFloat
+Base.:>=(::Ball{T, T}, ::Ball{T, T}) where T<:AbstractFloat
+Base.convert(::Type{Ball{T, CT}}, ::Ball) where {T, CT}
+Base.convert(::Type{Ball{T, CT}}, ::Number) where {T, CT}
+```
+
+### The array interface
+
+```@docs
+Base.size(::BallArray)
+Base.length(::BallArray)
+Base.getindex(::BallArray, ::Int)
+Base.setindex!(::BallArray, ::Any, ::Any...)
+Base.copy(::BallArray)
+Base.real(::BallArray{T, N, T}) where {T<:AbstractFloat, N}
+Base.imag(::BallArray{T, N, T}) where {T<:AbstractFloat, N}
+Base.zeros(::Type{B}, ::NTuple{N, Integer}) where {B<:Ball, N}
+Base.ones(::Type{B}, ::NTuple{N, Integer}) where {B<:Ball, N}
+Base.fill(::Ball, ::Vararg{Int, N}) where N
+```
+
+### Matrix and vector arithmetic
+
+```@docs
+Base.adjoint(::BallMatrix)
+Base.transpose(::BallMatrix)
+Base.:+(::BallMatrix{T}, ::BallMatrix{T}) where T<:AbstractFloat
+Base.:+(::BallMatrix{T}, ::AbstractMatrix{<:Union{Complex{T}, T}}) where T<:AbstractFloat
+Base.:+(::AbstractMatrix{<:Union{Complex{T}, T}}, ::BallMatrix{T}) where T<:AbstractFloat
+Base.:+(::BallMatrix{T}, ::LinearAlgebra.UniformScaling) where T
+Base.:+(::LinearAlgebra.UniformScaling, ::BallMatrix)
+Base.:+(::BallMatrix{T}, ::LinearAlgebra.UniformScaling{Ball{T, NT}}) where {T, NT<:Union{Complex{T}, T}}
+Base.:+(::BallVector{T}, ::BallVector{T}) where T<:AbstractFloat
 ```
 
 ## Whether a Result Is Proved
