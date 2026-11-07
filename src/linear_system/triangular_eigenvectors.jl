@@ -34,7 +34,7 @@ has `v[j] = 0` for `j > i`, `v[i] = 1`, and entries for `j < i` by back-substitu
 The resulting `V` is **unit upper triangular**, so `W = V⁻¹` is also unit upper triangular.
 
 # Fallback
-If `min_{i≠j} |L[i,i] - L[j,j]| < tol`, falls back to `eigen()` + `inv()`.
+If `min_{i≠j} |L[i,i] - L[j,j]| ≤ tol`, falls back to `eigen()` + `inv()`.
 
 # Arguments
 - `L::AbstractMatrix`: A triangular matrix (upper or lower).

@@ -512,9 +512,7 @@ input raises. `kappa` is the clustering threshold of `verifysvdall`. The argumen
 [`verified_lu`](@ref) and the other `verified_*` decompositions.
 
 # Reference
-S. M. Rump and M. Lange, *Fast computation of error bounds for all eigenpairs of a Hermitian and
-all singular pairs of a rectangular matrix with emphasis on eigen- and singular value clusters*,
-J. Comput. Appl. Math. **434** (2023), 115332, doi 10.1016/j.cam.2023.115332.
+The enclosures are those of [RumpLange2023](@cite); see [`verifysvdall`](@ref).
 """
 function verified_svd(::Type{AT}, A::AbstractMatrix{S}; precision_bits::Int = 256,
         kappa::Real = 0) where {AT, S <: Union{Float64, ComplexF64, BigFloat, Complex{BigFloat}}}

@@ -13,11 +13,13 @@
 #     doi     = {10.1137/140953150},
 #   }
 #
-# WHAT IS MIYAJIMA'S. The certification is the two-residual structure of his Theorem 3.1: with Y an
-# approximate inverse of the frame, R2 := I - Y B W and R1 := Y(A W - B W Lambda), the bound carries
-# the Neumann slack ||R2||/(1 - ||R2||) and refuses unless ||R2||_inf < 1, which proves B, W and Y
-# nonsingular at once rather than assuming it. Theorem 3.1 states it as
-# rhat = |R| 1 + (||R||_inf/(1 - ||S||_inf)) |S| 1; here the same slack is charged per row to
+# WHAT IS MIYAJIMA'S. The certification is the two-residual structure of his Corollary 3.2: with Y
+# an approximate inverse of the frame, R2 := I - Y B W and R1 := Y(A W - B W Lambda), the bound
+# carries the Neumann slack ||R2||/(1 - ||R2||) and refuses unless ||R2||_inf < 1, which proves B, W
+# and Y nonsingular at once rather than assuming it. Corollary 3.2 states it as
+# r = u + <u>_t t with u = |R| 1, t = |S| 1 and <v>_w = max_i |v_i|/(1 - |w_i|); his Theorem 3.1 is
+# Theorem 3 of Miyajima (2012), on which that corollary rests. Here the same slack is charged per
+# row to
 # Gershgorin discs of the collapsed matrix, which is the refinement that lets each disc pay for its
 # own row of R2 instead of the worst one.
 #
@@ -98,12 +100,22 @@ _vbd_unitary_basis(::Miyajima2014aSchurNewtonResult) = false
 # ── Phase 1: Schur + Newton block-orthonormal basis (point matrix, O(n³)) ──
 
 """
-    _vbd_solve(Bc::Matrix{CT}; sep = -1, maxsteps = 6) -> (W, clusters)
+    _vbd_solve(Bc::Matrix{CT}; sep = -1, maxsteps = 6, mode = :entrywise) -> (W, clusters)
 
-Guarded-`trevc` solve on the complexified point matrix `Bc`: Schur frame,
-fixed-separation distance clustering, column-norm merge, between-cluster
-Newton refinement, per-block QR ⇒ block-orthonormal `W`.  `clusters` is a
-`Vector{Vector{Int}}` of (generally non-contiguous) index sets.
+The candidate frame of [`miyajima2014a_schurnewton`](@ref), in floating point, on the
+complexified point matrix `Bc`: a Schur form; the eigenvalues clustered by their mutual distances
+at the level `sep`, `√eps · ‖Bc‖_∞` when it is not given; then, with `mode = :entrywise`, up to
+`maxsteps` sweeps of the Newton transform `Xᵢⱼ = −Aᵢⱼ/(dᵢ − dⱼ)` on the cross-cluster pairs whose
+gap dominates their off-diagonal entry, or, with `mode = :block`, one exact block-Sylvester
+elimination per block boundary, merging two blocks where the transform would be too large to
+survive the certification; and a QR of each block, which leaves `W` orthonormal within each block
+but not unitary overall, so consumers invert it rather than taking its adjoint (see
+[`_vbd_unitary_basis`](@ref)). `clusters` is a `Vector{Vector{Int}}` of index sets, in general not
+contiguous.
+
+Nothing here is verified and nothing here needs to be. `W` is a candidate; every claim rests on
+the residuals [`_certify_ball`](@ref) forms against the input ball, so the clustering, the merge
+rule and the Newton steps can be changed without touching what is proved.
 """
 function _vbd_solve(Bc::Matrix{CT}; sep::Real = -1, maxsteps::Integer = 6,
         mode::Symbol = :entrywise) where {CT}
@@ -282,12 +294,31 @@ end
 # ── Phase 2: Miyajima two-residual certification against the INPUT ball ──
 
 """
-    _certify_ball(A::BallMatrix, W; kappa_mode = :cheap)
-        -> (transformed, discs, nrmR2, beta, kappa)
+    _certify_ball(A::BallMatrix, W; B = nothing, kappa_mode = :cheap)
+        -> (transformed, discs, nrmR2, beta, kappa, FB)
 
-Certify the candidate basis `W` of the ball matrix `A`.  Returns the collapsed
-ball enclosure `Ã = inv(W)·A·W`, the β-inflated Gershgorin discs, and the
-certification record.  Throws if the Neumann condition `‖R₂‖_∞ < 1` fails.
+The certification step of [`miyajima2014a_schurnewton`](@ref), over the candidate frame `W`,
+which is not assumed nonsingular. `FB` is the frame the approximate inverse `Y = inv(mid(FB))` is
+formed of: `W` for `Ax = λx`, and `B·W` for the pencil `Ax = λBx`, which is the whole of the
+difference between the two problems. The routine forms the residual `R₂ = Y·FB − I` and the
+collapsed enclosure `transformed = Y·A·W`, a ball product against the input ball, so the radii of
+`A` propagate into it; `‖R₂‖_∞ < 1` is required and proves `FB` and `Y` nonsingular rather than
+assuming it.
+
+`discs` are the Gershgorin discs of `transformed`, each widened by its own row of the slack,
+`βᵢ = ‖rowᵢ(R₂)‖₁‖transformed‖_∞/(1 − ‖R₂‖_∞)`, which charges the error `Y ≠ FB⁻¹` to disc `i`
+alone instead of to every disc at the worst row's rate. `nrmR2` is `‖R₂‖_∞`, `beta` the largest
+`βᵢ`, and `kappa` an estimate of the condition number of `FB`, reported and taking no part in the
+enclosure.
+
+Throws when `‖R₂‖_∞ ≥ 1`: the frame is then not proved nonsingular at this precision and there is
+nothing to return.
+
+# Reference
+
+The two residuals and the Neumann slack are Corollary 3.2 of [Miyajima2014a](@cite), which states
+the radii as `u + ⟨u⟩_t t` with `u = |R₁|1`, `t = |R₂|1` and `⟨v⟩_w = maxᵢ|vᵢ|/(1 − |wᵢ|)`; the
+slack is charged per row here rather than once for the whole matrix.
 """
 function _certify_ball(A::BallMatrix{T}, W::AbstractMatrix;
         B::Union{Nothing, BallMatrix} = nothing,

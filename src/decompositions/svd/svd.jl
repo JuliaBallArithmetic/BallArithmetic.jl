@@ -1,7 +1,16 @@
 """
     SVDMethod
 
-Abstract type for selecting SVD certification algorithms.
+Which enclosure of the singular values a certification uses, as a type, so that the choice is
+made by dispatch and the routine that implements a theorem is named after it: [`MiyajimaM1`](@ref)
+is Theorem 7 of [Miyajima2014](@cite), [`MiyajimaM3`](@ref) Theorem 10, [`MiyajimaM4`](@ref)
+Theorem 11, and [`MiyajimaAuto`](@ref) is not a theorem but the rule that picks between the first
+two.
+
+[`rigorous_svd`](@ref), [`certify_svd`](@ref), [`rigorous_svd_gpu`](@ref) and
+[`adaptive_ogita_svd`](@ref) take one of these as their `method` keyword. [`svdbox`](@ref), which
+returns the values and nothing else, selects by a `Symbol` instead and reaches three further
+enclosures that these types do not name.
 """
 abstract type SVDMethod end
 
@@ -11,8 +20,8 @@ abstract type SVDMethod end
 The default of [`rigorous_svd`](@ref): [`MiyajimaM3`](@ref), Theorem 10, for an exact input, and
 [`MiyajimaM1`](@ref), Theorem 7, for one carrying a radius.
 
-This is a selection rule of this package and not a result of Miyajima (2014); the measurements
-behind it are in [`_svd_auto_theorem`](@ref). Pass `method` explicitly to override it.
+This is a selection rule of this package and not a result of [Miyajima2014](@cite); the
+measurements behind it are in [`_svd_auto_theorem`](@ref). Pass `method` explicitly to override it.
 
 On an input carrying a radius this is **not** what [`svdbox`](@ref) does. `svdbox` returns values
 only, so it can certify `mid(A)` by Theorem 10 and widen each interval by `‖rad(A)‖₂`
@@ -26,7 +35,7 @@ struct MiyajimaAuto <: SVDMethod end
 """
     MiyajimaM3 <: SVDMethod
 
-Miyajima 2014, Theorem 10, the algorithm his numerical section labels M3, and what
+Theorem 10 of [Miyajima2014](@cite), the algorithm his numerical section labels M3, and what
 [`rigorous_svd`](@ref) uses on an exact input.
 
 The economy frames of Theorem 7 with a one-sided residual: with `Λᵢᵢ` and `Λ̄ᵢᵢ` the scalings of
@@ -43,11 +52,18 @@ struct MiyajimaM3 <: SVDMethod end
 """
     MiyajimaM1 <: SVDMethod
 
-Miyajima 2014, Theorem 7, the algorithm his numerical section labels M1.
+Theorem 7 of [Miyajima2014](@cite), the economy enclosure the paper itself calls `svdbox` and
+its numerical section labels M1.
 
-Bounds:
-- Lower: σᵢ · √((1-‖F‖)(1-‖G‖)) - ‖E‖
-- Upper: σᵢ · √((1+‖F‖)(1+‖G‖)) + ‖E‖
+With `Û`, `V̂` the first `q = min(m, n)` columns of the approximate frames, `Σ̂` the approximate
+singular values, and the residuals `Ê = ÛΣ̂V̂ᵀ − A`, `F̂ = V̂ᵀV̂ − I`, `Ĝ = ÛᵀÛ − I` measured
+against `A` itself, the theorem gives, when `‖F̂‖₂ < 1` and `‖Ĝ‖₂ < 1`,
+
+    Σ̂ᵢᵢ√((1−‖F̂‖₂)(1−‖Ĝ‖₂)) − ‖Ê‖₂ ≤ σᵢ(A) ≤ Σ̂ᵢᵢ√((1+‖F̂‖₂)(1+‖Ĝ‖₂)) + ‖Ê‖₂,
+
+the singular values in decreasing order on both sides, at a cost of `24Qq² + 12q³` operations
+with `Q = max(m, n)`. Theorem 8 of the paper proves these bounds never looser than those of its
+Theorem 4, the square-frame enclosure of Oishi ([`_miyajima2014_thm4`](@ref)).
 
 [`MiyajimaM3`](@ref), Theorem 10, uses the same economy frames and is cheaper and at least as
 tight, so [`rigorous_svd`](@ref) prefers it on an exact input and keeps this one on a ball, where
@@ -58,10 +74,18 @@ struct MiyajimaM1 <: SVDMethod end
 """
     MiyajimaM4 <: SVDMethod
 
-Miyajima 2014, Theorem 11, the algorithm his numerical section labels M4.
+Theorem 11 of [Miyajima2014](@cite), the algorithm his numerical section labels M4.
 
-Works on D̂ + Ê = (AV)ᵀAV where D̂ is diagonal. Uses Gershgorin isolation
-and can provide very tight bounds for well-separated singular values.
+One frame instead of two: `V̂` approximates the eigenvectors of `AᵀA` (of `AAᵀ` when `m < n`),
+whose eigenvalues are the squares of the singular values, and the theorem isolates those
+eigenvalues in the frame `(AV̂)ᵀ(AV̂) = D̂ + Ê` with `D̂` diagonal. The statement, its hypotheses
+and the branch it takes on a cluster of indices are at [`_miyajima2014_thm11`](@ref). It says
+nothing about the left singular vectors and nothing about a residual `ÛΣ̂V̂ᵀ − A`.
+
+This method does not go through [`certify_svd`](@ref), whose two frames and residual `Ê` the
+theorem does not use: `rigorous_svd(A; method = MiyajimaM4())` is routed to
+[`rigorous_svd_m4`](@ref), `certify_svd` with this method raises an `ArgumentError`, and
+`svdbox(A; method = :miyajima2014_thm11)` gives the values alone.
 """
 struct MiyajimaM4 <: SVDMethod end
 
@@ -219,20 +243,31 @@ This method is only available when the `CUDA` extension is loaded
 (`using CUDA`) and a functional GPU is present. The enclosures it returns
 overlap those of [`rigorous_svd`](@ref); the GPU midpoint truncation makes
 the singular-value radii modestly looser (still rigorous, typically `~10⁻¹⁰`).
+
+# Reference
+
+The enclosure is the one `method` names, by default Theorem 7 of [Miyajima2014](@cite); see
+[`SVDMethod`](@ref) for the others.
 """
 function rigorous_svd_gpu end
 
 """
-    _rigorous_svd_bigfloat(A, method; apply_vbd, use_cache)
+    _rigorous_svd_bigfloat(A, method; apply_vbd = true, use_cache = true)
+        -> RigorousSVDResult
 
-BigFloat version of rigorous SVD using GenericLinearAlgebra's native BigFloat SVD.
-Computes SVD directly at BigFloat precision via `svd_bigfloat`, then certifies.
-This is 2.5–6.6× faster than the previous Ogita refinement path and achieves
-~10⁻⁷⁴ residuals (vs ~10⁻¹⁴ for Float64→BigFloat refinement).
+The BigFloat path of [`rigorous_svd`](@ref): an approximate decomposition of `mid(A)` is computed
+at the current BigFloat precision by [`svd_bigfloat`](@ref), and [`certify_svd`](@ref) encloses
+the singular values of every matrix of `A` from it with the bounds of `method`. `apply_vbd` is
+passed on, and has no effect here, the block refinement being skipped in BigFloat.
 
-When `use_cache=true` (default), the computed SVD is stored for potential reuse.
-The Ogita refinement path (`ogita_svd_refine`, `adaptive_ogita_svd`) remains
-available for explicit use.
+With `use_cache = true`, the default, the approximate factors are kept in the module-level cache
+([`set_svd_cache!`](@ref), [`svd_cache_stats`](@ref), [`clear_svd_cache!`](@ref)) and reused when
+the next call has a midpoint of the same hash and factors of matching size. The cache holds an
+approximation and takes no part in what is proved: a stale or wrong entry can only widen the
+enclosure, since the residuals are measured against `A`.
+
+The refinement path of [`ogita_svd_refine`](@ref) and [`adaptive_ogita_svd`](@ref) is not used
+here and remains available on its own.
 """
 function _rigorous_svd_bigfloat(A::BallMatrix{BigFloat}, method::SVDMethod;
                                  apply_vbd::Bool = true, use_cache::Bool = true)
@@ -377,10 +412,19 @@ which computes the approximate decomposition itself; it is called directly where
 approximation comes from elsewhere, a refinement in higher precision or the decomposition of a
 nearby matrix.
 
-The residual `U Σ Vᵀ − A` and the defects `VᵀV − I`, `UᵀU − I` are enclosed in ball arithmetic
-and the bounds of `method` applied to their norms (see [`rigorous_svd`](@ref) for the methods
-and their references). Where one of the two defects is not below 1 the singular values are
-returned with infinite radius.
+Returns a [`RigorousSVDResult`](@ref). The residual `U Σ Vᵀ − A` and the defects `VᵀV − I`,
+`UᵀU − I` are enclosed in ball arithmetic and the bounds of `method`, one of the types listed at
+[`SVDMethod`](@ref), are applied to upper bounds of their spectral norms; the enclosures returned
+hold for every matrix of `A`. A `method` of [`MiyajimaAuto`](@ref) is resolved first, to
+Theorem 10 on an exact input and Theorem 7 on one carrying a radius, and [`MiyajimaM4`](@ref)
+raises an `ArgumentError`, Theorem 11 not being stated for these frames.
+
+Where one of the two defects is not below 1, which every one of these theorems assumes, a warning
+is issued and the result proves nothing: the singular values carry infinite radius,
+`residual_norm` is `Inf`, and `block_diagonalisation` is `nothing`. With `apply_vbd = true`, the
+default, that last field holds the refinement [`schur_gershgorin_enclosure`](@ref) produces from
+`Σ'Σ`, the diagonal matrix of the squared enclosures; it is `nothing` when the flag is `false` and `nothing` in
+BigFloat whatever the flag.
 """
 function certify_svd(A::BallMatrix{T}, svdA::SVD, method::SVDMethod; apply_vbd::Bool = true) where {T}
     return _certify_svd_impl(A, svdA.U, svdA.S, svdA.V, svdA.Vt, method; apply_vbd)
@@ -512,8 +556,8 @@ end
 """
     rigorous_svd_m4(A::BallMatrix; apply_vbd = true) -> RigorousSVDResult
 
-The singular values of `A` enclosed by Theorem 11 of Miyajima (2014), the algorithm his numerical
-section labels M4, as a [`RigorousSVDResult`](@ref); the theorem and its hypotheses are stated at
+The singular values of `A` enclosed by Theorem 11 of [Miyajima2014](@cite), the algorithm his
+numerical section labels M4, as a [`RigorousSVDResult`](@ref); the theorem and its hypotheses are stated at
 [`_miyajima2014_thm11`](@ref), which this routine calls.
 
 The theorem uses one frame, the eigenvectors of `A'A`, and says nothing about left singular
@@ -523,8 +567,7 @@ frame as a point matrix, with `right_orthogonality_defect` an upper bound of `�
 
 # Reference
 
-S. Miyajima, *Verified bounds for all the singular values of matrix*, Japan J. Indust. Appl.
-Math. **31** (2014) 513-539, doi 10.1007/s13160-014-0145-5.
+Theorem 11 of [Miyajima2014](@cite).
 """
 function rigorous_svd_m4(A::BallMatrix{T}; apply_vbd::Bool = true) where {T}
     m, n = size(A)

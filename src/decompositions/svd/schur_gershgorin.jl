@@ -152,9 +152,12 @@ end
 
 # What kind of set the spectrum is enclosed by, decided by the type of the argument.
 abstract type _SpectrumKind end
-"Discs of the complex plane: a general matrix."
+"Discs of the complex plane: what `_spectrum_kind` asks for when nothing in the type of the
+argument makes the spectrum real."
 struct _ComplexDiscs <: _SpectrumKind end
-"Intervals of the real line: matrices whose type guarantees a real spectrum."
+"Intervals of the real line: what `_spectrum_kind` asks for when the type of the argument
+guarantees a real spectrum, a [`HermitianBallMatrix`](@ref) or a real ball matrix whose
+midpoint and radius are both `Diagonal`."
 struct _RealIntervals <: _SpectrumKind end
 
 # A real ball matrix stored as `Diagonal` in midpoint and radius: its off-diagonal entries are
@@ -319,7 +322,7 @@ with the barycentre `cᵢ` (`block_centers`), within-block non-normality `nᵢ`
 
 From the barycentre floor `σ_min(Pᵢ − zI) ≥ |z − cᵢ| − nᵢ` and the block Gershgorin region
 `{z : σ_min(Pᵢ − zI) ≤ rᵢ}`, every eigenvalue of `A` lies in one of the discs. `mult` is the
-count that Theorem 4 of Feingold and Varga (1962) gives for a union of discs disjoint from the
+count that Theorem 4 of [FeingoldVarga1962](@cite) gives for a union of discs disjoint from the
 others; see [`schur_gershgorin_enclosure`](@ref) for the reference and for what of that count is
 not written out for these radii.
 """
