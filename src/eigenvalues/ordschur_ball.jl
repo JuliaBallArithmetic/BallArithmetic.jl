@@ -8,8 +8,15 @@
 Reorder a Schur decomposition `A = Q T Q^H` so that the eigenvalues
 corresponding to `select[i] == true` appear in the top-left block.
 
-Delegates to `GenericSchur.ordschur` after wrapping the inputs in a
-`Schur` factorization object.  Works for `BigFloat` and `Complex{BigFloat}`.
+The reordering is `ordschur` of `GenericSchur`, applied after the arguments are wrapped in a
+`Schur` object, and it runs in the arithmetic of `T` and `Q`, which may be `BigFloat` or
+`Complex{BigFloat}` where LAPACK offers only `Float64`. The eigenvalues are taken as `diag(T)`, so
+`T` is expected triangular.
+
+It is floating point throughout and carries no bound: the rotations are not accounted anywhere, so
+the returned pair is an approximate Schur pair of whatever `Q T Qᴴ` the arguments came from, and
+nothing is claimed about any matrix. [`ordschur_ball`](@ref) is the routine that reorders and then
+measures what the reordered pair satisfies.
 
 # Arguments
 - `T`: Upper triangular Schur form (n × n)

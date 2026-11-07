@@ -164,12 +164,10 @@ doubled precision by `_accurate_product_sum`.
 It stands where Rump's Algorithm `transform` calls `prodK(B, W, -W, X)`, described there as
 computing "an accurate approximation of the residual `BW - WX` using error-free
 transformations", with a second output giving the radius. The paper attributes `prodK` to no
-numbered reference; it is a routine of INTLAB, whose algorithm is the splitting scheme of
-M. Lange and S. M. Rump, "Accurate floating-point matrix residuals" (manuscript). For `Float64`
-data that scheme is used here, `_lange_rump_two_terms` in `src/types/MMul/lange_rump.jl`; for
-other types, and where it declines, the accumulation is Dot2 of T. Ogita, S. M. Rump and
-S. Oishi, *Accurate sum and dot product*, SIAM J. Sci. Comput. **26**(6) (2005) 1955-1988,
-doi 10.1137/030601818.
+numbered reference; it is a routine of INTLAB, whose algorithm is the scheme of
+[LangeRump2026](@cite), a manuscript. For `Float64` data that scheme is used here,
+`_lange_rump_two_terms` in `src/types/MMul/lange_rump.jl`; for other types, and where it declines,
+the accumulation is Dot2 of [OgitaEtAl2005](@cite).
 """
 function _rump2022a_prodK(B::BallMatrix{T}, W::Matrix{CT}, X::Matrix{CT}) where {T, CT}
     # W may be n by k and X k by k, the residual then n by k; the transform of Theorem 2.2 uses the
@@ -1147,11 +1145,21 @@ end
 """
     inclusion_discs(r::VerifyEigAllResult) -> (centers, radii, counts, ok)
 
-Discs holding all the eigenvalues, each with the number it holds when it is disjoint from the
-others: when every cluster is certified (`r.spectrum_covered`), the discs of Theorem 2.2 with the
-cluster sizes; otherwise the Gershgorin row discs of the transformed matrix, each counting one, so
-that a union of discs disjoint from the rest holds as many eigenvalues as it has discs. `ok` is
-false when neither is available.
+Discs holding all the eigenvalues of every matrix of the ball passed to [`verifyeigall`](@ref),
+each with the number of eigenvalues it holds when it is disjoint from the others.
+
+When every cluster is certified (`r.spectrum_covered`) the discs are those of Theorem 2.2 of
+[Rump2022a](@cite), `centers[i] ± radii[i]`, and the `i`-th holds as many eigenvalues as the `i`-th
+cluster has indices: that theorem gives one Jordan block of that size per cluster, and together the
+blocks carry the whole spectrum with algebraic multiplicity.
+
+Otherwise the discs are the Gershgorin row discs of the transformed matrix `W⁻¹BW`, each holding
+one eigenvalue. Every eigenvalue is then in their union, and a union of discs disjoint from the
+remaining ones holds exactly as many eigenvalues as it has discs, by Theorem 1.6 of
+[Varga2004](@cite), applied to each matrix of the ball `W⁻¹BW` separately.
+
+`ok` is false, with `centers` and `radii` empty, when the clusters are not all certified and no
+Gershgorin discs were recorded either.
 """
 function inclusion_discs(r::VerifyEigAllResult)
     if r.spectrum_covered
@@ -1273,7 +1281,8 @@ bounds on how far that basis is from orthonormal and from invariant. One entry p
 cluster, in cluster order; clusters where the self-mapping test declined are skipped, since there
 is no subspace to orthonormalise.
 
-Theorem 2.2 returns the basis in the frozen-rows normalisation `Vᵢᵀ Ŷᵢ = I_k`, whose columns are
+Theorem 2.2 of [Rump2022a](@cite) returns the basis in the frozen-rows normalisation
+`Vᵢᵀ Ŷᵢ = I_k`, whose columns are
 not orthonormal; measured on three semisimple doubles, `cond(mid Y)` was `2.6e3`, `2.6e3` and
 `1.2e4`. Consumers of the basis — a spectral projector, the smallest singular value of a block, a
 resolvent bound through the block — degrade with that conditioning, while the eigenvalue radius

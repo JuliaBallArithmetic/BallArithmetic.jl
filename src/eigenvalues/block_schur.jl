@@ -198,11 +198,18 @@ end
 """
     _apply_block_structure(T::BallMatrix, clusters, structure::Symbol)
 
-Apply the requested block structure to the transformed matrix `T`.
+The block matrix that [`rigorous_block_schur`](@ref) reports as its `T`, obtained from the
+transformed matrix by keeping the blocks the requested `structure` asks for, where `clusters` are
+the index ranges of the blocks:
 
-- `:diagonal`: Zero out all off-diagonal blocks
-- `:quasi_triangular`: Keep upper triangular block structure
-- `:full`: Keep all blocks unchanged
+- `:diagonal` keeps the blocks `(i, i)` and sets every other entry, midpoint and radius, to zero;
+- `:quasi_triangular` keeps the blocks `(i, j)` with `i ≤ j` and zeroes the rest;
+- `:full` returns the argument unchanged.
+
+Discarding a block is not an approximation that is left unaccounted: what `A` is similar to is
+measured against the matrix returned here, through the residual `R₁ = Q_inv(AQ − QT)` of
+[`RigorousBlockSchurResult`](@ref), so a discarded block reappears in `projected_residual_norm`
+and in `perturbation_norm`.
 """
 function _apply_block_structure(T::BallMatrix{T_type, NT},
                                   clusters::Vector{UnitRange{Int}},
@@ -242,7 +249,15 @@ end
 """
     _compute_off_diagonal_norm(T::BallMatrix, clusters)
 
-Compute rigorous upper bound on the maximum norm of off-diagonal blocks.
+The largest of the rigorous upper bounds of `‖T̃[μᵢ, μⱼ]‖₂`, `i ≠ j`, over the matrices `T̃` of the
+ball `T`, with `μᵢ` the index ranges in `clusters`; zero when there is one block only. Each block
+bound is `collatz_upper_bound_L2_opnorm`, and it is the maximum of the bounds rather than a bound
+on the maximum of the norms, which for a single matrix are the same thing.
+
+This is `off_diagonal_norm` of [`RigorousBlockSchurResult`](@ref), a measure of how far the block
+form is from block diagonal, and it is read off the structured `T` of
+[`_apply_block_structure`](@ref): under `:diagonal` those blocks have been set to zero, so it
+comes back zero and says nothing about the matrix before the truncation.
 """
 function _compute_off_diagonal_norm(T::BallMatrix{T_type, NT},
                                      clusters::Vector{UnitRange{Int}}) where {T_type, NT}

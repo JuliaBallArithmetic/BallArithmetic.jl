@@ -43,12 +43,16 @@ end
 """
     NKEigenpairsResult{T, CT}
 
-Batch result from `certify_eigenpairs`.
+Returned by [`certify_eigenpairs`](@ref): one [`NKEigenpairResult`](@ref) per eigenpair attempted,
+in the order of the indices passed, with the number of them that were certified.
 
 # Fields
-- `results::Vector{NKEigenpairResult{T,CT}}`: individual results
-- `n_certified::Int`: number of certified eigenpairs
-- `n_total::Int`: total number of eigenpairs attempted
+- `results::Vector{NKEigenpairResult{T,CT}}`: the individual results, certified or not
+- `n_certified::Int`: how many of them have `certified == true`
+- `n_total::Int`: how many were attempted, that is `length(results)`
+
+`length`, `getindex`, `iterate`, `firstindex` and `lastindex` are forwarded to `results`, so the
+object can be indexed and iterated in place of the vector.
 
 The count is called `n_certified` since version 0.4 and was called `n_verified` in 0.3.0; the old
 name still resolves, with a deprecation warning.
@@ -342,7 +346,13 @@ end
 # ─── Internal helpers ───────────────────────────────────────────────
 
 """
-Compute left eigenvector closest to λ_approx from A'.
+The default `u` of [`certify_eigenpair`](@ref) when the caller passes none: the eigenvector of
+`A_mid'` whose eigenvalue is closest to `conj(λ)`, from `eigen` of the adjoint in floating point.
+
+Nothing is verified here and nothing need be. `u` enters the certificate only through the
+normalisation `uᴴw = 1` and the bordered Jacobian, and the statement holds for any `u` with
+`uᴴṽ ≠ 0`; a poor one makes `q₀` and `y` larger, and a `u` whose `|uᴴṽ|` falls below `100 eps`
+makes [`certify_eigenpair`](@ref) decline. The approximate eigenvector argument is not read.
 """
 function _compute_left_eigenvector(A_mid::AbstractMatrix{NT}, λ::NT,
                                     ::Vector{NT}, ::Type{NT}) where {NT}
@@ -355,8 +365,18 @@ function _compute_left_eigenvector(A_mid::AbstractMatrix{NT}, λ::NT,
 end
 
 """
-Build the (N+1)×(N+1) augmented Jacobian as a BallMatrix.
-The A-λI block inherits radii from A_ball; other blocks have zero radii.
+The `(N+1) × (N+1)` ball matrix standing for `J = F′(x₀)` of [`certify_eigenpair`](@ref), from
+which that routine takes `q₀ ≥ ‖I − CJ‖₂`:
+
+    J = [ −ṽ   A − λ̃ I ]
+        [  0     uᴴ     ]
+
+the bordered Jacobian of the eigenpair system, whose nonsingularity at a zero is the simplicity of
+the eigenvalue there (Lemma 2 of [Yamamoto1980](@cite), credited there to Wilkinson). The
+first column and the last row are exact, so their radii are zero, and the `A − λ̃ I` block carries
+the radii of `A_ball` and nothing else: its midpoints are `mid(A_ball) − λ̃ I` in
+round-to-nearest, so the rounding of the `N` diagonal subtractions, at most `eps(|aᵢᵢ − λ̃|)/2`
+each, is not in the radii.
 """
 function _build_augmented_jacobian_ball(A_ball::BallMatrix, λ::NT, v::Vector{NT},
                                          u::Vector{NT}, N::Int,
@@ -392,7 +412,11 @@ function _nk_discriminant(q0::T, c::T, y::T) where {T}
 end
 
 """
-Compute ‖M‖₂ upper bound using the selected method.
+An upper bound of `‖M̃‖₂` over the matrices `M̃` of the ball `M`, by the method
+[`certify_eigenpair`](@ref) passes in its `norm_method`: `:svd` goes through the `O(n³)` verified
+factorisation, anything else through the cheaper bound built from the row and column sums. Both
+`q₀` and `‖C‖₂` of the certificate are taken here, so a looser method costs a larger radius and
+never correctness.
 """
 function _opnorm_bound(M::BallMatrix, method::Symbol)
     if method == :svd
@@ -403,7 +427,13 @@ function _opnorm_bound(M::BallMatrix, method::Symbol)
 end
 
 """
-Return an unverified result with zero diagnostics.
+The [`NKEigenpairResult`](@ref) returned when [`certify_eigenpair`](@ref) declines before any
+bound has been computed: `certified = false`, the eigenvalue and every eigenvector component a
+ball of infinite radius about the pair handed in, each of `enclosure_radius`, `defect_q`, `C_norm`
+and `residual_y` infinite and `discriminant = -1`.
+
+The two cases that reach it are `|uᴴṽ| < 100 eps`, where the normalisation cannot be imposed, and
+a midpoint Jacobian that `inv` could not factor. Nothing is claimed about the spectrum of `A`.
 """
 function _unverified_result(::Type{T}, ::Type{NT}, λ::NT, v::Vector{NT}, N::Int) where {T, NT}
     eigenvalue = Ball(λ, T(Inf))
@@ -415,7 +445,14 @@ function _unverified_result(::Type{T}, ::Type{NT}, λ::NT, v::Vector{NT}, N::Int
 end
 
 """
-Return an unverified result with computed diagnostics.
+The [`NKEigenpairResult`](@ref) returned when [`certify_eigenpair`](@ref) has computed `q₀`,
+`‖C‖₂` and `y` and one of its two tests then failed: `q₀ ≥ 1`, or `q₀ < 1` with a negative
+discriminant. The three numbers are kept, so that a caller can see which test failed and by how
+much; `certified` is false, `enclosure_radius` infinite and the eigenvalue and eigenvector balls
+have infinite radius about the pair handed in.
+
+`discriminant` is recomputed here by `_nk_discriminant`, a lower bound of `(1 − q₀)² − 4‖C‖₂y`; it
+is a diagnostic only, and for `q₀ ≥ 1` it bounds nothing.
 """
 function _unverified_result_with_diagnostics(::Type{T}, ::Type{NT}, λ::NT, v::Vector{NT},
                                               N::Int, q0::T, C_norm::T, y::T) where {T, NT}
