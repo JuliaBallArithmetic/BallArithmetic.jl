@@ -216,13 +216,16 @@ end
 """
     _sylvester_triangular_columns(A, B, C)
 
-Solve `A * X + X * B = C` column-by-column when A is lower triangular and B is
-lower triangular. Uses forward substitution on triangular systems — O(m²k)
-where m = size(A,1) and k = size(B,1).
+An approximate solution of `A X + X B = C` in floating point, for `A` and `B` lower triangular,
+computed column by column in `O(m²k)` operations with `m = size(A, 1)` and `k = size(B, 1)`.
 
-For B lower triangular, column j (sweeping j = k, k-1, ..., 1):
-    (A + B[j,j]*I) * x_j = c_j - Σ_{l>j} x_l * B[l,j]
-Each (A + B[j,j]*I) is lower triangular.
+Sweeping `j = k, k−1, …, 1`, the `j`-th column solves
+
+    (A + B[j,j] I) x_j = c_j − Σ_{l>j} x_l B[l,j],
+
+whose coefficient matrix is lower triangular, by [`_forward_substitution`](@ref). No bound comes
+with the result: it is the midpoint that the enclosures of this file take as their candidate, and
+[`_sylvester_triangular_direct_ball`](@ref) is the same recurrence carried in ball arithmetic.
 """
 function _sylvester_triangular_columns(A::AbstractMatrix{T},
                                         B::AbstractMatrix{T},
@@ -246,7 +249,12 @@ end
 """
     _forward_substitution(L, b)
 
-Solve `L * x = b` where L is lower triangular. Standard forward substitution.
+The solution of `L x = b` for a lower triangular `L`, by forward substitution in floating point.
+
+Nothing is bounded here: the rounding of the substitution is not accounted for and `L[i, i]` is
+not tested, so a zero on the diagonal gives a non-finite result rather than an error. The
+verified counterpart, which returns an enclosure for a lower triangular `BallMatrix`, is
+[`forward_substitution`](@ref).
 """
 function _forward_substitution(L::AbstractMatrix{T}, b::AbstractVector{T}) where T
     n = length(b)
@@ -264,13 +272,19 @@ end
 """
     _sylvester_triangular_direct_ball(A, B, C)
 
-Solve `A * X + X * B = C` rigorously in ball arithmetic when A is lower
-triangular and B is lower triangular.  Returns a `BallMatrix` enclosure.
+An entrywise enclosure of the solution `X` of `A X + X B = C`, for `A` and `B` lower triangular,
+holding for every datum of the balls `A`, `B` and `C`.
 
-Each column solve uses [`forward_substitution`](@ref) on a lower-triangular
-`BallMatrix`, guaranteeing rigorous componentwise bounds. This method never
-requires eigenvector decomposition and works for arbitrarily ill-conditioned
-triangular matrices (provided the diagonal entries of `A + B[j,j]*I` are nonzero).
+It is the column recurrence of [`_sylvester_triangular_columns`](@ref) carried in ball
+arithmetic throughout: the right-hand side `c_j − Σ_{l>j} x_l B[l,j]` is formed from the
+enclosures of the columns already computed, the diagonal of `A + B[j,j] I` is a sum of balls, so
+its rounding goes into the radius, and the column is enclosed by [`forward_substitution`](@ref)
+on the resulting lower triangular `BallMatrix`.
+
+Nothing is assumed about the eigenvectors of `A` or `B`, which is why this route remains
+available where the hypotheses of [`sylvester_miyajima_enclosure`](@ref) are not proved. Where a
+ball on the diagonal of `A + B[j,j] I` contains zero no enclosure exists, and
+`forward_substitution` raises an `ArgumentError` naming that ball.
 """
 function _sylvester_triangular_direct_ball(A::Union{AbstractMatrix, BallMatrix},
         B::Union{AbstractMatrix, BallMatrix}, C::Union{AbstractMatrix, BallMatrix})
@@ -350,9 +364,22 @@ end
 """
     schur_sylvester_midpoint(A, B, C; prefer_complex_schur = true)
 
-An approximate solution of `A X + X B = C` in floating point, by Schur forms of `A` and `B` and
-back substitution. No bound comes with it; it is the default approximation of
-[`verified_sylvester_enclosure`](@ref).
+An approximate solution of `A X + X B = C` in floating point: Schur forms `A = Q_A T_A Q_A*` and
+`B = Q_B T_B Q_B*` reduce the equation to `T_A Y + Y T_B = Q_A* C Q_B`, which is solved by
+`LinearAlgebra.sylvester`, and the solution is transformed back as `Q_A Y Q_B*`. This is the
+construction of Bartels and Stewart.
+
+`prefer_complex_schur = true` takes the Schur forms of the complexified data, which makes `T_A`
+and `T_B` triangular rather than quasi-triangular.
+
+No bound comes with the result, and nothing here is verified: the reduction, the triangular solve
+and the two products are all in floating point. It is the default candidate of
+[`verified_sylvester_enclosure`](@ref), which is where a bound is attached to it.
+
+# Reference
+
+R. H. Bartels and G. W. Stewart, *Algorithm 432: Solution of the matrix equation AX + XB = C*,
+Comm. ACM **15**(9) (1972), 820-826, doi 10.1145/361573.361582 ([BartelsStewart1972](@cite)).
 """
 function schur_sylvester_midpoint(A, B, C; prefer_complex_schur::Bool = true)
     SA = prefer_complex_schur ? schur(complex.(A)) : schur(A)
@@ -365,8 +392,15 @@ end
     verified_sylvester_enclosure(A, B, C; X̃ = nothing, prefer_complex_schur = true)
 
 [`sylvester_miyajima_enclosure`](@ref) with the approximate solution computed by
-[`schur_sylvester_midpoint`](@ref) when `X̃` is not given. It throws `ArgumentError` when the
-hypotheses of that enclosure are not proved, as happens for a defective `A` or `B`.
+[`schur_sylvester_midpoint`](@ref) when `X̃` is not given: an entrywise enclosure of the solution
+of `A X + X B = C` for every datum of the balls, by Theorems 1 and 2 of
+[MiyajimaSylvester2013](@cite).
+
+It throws `ArgumentError` when the hypotheses of that enclosure are not proved, as happens for a
+defective `A` or `B`; the message names the condition that failed, one of `‖S_A‖_∞ < 1`,
+`‖S_B‖_∞ < 1`, a zero spectral gap or `‖T_D‖_M < 1`. The candidate `X̃` enters the enclosure only
+through the residual, so its accuracy is not a hypothesis of the theorems and a `X̃` of one's own
+may be passed.
 """
 function verified_sylvester_enclosure(A, B, C; X̃ = nothing,
         prefer_complex_schur::Bool = true)

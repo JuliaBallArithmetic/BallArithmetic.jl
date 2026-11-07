@@ -61,10 +61,11 @@ which formed `I − RA` in floating point and left the residual out of the inclu
 # References
 
 S. M. Rump, *Verification methods: rigorous results using floating-point arithmetic*, Acta
-Numerica **19** (2010), 287-449, doi 10.1017/S096249291000005X, Algorithm 10.7 and Theorem 10.8.
+Numerica **19** (2010), 287-449, doi 10.1017/S096249291000005X ([Rump2010](@cite)),
+Algorithm 10.7 and Theorem 10.8.
 
 R. Krawczyk, *Newton-Algorithmen zur Bestimmung von Nullstellen mit Fehlerschranken*, Computing
-**4** (1969), 187-201, doi 10.1007/BF02234767.
+**4**(3) (1969), 187-201, doi 10.1007/BF02234767 ([Krawczyk1969](@cite)).
 """
 function krawczyk_linear_system(A::BallMatrix{T}, b::BallVector{T};
         max_iterations::Integer = 20) where {T}

@@ -5,8 +5,13 @@
 """
     _has_distinct_diagonal(A::AbstractMatrix, tol)
 
-Check whether all diagonal entries of `A` are pairwise distinct, i.e.
-`min_{i≠j} |A[i,i] - A[j,j]| > tol`.
+`true` when `|A[i,i] − A[j,j]| > tol` for every `i ≠ j`.
+
+The test is run in floating point on the entries as they stand, with no rounding accounted for,
+and `tol` is a threshold rather than a bound: `true` is not a proof that the diagonal of any
+nearby matrix is distinct. It is used only to decide whether the `O(n²)` substitution route of
+`triangular_eigenvectors` is taken instead of a dense `eigen`, a choice of method that
+does not enter any bound.
 """
 function _has_distinct_diagonal(A::AbstractMatrix, tol)
     n = size(A, 1)

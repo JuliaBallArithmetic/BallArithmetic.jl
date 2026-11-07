@@ -66,7 +66,8 @@ end
 """
     triangular_inverse_inf_norm_bound(U)
 
-An upper bound of `‖U⁻¹‖_∞` for an upper triangular matrix `U` with exact entries, `Inf` when a
+An upper bound of `‖U⁻¹‖_∞`, the largest row sum of the moduli of the entries of the inverse, for
+an upper triangular matrix `U` with exact entries, `Inf` when a
 diagonal entry is zero. For a ball matrix `U`, upper triangular with the balls below the diagonal
 equal to the point zero, the bound holds for every matrix of the ball, and it is `Inf` when a
 ball on the diagonal contains zero: the recursion below is then run with a lower bound of
@@ -84,8 +85,11 @@ triangular_inverse_inf_norm_bound(U::AbstractMatrix) =
 """
     triangular_inverse_one_norm_bound(U)
 
-An upper bound of `‖U⁻¹‖₁` for an upper triangular matrix `U` with exact entries: the bound of
-[`triangular_inverse_inf_norm_bound`](@ref) for the transpose.
+An upper bound of `‖U⁻¹‖₁`, the largest column sum of the moduli of the entries of the inverse:
+the bound of [`triangular_inverse_inf_norm_bound`](@ref) for the transpose, and `Inf` under the
+same conditions. `U` may be a matrix with exact entries or an upper triangular `BallMatrix` whose
+balls below the diagonal are the point zero, and in the second case the bound holds for every
+matrix of the ball.
 """
 triangular_inverse_one_norm_bound(U::AbstractMatrix) =
     _triangular_inverse_bounds(_triangular_data(U)...)[2]
@@ -93,8 +97,10 @@ triangular_inverse_one_norm_bound(U::AbstractMatrix) =
 """
     triangular_inverse_two_norm_bound(U)
 
-An upper bound of `‖U⁻¹‖₂` for an upper triangular matrix `U` with exact entries, by
-`‖M‖₂ ≤ √(‖M‖₁‖M‖_∞)` applied to the two bounds above.
+An upper bound of the spectral norm `‖U⁻¹‖₂`, by `‖M‖₂ ≤ √(‖M‖₁‖M‖_∞)` applied to the two bounds
+above, and `Inf` when either of them is. `U` may be a matrix with exact entries or an upper
+triangular `BallMatrix` whose balls below the diagonal are the point zero, and in the second case
+the bound holds for every matrix of the ball.
 """
 triangular_inverse_two_norm_bound(U::AbstractMatrix) =
     _two_norm_from_one_inf(_triangular_inverse_bounds(_triangular_data(U)...)...)
@@ -125,8 +131,10 @@ end
 """
     similarity_condition_number(X)
 
-An upper bound of `κ₂(S(X))` for `S(X) = [I X; 0 I]`: [`psi_squared`](@ref) at
-`upper_bound_L2_opnorm` of `X`. `X` may be a matrix with exact entries or a `BallMatrix`.
+An upper bound of `κ₂(S(X)) = ‖S(X)‖₂‖S(X)⁻¹‖₂` for the unit block triangular matrix
+`S(X) = [I X; 0 I]`: [`psi_squared`](@ref) evaluated at [`upper_bound_L2_opnorm`](@ref) of `X`,
+which is legitimate because `ψ` is increasing. `X` may be a matrix with exact entries or a
+`BallMatrix`, and in the second case the bound holds for every `X` of the ball.
 """
 similarity_condition_number(X::AbstractMatrix) = similarity_condition_number(BallMatrix(float.(X)))
 similarity_condition_number(X::BallMatrix) = psi_squared(upper_bound_L2_opnorm(X))
