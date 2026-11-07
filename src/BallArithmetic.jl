@@ -255,6 +255,10 @@ export ResolventBoundConfig, config_v1, config_v2, config_v3, config_v2p5
 export ParametricResolventResult, parametric_resolvent_bound, SVDWarmStart
 export estimate_2norm, find_optimal_split, compare_all_configs
 
+# One name for the flag that says a result is proved, and the 0.3.0 spellings of it
+include("certified.jl")
+export iscertified
+
 # The routines below are stated for a matrix with exact entries: an approximate factor or
 # iteration, or a verified decomposition of one matrix. Given a ball matrix they refuse, with the
 # reason, in place of the `MethodError` or the "This conversion breaks rigour" that their

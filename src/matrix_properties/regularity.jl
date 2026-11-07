@@ -19,6 +19,10 @@ Result of a regularity test.
 - `certificate::T`: the quantity compared in that condition, as described by each routine
 
 The conditions are sufficient: `certified = false` does not say that the matrix is singular.
+
+The flag is called `certified` since version 0.4 and was called `is_regular` in 0.3.0; the
+old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
+version.
 """
 struct RegularityResult{T}
     certified::Bool

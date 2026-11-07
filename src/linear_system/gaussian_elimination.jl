@@ -21,6 +21,10 @@ The result of [`interval_gaussian_elimination`](@ref).
   for every `Â` in `A` the rows of `Â` taken in the order `p` factor as `Â[p, :] = L̂ Û` with
   `L̂` in `L` and `Û` in `U`
 - `p::Vector{Int}`: the order of the rows
+
+The flag is called `certified` since version 0.4 and was called `success` in 0.3.0; the
+old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
+version.
 """
 struct GaussianEliminationResult{VT, MT}
     solution::VT

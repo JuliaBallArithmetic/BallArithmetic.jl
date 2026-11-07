@@ -50,6 +50,10 @@ their approximations `λ̃₁ ≤ … ≤ λ̃ₙ` are both in increasing order.
 
 All the statements hold for every symmetric `A` and every symmetric `B` within the tolerances of
 the arguments.
+
+The flag is called `certified` since version 0.4 and was called `success` in 0.3.0; the
+old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
+version.
 """
 struct GEVResult{T}
     certified::Bool
@@ -574,6 +578,10 @@ Result of [`miyajima_gev_enclosure`](@ref).
   when not `certified`
 - `nrmR1`, `nrmR2`: the two certified residual norms `‖R₁‖_∞`, `‖R₂‖_∞`
 - `message::String`
+
+The flag is called `certified` since version 0.4 and was called `success` in 0.3.0; the
+old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
+version.
 """
 struct MiyajimaGEVResult{T, CT}
     certified::Bool

@@ -23,6 +23,10 @@ Result from the Oishi 2023 Schur complement bound computation.
 - `schur_contraction`: Upper bound on ‖D_d⁻¹(D_f - CA⁻¹B)‖₂
 - `certified`: Whether all conditions of Theorem 1 are satisfied
 - `block_size`: The block size m used
+
+The flag is called `certified` since version 0.4 and was called `verified` in 0.3.0; the
+old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
+version.
 """
 struct Oishi2023Result{T}
     sigma_min_lower::T
@@ -59,6 +63,10 @@ This improves upon Oishi 2023 by:
 # Reference
 Rump, S.M. & Oishi, S. (2024), "A Note on Oishi's Lower Bound for the Smallest
 Singular Value of Linearized Galerkin Equations"
+
+The flag is called `certified` since version 0.4 and was called `verified` in 0.3.0; the
+old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
+version.
 """
 struct RumpOishi2024Result{T}
     sigma_min_lower::T

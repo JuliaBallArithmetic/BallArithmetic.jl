@@ -20,6 +20,10 @@ positive diagonal, lies in the ball matrix `G`.
 # Reference
 S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
 Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 4.
+
+The flag is called `certified` since version 0.4 and was called `success` in 0.3.0; the
+old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
+version.
 """
 struct VerifiedCholeskyResult{GM <: BallMatrix, RT <: Real}
     G::GM

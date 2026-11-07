@@ -21,6 +21,10 @@ Result of Newton-Kantorovich certification for a single eigenpair.
 - `C_norm::T`: ‖C‖₂
 - `residual_y::T`: y = ‖C·F(x₀)‖₂
 - `discriminant::T`: (1-q₀)² - 4·‖C‖₂·y
+
+The flag is called `certified` since version 0.4 and was called `verified` in 0.3.0; the
+old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
+version.
 """
 struct NKEigenpairResult{T<:AbstractFloat, CT<:Union{T, Complex{T}}}
     certified::Bool
@@ -40,8 +44,11 @@ Batch result from `certify_eigenpairs`.
 
 # Fields
 - `results::Vector{NKEigenpairResult{T,CT}}`: individual results
-- `n_certified::Int`: number of verified eigenpairs
+- `n_certified::Int`: number of certified eigenpairs
 - `n_total::Int`: total number of eigenpairs attempted
+
+The count is called `n_certified` since version 0.4 and was called `n_verified` in 0.3.0; the old
+name still resolves, with a deprecation warning.
 """
 struct NKEigenpairsResult{T<:AbstractFloat, CT<:Union{T, Complex{T}}}
     results::Vector{NKEigenpairResult{T, CT}}

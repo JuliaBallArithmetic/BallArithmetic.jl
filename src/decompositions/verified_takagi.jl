@@ -22,6 +22,10 @@ the balls returned. `U` is determined up to the sign of each column.
 # Reference
 S. M. Rump and T. Ogita, *Verified Error Bounds for Matrix Decompositions*, SIAM J. Matrix Anal.
 Appl. **45**(4) (2024), 2155-2183, doi 10.1137/24M165096X, Section 9.
+
+The flag is called `certified` since version 0.4 and was called `success` in 0.3.0; the
+old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
+version.
 """
 struct VerifiedTakagiResult{UM<:BallMatrix, SV<:AbstractVector, RT<:Real}
     U::UM

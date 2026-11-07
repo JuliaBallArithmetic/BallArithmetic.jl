@@ -131,7 +131,7 @@ function compare_methods(T::BallMatrix{FT}, z::Complex, m::Int; verbose=false) w
 
     if verbose
         println("  SVD method:        σ_min ∈ [$σ_min_svd_lower, $σ_min_svd_upper] (time: $(round(time_svd*1000, digits=2)) ms)")
-        if ro_result.verified
+        if iscertified(ro_result)
             println("  Rump-Oishi 2024:   σ_min ≥ $(ro_result.sigma_min_lower) (time: $(round(time_ro2024*1000, digits=2)) ms)")
         else
             println("  Rump-Oishi 2024:   FAILED (contraction=$(ro_result.schur_contraction))")
@@ -144,8 +144,8 @@ function compare_methods(T::BallMatrix{FT}, z::Complex, m::Int; verbose=false) w
         svd_lower = σ_min_svd_lower,
         svd_upper = σ_min_svd_upper,
         svd_time = time_svd,
-        ro2024_lower = ro_result.verified ? ro_result.sigma_min_lower : 0.0,
-        ro2024_verified = ro_result.verified,
+        ro2024_lower = iscertified(ro_result) ? ro_result.sigma_min_lower : 0.0,
+        ro2024_verified = iscertified(ro_result),
         ro2024_time = time_ro2024,
         ro2024_used_fast_gamma = ro_result.used_fast_gamma,
         ro2024_contraction = ro_result.schur_contraction,
@@ -217,8 +217,8 @@ function compare_methods_triangular(T_mid::Matrix{CT}, z::CT, m::Int; verbose=fa
         end
     end
     if schur_result !== nothing
-        results[:schur_lower] = schur_result.verified ? schur_result.sigma_min_lower : 0.0
-        results[:schur_verified] = schur_result.verified
+        results[:schur_lower] = iscertified(schur_result) ? schur_result.sigma_min_lower : 0.0
+        results[:schur_verified] = iscertified(schur_result)
         results[:schur_used_fast_gamma] = schur_result.used_fast_gamma
         results[:schur_contraction] = schur_result.schur_contraction
     else
@@ -239,8 +239,8 @@ function compare_methods_triangular(T_mid::Matrix{CT}, z::CT, m::Int; verbose=fa
         end
     end
     if oishi_result !== nothing
-        results[:oishi2023_lower] = oishi_result.verified ? oishi_result.sigma_min_lower : 0.0
-        results[:oishi2023_verified] = oishi_result.verified
+        results[:oishi2023_lower] = iscertified(oishi_result) ? oishi_result.sigma_min_lower : 0.0
+        results[:oishi2023_verified] = iscertified(oishi_result)
     else
         results[:oishi2023_lower] = 0.0
         results[:oishi2023_verified] = false
@@ -266,7 +266,7 @@ function compare_methods_triangular(T_mid::Matrix{CT}, z::CT, m::Int; verbose=fa
         println("  True σ_min:        $(round(σ_true, sigdigits=6))")
         println("  SVD method:        σ_min ≥ $(round(σ_min_svd_lower, sigdigits=6)) (time: $(round(time_svd*1000, digits=2)) ms)")
 
-        if schur_result !== nothing && schur_result.verified
+        if schur_result !== nothing && iscertified(schur_result)
             ratio = σ_min_svd_lower / schur_result.sigma_min_lower
             println("  RO2024 Schur:      σ_min ≥ $(round(schur_result.sigma_min_lower, sigdigits=6)) (time: $(round(time_schur*1000, digits=2)) ms) ratio=$(round(ratio, digits=3))")
             println("                     (fast γ: $(schur_result.used_fast_gamma), contraction: $(round(schur_result.schur_contraction, sigdigits=3)))")
@@ -276,7 +276,7 @@ function compare_methods_triangular(T_mid::Matrix{CT}, z::CT, m::Int; verbose=fa
             println("  RO2024 Schur:      ERROR (singular matrix)")
         end
 
-        if oishi_result !== nothing && oishi_result.verified
+        if oishi_result !== nothing && iscertified(oishi_result)
             println("  Oishi 2023:        σ_min ≥ $(round(oishi_result.sigma_min_lower, sigdigits=6)) (time: $(round(time_oishi*1000, digits=2)) ms)")
         elseif oishi_result !== nothing
             println("  Oishi 2023:        FAILED")

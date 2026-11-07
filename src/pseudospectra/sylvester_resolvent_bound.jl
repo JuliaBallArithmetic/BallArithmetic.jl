@@ -47,6 +47,10 @@ the split `T = [T₁₁ T₁₂; 0 T₂₂]` at index `k` and an approximate sol
   structure is not the required one or `X` is not finite
 - `X`: the matrix `X` used
 - `R`: a `BallMatrix` containing `R`
+
+The flag is called `certified` since version 0.4 and was called `precomputation_success` in
+0.3.0; the old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it
+in either version.
 """
 struct SylvesterResolventResult{T}
     residual_norm::T
@@ -319,6 +323,10 @@ The bound of [`parametric_resolvent_bound`](@ref) at a point `z` and its terms: 
 `‖(zI − T₂₂)⁻¹‖₂`), `r` (of `‖R‖₂`) and `coupling_term` (of `‖(zI − T₁₁)⁻¹R(zI − T₂₂)⁻¹‖₂`), with
 the `config` used. When `certified` is `false` the numbers are `Inf` and `failure_reason` says which
 step did not apply.
+
+The flag is called `certified` since version 0.4 and was called `success` in 0.3.0; the
+old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
+version.
 """
 struct ParametricResolventResult{T}
     z::Complex{T}

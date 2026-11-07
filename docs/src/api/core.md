@@ -26,6 +26,17 @@ BallMatrix
 BallVector
 ```
 
+## Whether a Result Is Proved
+
+Every result type whose computation can fail to prove what it claims carries one boolean field,
+`certified`. `iscertified` reads it whatever the type, and reads it as well under the names the
+same flag had in version 0.3.0, `success`, `verified`, `is_regular` and
+`precomputation_success`, which still resolve with a deprecation warning.
+
+```@docs
+iscertified
+```
+
 ## Norm Bounds
 
 ```@docs

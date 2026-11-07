@@ -13,6 +13,10 @@ Result of [`hbr_method`](@ref).
 - `solution`: a box containing the solution set when `certified` is `true`; infinite radii
   otherwise
 - `certified`: whether the hypotheses of Theorem 5.12 were verified and the enclosure computed
+
+The flag is called `certified` since version 0.4 and was called `success` in 0.3.0; the
+old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
+version.
 """
 struct HBRResult{VT}
     solution::VT

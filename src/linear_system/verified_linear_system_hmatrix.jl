@@ -18,6 +18,10 @@ The result of [`verified_linear_solve_hmatrix`](@ref).
   - `method`: the bound that was computed;
   - `R`: the approximate inverse used;
   - `v`: the positive vector with `⟨C⟩ v > 0`, empty when none was found.
+
+The flag is called `certified` since version 0.4 and was called `verified` in 0.3.0; the
+old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
+version.
 """
 struct VerifiedLinearSystemResult{T}
     solution::DenseBallVector{T, T}

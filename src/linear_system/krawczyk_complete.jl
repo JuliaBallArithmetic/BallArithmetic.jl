@@ -18,6 +18,10 @@ using LinearAlgebra
     KrawczykResult{T, VT}
 
 Result from Krawczyk verification method.
+
+The flag is called `certified` since version 0.4 and was called `verified` in 0.3.0; the
+old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
+version.
 """
 struct KrawczykResult{T, VT}
     """Verified enclosure of the solution."""

@@ -206,7 +206,7 @@ end
         @test 10.0 ∈ result[2].eigenvalue
     end
 
-    @testset "Near-defective matrix returns verified=false" begin
+    @testset "Near-defective matrix returns certified=false" begin
         # Jordan-like matrix with repeated eigenvalue
         ε = 1e-15
         A_mid = [1.0 1.0; ε 1.0]
