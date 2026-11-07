@@ -22,12 +22,20 @@ export two_sum, two_product, split_veltkamp, compensated_terms, compensated_term
 """
     two_product(a, b) -> (x, y)
 
-The exact product as an unevaluated sum: `x = fl(a*b)` and `y = a*b - x` exactly, so that
-`a*b == x + y` with no rounding lost. Uses one FMA.
+The product as an unevaluated sum: `x = fl(a*b)` and `y` the residual `a*b - x` computed by one
+fused multiply-add, so that
+
+    a*b == x + y
+
+barring underflow and overflow. Under gradual underflow the residual need not be representable,
+and `y` is that residual rounded once, so `x + y` differs from `a*b` by at most half the spacing
+of the subnormals, `subnormal_min(T)/2`; that statement is ours, since the reference states its
+underflow bound for the version built on Dekker's splitting and not for the one with the fused
+multiply-add.
 
 # Reference
-T. Ogita, S. M. Rump and S. Oishi, *Accurate sum and dot product*, SIAM J. Sci. Comput. **26**(6)
-(2005), 1955-1988, doi 10.1137/030601818, Algorithm 3.5 (TwoProductFMA).
+Algorithm 3.5 (TwoProductFMA) of [OgitaEtAl2005](@cite); the error-free statement for the
+splitting version is its Theorem 3.4.
 """
 @inline function two_product(a::T, b::T) where {T <: AbstractFloat}
     x = a * b
@@ -37,14 +45,18 @@ end
 """
     two_sum(a, b) -> (x, y)
 
-The exact sum as an unevaluated sum: `x = fl(a+b)` and `y = a+b - x` exactly, by Knuth's six
-operations, with no assumption on the relative size of `a` and `b`.
+The exact sum as an unevaluated sum: `x = fl(a+b)` and `y = a+b - x` exactly, so that
+
+    a+b == x + y,
+
+by Knuth's six operations, with no assumption on the relative size of `a` and `b`. The identity
+holds in the presence of underflow as well, and `|y| ≤ u|x|` and `|y| ≤ u|a+b|` with `u` the unit
+roundoff ([`unit_roundoff`](@ref)); only overflow is excluded.
 
 # Reference
-T. Ogita, S. M. Rump and S. Oishi, *Accurate sum and dot product*, SIAM J. Sci. Comput. **26**(6)
-(2005), 1955-1988, doi 10.1137/030601818, Algorithm 3.1 (TwoSum) and Theorem 3.4, where it is
-attributed to D. E. Knuth, *The Art of Computer Programming*, vol. 2, *Seminumerical Algorithms*,
-Addison-Wesley, 1969.
+Algorithm 3.1 (TwoSum) and Theorem 3.4 of [OgitaEtAl2005](@cite), where the transformation is
+attributed to Knuth, *The Art of Computer Programming*, vol. 2, *Seminumerical Algorithms*
+([Knuth1997](@cite)).
 """
 @inline function two_sum(a::T, b::T) where {T <: AbstractFloat}
     x = a + b
@@ -55,17 +67,20 @@ end
 """
     split_veltkamp(a) -> (hi, lo)
 
-The splitting of Dekker: `a == hi + lo` exactly, with each half carrying about half the
-significand, so that products of halves are exact in floating point. This is the step that lets
-an accurate matrix product be assembled from ordinary BLAS calls in round-to-nearest, with no
-directed rounding anywhere.
+The splitting of Dekker:
+
+    a == hi + lo
+
+exactly, with each half carrying about half the significand, so that products of halves are exact
+in floating point. Both the splitting and the exactness of those products exclude overflow of the
+scaled value `(2^s + 1)·a` and underflow of the halves; where either occurs the identity above is
+no longer the exact one. This is the step that lets an accurate matrix product be assembled from
+ordinary BLAS calls in round-to-nearest, with no directed rounding anywhere.
 
 # Reference
-T. Ogita, S. M. Rump and S. Oishi, *Accurate sum and dot product*, SIAM J. Sci. Comput. **26**(6)
-(2005), 1955-1988, doi 10.1137/030601818, Algorithm 3.2 (Split), with `factor = 2^s + 1` and
-`s = ⌈t/2⌉` for `t` bits of precision; there it is attributed to T. J. Dekker, *A floating-point
-technique for extending the available precision*, Numer. Math. **18** (1971), 224-242, and the
-product of two numbers by it (Algorithm 3.3, TwoProduct) to G. W. Veltkamp.
+Algorithm 3.2 (Split) of [OgitaEtAl2005](@cite), with `factor = 2^s + 1` and `s = ⌈t/2⌉` for `t`
+bits of precision; there it is attributed to Dekker [Dekker1971](@cite), and the product of two
+numbers by it (Algorithm 3.3, TwoProduct) to G. W. Veltkamp.
 """
 @inline function split_veltkamp(a::T) where {T <: AbstractFloat}
     # s = ceil(p/2), not floor: with p = 53 and s = 26 the high part keeps 27 bits, two of them
@@ -84,14 +99,16 @@ One entry of a sum of matrix products `sum_t sgn_t * A_t[i,:] * B_t[:,j]`, accum
 error-free transformations so that the result carries about twice the working precision. `pairs`
 is an iterable of `(A, B, sgn)`.
 
-This is Algorithm 5.3 (Dot2) of Ogita, Rump and Oishi (2005) applied to a sum of products. It
-stands here where the papers of Rump call INTLAB's `prodK` with `k = 2`; `prodK` itself is a
-different algorithm, see `src/types/MMul/ogita_rump_oishi.jl`. It returns the accurate value
-only; a certified bound on it is the Ogita-Rump-Oishi one,
+This is Algorithm 5.3 (Dot2) of [OgitaEtAl2005](@cite) applied to a sum of products. It stands
+here where the papers of Rump call INTLAB's `prodK` with `k = 2`; `prodK` itself is a different
+algorithm, see `src/types/MMul/ogita_rump_oishi.jl`. It returns the accurate value only; a
+certified bound on it is Proposition 5.5 of the same paper,
 
     |result - exact| <= u |exact| + gamma_N^2 sum |a_i| |b_i|,    gamma_N = N u / (1 - N u),
 
-with `N` the number of products summed, and the absolute products evaluated separately.
+with `N` the number of products summed and the absolute products evaluated separately, plus the
+term `5 N eta` of that proposition in the presence of underflow, `eta` the underflow unit
+([`subnormal_min`](@ref)).
 """
 @inline function compensated_terms(pairs, i::Integer, j::Integer)
     s, e = compensated_terms2(pairs, i, j)
@@ -114,6 +131,10 @@ the two errors of step `k`. `e` is the floating-point sum of the `N` numbers `fl
 rounding each and `N − 1` additions, so `|e − Σ_k (ep_k + es_k)| ≤ γ_N Σ_k |ep_k + es_k|`. And
 `|ep_k| ≤ u(1 + u)|a_k b_k|`, `|es_k| ≤ u|s_k| ≤ u(1 + u)^k Σ_{i ≤ k}|p_i|`, whence
 `Σ_k |ep_k + es_k| ≤ (N + 1)u(1 + u)^{N+1} Σ ≤ γ_{N+1} Σ`.
+
+The exactness of [`two_product`](@ref) is where underflow enters, and the a priori bound of
+Proposition 5.5 of [OgitaEtAl2005](@cite) adds `5 N eta` for it; `_accuracy_term` in
+`src/types/MMul/ogita_rump_oishi.jl` is what charges that term.
 """
 @inline function compensated_terms2(pairs, i::Integer, j::Integer)
     # The accumulators take the working type from the data. With `s = 0.0` the first `two_sum`
@@ -142,9 +163,8 @@ For complex data, `gamma_bound(N, Complex{T})` returns `γ_{N+2}`: a complex pro
 error at most `√2 γ₂ ≤ γ₃` (Lemma 3.5 of the reference), and `(1 + γ₃)(1 + γ_{N−1}) ≤ 1 + γ_{N+2}`.
 
 # Reference
-N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, Philadelphia,
-2002, doi 10.1137/1.9780898718027: inequality (3.5) for the inner product, Section 2.6 for the
-fused multiply-add (`n` rounding errors in place of `2n − 1`), Lemma 3.5 for complex arithmetic.
+[Higham2002](@cite): inequality (3.5) for the inner product, Section 2.6 for the fused
+multiply-add (`n` rounding errors in place of `2n − 1`), Lemma 3.5 for complex arithmetic.
 """
 function gamma_bound(N::Integer, ::Type{T}) where {T <: AbstractFloat}
     u = eps(T) / 2

@@ -3,19 +3,16 @@
 
 Compute outward lower/upper enclosures for the real and imaginary parts of the
 complex matrix product `F*G` using directed-rounding (rounding-mode controlled)
-evaluation, Algorithm 2 (cprod) of Miyajima (2010), which the paper attributes to Oishi (2001).
+evaluation, Algorithm 2 (cprod) of [Miyajima2010](@cite), which the paper attributes to
+[Oishi2001](@cite).
 
 Returns `(Hrl, Hru, Hil, Hiu, T)`, where `Hrl ≤ Re(F*G) ≤ Hru` and
 `Hil ≤ Im(F*G) ≤ Hiu` hold entrywise, and `T` is the promoted underlying real
-working type.
+working type. Each of the four is a bound and not an approximation: the products that make up a
+lower bound are evaluated under `RoundDown` and those of an upper bound under `RoundUp`.
 
 Promotion follows `T = promote_type(float(real(eltype(F))), float(real(eltype(G))))`.
 For mathematical correctness, `T` must honor `setrounding` (e.g., `BigFloat`).
-
-Reference:
-- S. Oishi, “Fast enclosure of matrix eigenvalues and singular values via rounding mode controlled
-  computation,” *Linear Algebra and its Applications* **324** (2001), 133–146,
-  doi 10.1016/S0024-3795(00)00272-X.
 """
 function _oishi_MMul_up_lo(F::AbstractMatrix{<:Complex}, G::AbstractMatrix{<:Complex})
     size(F, 2) == size(G, 1) || throw(DimensionMismatch("size(F,2) must equal size(G,1)"))
@@ -54,19 +51,13 @@ _cprod(F::AbstractMatrix{<:Complex}, G::AbstractMatrix{<:Complex}) =
 Advanced API — collapse rectangular enclosures for `Re(F*G)` and `Im(F*G)` to a
 complex ball enclosure `BallMatrix(Hc, Hr)`.
 
-Algorithm 3 (ccr) of Miyajima (2010): the real and the imaginary bounds are each converted
+Algorithm 3 (ccr) of [Miyajima2010](@cite): the real and the imaginary bounds are each converted
 by Algorithm 5 ([`_cr`](@ref)), `Rc = fl△(Hrl + 0.5(Hru − Hrl))`, `Rr = fl△(Rc − Hrl)` and the
 same for the imaginary part, and the radius is `Hr = fl△(|Rr + i Ir|)`, so that
 `[Hrl, Hru] + i[Hil, Hiu] ⊆ ⟨Rc + i Ic, Hr⟩`.
 
-S. Miyajima, *Fast enclosure for all eigenvalues in generalized eigenvalue problems*,
-J. Comput. Appl. Math. **233**(11) (2010) 2994-3004, doi 10.1016/j.cam.2009.11.048
-([Miyajima2010](@cite)).
-
-Reference:
-- S. Oishi, “Fast enclosure of matrix eigenvalues and singular values via rounding mode controlled
-  computation,” *Linear Algebra and its Applications* **324** (2001), 133–146,
-  doi 10.1016/S0024-3795(00)00272-X.
+The rectangular bounds this collapses come from the rounding-mode controlled product of
+[Oishi2001](@cite).
 
 See also [`_ccrprod`](@ref) and [`_ccrprod_prime`](@ref).
 """
@@ -365,14 +356,12 @@ end
     oishi_MMul(F, G)
 
 High-level wrapper: compute a complex ball enclosure of the product `F*G`
-by the rounding-mode controlled product of Oishi (2001). Internally calls
-`_oishi_MMul_up_lo` to get componentwise rectangular bounds, then `_ccr`
-to convert them into a `BallMatrix`.
+by the rounding-mode controlled product of [Oishi2001](@cite). Internally calls
+[`_oishi_MMul_up_lo`](@ref) to get componentwise rectangular bounds, then [`_ccr`](@ref)
+to convert them into a `BallMatrix`, so the returned ball contains `F*G` entrywise.
 
-Reference:
-- S. Oishi, “Fast enclosure of matrix eigenvalues and singular values via rounding mode controlled
-  computation,” *Linear Algebra and its Applications* **324** (2001), 133–146,
-  doi 10.1016/S0024-3795(00)00272-X.
+Correctness rests on the working type honouring `setrounding`, which for `Float32` and `Float64`
+means the BLAS; see [`BallArithmetic.NumericalTest.rounding_test`](@ref).
 """
 function oishi_MMul(F, G)
     Hrl, Hru, Hil, Hiu, T = _oishi_MMul_up_lo(F, G)

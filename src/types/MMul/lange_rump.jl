@@ -172,8 +172,9 @@ end
 `Float64` entries, real or complex, and `sgn_t = ±1`, as an unevaluated sum of two matrices with
 `|Σ_t sgn_t A_t B_t − P1 − P2| ≤ R` entrywise (the modulus, for complex data).
 
-The method is the splitting scheme of M. Lange and S. M. Rump, "Accurate floating-point matrix
-residuals" (manuscript; INTLAB's `prodK`): each factor is split into `k` leading parts and a
+The method is the splitting scheme of [LangeRump2026](@cite), *Accurate floating-point matrix
+residuals*, an unpublished manuscript that is the algorithm of INTLAB's `prodK`: each factor is
+split into `k` leading parts and a
 remainder by their Algorithms 1 to 4, the rows of `A_t` and the columns of `B_t` at the points
 (25) with `q_a = fl(√2^p)`, `q_b = fl((1 − u)2^p/q_a)` (Algorithm 5), and the product is their
 equation (27): `k²` matrix products that are exact by their Lemma 4 and Corollary 5, and two
@@ -188,7 +189,8 @@ rounded remainder products. It corresponds to `prodK(…, k, 'OutputTerms', 2)`,
   data), `γ = γ_n` (`γ_{n+2}` for complex), `δ` the rounding of `fl(A − A̲)`, and an underflow term;
 * the rounding of the accumulation of the `two_sum` errors of the final summation.
 
-Returns `nothing`, and the caller falls back on the accumulation by `compensated_terms2`, where a
+Returns `nothing`, and the caller falls back on the accumulation by
+[`compensated_terms2`](@ref), where a
 sign is not `±1`, where a splitting constant overflows or a product of splitting points underflows,
 where `2^p` does not exceed the squared inner dimension by enough for Corollary 5, or where the
 result is not finite.

@@ -213,7 +213,9 @@ end
 """
     abs_down(x::BigFloat)
 
-Compute the absolute value of a BigFloat with guaranteed lower bound.
+A lower bound of `|x|` for a `BigFloat`, not an approximation of it: for `x ≥ 0` the value is
+`x`, which is exact, and for `x < 0` it is `-x` rounded toward `-∞`, so `abs_down(x) ≤ |x|` in
+either case. The upper bound is [`abs_up`](@ref).
 """
 function abs_down(x::BigFloat)
     if x >= 0
@@ -282,14 +284,16 @@ const op_up = Dict(:+ => :add_up, :- => :sub_up, :* => :mul_up, :/ => :div_up)
 """
     @up expr
 
-Rewrite arithmetic in `expr` so that every operation is evaluated with
-outward rounding toward `+∞`. The macro replaces the standard `+`, `-`,
-`*`, and `/` operators with the corresponding helpers from
-`RoundingEmulator`, making it convenient to derive guaranteed upper
-bounds for composite expressions.
+Rewrite arithmetic in `expr` so that every operation rounds toward `+∞`: `+`, `-`, `*` and `/`
+are replaced by `add_up`, `sub_up`, `mul_up` and `div_up`. Each operation of the rewritten
+expression returns a bound and not an approximation, so the value of the whole expression is an
+upper bound of the exact one whenever every operation in it is monotone increasing in its
+arguments, which a subtraction and a division by a quantity that is itself only bounded are not;
+those are bracketed by hand, as [`dist_up`](@ref) does.
 
-Note: This macro works with Float64 operations from RoundingEmulator.
-For BigFloat, use the explicit `add_up`, `mul_up`, etc. functions.
+The rewriting is syntactic and rounds nothing by itself: `@up` on an expression whose operands
+are not floating-point numbers of a type these operations accept is an error rather than a loose
+bound. For `BigFloat` the named operations above are defined here and may be used directly.
 """
 macro up(ex)
     esc(MacroTools.postwalk(x -> get(op_up, x, x), ex))
@@ -300,13 +304,10 @@ const op_down = Dict(:+ => :add_down, :- => :sub_down, :* => :mul_down, :/ => :d
 """
     @down expr
 
-Mirror of [`@up`](@ref) that rewrites arithmetic so that each operation
-rounds toward `-∞`. The transformation is useful for computing lower
-bounds while sharing the same algebraic expression as the optimistic
-estimate.
-
-Note: This macro works with Float64 operations from RoundingEmulator.
-For BigFloat, use the explicit `add_down`, `mul_down`, etc. functions.
+Mirror of [`@up`](@ref) that rewrites arithmetic so that each operation rounds toward `-∞`:
+`add_down`, `sub_down`, `mul_down`, `div_down` in place of `+`, `-`, `*`, `/`. The same caveat
+applies, that the result is a lower bound of the exact expression only where each operation is
+monotone increasing in its arguments.
 """
 macro down(ex)
     esc(MacroTools.postwalk(x -> get(op_down, x, x), ex))
@@ -348,7 +349,11 @@ end
 """
     sum_up(xs) -> T
 
-Upper bound of `x₁ + x₂ + …`, accumulated with [`add_up`](@ref) from zero.
+Upper bound of `x₁ + x₂ + …`, accumulated with `add_up` from zero in the order the iterable
+yields its elements. Every partial sum is an upper bound of the corresponding exact partial sum,
+so the result is an upper bound of the exact sum whatever that order is, and it is a bound and
+not an approximation: it is not the correctly rounded sum, and it is larger the more terms there
+are. An empty iterable of unknown element type gives `0.0`.
 """
 function sum_up(xs)
     T = eltype(xs)
@@ -380,7 +385,9 @@ end
 """
     pow_up(x, e) / pow_down(x, e)
 
-Upper and lower bounds of `xᵉ` for `x ≥ 0` and an integer `e ≥ 0`, by `e` directed products.
+Upper and lower bounds of `xᵉ` for `x ≥ 0` and an integer `e ≥ 0`, by `e` directed products of a
+running value by `x`: each product is monotone in the running value because `x ≥ 0`, so the
+bound propagates. For `x < 0` the sign alternates and neither result is a bound.
 """
 function pow_up(x::T, e::Integer) where {T <: AbstractFloat}
     r = one(T)
@@ -407,7 +414,9 @@ end
     root_up(x, e) -> T
 
 Upper bound of `x^(1/e)` for `x ≥ 0` and an integer `e ≥ 1`: start from the floating-point root
-and step up until `pow_down(r, e) ≥ x`, which certifies `rᵉ ≥ x`.
+and step up by `nextfloat` until `pow_down(r, e) ≥ x`, which certifies `rᵉ ≥ x` and so
+`r ≥ x^(1/e)`. The exit test is a certificate rather than an estimate, which is why the result
+is a bound; `x ≤ 0` returns zero and `x` not finite returns `Inf`.
 """
 function root_up(x::T, e::Integer) where {T <: AbstractFloat}
     x <= 0 && return zero(T)
