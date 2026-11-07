@@ -6,8 +6,14 @@ arguments is complex-valued.
 """
 #promote_type(Type{Ball{T, T}}, Type{Ball{T, Complex{T}}) where{T} = Ball{T, Complex{T}}
 
-Base.promote_rule(::Type{Ball{T, T}}, ::Type{Int64}) where {T} = Ball{T, T}
-function Base.promote_rule(::Type{Ball{T, Complex{T}}}, ::Type{Int64}) where {T}
+# Integers of every width. The rule names `Integer` rather than `Int64`, which left an `Int32`
+# argument with no rule at all: on a 32-bit platform a machine integer literal is an `Int32`, so
+# even `x + 1` failed there, and `Int8`, `Int16`, `Int128`, the unsigned widths and `BigInt` failed
+# on every platform (issue #71). `convert(Ball{T, CT}, ::Number)` serves all of them and charges
+# the rounding of the conversion to the radius, so an integer that `T` cannot hold exactly is
+# still enclosed rather than silently rounded.
+Base.promote_rule(::Type{Ball{T, T}}, ::Type{<:Integer}) where {T} = Ball{T, T}
+function Base.promote_rule(::Type{Ball{T, Complex{T}}}, ::Type{<:Integer}) where {T}
     Ball{T, Complex{T}}
 end
 Base.promote_rule(::Type{Ball{T, T}}, ::Type{T}) where {T} = Ball{T, T}
@@ -37,13 +43,10 @@ Base.promote_rule(::Type{Ball{BigFloat, BigFloat}}, ::Type{BigFloat}) = Ball{Big
 Base.promote_rule(::Type{Ball{BigFloat, Complex{BigFloat}}}, ::Type{BigFloat}) = Ball{BigFloat, Complex{BigFloat}}
 Base.promote_rule(::Type{Ball{BigFloat, BigFloat}}, ::Type{Complex{BigFloat}}) = Ball{BigFloat, Complex{BigFloat}}
 Base.promote_rule(::Type{Ball{BigFloat, Complex{BigFloat}}}, ::Type{Complex{BigFloat}}) = Ball{BigFloat, Complex{BigFloat}}
-Base.promote_rule(::Type{Ball{BigFloat, BigFloat}}, ::Type{Int64}) = Ball{BigFloat, BigFloat}
-Base.promote_rule(::Type{Ball{BigFloat, Complex{BigFloat}}}, ::Type{Int64}) = Ball{BigFloat, Complex{BigFloat}}
 Base.promote_rule(::Type{Ball{BigFloat, BigFloat}}, ::Type{Float64}) = Ball{BigFloat, BigFloat}
 Base.promote_rule(::Type{Ball{BigFloat, Complex{BigFloat}}}, ::Type{Float64}) = Ball{BigFloat, Complex{BigFloat}}
 Base.promote_rule(::Type{Ball{BigFloat, BigFloat}}, ::Type{Complex{Float64}}) = Ball{BigFloat, Complex{BigFloat}}
 Base.promote_rule(::Type{Ball{BigFloat, Complex{BigFloat}}}, ::Type{Complex{Float64}}) = Ball{BigFloat, Complex{BigFloat}}
 
-# BigInt promotion (convert to BigFloat ball)
-Base.promote_rule(::Type{Ball{BigFloat, BigFloat}}, ::Type{BigInt}) = Ball{BigFloat, BigFloat}
-Base.promote_rule(::Type{Ball{BigFloat, Complex{BigFloat}}}, ::Type{BigInt}) = Ball{BigFloat, Complex{BigFloat}}
+# `Int64` and `BigInt` against a BigFloat ball had their own rules here; the two `Integer` rules
+# above cover them and return the same types.
