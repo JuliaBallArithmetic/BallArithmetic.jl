@@ -20,7 +20,7 @@ When `certified` is `true`, `A` has full rank and `A = QR` with `Q` having ortho
 `R` upper triangular with positive diagonal entries, `Q` and `R` in the ball matrices returned.
 
 # Reference
-Section 5 of [RumpOgita2024](@cite).
+Section 5 of [RumpOgita2024a](@cite).
 
 The flag is called `certified` since version 0.4 and was called `success` in 0.3.0; the
 old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
@@ -64,7 +64,7 @@ r.certified      # A = Q R with Q (100 × 50) in r.Q and R (50 × 50) in r.R
 ```
 
 # Reference
-Section 5 and Lemma 5.1 of [RumpOgita2024](@cite).
+Section 5 and Lemma 5.1 of [RumpOgita2024a](@cite).
 """
 function verified_qr(::Type{AT}, A::AbstractMatrix{S};
                      precision_bits::Int=256,

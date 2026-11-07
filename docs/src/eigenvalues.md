@@ -36,7 +36,7 @@ For the generalized eigenvalue problem ``Ax = \lambda Bx``:
 ## Sylvester Equations
 
 Fast verified computation for solutions of Sylvester equations ``AX + XB = C``,
-following Ref. [MiyajimaSylvester2013](@cite).
+following Ref. [Miyajima2013](@cite).
 
 - [`sylvester_miyajima_enclosure`](@ref) - General Sylvester solver
 - [`triangular_sylvester_miyajima_enclosure`](@ref) - Triangular variant
@@ -74,7 +74,7 @@ Rigorous block Schur decomposition for eigenvalue clustering.
 
 ## Limitations of Mixed-Precision Schur Refinement
 
-The iterative Schur refinement algorithm ([BujanovicKressnerSchroder2022](@cite)) achieves
+The iterative Schur refinement algorithm ([BujanovicEtAl2023](@cite)) achieves
 fast convergence by solving the triangular matrix equation ``\operatorname{stril}(TL - LT) = -E``
 in **low precision** (Float64). This works well when the eigenvalues of ``T`` are
 well-separated in Float64 arithmetic. However, the approach can fail on

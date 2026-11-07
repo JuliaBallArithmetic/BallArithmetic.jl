@@ -85,9 +85,9 @@ end
 Steps 1 to 3 of Algorithm 1 of [Miyajima2010](@cite) for the pencil `A x = λ B x`, with the
 approximate eigenvectors `X̃` and eigenvalues taken from `eigen(mid(A), mid(B))`:
 
-- Step 1: `Z = ⟨Z_c, Z_r⟩` with `B X̃ ∈ Z`, by Algorithm 2 (`cprod`, `_cprod` in
+- Step 1: `Z = ⟨Z_c, Z_r⟩` with `B X̃ ∈ Z`, by Algorithm 2 (`cprod`, [`_cprod`](@ref) in
   `src/types/MMul/oishi_mmul.jl`) for the bounds of the real and of the imaginary part and
-  Algorithm 3 (`ccr`, `_ccr` in the same file) for the ball;
+  Algorithm 3 (`ccr`, [`_ccr`](@ref) in the same file) for the ball;
 - Step 2: `Y ≈ Z_c⁻¹`, in floating point;
 - Step 3: `ε₂ ≥ ‖R₂‖_∞`, `R₂ = Y B X̃ − I`, by inequality (8) of Corollary 1 ([`bdd_R2`](@ref)).
 
@@ -99,7 +99,7 @@ the enclosure of `R₁`, which it does not compute.)
 
 The paper states the algorithm for point matrices. Here `B` may have a positive radius: the bounds
 of Step 1 are then those of `⟨mid(B), rad(B)⟩ X̃`, by the kernel `ccrprod′` of Procedure 2
-(`_ccrprod_prime`, same file), so that `B̃ X̃ ∈ Z` and `‖Y B̃ X̃ − I‖_∞ ≤ ε₂` for every `B̃` of the ball,
+([`_ccrprod_prime`](@ref), same file), so that `B̃ X̃ ∈ Z` and `‖Y B̃ X̃ − I‖_∞ ≤ ε₂` for every `B̃` of the ball,
 which is our use of the paper's kernel and not a statement of the paper. `A` enters through the
 approximate eigenvectors only.
 """

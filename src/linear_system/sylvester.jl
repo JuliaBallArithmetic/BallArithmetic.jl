@@ -38,7 +38,7 @@ the solution of every equation with data in them.
 Theorems 1 and 2 of
 
 S. Miyajima, *Fast enclosure for solutions of Sylvester equations*, Linear Algebra Appl. 439
-(2013), 856–878, doi:10.1016/j.laa.2012.07.001 ([MiyajimaSylvester2013](@cite)),
+(2013), 856–878, doi:10.1016/j.laa.2012.07.001 ([Miyajima2013](@cite)),
 
 Section 2.1 (spectral decomposition). The block-diagonalisation variant of Section 2.2
 (Theorems 3 and 4), the accelerations of Section 3 and the refinement of Section 4 are not
@@ -394,7 +394,7 @@ end
 [`sylvester_miyajima_enclosure`](@ref) with the approximate solution computed by
 [`schur_sylvester_midpoint`](@ref) when `X̃` is not given: an entrywise enclosure of the solution
 of `A X + X B = C` for every datum of the balls, by Theorems 1 and 2 of
-[MiyajimaSylvester2013](@cite).
+[Miyajima2013](@cite).
 
 It throws `ArgumentError` when the hypotheses of that enclosure are not proved, as happens for a
 defective `A` or `B`; the message names the condition that failed, one of `‖S_A‖_∞ < 1`,

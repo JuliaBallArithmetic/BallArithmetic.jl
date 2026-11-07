@@ -177,7 +177,7 @@ The result is an approximation with no error bound; see [`verified_polar`](@ref)
 # Reference
 
 The dynamically weighted Halley iteration and its QR-based variant are
-[NakatsukasaBaiGygi2010](@cite), which chooses the weights by a max-min problem from `α = ‖A‖₂`
+[NakatsukasaEtAl2010](@cite), which chooses the weights by a max-min problem from `α = ‖A‖₂`
 and a lower bound of `β = σ_min(A)`, and proves the convergence global and asymptotically cubic,
 with at most six iterations reaching `10⁻¹⁶` in exact arithmetic when `κ₂(A) ≤ 10¹⁶`.
 """

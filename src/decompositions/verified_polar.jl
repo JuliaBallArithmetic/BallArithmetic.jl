@@ -22,7 +22,7 @@ positive definite and `Q` with orthonormal columns (rows), `Q` and `P` in the ba
 returned.
 
 # Reference
-Section 7 of [RumpOgita2024](@cite).
+Section 7 of [RumpOgita2024a](@cite).
 
 The flag is called `certified` since version 0.4 and was called `success` in 0.3.0; the
 old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
@@ -65,7 +65,7 @@ r.certified      # A = Q P with Q in r.Q and P in r.P
 ```
 
 # Reference
-Section 7 of [RumpOgita2024](@cite), over the singular value enclosures of
+Section 7 of [RumpOgita2024a](@cite), over the singular value enclosures of
 [RumpLange2023](@cite).
 """
 function verified_polar(::Type{AT}, A::AbstractMatrix{S};

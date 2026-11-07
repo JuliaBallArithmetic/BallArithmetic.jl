@@ -222,7 +222,7 @@ floating point and whose radii are all
     √2 · b_n · ‖X‖∞⊥ + ‖r‖₁.
 
 Here `‖X‖∞⊥` is the largest absolute value of a real or imaginary part of the midpoints, `r`
-the radii of `v`, and `b_n` the constant of equation (4) of [BrisebarreMullerPicot2023](@cite),
+the radii of `v`, and `b_n` the constant of equation (4) of [BrisebarreEtAl2023](@cite),
 which bounds each part of the rounding error of an output by `b_n ‖X‖∞⊥`; the factor `√2`
 passes from the two parts to the modulus. The term `‖r‖₁` is the effect of the radii: an output
 is a sum of the inputs times numbers of modulus one.
@@ -246,7 +246,7 @@ The paper's analysis excludes underflow and overflow; an output that is not fini
 
 # Reference
 
-[BrisebarreMullerPicot2023](@cite), equation (4) for `b_n` and Fig. 1 for the algorithm the
+[BrisebarreEtAl2023](@cite), equation (4) for `b_n` and Fig. 1 for the algorithm the
 bound is proved for.
 """
 function ball_fft(v::BallVector{T}; method::Symbol = :brisebarreetal2023) where {T}

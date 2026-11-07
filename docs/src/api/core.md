@@ -127,6 +127,35 @@ Base.:+(::BallMatrix{T}, ::LinearAlgebra.UniformScaling) where T
 Base.:+(::LinearAlgebra.UniformScaling, ::BallMatrix)
 Base.:+(::BallMatrix{T}, ::LinearAlgebra.UniformScaling{Ball{T, NT}}) where {T, NT<:Union{Complex{T}, T}}
 Base.:+(::BallVector{T}, ::BallVector{T}) where T<:AbstractFloat
+Base.:-(::Ball)
+Base.:-(::Ball{T, CT} where CT<:Union{Complex{T}, T}, ::Ball{T, CT} where CT<:Union{Complex{T}, T}) where T
+Base.:-(::BallMatrix{T}, ::BallMatrix{T}) where T<:AbstractFloat
+Base.:-(::BallMatrix{T}, ::AbstractMatrix{<:Union{Complex{T}, T}}) where T<:AbstractFloat
+Base.:-(::AbstractMatrix{<:Union{Complex{T}, T}}, ::BallMatrix{T}) where T<:AbstractFloat
+Base.:-(::BallMatrix{T}, ::LinearAlgebra.UniformScaling) where T
+Base.:-(::BallMatrix{T}, ::LinearAlgebra.UniformScaling{Ball{T, NT}}) where {T, NT<:Union{Complex{T}, T}}
+Base.:-(::LinearAlgebra.UniformScaling, ::BallMatrix{T}) where T
+Base.:-(::LinearAlgebra.UniformScaling{Ball{T, NT}}, ::BallMatrix{T}) where {T, NT<:Union{Complex{T}, T}}
+Base.:-(::BallVector{T}, ::BallVector{T}) where T<:AbstractFloat
+Base.:*(::Ball{T, CT} where CT<:Union{Complex{T}, T}, ::Ball{T, CT} where CT<:Union{Complex{T}, T}) where T
+Base.:*(::Number, ::BallMatrix{T}) where T
+Base.:*(::BallMatrix, ::Number)
+Base.:*(::Ball{T, NT}, ::BallMatrix{T}) where {T, NT<:Union{Complex{T}, T}}
+Base.:*(::BallMatrix{T}, ::Ball{T, NT}) where {T, NT<:Union{Complex{T}, T}}
+Base.:*(::BallMatrix{T, S}, ::BallMatrix{T, S}) where {S, T<:AbstractFloat}
+Base.:*(::BallMatrix{T, S}, ::AbstractMatrix{S}) where {S, T<:AbstractFloat}
+Base.:*(::AbstractMatrix{S}, ::BallMatrix{T, S}) where {S, T<:AbstractFloat}
+Base.:*(::BallMatrix{T, Complex{T}}, ::BallMatrix{T, T}) where T<:AbstractFloat
+Base.:*(::BallMatrix{T, T}, ::BallMatrix{T, Complex{T}}) where T<:AbstractFloat
+Base.:*(::BallMatrix{T, Complex{T}}, ::BallMatrix{T, Complex{T}}) where T<:AbstractFloat
+Base.:*(::AbstractMatrix{T}, ::BallMatrix{T, Complex{T}}) where T<:AbstractFloat
+Base.:*(::AbstractMatrix{Complex{T}}, ::BallMatrix{T, T}) where T<:AbstractFloat
+Base.:*(::AbstractMatrix{Complex{T}}, ::BallMatrix{T, Complex{T}}) where T<:AbstractFloat
+Base.:*(::Number, ::BallVector{T}) where T
+Base.:*(::Ball{T, NT}, ::BallVector{T}) where {T, NT<:Union{Complex{T}, T}}
+Base.:*(::BallMatrix, ::BallVector)
+Base.:*(::AbstractMatrix, ::BallVector)
+Base.:*(::BallMatrix, ::AbstractVector)
 ```
 
 ## Whether a Result Is Proved

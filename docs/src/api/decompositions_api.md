@@ -131,6 +131,4 @@ a preconditioner. The two enum values are what the `method` of
 
 ```@docs
 triangular_eigenvectors
-LUFactorization
-LDLTFactorization
 ```

@@ -19,7 +19,7 @@ Result from iterative Schur refinement to higher precision.
 - `converged::Bool`: Whether refinement converged to desired tolerance
 
 # References
-- [BujanovicKressnerSchroder2022](@cite) Bujanović, Kressner & Schröder,
+- [BujanovicEtAl2023](@cite) Bujanović, Kressner & Schröder,
   "Iterative refinement of Schur decompositions", Numer. Algorithms 92, 247–267 (2023)
 """
 struct SchurRefinementResult{T, RT<:Real}
@@ -111,7 +111,7 @@ end
     _stril(A::AbstractMatrix)
 
 A new matrix of the size of `A` whose entries below the diagonal are those of `A` and whose other
-entries are zero: the operator written `stril` throughout [BujanovicKressnerSchroder2022](@cite),
+entries are zero: the operator written `stril` throughout [BujanovicEtAl2023](@cite),
 in which the refinement step is the equation `stril(TL − LT) = −E`. Entries are copied, not
 rounded.
 """
@@ -156,7 +156,7 @@ the suggestion in Bujanović et al. (Example 4), entries larger than `max_entry`
 set to zero.
 
 # References
-- [BujanovicKressnerSchroder2022](@cite) Algorithm 2: Successive substitution
+- [BujanovicEtAl2023](@cite) Algorithm 2: Successive substitution
 """
 function _solve_triangular_equation_direct!(L::Matrix{T}, T_mat::Matrix{T}, E::Matrix{T};
                                             max_entry::Real=1e5) where T
@@ -218,7 +218,7 @@ This corresponds to equation (15) in Bujanović et al. (2022):
 - `C`: Right-hand side matrix (m × k)
 
 # References
-- [BujanovicKressnerSchroder2022](@cite) Section 2.1, equation (15)
+- [BujanovicEtAl2023](@cite) Section 2.1, equation (15)
 """
 function _solve_sylvester_triangular!(X::Matrix{T}, T22::Matrix{T}, T11::Matrix{T}, C::Matrix{T}) where T
     m = size(T22, 1)
@@ -286,7 +286,7 @@ Partition T, E, L into 2×2 blocks:
 5. Recursively solve for L22 from stril(T22*L22 - L22*T22) = -E22
 
 # References
-- [BujanovicKressnerSchroder2022](@cite) Algorithm 3: Recursive block algorithm
+- [BujanovicEtAl2023](@cite) Algorithm 3: Recursive block algorithm
 """
 function _solve_triangular_equation_recursive!(L::Matrix{T}, T_mat::Matrix{T}, E::Matrix{T};
                                                nmin::Int=32, max_entry::Real=1e5) where T
@@ -362,7 +362,7 @@ end
 An approximate solution, in floating point, of the triangular matrix equation
 stril(TL - LT) = -E for a strictly lower triangular L, by Algorithm 2 (successive substitution in
 bottom-to-top columnwise order) or Algorithm 3 (recursive, by 2 × 2 blocks) of
-[BujanovicKressnerSchroder2022](@cite). For an upper triangular T with pairwise distinct
+[BujanovicEtAl2023](@cite). For an upper triangular T with pairwise distinct
 diagonal entries and a strictly lower triangular E the equation has a unique solution; every entry
 of the computed L whose modulus exceeds `max_entry` is set to zero when it is formed, so the
 result need not satisfy the equation. No bound comes with it.
@@ -380,7 +380,7 @@ result need not satisfy the equation. No bound comes with it.
 The strictly lower triangular matrix L.
 
 # Reference
-[BujanovicKressnerSchroder2022](@cite), Section 2.1, equation (6) for the equation and Algorithms 2
+[BujanovicEtAl2023](@cite), Section 2.1, equation (6) for the equation and Algorithms 2
 and 3 for the two solvers.
 """
 function solve_triangular_matrix_equation(T_mat::Matrix{T}, E::Matrix{T};
@@ -593,7 +593,7 @@ end
     _refine_schur_impl(A, Q0, T0, max_iterations, tol)
 
 The iteration behind [`refine_schur_decomposition`](@ref): Algorithm 4 of
-[BujanovicKressnerSchroder2022](@cite), the mixed-precision refinement, returning a
+[BujanovicEtAl2023](@cite), the mixed-precision refinement, returning a
 [`SchurRefinementResult`](@ref). It throws an `ArgumentError` on a `T0` that is not upper
 triangular, the real Schur form of a real matrix with a complex pair among them, for which the
 iteration diverges.
@@ -622,7 +622,7 @@ The algorithm achieves quadratic convergence and typically needs only 3-4 iterat
 to refine from double to quadruple precision.
 
 # References
-- [BujanovicKressnerSchroder2022](@cite) Bujanović, Kressner & Schröder,
+- [BujanovicEtAl2023](@cite) Bujanović, Kressner & Schröder,
   "Iterative refinement of Schur decompositions", Numer. Algorithms 92, 247–267 (2023).
   Algorithm 4: Mixed-precision Schur refinement.
 """
@@ -850,7 +850,7 @@ Q2, T2, r2 = rigorous_schur_bigfloat(A; schur_seed=(F.Z, F.T))
 ```
 
 # References
-- [BujanovicKressnerSchroder2022](@cite) for the iterative refinement algorithm
+- [BujanovicEtAl2023](@cite) for the iterative refinement algorithm
 """
 function rigorous_schur_bigfloat(A::BallMatrix{T, NT};
                                   target_precision::Int=256,

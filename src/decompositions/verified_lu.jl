@@ -101,7 +101,7 @@ When `certified` is `true`, `A[p, q]` has a unique decomposition `LU` with `L` u
 upper triangular, and these factors lie in the ball matrices `L` and `U`.
 
 # Reference
-Section 3 of [RumpOgita2024](@cite).
+Section 3 of [RumpOgita2024a](@cite).
 
 The flag is called `certified` since version 0.4 and was called `success` in 0.3.0; the
 old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
@@ -152,7 +152,7 @@ r.certified      # A[r.p, r.q] = L U with L in r.L and U in r.U
 ```
 
 # Reference
-Section 3 of [RumpOgita2024](@cite).
+Section 3 of [RumpOgita2024a](@cite).
 """
 function verified_lu(::Type{AT}, A::AbstractMatrix{S};
         precision_bits::Int = 256,

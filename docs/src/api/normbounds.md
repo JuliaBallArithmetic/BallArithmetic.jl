@@ -40,7 +40,6 @@ similarity_condition_number
 ## The Rounding of an Inner Product
 
 ```@docs
-gamma_bound
 ```
 
 ## Steps of the Schur Complement Bounds
@@ -68,5 +67,4 @@ BallArithmetic.diagonal_abs_lower_bound
 ## The Rounding Mode of the Array Operations
 
 ```@docs
-BallArithmetic.NumericalTest.array_rounding_test
 ```

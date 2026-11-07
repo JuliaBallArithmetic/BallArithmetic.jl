@@ -20,7 +20,7 @@ it is symmetric (`Aᵀ = A`, not `A* = A`), is nonsingular with simple singular 
 the balls returned. `U` is determined up to the sign of each column.
 
 # Reference
-Section 9 of [RumpOgita2024](@cite).
+Section 9 of [RumpOgita2024a](@cite).
 
 The flag is called `certified` since version 0.4 and was called `success` in 0.3.0; the
 old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
@@ -62,7 +62,7 @@ r.certified      # A = U Σ Uᵀ with U in r.U and the diagonal of Σ in r.Σ
 ```
 
 # Reference
-Section 9 of [RumpOgita2024](@cite).
+Section 9 of [RumpOgita2024a](@cite).
 """
 function verified_takagi(::Type{AT}, A::AbstractMatrix{Complex{S}};
                          precision_bits::Int=256,

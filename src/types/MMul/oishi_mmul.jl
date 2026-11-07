@@ -39,9 +39,17 @@ function _oishi_MMul_up_lo(F::AbstractMatrix{<:Complex}, G::AbstractMatrix{<:Com
     return Hrl, Hru, Hil, Hiu, T
 end
 
-# Internal helper used by the Miyajima kernels below.  The name mirrors the
-# terminology in Ref. [Miyajima2010](@cite), where the routine is referred to as
-# the “complex product” computed with directed rounding.
+"""
+    _cprod(F::AbstractMatrix{<:Complex}, G::AbstractMatrix{<:Complex})
+
+The product `F G` of two complex floating point matrices, enclosed by its lower and upper
+bounds in each of the real and the imaginary part, as [`_oishi_MMul_up_lo`](@ref) returns them:
+`Hrl, Hru, Hil, Hiu` and the type the products were taken in. Each bound comes from one
+directed accumulation, so the four together enclose the exact product.
+
+The name is the one [Miyajima2010](@cite) uses for the complex product computed with directed
+rounding, and this is the helper the Miyajima kernels below call for it.
+"""
 _cprod(F::AbstractMatrix{<:Complex}, G::AbstractMatrix{<:Complex}) =
     _oishi_MMul_up_lo(F, G)
 

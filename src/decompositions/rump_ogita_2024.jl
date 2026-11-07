@@ -34,7 +34,7 @@ which the paper's listing assumes. Every bound is rounded up.
 
 # Reference
 
-Section 3.1 and Algorithm 3.2 of [RumpOgita2024](@cite).
+Section 3.1 and Algorithm 3.2 of [RumpOgita2024a](@cite).
 """
 function _rumpogita2024_alg3_2(E::BallMatrix{T}) where {T}
     m, n = size(E)
@@ -366,7 +366,7 @@ which bounds every entry of `Q₂ − Q̃₂`.
 
 # Reference
 
-Section 5 and Lemma 5.1 of [RumpOgita2024](@cite).
+Section 5 and Lemma 5.1 of [RumpOgita2024a](@cite).
 """
 function _rumpogita2024_qr(A::BallMatrix{T}; full::Bool = false, oracle = nothing) where {T}
     m, n = size(A)
@@ -472,7 +472,7 @@ entries below the diagonal are exact zeros. The paper notes that the replacement
 
 # Reference
 
-Section 8 of [RumpOgita2024](@cite).
+Section 8 of [RumpOgita2024a](@cite).
 """
 function _rumpogita2024_schur(A::BallMatrix{T}; kwargs...) where {T}
     n = size(A, 1)
@@ -539,7 +539,7 @@ value these are `P = Σ σ_j v_j v_j*` and `Q = Σ Ãv_j v_j*/σ_j`.
 
 # Reference
 
-Section 7 of [RumpOgita2024](@cite), over the singular value enclosures of
+Section 7 of [RumpOgita2024a](@cite), over the singular value enclosures of
 [RumpLange2023](@cite); see [`verifysvdall`](@ref).
 """
 function _rumpogita2024_polar(A::BallMatrix{T}; kappa::Real = 0, oracle = nothing) where {T}
@@ -592,7 +592,7 @@ of the norm of the error of `[x; y]`, hence of the modulus of each entry of `x +
 
 # Reference
 
-Section 9 of [RumpOgita2024](@cite).
+Section 9 of [RumpOgita2024a](@cite).
 """
 function _rumpogita2024_takagi(A::BallMatrix{T}; oracle = nothing) where {T}
     n = size(A, 1)

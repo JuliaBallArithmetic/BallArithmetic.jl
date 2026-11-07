@@ -76,6 +76,5 @@ config_v1
 config_v2
 config_v2p5
 config_v3
-NormEstimator
 estimate_2norm
 ```

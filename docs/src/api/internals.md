@@ -62,7 +62,7 @@ BallArithmetic._unverified_result_with_diagnostics
 
 ## Bujanović, Kressner and Schröder 2022, Schur refinement
 
-The triangular matrix equation `stril(TL − LT) = −E` of [BujanovicKressnerSchroder2022](@cite),
+The triangular matrix equation `stril(TL − LT) = −E` of [BujanovicEtAl2023](@cite),
 its two solvers and the Sylvester equation the recursive one reduces to, with the iteration that
 calls them.
 

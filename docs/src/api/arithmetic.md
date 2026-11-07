@@ -46,6 +46,30 @@ The two macros rewrite a whole expression into these operations.
 @down
 ```
 
+## The extended-precision directed operations
+
+`RoundingEmulator` supplies the directed operations for `Float32` and `Float64`; the methods
+below extend the same names to `BigFloat` and, where the operation is defined for them, to
+`Complex{BigFloat}`, by setting the MPFR rounding mode for the one operation. The downward
+complex methods are not defined, so a complex lower bound in extended precision has no route
+through these names.
+
+```@docs
+RoundingEmulator.add_up(::BigFloat, ::BigFloat)
+RoundingEmulator.add_down(::BigFloat, ::BigFloat)
+RoundingEmulator.sub_up(::BigFloat, ::BigFloat)
+RoundingEmulator.sub_down(::BigFloat, ::BigFloat)
+RoundingEmulator.mul_up(::BigFloat, ::BigFloat)
+RoundingEmulator.mul_down(::BigFloat, ::BigFloat)
+RoundingEmulator.div_up(::BigFloat, ::BigFloat)
+RoundingEmulator.div_down(::BigFloat, ::BigFloat)
+RoundingEmulator.sqrt_up(::BigFloat)
+RoundingEmulator.sqrt_down(::BigFloat)
+RoundingEmulator.add_up(::Complex{BigFloat}, ::Complex{BigFloat})
+RoundingEmulator.sub_up(::Complex{BigFloat}, ::Complex{BigFloat})
+RoundingEmulator.mul_up(::Complex{BigFloat}, ::Complex{BigFloat})
+```
+
 ## The error-free transformations
 
 A floating-point operation is *error-free* when the rounding it commits is itself representable,
@@ -95,6 +119,7 @@ numbered algorithms of that paper, reached from the verification routines.
 ```@docs
 oishi_MMul
 BallArithmetic._oishi_MMul_up_lo
+BallArithmetic._cprod
 BallArithmetic._cr
 BallArithmetic._ccr
 BallArithmetic._ccrprod
@@ -108,7 +133,7 @@ BallArithmetic._ciprod_prime
 ## The transforms
 
 The discrete Fourier transform of a ball vector or matrix, with the a priori bound of
-[BrisebarreMullerPicot2023](@cite). The bound is proved for one algorithm, the radix-2 transform
+[BrisebarreEtAl2023](@cite). The bound is proved for one algorithm, the radix-2 transform
 of that paper's Fig. 1 with the roots of unity rounded to nearest, and that algorithm is the
 default; the FFTW method carries the same radius as a hypothesis, which its name says.
 

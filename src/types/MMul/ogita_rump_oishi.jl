@@ -362,7 +362,7 @@ end
 unevaluated sum of two matrices: `|Σ_t sgn_t A_t B_t − P1 − P2| ≤ R` entrywise. `P1` is the
 floating-point value and `P2` the accumulated error terms of [`compensated_terms2`](@ref), so
 that a further product with the pair keeps twice the working precision; this is the output of
-the role of `prodK(..., 'OutputTerms', 2)` with `k = 2` in [RumpOgita2024](@cite).
+the role of `prodK(..., 'OutputTerms', 2)` with `k = 2` in [RumpOgita2024a](@cite).
 
 For `Float32` and `Float64` the splitting scheme of [LangeRump2026](@cite), which is `prodK`
 itself, is tried first through [`_lange_rump_two_terms`](@ref); where it declines, and for every
@@ -408,7 +408,7 @@ end
 A ball matrix containing `Σ_t sgn_t A_t B_t` for `terms` an iterable of `(A_t, B_t, sgn_t)`, point
 matrices: the two terms of [`_two_term_product_sum`](@ref) added, the radius its bound plus the
 rounding of that addition. The role of `[R, E] = prodK(...)` with `k = 2` in
-[RumpOgita2024](@cite), whose splitting scheme is [LangeRump2026](@cite).
+[RumpOgita2024a](@cite), whose splitting scheme is [LangeRump2026](@cite).
 """
 function _accurate_product_sum(terms)
     P1, P2, R = _two_term_product_sum(terms)
