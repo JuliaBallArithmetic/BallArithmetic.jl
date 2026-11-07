@@ -76,6 +76,8 @@ using Test
     include("test_pseudospectra/test_pseudospectrum_cells.jl")
     include("test_pseudospectra/test_sylvester_resolvent.jl")
     include("test_pseudospectra/test_gram_transform.jl")
+    include("test_pseudospectra/test_adaptive_arcs_budget.jl")
+    include("test_pseudospectra/test_log_io.jl")
 
     # Polynomials
     include("test_polynomials/test_poly_range.jl")
