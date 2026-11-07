@@ -20,10 +20,7 @@ _up_bound_Linf_norm(v::AbstractVector{T}) where {T} =
     bdd_R2(Y::AbstractMatrix, Z::BallMatrix)
 
 An upper bound of `‖Y Z̃ − I‖_∞` over the matrices `Z̃` of the ball `Z = ⟨Z_c, Z_r⟩`, for a
-floating-point matrix `Y`: inequality (8) of Corollary 1 of
-
-    S. Miyajima, Fast enclosure for all eigenvalues in generalized eigenvalue problems,
-    J. Comput. Appl. Math. 233 (2010) 2994-3004, doi 10.1016/j.cam.2009.11.048,
+floating-point matrix `Y`: inequality (8) of Corollary 1 of [Miyajima2010](@cite),
 
     ‖R₂‖_∞ ≤ ‖fl(Y Z_c − I)‖_∞ + ‖(|Y_r| + |Y_i|) Z_r e‖_∞ + γ′ₙ₋₁ ‖|Y| |Z_c| e‖_∞
               + u (‖fl(Y Z_c)‖_∞ + 1) + 4 n² (1 + γₙ₋₁) u̲,
@@ -85,12 +82,12 @@ end
 """
     miyajima2010_algorithm1_steps1to3(A::BallMatrix, B::BallMatrix)
 
-Steps 1 to 3 of Algorithm 1 of Miyajima (2010) for the pencil `A x = λ B x`, with the approximate
-eigenvectors `X̃` and eigenvalues taken from `eigen(mid(A), mid(B))`:
+Steps 1 to 3 of Algorithm 1 of [Miyajima2010](@cite) for the pencil `A x = λ B x`, with the
+approximate eigenvectors `X̃` and eigenvalues taken from `eigen(mid(A), mid(B))`:
 
-- Step 1: `Z = ⟨Z_c, Z_r⟩` with `B X̃ ∈ Z`, by Algorithm 2 (`cprod`, [`_cprod`](@ref)) for the
-  bounds of the real and of the imaginary part and Algorithm 3 (`ccr`, [`_ccr`](@ref)) for the
-  ball;
+- Step 1: `Z = ⟨Z_c, Z_r⟩` with `B X̃ ∈ Z`, by Algorithm 2 (`cprod`, `_cprod` in
+  `src/types/MMul/oishi_mmul.jl`) for the bounds of the real and of the imaginary part and
+  Algorithm 3 (`ccr`, `_ccr` in the same file) for the ball;
 - Step 2: `Y ≈ Z_c⁻¹`, in floating point;
 - Step 3: `ε₂ ≥ ‖R₂‖_∞`, `R₂ = Y B X̃ − I`, by inequality (8) of Corollary 1 ([`bdd_R2`](@ref)).
 
@@ -102,14 +99,9 @@ the enclosure of `R₁`, which it does not compute.)
 
 The paper states the algorithm for point matrices. Here `B` may have a positive radius: the bounds
 of Step 1 are then those of `⟨mid(B), rad(B)⟩ X̃`, by the kernel `ccrprod′` of Procedure 2
-([`_ccrprod_prime`](@ref)), so that `B̃ X̃ ∈ Z` and `‖Y B̃ X̃ − I‖_∞ ≤ ε₂` for every `B̃` of the ball,
+(`_ccrprod_prime`, same file), so that `B̃ X̃ ∈ Z` and `‖Y B̃ X̃ − I‖_∞ ≤ ε₂` for every `B̃` of the ball,
 which is our use of the paper's kernel and not a statement of the paper. `A` enters through the
 approximate eigenvectors only.
-
-# Reference
-
-S. Miyajima, *Fast enclosure for all eigenvalues in generalized eigenvalue problems*,
-J. Comput. Appl. Math. **233**(11) (2010) 2994-3004, doi 10.1016/j.cam.2009.11.048.
 """
 function miyajima2010_algorithm1_steps1to3(A::BallMatrix{T, NT},
         B::BallMatrix{T, NT}) where {T, NT}

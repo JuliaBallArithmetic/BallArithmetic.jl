@@ -569,15 +569,17 @@ end
 Result of [`miyajima_gev_enclosure`](@ref).
 
 # Fields
-- `certified::Bool`: whether `‖R₂‖_∞ < 1` held, i.e. whether the enclosure is proved
+- `certified::Bool`: whether `‖R₂‖_∞ < 1` held, which is the hypothesis of both statements below
+  and without which nothing is proved
 - `centers::Vector`: the approximate eigenvalues `λ̃`
-- `radius`: a common radius valid for all eigenvalues (the smaller of Theorem 1's
-  `‖R₁‖_∞/(1-‖R₂‖_∞)` and `maximum(radii)`)
-- `radii`: the radii of Corollary 3.2 of Miyajima (2014), one for each `λ̃ᵢ`; every eigenvalue
-  of the pencil lies in `⋃ᵢ {z : |z - λ̃ᵢ| ≤ radii[i]}`, and `radii[i] ≤ radius`. Infinite
-  when not `certified`
-- `nrmR1`, `nrmR2`: the two certified residual norms `‖R₁‖_∞`, `‖R₂‖_∞`
-- `message::String`
+- `radius`: one radius good for every eigenvalue, the smaller of `‖R₁‖_∞/(1-‖R₂‖_∞)` from
+  Theorem 1 of [Miyajima2010](@cite) and `maximum(radii)`
+- `radii`: the radii of Corollary 3.2 of [Miyajima2014a](@cite), one for each `λ̃ᵢ`; every
+  eigenvalue of the pencil lies in `⋃ᵢ {z : |z - λ̃ᵢ| ≤ radii[i]}`, for every pair of matrices of
+  the balls `A` and `B`, and `radii[i] ≤ radius`. Infinite when not `certified`
+- `nrmR1`, `nrmR2`: upper bounds of the two residual norms `‖R₁‖_∞`, `‖R₂‖_∞`, computed in ball
+  arithmetic
+- `message::String`: what happened, for a run that was not certified
 
 The flag is called `certified` since version 0.4 and was called `success` in 0.3.0; the
 old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
@@ -597,9 +599,7 @@ end
     miyajima_gev_enclosure(A::BallMatrix, B::BallMatrix, X̃, λ̃; Y = nothing)
 
 Enclose **all** eigenvalues of the generalized problem `Ax = λBx` by Theorem 1 of
-
-> S. Miyajima, *Fast enclosure for all eigenvalues in generalized eigenvalue
-> problems*, J. Comput. Appl. Math. **233** (2010) 2994–3004.
+[Miyajima2010](@cite).
 
 Given approximate eigenpairs `X̃`, `λ̃` (so that `AX̃ ≈ BX̃D̃`, `D̃ = diag(λ̃)`) and
 an **arbitrary** matrix `Y`, set
@@ -611,7 +611,7 @@ satisfies `minᵢ |λ - λ̃ᵢ| ≤ ε` with
 
     ε = ‖R₁‖_∞ / (1 - ‖R₂‖_∞) .
 
-The returned `radii` are sharper: Corollary 3.2 of Miyajima (2014) replaces the
+The returned `radii` are sharper: Corollary 3.2 of [Miyajima2014a](@cite) replaces the
 two global norms by row sums `u = |R₁|𝟙`, `t = |R₂|𝟙`, giving
 
     radii = u + ‖u‖_t · t,    ‖v‖_w := maxᵢ vᵢ/(1 - wᵢ),

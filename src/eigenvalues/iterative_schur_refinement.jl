@@ -34,7 +34,10 @@ end
 """
     _frobenius_norm(A::AbstractMatrix)
 
-Compute Frobenius norm of a matrix. Works with any element type including BigFloat.
+The Frobenius norm of `A`, accumulated in `real(eltype(A))` with round-to-nearest arithmetic, so
+the value is an approximation and not a bound in either direction. It serves the stopping tests of
+the refinement iterations in this file, where the arithmetic may be `BigFloat` or a `MultiFloat`
+and the rigorous norms of `norm_bounds/` are unavailable.
 """
 function _frobenius_norm(A::AbstractMatrix{T}) where T
     s = zero(real(T))
@@ -107,7 +110,10 @@ end
 """
     _stril(A::AbstractMatrix)
 
-Return the strictly lower triangular part of matrix A (excluding diagonal).
+A new matrix of the size of `A` whose entries below the diagonal are those of `A` and whose other
+entries are zero: the operator written `stril` throughout [BujanovicKressnerSchroder2022](@cite),
+in which the refinement step is the equation `stril(TL − LT) = −E`. Entries are copied, not
+rounded.
 """
 function _stril(A::AbstractMatrix{T}) where T
     n, m = size(A)
@@ -354,8 +360,9 @@ end
                                      use_recursive::Bool=true, nmin::Int=32, max_entry::Real=1e5) where T
 
 An approximate solution, in floating point, of the triangular matrix equation
-stril(TL - LT) = -E for a strictly lower triangular L, by Algorithm 2 (successive substitution)
-or Algorithm 3 (recursive) of the reference. For an upper triangular T with pairwise distinct
+stril(TL - LT) = -E for a strictly lower triangular L, by Algorithm 2 (successive substitution in
+bottom-to-top columnwise order) or Algorithm 3 (recursive, by 2 × 2 blocks) of
+[BujanovicKressnerSchroder2022](@cite). For an upper triangular T with pairwise distinct
 diagonal entries and a strictly lower triangular E the equation has a unique solution; every entry
 of the computed L whose modulus exceeds `max_entry` is set to zero when it is formed, so the
 result need not satisfy the equation. No bound comes with it.
@@ -365,16 +372,16 @@ result need not satisfy the equation. No bound comes with it.
 - `E`: Strictly lower triangular matrix (n × n)
 - `use_recursive`: If true, use recursive block algorithm (default: true)
 - `nmin`: Minimum block size for recursive algorithm (default: 32)
-- `max_entry`: entries of L of larger modulus are set to zero (default: 1e5). The reference
-  does this with the threshold 1e-5 in Example 4, to keep large entries from propagating when
-  eigenvalues are clustered.
+- `max_entry`: entries of L of larger modulus are set to zero (default: 1e5). The paper proposes
+  this in the discussion of its Example 4, with the threshold written there as 1e-5, to keep large
+  entries from propagating when eigenvalues are clustered; the default here is ten orders looser.
 
 # Returns
 The strictly lower triangular matrix L.
 
 # Reference
-Z. Bujanović, D. Kressner and C. Schröder, *Iterative refinement of Schur decompositions*,
-Numer. Algorithms **92**(1) (2023), 247-267, doi 10.1007/s11075-022-01327-6, Section 2.1 and Algorithms 2 and 3.
+[BujanovicKressnerSchroder2022](@cite), Section 2.1, equation (6) for the equation and Algorithms 2
+and 3 for the two solvers.
 """
 function solve_triangular_matrix_equation(T_mat::Matrix{T}, E::Matrix{T};
                                           use_recursive::Bool=true, nmin::Int=32, max_entry::Real=1e5) where T
@@ -585,9 +592,20 @@ end
 """
     _refine_schur_impl(A, Q0, T0, max_iterations, tol)
 
-Internal implementation of Schur refinement using Algorithm 4 from Bujanović et al. (2022).
+The iteration behind [`refine_schur_decomposition`](@ref): Algorithm 4 of
+[BujanovicKressnerSchroder2022](@cite), the mixed-precision refinement, returning a
+[`SchurRefinementResult`](@ref). It throws an `ArgumentError` on a `T0` that is not upper
+triangular, the real Schur form of a real matrix with a complex pair among them, for which the
+iteration diverges.
 
-This implements the full mixed-precision iterative refinement algorithm:
+The arithmetic is floating point in the high precision `hp`, so the two numbers reported are
+measured on the computed defects and bound nothing about `A` itself: `residual_norm` and
+`orthogonality_defect` are the sizes of the computed `stril(QᴴAQ)` and `QᴴQ − I`, divided in the
+first case by a Frobenius norm of `A`, each size being an upper bound of the spectral norm for
+`BigFloat` and a Frobenius norm from [`_frobenius_norm`](@ref) otherwise. A rigorous statement
+about the refined pair comes from [`certify_schur_decomposition`](@ref).
+
+The steps:
 
 1. **Initial orthogonalization**: Apply Newton-Schulz to Q₀ converted to high precision
 2. **Main iteration loop**:
@@ -1001,7 +1019,18 @@ end
 """
     _refine_symmetric_eigen_impl(A, Q0, λ0, max_iterations, tol)
 
-Internal implementation of RefSyEv algorithm (Algorithm 1 from Ogita & Aishima 2018).
+The iteration behind [`refine_symmetric_eigen`](@ref): Algorithm 1 of [OgitaAishima2018](@cite),
+named `RefSyEv` there, run at the precision in force, which the caller sets.
+
+`A`, `Q0` and `λ0` are converted to `hp` (`BigFloat` at the current precision, or the type given),
+and the steps `R = I − QᵀQ`, `S = QᵀAQ`, the Rayleigh quotients `λᵢ = sᵢᵢ/(1 − rᵢᵢ)`, the
+threshold `δ`, the correction `Ẽ` and the update `Q(I + Ẽ)` are taken in that arithmetic. It
+returns a [`SymmetricEigenRefinementResult`](@ref).
+
+Everything here is floating point in the high precision, with no directed rounding: the
+`residual_norm` and `orthogonality_defect` it reports are Frobenius norms computed by
+[`_frobenius_norm`](@ref) and are approximations, not bounds. A refined pair that needs a bound is
+handed to [`certify_eigenpair`](@ref), which takes an approximate pair and returns an enclosure.
 """
 function _refine_symmetric_eigen_impl(A::AbstractMatrix, Q0::Matrix, λ0::AbstractVector,
                                       max_iterations::Int, tol::Real; hp::Type = BigFloat)
