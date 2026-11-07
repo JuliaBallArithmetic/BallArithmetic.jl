@@ -35,9 +35,13 @@ makedocs(;
         "API" => [
             "Overview" => "API.md",
             "Core Types" => "api/core.md",
+            "Arithmetic & Rounding" => "api/arithmetic.md",
+            "Norm Bounds & Matrix Classes" => "api/normbounds.md",
+            "Matrix Decompositions" => "api/decompositions_api.md",
             "Linear Systems" => "api/linearsystems.md",
             "Eigenvalues & SVD" => "api/eigenvalues.md",
             "Algorithm Steps" => "api/internals.md",
+            "Pseudospectra" => "api/pseudospectra_api.md",
             "CertifScripts" => "api/certifscripts.md",
             "NumericalTest" => "api/numericaltest.md"
         ],
