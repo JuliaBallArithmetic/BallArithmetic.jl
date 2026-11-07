@@ -49,10 +49,13 @@ _enclosure(λ, points, bounds, radii) = Enclosure(ComplexF64(λ), ComplexF64.(po
     Ball{Float64, Float64}.(bounds), Float64.(radii), _chain_closed(points, radii))
 
 """
-    check_enclosure(E::Enclosure)
+    check_enclosure(E::Enclosure) -> Bool
 
 Whether every disc of `E` overlaps the next and the last overlaps the first, recomputed from the
-centres and radii with directed rounding.
+centres and radii with directed rounding: the distances between centres rounded up and the sums of
+radii rounded down, so that a `true` is proved and a `false` leaves the question open. This is the
+test whose outcome `E.loop_closure` holds; it is recomputed here rather than read back, and the
+bounds `E.bounds` are not used.
 """
 check_enclosure(E::Enclosure) = _chain_closed(E.points, E.radii)
 
@@ -196,6 +199,15 @@ Chains of discs around the spectrum of the Schur factor `T` of the midpoint of `
 
 `max_initial_newton` bounds the Newton steps used to reach a level curve, `max_steps` the length of
 a chain, and `rel_steps` sets the step relative to the distance from the nearest diagonal entry.
+
+A level curve is followed by a predictor-corrector continuation, an Euler step along the curve and
+then one Newton step back to it, both directions read from the singular vectors belonging to the
+smallest singular value of `T − zI`; this is the continuation of [Bruehl1996](@cite), carried out
+here in floating point. Nothing about the curve is certified, and the bounds the chain carries do
+not depend on how well it was followed: the disc of a step is enclosed for the `T` it was built
+from, so a step that leaves the level curve widens the bound on that disc and proves nothing
+false. What the step sizes do govern is whether consecutive discs overlap, which is what
+`loop_closure` records.
 
 The bounds are for `T`, not for `A`: the radius of `A` and the defects of the Schur factorisation
 are not used. `CertifScripts.run_certification` certifies a circle for `A` itself.

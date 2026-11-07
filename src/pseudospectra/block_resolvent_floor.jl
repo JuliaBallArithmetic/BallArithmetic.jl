@@ -83,17 +83,19 @@ that block, `n_j ≥ ‖P_j − c_j I‖₂`, `r_j ≥ ‖(M − Λ)[C_j, :]‖�
 block itself set to zero, and `β_Λ ≥ ‖M − Λ‖₂` the norm of the ball matrix with every diagonal
 block set to zero. `κ₂(S)` is bounded over the ball `r.similarity` as above.
 
-The bound uses the enclosure of `S⁻¹AS` and a partition, and neither the self-mapping test (2.10)
-nor `r.spectrum_covered`: it holds whether or not the clusters are certified. When the
-transformation failed, `r.transformed` is `A` and the frame is the identity.
+The bound uses the enclosure of `S⁻¹AS` and a partition, and neither the self-mapping test
+`(R̃ ∘ Y)V_i ⊆ int(XV_i)` of Theorem 2.2 of [Rump2022a](@cite), which is what proves the Jordan
+blocks and the invariant subspaces, nor `r.spectrum_covered`: it holds whether or not the clusters
+are certified. When the transformation failed, `r.transformed` is `A` and the frame is the
+identity.
 
 For `method = :miyajima2014a` the matrix `r.transformed` is the one of
 [`_miyajima2014a_alg1`](@ref). For a result of the pencil `A x = λ B x` it contains `S⁻¹B⁻¹AS`,
 and the bound is then a lower bound of `σ_min(B⁻¹A − zI)`.
 
-S. M. Rump, *Verified error bounds for all eigenvalues and eigenvectors of a matrix*,
-SIAM J. Matrix Anal. Appl. **43**(4):1736-1754, 2022, doi 10.1137/21M1451440, for the enclosure of
-`S⁻¹AS`; the bound is the one of the method above.
+The enclosure of `S⁻¹AS` and the clustering are those of [Rump2022a](@cite), where `S⁻¹AS` is
+enclosed by a verified linear solve that also proves `S` nonsingular; the bound read off it is the
+one of the method above.
 """
 function block_resolvent_floor(r::VerifyEigAllResult{T, CT}) where {T, CT}
     M = r.transformed
