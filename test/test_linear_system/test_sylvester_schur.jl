@@ -130,4 +130,26 @@ end
         @test_throws ArgumentError triangular_sylvester_miyajima_enclosure([1.0 0.0; 1.0 2.0], 1)
         @test_throws ArgumentError triangular_sylvester_miyajima_enclosure(T, 2; sylvester_fallback = :other)
     end
+
+    # Salvaged from the `Sylvester-schur` branch, whose test file was the only copy of it.
+    # `A X + X B = C` is unchanged by `A -> A + sigma I`, `B -> B - sigma I`, so the solution is
+    # the same matrix and the enclosure computed from the shifted data must still contain it.
+    # What this tests is that the route depends on the separation of the two spectra and not on
+    # where they lie, which is what the Schur fallback is there to get right.
+    @testset "A shift of both spectra leaves the solution, and so the enclosure, alone" begin
+        n = 5
+        unitary(k) = Matrix(qr(randn(ComplexF64, k, k)).Q)
+        spectrum(k, a0, step) = (U = unitary(k); U * Diagonal(a0 .+ step .* (0:(k - 1))) * U')
+        A = spectrum(n, 0.5, 0.7)
+        B = spectrum(n, 0.9, 0.6)
+        C = randn(ComplexF64, n, n)
+        X = _exact_sylvester(A, B, C)
+        for sigma in (0.12345, -3.0, 17.0)
+            As, Bs = A + sigma * I, B - sigma * I
+            @test maximum(abs, X .- _exact_sylvester(As, Bs, C)) < 1e-11
+            @test _encloses(verified_sylvester_enclosure(As, Bs, C), X)
+        end
+        @test _encloses(verified_sylvester_enclosure(A, B, C), X)
+    end
+
 end
