@@ -48,12 +48,17 @@ hbr_method_simple
 ShavingResult
 interval_shaving
 sherman_morrison_inverse_update
+BallArithmetic._shaving_lp
 ```
 
 ## Preconditioning
 
 ```@docs
 PreconditionerType
+MidpointInverse
+LUFactorization
+LDLTFactorization
+IdentityPreconditioner
 PreconditionerResult
 compute_preconditioner
 apply_preconditioner
@@ -82,6 +87,7 @@ BallArithmetic.is_H_matrix
 ## Krawczyk Operator
 
 ```@docs
+krawczyk_linear_system
 KrawczykResult
 ```
 
@@ -96,15 +102,33 @@ VerifyLssResult
 
 ```@docs
 sylvester_miyajima_enclosure
+verified_sylvester_enclosure
 triangular_sylvester_miyajima_enclosure
 SylvesterResolventResult
 parametric_resolvent_bound
 ParametricResolventResult
 ```
 
+### The Approximate Solution and the Triangular Route
+
+The approximate solution that the enclosures take as their midpoint, computed in floating point
+with no bound attached, and the enclosure used for a triangular equation when the hypotheses of
+Miyajima's theorems are not proved.
+
+```@docs
+schur_sylvester_midpoint
+BallArithmetic._sylvester_triangular_columns
+BallArithmetic._forward_substitution
+BallArithmetic._sylvester_triangular_direct_ball
+BallArithmetic._has_distinct_diagonal
+```
+
 ### How the Two Inner Bounds Are Taken
 
 ```@docs
+NormEstimator
+OneInfNorm
+FrobeniusNorm
 DInverseEstimator
 TriBacksub
 NeumannOneInf
@@ -123,6 +147,7 @@ is_regular
 is_regular_sufficient_condition
 is_regular_gershgorin
 is_regular_diagonal_dominance
+is_regular_spectral_radius
 is_singular_sufficient_condition
 ```
 

@@ -91,8 +91,12 @@ end
     _shaving_lp(c, Aeq, beq, lb, ub) -> Vector or nothing
 
 A minimiser of `c'v` subject to `Aeq v = beq`, `lb ≤ v ≤ ub`, in floating point, or `nothing`.
-The method is supplied by the extension loaded with JuMP and HiGHS. The result is used as a
-guess only and need not be verified.
+
+The function has no method in the package itself: one is added by the extension loaded with JuMP
+and HiGHS, and [`interval_shaving`](@ref) raises an `ArgumentError` naming them when neither that
+extension nor an `lp_solver` of its own is available. Whatever the solver returns is a guess and
+is not verified: a slice is cut only after the square interval system of step 2 of
+`interval_shaving` has established the certificate for the whole ball.
 """
 function _shaving_lp end
 
@@ -138,7 +142,13 @@ times the width of its variable is not cut.
 `lp_solver(c, Aeq, beq, lb, ub)` must return a minimiser of `c'v` subject to `Aeq v = beq`,
 `lb ≤ v ≤ ub`, or `nothing`. It is a heuristic: whatever it returns, a slice is cut only after
 step 2 has verified the certificate. `nothing` uses JuMP with HiGHS, which must then be loaded
-(`using JuMP, HiGHS`).
+(`using JuMP, HiGHS`); see [`_shaving_lp`](@ref).
+
+# Reference
+
+J. Horáček, *Interval linear and nonlinear systems*, doctoral thesis, Charles University,
+Department of Applied Mathematics, Prague, 2019 ([Horacek2019](@cite)), Section 5.9, Lemma 5.21
+and Lemma 5.22.
 """
 function interval_shaving(A::BallMatrix{T}, b::BallVector{T}, x0::BallVector{T};
         passes::Int = 1, improvements::Int = 3, min_improvement::Real = 1e-6,

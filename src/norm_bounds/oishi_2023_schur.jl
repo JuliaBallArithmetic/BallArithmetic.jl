@@ -61,8 +61,8 @@ This improves upon Oishi 2023 by:
 - `block_size`: The block size m used
 
 # Reference
-Rump, S.M. & Oishi, S. (2024), "A Note on Oishi's Lower Bound for the Smallest
-Singular Value of Linearized Galerkin Equations"
+S. M. Rump and S. Oishi, Japan J. Indust. Appl. Math. **41**(2) (2024), 1097-1104
+([RumpOishi2024](@cite)), Lemma 1.2 and Theorem 1.3.
 
 The flag is called `certified` since version 0.4 and was called `verified` in 0.3.0; the
 old name still resolves, with a deprecation warning, and [`iscertified`](@ref) reads it in either
@@ -119,7 +119,9 @@ Since σ_min(G) = 1/‖G⁻¹‖₂, this gives a lower bound on σ_min.
 `Oishi2023Result` containing the bounds and verification status.
 
 # Reference
-Oishi, S. (2023), Japan J. Indust. Appl. Math. 40:1569-1585
+S. Oishi, *Lower bounds for the smallest singular values of generalized asymptotic diagonal
+dominant matrices*, Japan J. Indust. Appl. Math. **40** (2023), 1569-1585,
+doi 10.1007/s13160-023-00596-5 ([Oishi2023](@cite)), Theorem 1.
 """
 function oishi_2023_sigma_min_bound(G::BallMatrix{T}, m::Int) where {T}
     n = size(G, 1)
@@ -223,8 +225,17 @@ end
 """
     _solve_ball_system(A::BallMatrix, B::BallMatrix)
 
-Solve AX = B for X using the midpoint approximation and error bounds.
-Returns a BallMatrix enclosure of X.
+An enclosure of `A⁻¹B`, as a `BallMatrix` whose midpoint `X̃` is the floating-point solution of
+`mid(A) X = mid(B)` and each of whose radii is `‖A⁻¹‖₂ ‖R‖₂` for `R` the residual `B − A X̃`
+computed in ball arithmetic.
+
+The solve itself is not trusted: for every `M` of the ball `A` and `N` of the ball `B` the exact
+solution `X` of `M X = N` satisfies `X − X̃ = M⁻¹(N − M X̃)`, and `N − M X̃` is enclosed by `R`, so
+`‖X − X̃‖₂ ≤ ‖M⁻¹‖₂ ‖R‖₂`. The modulus of an entry of a matrix is at most its ℓ² operator norm,
+so that single number bounds every entry of `X − X̃` and is used as the radius of each. The two
+factors are bounded uniformly over the balls by [`svd_bound_L2_opnorm_inverse`](@ref) and
+[`collatz_upper_bound_L2_opnorm`](@ref), and their product is rounded up. The radius is `Inf`
+when either factor is, which is what happens when the ball `A` may contain a singular matrix.
 """
 function _solve_ball_system(A::BallMatrix{T}, B::BallMatrix{T}) where {T}
     # Approximate solution using midpoints
@@ -255,7 +266,11 @@ end
 """
     _solve_ball_system_transpose(A::BallMatrix, C::BallMatrix)
 
-Solve A'X = C' for X, returning X' (which equals CA⁻¹).
+An enclosure of `C A⁻¹`, obtained as [`_solve_ball_system`](@ref) does but from the other side:
+the midpoint is the floating-point solution `X̃'` of `mid(A)' X = mid(C)'`, the residual
+`R = C − X̃' A` is computed in ball arithmetic, and each radius is `‖A⁻¹‖₂ ‖R‖₂`, which bounds
+every entry of `C M⁻¹ − X̃'` for every `M` of the ball `A` and every `C` of its ball since
+`C M⁻¹ − X̃' = (C − X̃' M) M⁻¹`.
 """
 function _solve_ball_system_transpose(A::BallMatrix{T}, C::BallMatrix{T}) where {T}
     # A'X = C' means X = A⁻ᵀC', so X' = CA⁻¹
@@ -285,8 +300,14 @@ end
 """
     _diagonal_scale_left(d::Vector, d_rad::Matrix, M::BallMatrix)
 
-Compute diag(1./d) * M with rigorous bounds, where d are the diagonal elements
-and d_rad contains the radii of the diagonal.
+An enclosure of `Δ⁻¹ N`, where `Δ` is the diagonal matrix whose `i`-th entry lies in the ball of
+centre `d[i]` and radius `d_rad[i, i]` and `N` is any matrix of the ball `M`. Row `i` is the
+product of the ball `inv(Ball(d[i], d_rad[i, i]))` with the balls of row `i` of `M`, so the
+rounding of the inverse and of the products is carried in the radii.
+
+`d_rad` is passed as the radius matrix of the block whose diagonal `d` is, and only its diagonal
+is read. A row whose ball may contain zero gets radius `Inf` rather than raising: no bound of
+`Δ⁻¹` exists there, and that is reported through the enclosure.
 """
 function _diagonal_scale_left(d::Vector{<:Union{T, Complex{T}}}, d_rad::AbstractMatrix{T},
                                M::BallMatrix{T}) where {T}
@@ -363,7 +384,7 @@ end
 """
     psi_schur_factor(μ::T) where {T}
 
-Compute ψ(μ) from Lemma 1.2 of Rump-Oishi 2024.
+Compute ψ(μ) from Lemma 1.2 of [RumpOishi2024](@cite).
 
 For a block triangular matrix H = [I, -N; 0, I] with ‖N‖ = μ, this computes
 the exact value of ‖H‖ = ‖H⁻¹‖.
@@ -393,9 +414,10 @@ end
 """
     pi_norm(M::BallMatrix{T}) where {T}
 
-Compute π(M) = √(‖M‖₁ · ‖M‖∞), an upper bound on ‖M‖₂.
-
-This is a cheap bound useful for the fast γ estimate in Rump-Oishi 2024.
+An upper bound of the ℓ² operator norm of every matrix of the ball `M`, `π(M) = √(‖M‖₁‖M‖_∞)`,
+from the largest column sum and the largest row sum of the moduli of its entries. It is the bound
+written `π` in [RumpOishi2024](@cite) and used there for the cheap `γ` of equation (9); the same
+inequality appears among the immediate bounds of Section 3 of [Rump2011](@cite).
 """
 function pi_norm(M::BallMatrix{T}) where {T}
     norm1 = upper_bound_L1_opnorm(M)
@@ -407,18 +429,22 @@ end
     _fast_gamma_bound(A::BallMatrix{T}, B::BallMatrix{T}, C::BallMatrix{T},
                       Dd_diag::Vector{T}, D_rad::Matrix{T}, Df::BallMatrix{T}) where {T}
 
-Compute the fast γ bound from equation (9) of Rump-Oishi 2024:
+Equation (9) of [RumpOishi2024](@cite):
 
-    γ = π(Dd⁻¹Df) + π(Dd⁻¹C) · π(A⁻¹B)
+    ‖D_d⁻¹(D_f − CA⁻¹B)‖₂ ≤ π(D_d⁻¹D_f) + π(D_d⁻¹C) π(A⁻¹B) =: γ,
 
-where π(N) = √(‖N‖₁ · ‖N‖∞).
+with `π(N) = √(‖N‖₁‖N‖_∞)` ([`pi_norm`](@ref)) an upper bound of `‖N‖₂`. So `γ < 1` establishes
+the hypothesis (7) of Theorem 1.3 without forming the product `CA⁻¹B`, which brings the cost of
+the test from `O((n−m)²m)` to `O((n−m)m²)` operations.
 
-This avoids computing the expensive product Dd⁻¹(Df - CA⁻¹B) and reduces
-complexity from O((n-m)²m) to O((n-m)m²).
+The three factors are enclosed by [`_diagonal_scale_left`](@ref) and
+[`_solve_ball_system`](@ref), so the inequality is established for every matrix of the ball `G`;
+the sum and the product are rounded up.
 
 # Returns
-A tuple (γ, A_inv_B) where A_inv_B is the computed A⁻¹B (reused later).
-Returns (Inf, nothing) if computation fails.
+
+`(γ, A_inv_B)`, the second being the enclosure of `A⁻¹B` that the caller reuses, or
+`(Inf, nothing)` when one of the three bounds is not finite.
 """
 function _fast_gamma_bound(A::BallMatrix{T}, B::BallMatrix{T}, C::BallMatrix{T},
                            Dd_diag::Vector{<:Union{T, Complex{T}}}, D_rad::AbstractMatrix{T},
@@ -495,8 +521,9 @@ If ‖Dd⁻¹(Df - CA⁻¹B)‖ < 1, then:
 `RumpOishi2024Result` containing the bounds and verification status.
 
 # Reference
-Rump, S.M. & Oishi, S. (2024), "A Note on Oishi's Lower Bound for the Smallest
-Singular Value of Linearized Galerkin Equations"
+S. M. Rump and S. Oishi, *A note on Oishi's lower bound for the smallest singular value of
+linearized Galerkin equations*, Japan J. Indust. Appl. Math. **41**(2) (2024), 1097-1104,
+doi 10.1007/s13160-024-00645-7 ([RumpOishi2024](@cite)), Lemma 1.2 and Theorem 1.3.
 """
 function rump_oishi_2024_sigma_min_bound(G::BallMatrix{T}, m::Int;
                                           try_fast_gamma::Bool=true) where {T}
@@ -615,10 +642,11 @@ end
     rump_oishi_2024_optimal_block_size(G::BallMatrix{T}; max_m::Int=100,
                                         try_fast_gamma::Bool=true) where {T}
 
-Find the optimal block size m that gives the tightest bound on σ_min
-using the Rump-Oishi 2024 method.
-
-Returns a tuple (best_m, best_result).
+[`rump_oishi_2024_sigma_min_bound`](@ref) for every block size `m = 1, …, min(max_m, n − 1)`, and
+the `m` whose certified lower bound of `σ_min(G)` is the largest, as `(best_m, best_result)`.
+Each certified result is a valid bound, so the largest is; when none is certified, `best_result`
+is the uncertified one for `m = 1`. The statement and its reference are those of
+`rump_oishi_2024_sigma_min_bound`.
 """
 function rump_oishi_2024_optimal_block_size(G::BallMatrix{T}; max_m::Int=100,
                                              try_fast_gamma::Bool=true) where {T}

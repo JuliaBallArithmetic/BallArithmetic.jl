@@ -10,6 +10,12 @@ using LinearAlgebra: diag
 
 A point ball matrix whose off-diagonal entries are upper bounds of the moduli of the off-diagonal
 entries of every matrix of the ball `A` ([`upper_abs`](@ref)), and whose diagonal is zero.
+
+It is the off-diagonal part of the comparison matrix with its sign removed: with
+[`diagonal_abs_lower_bound`](@ref) it gives the two arrays that
+[`is_M_matrix`](@ref) and [`is_H_matrix`](@ref) compare, and being entrywise above the whole ball
+it dominates the corresponding part of every matrix of the ball, which is what makes a single
+test cover the ball.
 """
 function off_diagonal_abs(A::BallMatrix)
     B = deepcopy(upper_abs(A))
@@ -20,7 +26,14 @@ function off_diagonal_abs(A::BallMatrix)
 end
 
 """
-Computes a vector containing lower bounds for the diagonal elements of |A|
+    diagonal_abs_lower_bound(A::BallMatrix) -> Vector
+
+Lower bounds of `|a_ii|`, one for each `i`, holding for every matrix of the ball `A`: the modulus
+of the midpoint rounded down, less the radius, rounded down again.
+
+An entry is negative when the ball on the diagonal contains zero, and is returned as it stands
+rather than clamped at zero; the callers in this file use it only through `μ − dlo[i]`, which
+stays an upper bound of `μ − a_ii` whatever the sign.
 """
 diagonal_abs_lower_bound(A::BallMatrix{T}) where {T} =
     T[sub_down(_abs_lo(A.c[i, i]), A.r[i, i]) for i in axes(A.c, 1)]
@@ -62,7 +75,8 @@ M-matrix, see [`is_H_matrix`](@ref).
 # Reference
 
 R. S. Varga, *Geršgorin and His Circles*, Springer Series in Computational Mathematics 36,
-Springer, Berlin, 2004, doi 10.1007/978-3-642-17798-9, Definition 5.4 and Appendix C.
+Springer, Berlin, 2004, doi 10.1007/978-3-642-17798-9 ([Varga2004](@cite)), Definition 5.4 and
+Appendix C.
 """
 function is_M_matrix(A::BallMatrix{T}) where {T}
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("is_M_matrix needs a square matrix"))
@@ -90,8 +104,8 @@ of the ball; `false` means that this was not proved.
 # Reference
 
 R. S. Varga, *Geršgorin and His Circles*, Springer Series in Computational Mathematics 36,
-Springer, Berlin, 2004, doi 10.1007/978-3-642-17798-9, Appendix C, (C.4), Definition C.6 and
-Proposition C.7.
+Springer, Berlin, 2004, doi 10.1007/978-3-642-17798-9 ([Varga2004](@cite)), Appendix C, (C.4),
+Definition C.6 and Proposition C.7.
 """
 function is_H_matrix(A::BallMatrix{T}) where {T}
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("is_H_matrix needs a square matrix"))

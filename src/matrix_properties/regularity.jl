@@ -58,6 +58,11 @@ difference of the two sides, and regularity is proved when it is positive.
 The thesis states the theorem for real interval matrices. For a complex ball matrix the first
 condition still implies regularity, since `σ_min(A_c + E) ≥ σ_min(A_c) − ‖E‖₂` and
 `‖E‖₂ ≤ ‖A_Δ‖₂` for `|E| ≤ A_Δ`; the second is weaker than the first.
+
+# Reference
+
+J. Horáček, *Interval linear and nonlinear systems*, doctoral thesis, Charles University,
+Department of Applied Mathematics, Prague, 2019 ([Horacek2019](@cite)), Theorem 11.12.
 """
 function is_regular_sufficient_condition(A::BallMatrix{T}; condition::Integer = 1)::RegularityResult{T} where {T}
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
@@ -77,18 +82,25 @@ function is_regular_sufficient_condition(A::BallMatrix{T}; condition::Integer = 
 end
 
 """
-    is_regular_spectral_radius(A::BallMatrix; R = inv(mid(A))) -> RegularityResult
+    is_regular_spectral_radius(A::BallMatrix; R = nothing) -> RegularityResult
 
 Theorem 4.2 of Horáček (2019): a square interval matrix `A` is regular if for some real matrix
 `R`
 
     ϱ(|I − R A_c| + |R| A_Δ) < 1.
 
-`R` defaults to the floating-point inverse of the midpoint, which need not be exact: the theorem
-holds for any `R`. The matrix `|I − R A_c| + |R| A_Δ` is bounded above entrywise in ball
+`R = nothing` takes the floating-point inverse of the midpoint, which need not be exact: the
+theorem holds for any `R`. The matrix `|I − R A_c| + |R| A_Δ` is bounded above entrywise in ball
 arithmetic and its spectral radius by [`collatz_upper_bound`](@ref); the `certificate` is that
 bound, and regularity is proved when it is below one. With `R = A_c⁻¹` the condition is
-`ϱ(|A_c⁻¹| A_Δ) < 1`, strong regularity (Theorem 4.33 of the thesis).
+`ϱ(|A_c⁻¹| A_Δ) < 1`, strong regularity (Theorem 4.33 of the thesis). The condition is sufficient
+only: `certified = false` does not say that the ball contains a singular matrix.
+
+# Reference
+
+J. Horáček, *Interval linear and nonlinear systems*, doctoral thesis, Charles University,
+Department of Applied Mathematics, Prague, 2019 ([Horacek2019](@cite)), Theorem 4.2 and
+Theorem 4.33.
 """
 function is_regular_spectral_radius(A::BallMatrix{T}; R = nothing)::RegularityResult{T} where {T}
     n = size(A, 1)
@@ -135,7 +147,13 @@ Definition 4.24 of Horáček (2019): `A` is strictly diagonally dominant when
 
 with `mig` and `mag` the smallest and the largest modulus over an entry. Such a matrix is an
 H-matrix and therefore regular (Section 4.5 of the thesis). The `certificate` is a lower bound
-of the smallest difference of the two sides over the rows.
+of the smallest difference of the two sides over the rows, and the condition is sufficient only.
+
+# Reference
+
+J. Horáček, *Interval linear and nonlinear systems*, doctoral thesis, Charles University,
+Department of Applied Mathematics, Prague, 2019 ([Horacek2019](@cite)), Definition 4.24 and
+Section 4.5.
 """
 function is_regular_diagonal_dominance(A::BallMatrix{T})::RegularityResult{T} where {T}
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
@@ -150,7 +168,13 @@ Regularity from the Geršgorin discs of the rows or of the columns: if zero lies
 row disc of every matrix of the ball, or outside every column disc, the matrix is regular. For
 the rows this is strict diagonal dominance ([`is_regular_diagonal_dominance`](@ref)); for the
 columns it is the same condition on the transpose. The `certificate` is the larger of the two
-margins.
+margins, and the condition is sufficient only.
+
+# Reference
+
+J. Horáček, *Interval linear and nonlinear systems*, doctoral thesis, Charles University,
+Department of Applied Mathematics, Prague, 2019 ([Horacek2019](@cite)), Definition 4.24 and
+Section 4.5.
 """
 function is_regular_gershgorin(A::BallMatrix{T})::RegularityResult{T} where {T}
     size(A, 1) == size(A, 2) || throw(DimensionMismatch("the matrix must be square"))
@@ -165,7 +189,14 @@ end
 
 Try the sufficient conditions for regularity in the given order and return the first that
 proves it, or the last result when none does. `:h_matrix` is [`is_H_matrix`](@ref) (an H-matrix
-is regular, Section 4.4 of Horáček (2019)); the others are the routines of this file.
+is regular, Section 4.4 of Horáček (2019)); the others are the routines of this file. Every one
+of them is sufficient only, so a `certified = false` result from all of them leaves the question
+open.
+
+# Reference
+
+J. Horáček, *Interval linear and nonlinear systems*, doctoral thesis, Charles University,
+Department of Applied Mathematics, Prague, 2019 ([Horacek2019](@cite)), Section 4.4.
 """
 function is_regular(A::BallMatrix{T};
         methods::Vector{Symbol} = [:diagonal_dominance, :gershgorin, :h_matrix,
@@ -216,6 +247,11 @@ which does not mean that the matrix is regular. How each is evaluated:
    entry equal to zero is therefore not recognised;
 4. with enclosures of the eigenvalues of the symmetric ball matrix `A_Δᵀ A_Δ − A_cᵀ A_c` by
    `verifyeigall` on that [`HermitianBallMatrix`](@ref) (Rump and Lange 2023), all of whose lower ends must be nonnegative.
+
+# Reference
+
+J. Horáček, *Interval linear and nonlinear systems*, doctoral thesis, Charles University,
+Department of Applied Mathematics, Prague, 2019 ([Horacek2019](@cite)), Theorem 11.13.
 """
 function is_singular_sufficient_condition(A::BallMatrix{T}; conditions = 1:4) where {T}
     n = size(A, 1)

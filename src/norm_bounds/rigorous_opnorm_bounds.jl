@@ -147,6 +147,12 @@ upper_bound_L_inf_opnorm(A::BallMatrix{T}) where {T} = _colrow_sums_up(upper_abs
 
 Rigorous upper bound on the Frobenius norm of every matrix in the ball `A`: the Frobenius norm of
 [`upper_abs`](@ref)`(A)`, accumulated with upward rounding.
+
+The Frobenius norm is the entrywise ℓ² norm of the matrix, `√(Σ_ij |a_ij|²)`, and it is not an
+operator norm; it bounds the spectral norm from above, which is how
+[`upper_bound_L2_opnorm`](@ref) uses it. For a ball matrix
+in any arithmetic other than `Float32` or `Float64` the value is that of
+[`upper_bound_norm`](@ref)`(A, 2)`, the same quantity.
 """
 function upper_bound_frobenius(A::BallMatrix{T}) where {T <: Union{Float32, Float64}}
     s = zero(T)
@@ -217,9 +223,14 @@ end
 """
     svd_bound_L2_opnorm_inverse(A::BallMatrix)
 
-Returns a rigorous upper bound on the ℓ²-norm of the inverse of the
-ball matrix `A` using the rigorous enclosure for the singular values
-implemented in svd/svd.jl
+An upper bound of the spectral norm of `M⁻¹` that holds for every matrix `M` of the ball `A`:
+the reciprocal of the lower end of the smallest singular value enclosed by [`svdbox`](@ref),
+rounded up. The enclosure covers the singular values of every matrix of the ball, and
+`σ_min(M)⁻¹ = ‖M⁻¹‖₂`, so the bound is uniform over the ball; a matrix of the ball being
+nonsingular is part of what is proved.
+
+`Inf` is returned when that lower end is not positive, which happens when the ball may contain a
+singular matrix and is not a statement that it does. For an empty matrix the value is zero.
 """
 function svd_bound_L2_opnorm_inverse(A::BallMatrix{T}) where {T}
     σ = svdbox(A)
@@ -232,9 +243,14 @@ end
 
 using LinearAlgebra
 """
-    svd_bound_L2_resolvent(A::BallMatrix, lam::Ball)
+    svd_bound_L2_resolvent(A::BallMatrix, λ::Ball)
 
-Returns a rigorous upper bound on the ℓ²-norm of the resolvent
-of `A` at `λ`, i.e., ||(A-λ)^{-1}||_{ℓ²}
+An upper bound of the spectral norm of the resolvent, `‖(M − zI)⁻¹‖₂`, holding for every matrix
+`M` of the ball `A` and every `z` of the ball `λ` at once: the ball `A − λI` is formed first, so
+that its entries enclose `M − zI` for every such pair, and
+[`svd_bound_L2_opnorm_inverse`](@ref) is applied to it.
+
+`Inf` is returned when the enclosure of the smallest singular value of `A − λI` reaches zero,
+which is what happens near the spectrum; it does not say that some `M − zI` is singular.
 """
 svd_bound_L2_resolvent(A::BallMatrix, λ::Ball) = svd_bound_L2_opnorm_inverse(A - λ * I)
