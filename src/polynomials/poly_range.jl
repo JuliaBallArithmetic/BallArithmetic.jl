@@ -79,8 +79,19 @@ end
 # ----------------------------------------------------------------------------
 function _bnb_min(coeffs::AbstractVector{T}, a::T, b::T;
         tol::T, maxeval::Int) where {T <: AbstractFloat}
-    boxval(lo, hi) = ball_horner(coeffs, Ball((lo + hi) / 2, (hi - lo) / 2))
+    # The ball for `[lo, hi]` comes from `_ball_from_bounds`, which guarantees it contains both
+    # endpoints.  Built as `Ball((lo + hi) / 2, (hi - lo) / 2)` with the nearest rounding of
+    # plain arithmetic, as it was until now, it does not: a midpoint rounding below the exact
+    # one leaves `c + r` short of `hi`, and 676925 of 2000000 random pairs lose the enclosure,
+    # for instance `lo = 6.216278267251603`, `hi = 10.874248491424384`, whose upper end falls
+    # half an ulp short.  A point of `[a, b]` could then lie in none of the boxes evaluated, so
+    # neither `m_lo` nor the pruning was certified.
+    boxval(lo, hi) = ball_horner(coeffs, _ball_from_bounds(lo, hi))
     ptsup(x) = sup(ball_horner(coeffs, Ball(x)))
+    # `(lo + hi) / 2` overflows to `Inf` on an interval wider than `floatmax`, which would put
+    # the split point and the sampled value outside `[a, b]`; halving first cannot overflow and
+    # lands in `[lo, hi]` because both halves are exact and the sum rounds within it.
+    midpt(lo, hi) = isfinite(hi - lo) ? (lo + hi) / 2 : lo / 2 + hi / 2
 
     F0 = boxval(a, b)
     items = [(a, b, inf(F0), sup(F0))]          # (lo, hi, inf p, sup p)
@@ -91,12 +102,12 @@ function _bnb_min(coeffs::AbstractVector{T}, a::T, b::T;
     while neval < maxeval
         i = argmin(j -> items[j][3], eachindex(items))
         lo, hi, fl, _ = items[i]
-        m_hi = min(m_hi, ptsup((lo + hi) / 2));
+        m_hi = min(m_hi, ptsup(midpt(lo, hi)));
         neval += 1
         (m_hi - fl <= tol) && break
         (hi - lo <= minwidth(lo, hi)) && break  # cannot refine the binding box further
         deleteat!(items, i)
-        mid = (lo + hi) / 2
+        mid = midpt(lo, hi)
         for (l, h) in ((lo, mid), (mid, hi))
             F = boxval(l, h);
             neval += 1
