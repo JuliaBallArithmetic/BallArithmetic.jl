@@ -89,18 +89,31 @@ Let `u` be a vector with `uᴴṽ = 1` up to rounding (an approximate left eigen
 
     y ≥ ‖C F(x₀)‖₂,        q₀ ≥ ‖I − C J‖₂,        c ≥ ‖C‖₂,
 
-if `q₀ < 1` and `(1 − q₀)² − 4 c y ≥ 0`, then with `r := 2y/(1 − q₀)` there is exactly one
-`(z, w)` with `‖(z − λ̃, w − ṽ)‖₂ ≤ r`, `A w = z w` and `uᴴ w = 1`; and `z` is a simple
-eigenvalue of `A`. When `certified`, the result has `eigenvalue = ⟨λ̃, r⟩` and each component of
-`eigenvector` of radius `r` about that of `ṽ`.
+write `d := (1 − q₀)² − 4 c y`. If `q₀ < 1` and `d ≥ 0`, then with
+
+    r := 2y / ((1 − q₀) + √d)
+
+there is exactly one `(z, w)` with `‖(z − λ̃, w − ṽ)‖₂ ≤ r`, `A w = z w` and `uᴴ w = 1`; and `z`
+is a simple eigenvalue of `A`. When `certified`, the result has `eigenvalue = ⟨λ̃, r⟩` and each
+component of `eigenvector` of radius `r` about that of `ṽ`.
+
+That radius is Yamamoto's: [Yamamoto1982](@cite), Theorem 1, writes it `2‖ε‖/(1 − ‖K‖ + √t)`
+with the same discriminant. Until 2026-11-07 this returned `2y/(1 − q₀)`, the same numerator
+over a smaller denominator and hence up to twice as large; both are valid, and the proof below
+covers either.
 
 Proof. `F` is quadratic: `F(x₀ + h) = F(x₀) + J h + Q(h)` with `Q(h) = (−h_z h_w, 0)`, so
 `‖Q(h)‖₂ = |h_z| ‖h_w‖₂ ≤ ‖h‖₂²/2` and `‖Q′(h)‖₂ ≤ ‖h‖₂`. For `T(x) := x − C F(x)`,
 
     ‖T(x₀ + h) − x₀‖₂ ≤ y + q₀ ‖h‖₂ + c ‖h‖₂²/2,        ‖T′(x₀ + h)‖₂ ≤ q₀ + c ‖h‖₂.
 
-From `4cy ≤ (1 − q₀)²`, `c r ≤ (1 − q₀)/2`: the first bound at `‖h‖₂ ≤ r` is at most
-`y + q₀ r + (1 − q₀) r/4 ≤ r`, and the second at most `(1 + q₀)/2 < 1`. So `T` maps the ball
+The first bound is at most `ρ` at `‖h‖₂ ≤ ρ` exactly when `(c/2)ρ² − (1 − q₀)ρ + y ≤ 0`, so
+every `ρ` between the two roots of that quadratic serves, and both `r` above and the larger
+`2y/(1 − q₀)` lie between them: the larger because `4cy ≤ (1 − q₀)²` gives
+`(c/2)(2y/(1−q₀))² − y = y(2cy/(1−q₀)² − 1) ≤ −y/2 ≤ 0`, and `r ≤ 2y/(1 − q₀)` because `√d ≥ 0`,
+while `r` is at least the smaller root because `d` understates the quadratic's own discriminant
+`(1 − q₀)² − 2cy`. For either, `c ρ ≤ 2cy/(1 − q₀) ≤ (1 − q₀)/2`, so the second bound is at most
+`(1 + q₀)/2 < 1`. So `T` maps the ball
 of radius `r` into itself and is a contraction on it; its fixed point is the only zero of
 `C F` there, and `C` is invertible because `‖I − CJ‖₂ < 1`. At the zero the derivative of `F`
 is invertible, by the second bound, which excludes a second independent eigenvector `w′`
@@ -109,6 +122,22 @@ is invertible, by the second bound, which excludes a second independent eigenvec
 
 `y`, `q₀` and `c` are computed in ball arithmetic over the ball `A`, so the conclusion holds
 for each of its matrices, with an eigenpair that depends on the matrix.
+
+# References
+
+The construction is Yamamoto's, and the statement above is self-contained, so neither paper is
+needed to check it.
+
+- [Yamamoto1980](@cite) writes the eigenpair problem as a nonlinear system and applies an
+  existence theorem for its zeros, for a real matrix and a real pair, normalising by
+  `(1 − ‖x‖₂²)/2`. Its Lemma 2, credited to Wilkinson, is that an eigenvalue is simple exactly
+  when the bordered Jacobian is nonsingular, which is where the restriction above comes from.
+  Its Remark 1 sets aside the rounding committed in forming `I − CJ` and `C F(x₀)`, which is
+  what ball arithmetic supplies here.
+- [Yamamoto1982](@cite) drops the realness, normalises by fixing the largest coordinate of the
+  computed eigenvector rather than by the Euclidean length, and carries the discriminant and
+  the enclosure radius used here. Its bounds are componentwise in the maximum norm, where this
+  returns one Euclidean radius for the whole pair.
 
 # Arguments
 - `A`: square matrix (plain or `BallMatrix`)
@@ -225,8 +254,12 @@ function certify_eigenpair(
         return _unverified_result_with_diagnostics(T, NT, λ, v, N, q0, C_norm, y)
     end
 
-    # --- Step 10: Enclosure radius r ≤ 2y/(1-q₀) ---
-    r = div_up(mul_up(T(2), y), sub_down(one(T), q0))
+    # --- Step 10: Enclosure radius, the smaller root of the majorant quadratic ---
+    # r = 2y / ((1 − q₀) + √disc), which is Yamamoto's `a` (Numer. Math. 40, 1982, Theorem 1).
+    # `2y/(1 − q₀)`, returned until 2026-11-07, is the same numerator over a smaller denominator
+    # and so up to twice as large.  `disc` is already a lower bound, so its square root and the
+    # sum are taken downwards and the quotient upwards, which rounds `r` outwards.
+    r = div_up(mul_up(T(2), y), add_down(sub_down(one(T), q0), sqrt_down(disc)))
 
     # --- Step 11: Build enclosure ---
     eigenvalue = Ball(λ, r)
