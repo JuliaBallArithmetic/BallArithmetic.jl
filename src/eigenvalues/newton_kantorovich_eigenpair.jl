@@ -2,8 +2,11 @@
 #
 #     F(z, w) = (A w − z w, uᴴ w − 1),        (z, w) ∈ ℂ × ℂᴺ,
 #
-# with u a fixed vector. The statement and its proof are in the docstring of
-# `certify_eigenpair`; nothing is taken from a reference.
+# with u a fixed vector. Writing the eigenpair problem as this nonlinear system and applying an
+# existence theorem for solutions of nonlinear systems to it is Yamamoto's construction,
+# Numerische Mathematik 34 (1980) 189-199, doi:10.1007/bf01396059, continued in volume 40 (1982)
+# 201-206, doi:10.1007/bf01400539. The statement and the proof written out in the docstring of
+# `certify_eigenpair` are self-contained, so a reader needs neither paper to check them.
 
 using LinearAlgebra
 
@@ -70,6 +73,13 @@ Base.lastindex(r::NKEigenpairsResult) = length(r.results)
 
 An enclosure of one eigenpair of `A` near the approximate pair `(λ̃, ṽ)`, valid for every matrix
 of `A` when it is a ball matrix.
+
+Only a simple eigenvalue can be certified here, and that is a property of the statement rather
+than of the implementation: simplicity is part of the conclusion below, obtained from the
+invertibility of `F′` at the zero, so at a multiple eigenvalue `q₀ < 1` cannot hold and the
+result comes back uncertified however accurate the pair handed in. For a spectrum with clusters
+use [`verifyeigall`](@ref), which encloses each cluster with its multiplicity rather than each
+eigenpair, and reports `spectrum_covered` when the union of its discs holds the whole spectrum.
 
 # What is proved
 
