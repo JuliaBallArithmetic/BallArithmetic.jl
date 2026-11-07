@@ -4,6 +4,7 @@ using Test
 @testset "BallArithmetic.jl" begin
     # Core types
     include("test_types/test_ball.jl")
+    include("test_types/test_ball_hull_enclosure.jl")
     include("test_types/test_constructors.jl")
     include("test_types/test_algebra.jl")
     include("test_types/test_MMul.jl")

@@ -62,12 +62,48 @@ _product_roundoff(c::T) where {T <: AbstractFloat} =
 _product_roundoff(c::Complex{T}) where {T <: AbstractFloat} =
     add_up(mul_up(T(4), subnormal_min(T)), mul_up(mul_up(T(2), machine_epsilon(T)), abs_up(c)))
 
-# The real ball [lo, hi]: the centre is rounded up from the midpoint and the radius up from
-# centre − lo, which also reaches hi, since centre − lo ≥ (hi − lo)/2. `inv` and `sqrt` of a real
-# ball below build their result the same way.
+"""
+    _ball_from_bounds(lo, hi)
+
+The ball enclosing the interval `[lo, hi]`, for floating-point endpoints with `lo ≤ hi`. `inv`,
+`sqrt` and `abs` of a real ball, and `ball_hull` and `intersect_ball`, all build their result
+here.
+
+Writing `B` for the result, what is guaranteed is that in exact arithmetic
+
+    B.c − B.r ≤ lo    and    B.c + B.r ≥ hi,
+
+so that `[lo, hi] ⊆ [B.c − B.r, B.c + B.r]`, together with `B.r ≥ 0`. Each of the two
+inequalities follows from one directed subtraction on its own: the radius is at least
+`sub_up(B.c, lo) ≥ B.c − lo`, which gives the first, and at least `sub_up(hi, B.c) ≥ hi − B.c`,
+which gives the second, so neither appeals to the direction in which the midpoint was rounded.
+A radius measured from one end alone, or from the half-width, reaches the other end only when the
+midpoint lies on the far side of `(lo + hi)/2`, and that is where issue #73 came from: the
+`ball_hull` of v0.3.0 rounded the midpoint to nearest and took the radius to be the half-width
+rounded up, so on `ball_hull(Ball(-1.0, 0.5), Ball(-0.6, 0.75))` the upper end of the result fell
+one unit in the last place below the upper end of its second argument. The version that preceded
+this one rounded the midpoint up and measured the radius from `lo`, which encloses, but only
+because of the direction of that rounding.
+
+The midpoint is `lo + (hi − lo)/2` rounded up where `hi − lo` is representable, and `lo/2 + hi/2`
+rounded up where it is not, so an interval wider than `floatmax(T)` still has a finite midpoint.
+Both forms give `B.c ≥ (lo + hi)/2` exactly, which is what keeps the radius near the half-width
+rather than near the full width; the enclosure above does not depend on it.
+
+An endpoint that is infinite returns `Ball(zero(T), T(Inf))`, the whole line being the only
+enclosure of an unbounded interval that a ball with a finite midpoint admits. Endpoints out of
+order, and an endpoint that is `NaN`, raise an `ArgumentError`: neither describes a set to
+enclose.
+"""
 function _ball_from_bounds(lo::T, hi::T) where {T <: AbstractFloat}
-    c = add_up(lo, mul_up(one(T) / T(2), sub_up(hi, lo)))
-    return Ball(c, sub_up(c, lo))
+    lo <= hi || throw(ArgumentError("_ball_from_bounds needs lo ≤ hi, neither of them NaN; " *
+                                    "got lo = $lo, hi = $hi"))
+    (isfinite(lo) && isfinite(hi)) || return Ball(zero(T), T(Inf))
+    half = one(T) / T(2)                    # exact in binary floating point
+    width = sub_up(hi, lo)
+    c = isfinite(width) ? add_up(lo, mul_up(half, width)) :
+        add_up(mul_up(half, lo), mul_up(half, hi))
+    return Ball(c, max(sub_up(c, lo), sub_up(hi, c)))
 end
 
 """
@@ -197,11 +233,20 @@ Base.show(io::IO, ::MIME"text/plain", x::Ball) = print(io, x.c, " ± ", x.r)
 """
     ball_hull(a::Ball, b::Ball)
 
-Return the smallest ball that contains both `a` and `b`. For real centres
-the function encloses the convex hull on the real line. When the midpoints
-are complex the result encloses both discs while keeping the centre as
-close as possible to one of the inputs so that subsequent operations remain
-stable.
+A ball containing both `a` and `b`.
+
+For real midpoints the result encloses `[min(inf(a), inf(b)), max(sup(a), sup(b))]`, the interval
+hull of the two sets; the enclosure is the one `_ball_from_bounds` states.
+
+For complex midpoints the midpoint of the result is that of `a` or that of `b`, whichever gives
+the smaller radius, and the radius is `max(rad(x), add_up(dist_up(mid(a), mid(b)), rad(y)))` with
+`x` the argument whose midpoint was kept and `y` the other one. The disc of `x` is contained
+because the radius is at least `rad(x)`, and the disc of `y` because every one of its points is
+within `|mid(a) − mid(b)| + rad(y)` of the midpoint that was kept. The result is not the smallest
+enclosing disc, whose centre lies between the two midpoints.
+
+Note that `dist_up` bounds the distance through `abs_up(::Complex)`, which squares the components
+of the difference, so the radius is `Inf` once a component passes about `sqrt(floatmax(T))`.
 """
 function ball_hull(a::Ball{T, T}, b::Ball{T, T}) where {T}
     return _ball_from_bounds(min(inf(a), inf(b)), max(sup(a), sup(b)))
@@ -367,12 +412,10 @@ function Base.inv(y::Ball{T, T}) where {T <: AbstractFloat}
     my, ry = mid(y), rad(y)
     ry < abs(my) || throw(ArgumentError("Ball $y contains zero."))
     one_T = one(T)
-    half_T = one_T / T(2)  # Exact in binary floating point (1 and 0.5 are representable)
     c1 = div_down(one_T, add_up(abs(my), ry))
     c2 = div_up(one_T, sub_down(abs(my), ry))
-    c = add_up(c1, mul_up(half_T, sub_up(c2, c1)))
-    r = sub_up(c, c1)
-    Ball(copysign(c, my), r)
+    b = _ball_from_bounds(c1, c2)
+    Ball(copysign(b.c, my), b.r)
 end
 
 """
@@ -418,12 +461,9 @@ propagates rounding errors to produce a rigorous result.
 function Base.sqrt(y::Ball{T}) where {T <: AbstractFloat}
     my, ry = mid(y), rad(y)
     ry < my || throw(DomainError("Ball $y contains zero."))
-    half_T = one(T) / T(2)  # Exact in binary floating point
     c1 = sqrt_down(sub_down(my, ry))
     c2 = sqrt_up(add_up(my, ry))
-    c = add_up(c1, mul_up(half_T, sub_up(c2, c1)))
-    r = sub_up(c, c1)
-    Ball(c, r)
+    _ball_from_bounds(c1, c2)
 end
 
 """
