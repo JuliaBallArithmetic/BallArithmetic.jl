@@ -6,7 +6,10 @@ export PseudospectrumCell, PseudospectrumCells, pseudospectrum_cells, sigma_min_
 """
     PseudospectrumCell{T}
 
-The closed rectangle `{z : |Re(z − centre)| ≤ hx, |Im(z − centre)| ≤ hy}`.
+The closed rectangle `{z : |Re(z − centre)| ≤ hx, |Im(z − centre)| ≤ hy}`, with fields `centre`,
+of type `Complex{T}`, and the two half sizes `hx` and `hy`. A cell carries no bound of its own:
+which of the three lists of a [`PseudospectrumCells`](@ref) it is in is what says what was proved
+on it.
 """
 struct PseudospectrumCell{T <: AbstractFloat}
     centre::Complex{T}
@@ -19,7 +22,12 @@ end
 
 Returned by [`pseudospectrum_cells`](@ref): `excluded`, cells on which `σ_min(A − zI) > ε` at
 every point; `included`, cells on which `σ_min(A − zI) < ε` at every point; `undecided`, the
-others; `evaluations`, the number of cell centres at which the bounds were computed.
+others; `epsilon`, the `ε` the three lists are for, converted to `T`; `evaluations`, the number of
+cell centres at which the bounds were computed.
+
+The three lists together cover the rectangle that was given, so the `ε`-pseudospectrum within it
+meets no cell of `excluded` and contains every cell of `included`, and what is left undetermined
+is contained in the union of `undecided`.
 """
 struct PseudospectrumCells{T <: AbstractFloat}
     excluded::Vector{PseudospectrumCell{T}}

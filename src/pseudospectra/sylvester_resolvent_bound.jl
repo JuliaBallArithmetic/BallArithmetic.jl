@@ -70,8 +70,17 @@ end
     solve_sylvester_oracle(T11::AbstractMatrix, T12::AbstractMatrix, T22::AbstractMatrix)
 
 An approximate solution `X` of the Sylvester equation `T₁₁X − XT₂₂ = −T₁₂`, in floating point: no
-bound comes with it. It is computed by LAPACK in `Float64`; for other element types the data are
-rounded to `Float64` and the solution converted back.
+bound comes with it, and none is needed. It is computed by LAPACK, through
+`LinearAlgebra.sylvester`, in `Float64`; for other element types the data are rounded to
+`Float64` and the solution converted back, so for a `BigFloat` matrix the solution is no more
+accurate than a `Float64` one.
+
+What `X` is used for is the similarity `S(X) = [I X; 0 I]` of
+[`sylvester_resolvent_precompute`](@ref), and the identity `S(X)⁻¹TS(X) = [T₁₁ R; 0 T₂₂]` with
+`R = T₁₂ + T₁₁X − XT₂₂` holds for every `X`; the residual `R` is then enclosed in ball arithmetic
+for the `X` actually used. An inaccurate `X` leaves a larger `‖R‖₂` and a larger `κ₂(S(X))`, and
+so a weaker bound, and nothing else. A caller with a better `X` passes it as the `X_oracle` of
+the precomputation instead.
 """
 function solve_sylvester_oracle(T11::AbstractMatrix{CT}, T12::AbstractMatrix{CT},
         T22::AbstractMatrix{CT}) where {CT <: Complex}
@@ -248,7 +257,9 @@ The choices of [`parametric_resolvent_bound`](@ref): a [`NormEstimator`](@ref), 
 values of the small block (`:M1` or `:M4`), the number of iterations of the Collatz bound, and
 whether `TriBacksub` replaces a Neumann bound that does not apply (`‖N‖ ≥ 1`).
 
-`config_v1()`, `config_v2()`, `config_v2p5()` and `config_v3()` are the combinations in use.
+[`config_v1`](@ref), [`config_v2`](@ref), [`config_v2p5`](@ref) and [`config_v3`](@ref) are the
+combinations in use; every one of them is a valid bound, so the smallest of several may be taken,
+which is what [`compare_all_configs`](@ref) does.
 """
 struct ResolventBoundConfig
     norm_estimator::NormEstimator
@@ -259,20 +270,54 @@ struct ResolventBoundConfig
     fallback_to_tri::Bool
 end
 
-"`TriBacksub` and the product bound for the coupling."
+"""
+    config_v1() -> ResolventBoundConfig
+
+`TriBacksub` for `‖D_z⁻¹‖₂` and `CouplingNone`, the product `‖A_z⁻¹‖₂‖R‖₂‖D_z⁻¹‖₂`, for the
+coupling term; `OneInfNorm`, `:M1`, three Collatz iterations, and the fallback to `TriBacksub`
+enabled. This is the default of [`parametric_resolvent_bound`](@ref) and the one that needs no
+approximate solve at each `z`.
+"""
 config_v1() = ResolventBoundConfig(OneInfNorm, TriBacksub, CouplingNone, :M1, 3, true)
-"`TriBacksub` and `CouplingARSolve`."
+"""
+    config_v2() -> ResolventBoundConfig
+
+[`config_v1`](@ref) with `CouplingARSolve` in place of `CouplingNone`: the coupling term is
+bounded through an approximate solution of `A_zY = R` and its residual, which costs one solve of
+size `k` at each `z`.
+"""
 config_v2() = ResolventBoundConfig(OneInfNorm, TriBacksub, CouplingARSolve, :M1, 3, true)
-"`TriBacksub` and `CouplingOffDirect`."
+"""
+    config_v2p5() -> ResolventBoundConfig
+
+[`config_v1`](@ref) with `CouplingOffDirect`: the whole off-diagonal block is approximated by a
+`W` with `A_zWD_z ≈ R` and the residual `R − A_zWD_z` is enclosed, which costs a solve on each
+side at each `z`.
+"""
 config_v2p5() = ResolventBoundConfig(OneInfNorm, TriBacksub, CouplingOffDirect, :M1, 3, true)
-"`NeumannCollatz2` and `CouplingARSolve`."
+"""
+    config_v3() -> ResolventBoundConfig
+
+[`config_v2`](@ref) with `NeumannCollatz2` in place of `TriBacksub`: `‖D_z⁻¹‖₂` comes from the
+factorisation `D_z = Δ(I + N)` with `‖N‖₂` bounded by `collatz_upper_bound_L2_opnorm`, which
+applies only where that bound is below one; since `fallback_to_tri` is set, `TriBacksub` is used
+where it is not.
+"""
 config_v3() = ResolventBoundConfig(OneInfNorm, NeumannCollatz2, CouplingARSolve, :M1, 3, true)
 
 """
     estimate_2norm(M, method::NormEstimator)
 
-An upper bound of `‖M‖₂` for a `BallMatrix` (or a matrix with exact entries) by the chosen
-[`NormEstimator`](@ref).
+An upper bound of `‖M‖₂`, holding for every matrix of the ball when `M` is a `BallMatrix` and for
+`M` itself when it is a matrix with exact entries, by the chosen [`NormEstimator`](@ref):
+`√(‖M‖₁‖M‖_∞)` for `OneInfNorm`, which bounds `‖M‖₂` since `‖M‖₂² = ρ(M*M) ≤ ‖M*M‖_∞ ≤
+‖M‖₁‖M‖_∞`, and `‖M‖_F` for `FrobeniusNorm`. Neither is always the smaller: `‖M‖_F` is the norm
+itself for a matrix of rank one, while for the identity of size `n` it is `√n` and the first bound
+is one. The operand norms are computed in ball arithmetic and the square root is rounded up.
+
+The bounds of [`parametric_resolvent_bound`](@ref) use this for the norms of the approximate
+solutions and of their residuals only, never for a quantity a certified singular value
+computation already covers.
 """
 estimate_2norm(M::AbstractMatrix, method::NormEstimator) = estimate_2norm(BallMatrix(M), method)
 function estimate_2norm(M::BallMatrix, method::NormEstimator)
@@ -344,9 +389,17 @@ end
 """
     SVDWarmStart(U, Σ, V)
 
-An approximate singular value decomposition of `zI − T₁₁` at a nearby point, refined (Ogita and
-Aishima) and then certified in place of a fresh decomposition. It only changes the approximation
-the certificate is computed with.
+An approximate singular value decomposition of `zI − T₁₁` at a nearby point, given to
+[`parametric_resolvent_bound`](@ref) in place of a fresh decomposition at the current point:
+`U`, `Σ` and `V` are passed to [`ogita_svd_refine`](@ref), the refinement of
+[OgitaAishima2020](@cite), for two iterations, and the refined triple is then certified by
+`certify_svd`.
+
+It changes the approximation the certificate is computed from and nothing else. The certified
+enclosure of the singular values is of the ball matrix `zI − T₁₁`, whatever triple is supplied, so
+a warm start that has drifted from the current point gives a wider enclosure of the same singular
+values, and `parametric_resolvent_bound` then declines when the resulting `σ_min` is not proved
+positive.
 """
 struct SVDWarmStart{UT, ST, VT}
     U::UT
@@ -494,6 +547,14 @@ end
 
 The split index in `k_range` with the smallest bound at `z`, as `(k, precomp, result)`; `nothing`
 when the bound applies for no index of the range.
+
+Every index gives a valid bound on `‖(zI − T)⁻¹‖₂`, since the identity behind
+[`parametric_resolvent_bound`](@ref) holds at each split, so the smallest of them is valid too and
+the search costs nothing in rigour. It costs one
+[`sylvester_resolvent_precompute`](@ref), one Sylvester solve among it, and one certified singular
+value computation of size `k` for each index of the range; the index is chosen for one `z`, and a
+`precomp` is for the split and not for the point, so the returned `precomp` can be reused at other
+points.
 """
 function find_optimal_split(T::AbstractMatrix, z::Number;
         k_range = 2:min(size(T, 1) - 2, 50), config::ResolventBoundConfig = config_v1())
@@ -511,10 +572,16 @@ end
 """
     compare_all_configs(T, k, z; miyajima_method = :M1, power_iterations = 3)
 
-The bound at `z` for `config_v1()`, `config_v2()`, `config_v2p5()` and `config_v3()` on one
-precomputation. Returns `(; precomp, results, bounds, best, z)`, the middle two being dictionaries
-indexed by `"V1"`, `"V2"`, `"V2.5"`, `"V3"` (`Inf` where a configuration does not apply) and
-`best` the name with the smallest bound.
+The bound at `z` for [`config_v1`](@ref), [`config_v2`](@ref), [`config_v2p5`](@ref) and
+[`config_v3`](@ref) on one precomputation, with `miyajima_method` and `power_iterations`
+substituted into each. Returns `(; precomp, results, bounds, best, z)`: `results` holds the
+[`ParametricResolventResult`](@ref) of each configuration and `bounds` the bound it reached, both
+indexed by `"V1"`, `"V2"`, `"V2.5"` and `"V3"`, with `Inf` where a configuration declined, and
+`best` is the key of the smallest entry of `bounds`.
+
+All four are bounds on the same `‖(zI − T)⁻¹‖₂`, so `bounds[best]` is a bound whenever it is
+finite; it is `Inf` when none of the four applied, and the `failure_reason` of each entry of
+`results` says at which step it stopped.
 """
 function compare_all_configs(T::AbstractMatrix, k::Int, z::Number;
         miyajima_method::Symbol = :M1, power_iterations::Int = 3)
