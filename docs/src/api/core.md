@@ -10,12 +10,21 @@ BallF64
 BallComplexF64
 mid
 rad
+mag
+mig
 midtype
 radtype
 inf
 sup
 ball_hull
 intersect_ball
+in0
+```
+
+## Directed Rounding
+
+```@docs
+abs_up
 ```
 
 ## Array Types
@@ -24,6 +33,8 @@ intersect_ball
 BallArray
 BallMatrix
 BallVector
+HermitianBallMatrix
+BallArithmetic._zero_radius
 ```
 
 ## Whether a Result Is Proved
@@ -46,7 +57,10 @@ upper_bound_L2_opnorm
 upper_bound_L_inf_opnorm
 collatz_upper_bound_L2_opnorm
 svd_bound_L2_opnorm
+BallArithmetic.svd_bound_L2_opnorm_inverse
+triangular_inverse_two_norm_bound
 rump_oishi_2024_triangular_bound
+BallArithmetic.upper_abs
 ```
 
 ### L2 Operator Norm: Method Comparison
@@ -142,5 +156,6 @@ RumpOishi2024Result
 rump_oishi_2024_sigma_min_bound
 rump_oishi_2024_optimal_block_size
 psi_schur_factor
+psi_squared
 pi_norm
 ```

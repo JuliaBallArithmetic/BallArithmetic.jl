@@ -2,6 +2,20 @@
 
 Verified linear system solvers and related functions.
 
+## Triangular Systems
+
+```@docs
+BallArithmetic.backward_substitution
+BallArithmetic.forward_substitution
+```
+
+## Cholesky Factorization
+
+```@docs
+verified_cholesky
+VerifiedCholeskyResult
+```
+
 ## Gaussian Elimination
 
 ```@docs
@@ -61,6 +75,21 @@ interval_least_squares
 ```@docs
 VerifiedLinearSystemResult
 verified_linear_solve_hmatrix
+BallArithmetic.comparison_matrix
+BallArithmetic.is_H_matrix
+```
+
+## Krawczyk Operator
+
+```@docs
+KrawczykResult
+```
+
+## Epsilon Inflation
+
+```@docs
+verifylss
+VerifyLssResult
 ```
 
 ## Sylvester Equations
@@ -68,6 +97,22 @@ verified_linear_solve_hmatrix
 ```@docs
 sylvester_miyajima_enclosure
 triangular_sylvester_miyajima_enclosure
+SylvesterResolventResult
+parametric_resolvent_bound
+ParametricResolventResult
+```
+
+### How the Two Inner Bounds Are Taken
+
+```@docs
+DInverseEstimator
+TriBacksub
+NeumannOneInf
+NeumannCollatz2
+CouplingEstimator
+CouplingNone
+CouplingARSolve
+CouplingOffDirect
 ```
 
 ## Matrix Regularity

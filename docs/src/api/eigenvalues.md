@@ -10,9 +10,17 @@ rigorous_eigenvalues
 evbox
 ```
 
-## Rump 2022a Method
+## Rump's verifyeigall
 
 ```@docs
+VerifyEigAllResult
+verifyeigall
+```
+
+## Newton-Kantorovich Eigenpair
+
+```@docs
+NKEigenpairResult
 ```
 
 ## Rump-Lange 2023 Method
@@ -20,6 +28,7 @@ evbox
 ```@docs
 VerifySvdAllResult
 verifysvdall
+BallArithmetic._rumplange2023_eig
 ```
 
 ## Generalized Eigenvalues
@@ -31,6 +40,7 @@ gevbox
 GEVResult
 verify_generalized_eigenpairs
 compute_beta_bound
+miyajima_gev_enclosure
 ```
 
 ## Singular Value Decomposition
@@ -39,6 +49,35 @@ compute_beta_bound
 RigorousSVDResult
 rigorous_svd
 svdbox
+```
+
+## Singular Value Theorems of Rump 2011 and Miyajima 2014
+
+The enclosures the singular value routines select between, each named for the statement it
+implements.
+
+```@docs
+BallArithmetic._rump2011_thm3_1
+BallArithmetic._miyajima2014_thm4
+BallArithmetic._miyajima2014_thm7
+BallArithmetic._miyajima2014_thm10
+BallArithmetic._miyajima2014_thm10_weyl
+BallArithmetic._miyajima2014_thm11
+BallArithmetic._svd_auto_theorem
+```
+
+## Schur-Newton Singular Values
+
+```@docs
+Miyajima2014aSchurNewtonResult
+miyajima2014a_schurnewton
+```
+
+## Reordered Schur Form
+
+```@docs
+ordschur_ball
+spectral_projector_error_bound
 ```
 
 ## Block Gershgorin enclosure
@@ -93,5 +132,8 @@ refine_schur_decomposition
 rigorous_schur_bigfloat
 certify_schur_decomposition
 newton_schulz_orthogonalize!
+BallArithmetic._bujanovicetal2023_alg4
+BallArithmetic._bujanovicetal2023_alg4_truncated
+BallArithmetic._bujanovicetal2023_alg4_unordered
 ```
 

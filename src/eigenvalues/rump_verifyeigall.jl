@@ -194,19 +194,30 @@ end
 # The transformation: an inclusion A of W^{-1} B W
 # ---------------------------------------------------------------------------------------------
 
-# With R an approximate inverse of W, W^{-1} B W = (RW)^{-1}(RBW), so an enclosure of R B W
-# together with ‖I − RW‖ < 1 gives one of W^{-1} B W by a Neumann series, the extra radius being
-# ‖I − RW‖/(1 − ‖I − RW‖) times the norm of the enclosure. This is the same pattern the verified
-# block diagonalisations in this package use for their basis residual.
-# Rump's `transform`: the point is NOT to enclose W^{-1} B W directly, whose radius would be that
-# of the product, but to enclose the small correction. With X the approximate eigenvalue matrix,
-#
-#     W^{-1} B W  =  X + W^{-1}(B W - W X),
-#
-# and the residual B W - W X is tiny, so an enclosure of W^{-1} times it is tiny too. One Newton
-# step on X makes the residual smaller still. The inner solve is by an approximate inverse R with
-# the Neumann correction ‖I − RW‖/(1 − ‖I − RW‖) · ‖R·Res‖, which is now multiplied by the size of
-# the residual rather than by the size of A, which is the whole difference.
+"""
+    _rump2022aneumann_transform(B::BallMatrix, W::Matrix, X0::Matrix)
+
+Enclose `W⁻¹ B W` through an explicit approximate inverse of `W`, returning the enclosure and
+the defect `‖R W − I‖₂`, or `nothing` and that defect when it is not below one.
+
+What is enclosed is the correction and not the product: with `X` the approximate eigenvalue
+matrix,
+
+    W⁻¹ B W  =  X + W⁻¹(B W − W X),
+
+and the residual `B W − W X` is small, so an enclosure of `W⁻¹` times it is small as well, while
+an enclosure of `W⁻¹ B W` formed directly would carry the radius of the product. One Newton step
+on `X`, taken in floating point since nothing in it is certified, makes the residual smaller
+still; the residual itself is enclosed by [`_rump2022a_prodK`](@ref), through the error-free
+transformations rather than in ball arithmetic, since its two terms nearly cancel.
+
+With `R` an approximate inverse of `W` one has `W⁻¹ B W = (R W)⁻¹(R B W)`, so an enclosure of
+`R(B W − W X)` together with `‖R W − I‖ < 1` gives one of the correction by a Neumann series,
+the extra radius being `‖R W − I‖/(1 − ‖R W − I‖)` times the norm of that enclosure. The factor
+multiplies the size of the residual and not the size of `B`, which is what makes the radius
+small. [`_rump2022a_transform`](@ref) replaces the inverse and this series by a verified linear
+solve, as [Rump2022a](@cite) writes the transformation.
+"""
 function _rump2022aneumann_transform(B::BallMatrix{T}, W::Matrix{CT}, X0::Matrix{CT}) where {T, CT}
     R = inv(W)
     Rb, Wb = BallMatrix(R), BallMatrix(W)
@@ -226,15 +237,25 @@ function _rump2022aneumann_transform(B::BallMatrix{T}, W::Matrix{CT}, X0::Matrix
     return BallMatrix(X) + Delta, defect
 end
 
-# Rump's `transform`, as the paper writes it: the correction is enclosed by a verified linear
-# solve rather than bounded through an explicit inverse.
-#
-#     W^{-1} B W  =  X + W^{-1}(B W - W X),   so   W * Delta = B W - W X,
-#
-# and `verifylss(W, BW - WX)` encloses Delta while proving W nonsingular, which is Theorem 10.8
-# of Rump (2010) applied to the point matrix W. The residual on the right is the prodK
-# enclosure, so the two terms that nearly cancel are handled by the error-free transformations
-# and not by ball arithmetic.
+"""
+    _rump2022a_transform(B::BallMatrix, W::Matrix, X0::Matrix)
+
+Enclose `W⁻¹ B W` as [Rump2022a](@cite) writes the transformation, returning the enclosure and
+the bound on the spectral radius that the inner solve reports, or `nothing` and that bound when
+the solve does not certify.
+
+The correction is enclosed by a verified linear solve and not bounded through an explicit
+inverse: with `X` the approximate eigenvalue matrix,
+
+    W⁻¹ B W  =  X + W⁻¹(B W − W X),      so      W Δ = B W − W X,
+
+and `verifylss(BallMatrix(W), B W − W X)` encloses `Δ` while proving `W` nonsingular, which is
+Theorem 10.8 of [Rump2010](@cite) applied to the point matrix `W`. Without that proof there is
+no enclosure of `W⁻¹ B W`, so the transformation declines rather than returning a bound. The
+right hand side is the [`_rump2022a_prodK`](@ref) enclosure, so the two terms that nearly cancel
+are handled by the error-free transformations and not by ball arithmetic, and the Newton step on
+`X` is taken in floating point, since it has only to be a better approximation.
+"""
 function _rump2022a_transform(B::BallMatrix{T}, W::Matrix{CT}, X0::Matrix{CT}) where {T, CT}
     # one Newton step on the approximate eigenvalue matrix, in floating point: it only has to be
     # a better approximation, nothing here is certified
@@ -248,13 +269,19 @@ function _rump2022a_transform(B::BallMatrix{T}, W::Matrix{CT}, X0::Matrix{CT}) w
     return BallMatrix(X) + sol.solution, sol.spectral_radius_bound
 end
 
-# The residual A W − B W D of a pencil, D diagonal, enclosed as `_rump2022a_prodK` encloses
-# B W − W X. The product of three factors is brought to products of two by error-free
-# transformations of W D: `_lr_diagonal_pieces!` returns four matrices whose sum is W D, exact
-# unless a product underflows (`two_product` of the real and imaginary parts). The residual is
-# then a sum of five products, enclosed by `_accurate_product_sum`; the interval parts rad(A)|W|
-# and rad(B)|W||D| are added, and |B| times 8 eta for the underflow of the four `two_product` of
-# an entry of W D.
+"""
+    _rump2022a_prodK_pencil(A::BallMatrix, B::BallMatrix, W::Matrix, D::Vector)
+
+Enclose the residual `A W − B W D` of a pencil, `D` the diagonal of the approximate eigenvalues,
+as [`_rump2022a_prodK`](@ref) encloses `B W − W X`.
+
+The product of three factors is brought to products of two by error-free transformations of
+`W D`: `_lr_diagonal_pieces!` returns four matrices whose sum is `W D`, exact unless a product
+underflows, that being `two_product` of the real and imaginary parts. The residual is then a sum
+of five products, enclosed by `_accurate_product_sum`; the interval parts `rad(A)|W|` and
+`rad(B)|W||D|` are added, together with `|B|` times eight times the smallest subnormal, for the
+underflow of the four `two_product` of an entry of `W D`.
+"""
 function _rump2022a_prodK_pencil(A::BallMatrix{T}, B::BallMatrix{T}, W::Matrix{CT},
         D::Vector{CT}) where {T, CT}
     n = size(W, 1)
@@ -270,15 +297,25 @@ function _rump2022a_prodK_pencil(A::BallMatrix{T}, B::BallMatrix{T}, W::Matrix{C
     return BallMatrix(mid(E), add_up.(rad(E), extra))
 end
 
-# The transformation for a pencil A x = λ B x. With D the diagonal matrix of the approximate
-# eigenvalues,
-#
-#     W⁻¹B⁻¹A W  =  D + (B W)⁻¹(A W − B W D),      so      (B W) Δ = A W − B W D,
-#
-# and `verifylss` applied to the ball matrix B W encloses Δ while proving B W, hence B and W,
-# nonsingular (Theorem 10.8 of Rump (2010) for an interval matrix). The Newton step of
-# `_rump2022a_transform` on the eigenvalue matrix is not taken: it would make the matrix in the
-# third factor full, and the residual is brought to products of two factors only for a diagonal.
+"""
+    _rump2022a_pencil_transform(A::BallMatrix, B::BallMatrix, W::Matrix, X0::Matrix)
+
+The transformation of [`_rump2022a_transform`](@ref) for a pencil `A x = λ B x`, returning the
+enclosure of `W⁻¹ B⁻¹ A W` and the bound the inner solve reports, or `nothing` and that bound
+when the solve does not certify.
+
+With `D` the diagonal matrix of the approximate eigenvalues, read off `X0`,
+
+    W⁻¹ B⁻¹ A W  =  D + (B W)⁻¹(A W − B W D),      so      (B W) Δ = A W − B W D,
+
+and `verifylss` applied to the ball matrix `B W` encloses `Δ` while proving `B W`, hence both
+`B` and `W`, nonsingular, which is Theorem 10.8 of [Rump2010](@cite) for an interval matrix. The
+residual is enclosed by [`_rump2022a_prodK_pencil`](@ref).
+
+The Newton step that [`_rump2022a_transform`](@ref) takes on the eigenvalue matrix is not taken
+here: it would make the matrix in the third factor full, and the residual is brought to products
+of two factors only for a diagonal one.
+"""
 function _rump2022a_pencil_transform(A::BallMatrix{T}, B::BallMatrix{T}, W::Matrix{CT},
         X0::Matrix{CT}) where {T, CT}
     D = diag(X0)

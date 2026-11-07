@@ -546,7 +546,7 @@ This is the predicate Rump writes `in0` and defines in footnote 19 of
 
 as "checks `X ⊂ int(Y)` componentwise". Every self-mapping test in the Krawczyk-Moore-Rump
 line needs the interior, not the closure: a fixed point on the boundary satisfies `X ⊆ Y`
-without giving the contraction the argument rests on, so [`in`](@ref), which is not strict, is
+without giving the contraction the argument rests on, so `in`, which is not strict, is
 not a substitute.
 """
 function in0(B1::Ball{T, NT1}, B2::Ball{T, NT2}) where {T <: AbstractFloat, NT1, NT2}

@@ -37,6 +37,7 @@ makedocs(;
             "Core Types" => "api/core.md",
             "Linear Systems" => "api/linearsystems.md",
             "Eigenvalues & SVD" => "api/eigenvalues.md",
+            "Algorithm Steps" => "api/internals.md",
             "CertifScripts" => "api/certifscripts.md",
             "NumericalTest" => "api/numericaltest.md"
         ],
