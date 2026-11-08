@@ -187,23 +187,17 @@ end
 """
     svd_bound_L2_opnorm(A::BallMatrix{T})
 
-Returns a rigorous upper bound on the ℓ²-norm (spectral norm) of the ball matrix `A`
-using the rigorous SVD enclosure from [`rigorous_svd`](@ref).
+A rigorous upper bound of `‖A‖₂` over the matrices of the ball `A`, the largest singular value
+of the enclosure [`rigorous_svd`](@ref) returns, rounded up. `Inf` is returned when that
+enclosure does not certify, and [`upper_bound_L2_opnorm`](@ref) then keeps its cheaper bounds.
 
-This method computes the largest certified singular value, providing the tightest
-possible upper bound on `‖A‖₂`. The bound is essentially exact (typically <0.01%
-overestimation), but requires O(n³) computation for the SVD.
-
-# Comparison with other L2 norm methods
-
-| Method | Speed | Accuracy | Best use case |
-|--------|-------|----------|---------------|
-| `svd_bound_L2_opnorm` | O(n³) | ~0% overest. | When accuracy is critical |
-| `collatz_upper_bound_L2_opnorm` | Fast | 0-500% overest.* | Structured matrices |
-| `upper_bound_L2_opnorm` | Fast | min of above | General use |
-
-*Collatz performs well on structured matrices (tridiagonal: ~0%, Hilbert: ~0%,
-diagonally dominant: ~26%) but poorly on random matrices (~200-500%).
+The cost is the `O(n³)` of the verified factorisation, against `O(k n²)` for
+[`collatz_upper_bound_L2_opnorm`](@ref) and `O(n²)` for `√(‖A‖₁‖A‖_∞)`, and it is the
+tightest of the three for a general matrix, since the other two bound the spectral norm through
+quantities that do not attain it. How much tighter is a property of the matrix and is not
+reported here: this docstring carried a table of overestimation percentages, "~0%" for the
+singular value bound against "0-500%" for Collatz with figures per matrix type, which nothing in
+the package measures; it was removed on 2026-11-08.
 
 # Example
 ```julia

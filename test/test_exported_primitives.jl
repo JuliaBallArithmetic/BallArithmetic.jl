@@ -162,3 +162,30 @@ using GenericLinearAlgebra
         end
     end
 end
+
+@testset "the BigFloat SVD cache separates the working precisions" begin
+    # The key was `hash(mid(A))` and the factor sizes, with no precision in it, so a second
+    # call on the same midpoint at a higher precision was served the factors computed at the
+    # lower one. The enclosure stayed sound, the residual being measured against A, and did
+    # not tighten.
+    A = BallMatrix(BigFloat.([2.0 0.5 0.0; 0.5 3.0 0.25; 0.0 0.25 1.5]))
+    clear_svd_cache!()
+    setprecision(BigFloat, 128) do
+        rigorous_svd(A)
+    end
+    @test svd_cache_stats() == (hits = 0, misses = 1)
+    setprecision(BigFloat, 256) do
+        rigorous_svd(A)
+    end
+    # a hit here would be the stale 128-bit factors
+    @test svd_cache_stats() == (hits = 0, misses = 2)
+    # and the same precision again is a hit
+    setprecision(BigFloat, 256) do
+        rigorous_svd(A)
+    end
+    @test svd_cache_stats() == (hits = 1, misses = 2)
+    clear_svd_cache!()
+
+    # a half-set cache raised inside the next validity check rather than missing
+    @test_throws ArgumentError set_svd_cache!(nothing, nothing, nothing, UInt64(1))
+end

@@ -242,12 +242,34 @@ function add_up(x::Complex{BigFloat}, y::Complex{BigFloat})
 end
 
 """
+    add_down(x::Complex{BigFloat}, y::Complex{BigFloat})
+
+A componentwise lower bound of `x + y` for two `Complex{BigFloat}`, each part rounded toward
+`-∞`, so `real` and `imag` of the result are below those of the exact sum. The upper bound is
+[`add_up`](@ref). As for [`add_up`](@ref), the pair of bounds is componentwise and says nothing
+about the modulus.
+"""
+function add_down(x::Complex{BigFloat}, y::Complex{BigFloat})
+    Complex(add_down(real(x), real(y)), add_down(imag(x), imag(y)))
+end
+
+"""
     sub_up(x::Complex{BigFloat}, y::Complex{BigFloat})
 
 Subtract two Complex{BigFloat} values with outward rounding.
 """
 function sub_up(x::Complex{BigFloat}, y::Complex{BigFloat})
     Complex(sub_up(real(x), real(y)), sub_up(imag(x), imag(y)))
+end
+
+"""
+    sub_down(x::Complex{BigFloat}, y::Complex{BigFloat})
+
+A componentwise lower bound of `x - y` for two `Complex{BigFloat}`, each part rounded toward
+`-∞`. The upper bound is [`sub_up`](@ref).
+"""
+function sub_down(x::Complex{BigFloat}, y::Complex{BigFloat})
+    Complex(sub_down(real(x), real(y)), sub_down(imag(x), imag(y)))
 end
 
 """
@@ -271,6 +293,23 @@ function mul_up(x::Complex{BigFloat}, y::Complex{BigFloat})
     bc_up = mul_up(b, c)
     imag_part = add_up(ad_up, bc_up)
 
+    Complex(real_part, imag_part)
+end
+
+"""
+    mul_down(x::Complex{BigFloat}, y::Complex{BigFloat})
+
+A componentwise lower bound of `x * y` for two `Complex{BigFloat}`, from
+`(a+bi)(c+di) = (ac-bd) + (ad+bc)i`: the real part is `ac` from below less `bd` from above, the
+imaginary part is `ad` and `bc` both from below, each subtraction and addition rounded toward
+`-∞`, so `real` and `imag` of the result are below those of the exact product. The upper bound
+is [`mul_up`](@ref), and as there the pair is componentwise and says nothing about the modulus.
+"""
+function mul_down(x::Complex{BigFloat}, y::Complex{BigFloat})
+    a, b = real(x), imag(x)
+    c, d = real(y), imag(y)
+    real_part = sub_down(mul_down(a, c), mul_up(b, d))
+    imag_part = add_down(mul_down(a, d), mul_down(b, c))
     Complex(real_part, imag_part)
 end
 

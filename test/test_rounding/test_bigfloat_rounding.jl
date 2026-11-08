@@ -235,4 +235,30 @@ using BallArithmetic
         end
     end
 
+    @testset "the complex directed operations bracket, both ways" begin
+        # `add_down`, `sub_down` and `mul_down` for `Complex{BigFloat}` were missing until
+        # 2026-11-08, so a complex lower bound in extended precision raised a `MethodError`
+        # while the three upward ones worked.  The pair of bounds is componentwise.
+        setprecision(BigFloat, 64) do
+            for (x, y) in ((Complex{BigFloat}(1, 2), Complex{BigFloat}(3, 5)),
+                           (Complex{BigFloat}(1) / 3 + im * (Complex{BigFloat}(1) / 7),
+                            Complex{BigFloat}(1) / 11 - im * (Complex{BigFloat}(1) / 13)),
+                           (Complex{BigFloat}(-1) / 3 + im * BigFloat(0),
+                            Complex{BigFloat}(1) / 9 + im * (Complex{BigFloat}(1) / 5)))
+                for (f_up, f_down, exact) in ((add_up, add_down, +),
+                                              (sub_up, sub_down, -),
+                                              (mul_up, mul_down, *))
+                    lo, hi = f_down(x, y), f_up(x, y)
+                    # the exact value, computed at a precision high enough to decide the two
+                    # inequalities, lies between the two componentwise
+                    ex = setprecision(BigFloat, 512) do
+                        exact(Complex{BigFloat}(x), Complex{BigFloat}(y))
+                    end
+                    @test real(lo) <= real(ex) <= real(hi)
+                    @test imag(lo) <= imag(ex) <= imag(hi)
+                end
+            end
+        end
+    end
+
 end

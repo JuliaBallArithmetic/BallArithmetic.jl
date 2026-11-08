@@ -285,3 +285,31 @@ end
     X = B + 1e-9 .* [0 1 0; 1 0 0; 0 0 0]
     @test all(any(abs(l - mid(p.eigenvalue)) <= rad(p.eigenvalue) for p in rb) for l in eigvals(X))
 end
+
+@testset "the bordered Jacobian encloses A - λI, diagonal rounding and all" begin
+    # The `A - λ̃ I` block took the radii of `A` and nothing else, so the midpoints were
+    # `fl(aᵢᵢ - λ̃)` with the rounding of the N diagonal subtractions charged nowhere. `q₀` is
+    # read off this matrix, so it was short of a bound on ‖I - CJ‖₂ by ‖C‖₂ times the omission.
+    # Here `λ̃` is chosen so that a diagonal subtraction does not round exactly.
+    a11 = 1.0 + 3eps(1.0)
+    A = BallMatrix([a11 0.5; 0.25 2.0])
+    λ = 1.0 / 3
+    J = BallArithmetic._build_augmented_jacobian_ball(A, λ, [1.0, 0.0], [1.0, 0.0], 2,
+                                                      Float64, Float64)
+    Jr = rad(J)
+    Jc = mid(J)
+    # the diagonal of the block carries a positive radius, the off-diagonal entries none,
+    # A being exact
+    @test Jr[1, 2] > 0
+    @test Jr[2, 3] > 0
+    @test Jr[1, 3] == 0
+    @test Jr[2, 2] == 0
+    # and the ball contains the exact difference, which the midpoint alone need not
+    for i in 1:2
+        exact = big(A.c[i, i]) - big(λ)
+        @test abs(big(Jc[i, i + 1]) - exact) <= big(Jr[i, i + 1])
+    end
+    # the first column and the last row stay exact
+    @test all(Jr[1:2, 1] .== 0)
+    @test all(Jr[3, :] .== 0)
+end

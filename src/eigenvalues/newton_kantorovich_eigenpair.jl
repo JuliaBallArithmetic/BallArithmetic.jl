@@ -364,6 +364,11 @@ function _compute_left_eigenvector(A_mid::AbstractMatrix{NT}, λ::NT,
     return eig_adj.vectors[:, idx]
 end
 
+# Half the spacing at `x`, rounded up: a bound on the error of one round-to-nearest operation
+# whose result is `x`. At `x = 0` and in the subnormal range `eps(x)` is the smallest subnormal
+# and the halving rounds back up to it, which is a bound and not an equality.
+_half_spacing(::Type{T}, x::Real) where {T} = mul_up(T(0.5), T(eps(abs(T(x)))))
+
 """
 The `(N+1) × (N+1)` ball matrix standing for `J = F′(x₀)` of [`certify_eigenpair`](@ref), from
 which that routine takes `q₀ ≥ ‖I − CJ‖₂`:
@@ -372,11 +377,14 @@ which that routine takes `q₀ ≥ ‖I − CJ‖₂`:
         [  0     uᴴ     ]
 
 the bordered Jacobian of the eigenpair system, whose nonsingularity at a zero is the simplicity of
-the eigenvalue there (Lemma 2 of [Yamamoto1980](@cite), credited there to Wilkinson). The
-first column and the last row are exact, so their radii are zero, and the `A − λ̃ I` block carries
-the radii of `A_ball` and nothing else: its midpoints are `mid(A_ball) − λ̃ I` in
-round-to-nearest, so the rounding of the `N` diagonal subtractions, at most `eps(|aᵢᵢ − λ̃|)/2`
-each, is not in the radii.
+the eigenvalue there (Lemma 2 of [Yamamoto1980](@cite), credited there to Wilkinson). The first
+column and the last row are exact, so their radii are zero. The `A − λ̃ I` block carries the radii
+of `A_ball`, and on the diagonal the rounding of the subtraction as well: the midpoint is
+`fl(aᵢᵢ − λ̃)` in round-to-nearest, which differs from `aᵢᵢ − λ̃` by at most half the spacing at
+the computed value, in each part for a complex entry, and without that in the radius the ball
+does not contain `A − λ̃ I` for a matrix at the boundary of `A_ball`. It did not until
+2026-11-08, which left `q₀` short of a bound on `‖I − CJ‖₂` by `‖C‖₂` times the omitted part,
+one rounding unit in relative size.
 """
 function _build_augmented_jacobian_ball(A_ball::BallMatrix, λ::NT, v::Vector{NT},
                                          u::Vector{NT}, N::Int,
@@ -390,9 +398,19 @@ function _build_augmented_jacobian_ball(A_ball::BallMatrix, λ::NT, v::Vector{NT
     # Block (1:N, 1): -v (exact, zero radii)
     J_mid[1:N, 1] .= -v
 
-    # Block (1:N, 2:N+1): A - λI (inherits A's radii)
+    # Block (1:N, 2:N+1): A - λI, which inherits A's radii, and on the diagonal the rounding of
+    # the subtraction: `fl(aᵢᵢ - λ̃)` is within half the spacing at the computed value of
+    # `aᵢᵢ - λ̃`, and for a complex entry the real and imaginary parts round separately, the
+    # modulus of the error being at most the sum of the two.
     J_mid[1:N, 2:N+1] .= A_mid_mat - λ * I
     J_rad[1:N, 2:N+1] .= A_rad_mat
+    for i in 1:N
+        d = J_mid[i, i + 1]
+        e = NT <: Complex ?
+            add_up(_half_spacing(T, real(d)), _half_spacing(T, imag(d))) :
+            _half_spacing(T, d)
+        J_rad[i, i + 1] = add_up(J_rad[i, i + 1], e)
+    end
 
     # Block (N+1, 1): 0 (exact)
     J_mid[N+1, 1] = zero(NT)

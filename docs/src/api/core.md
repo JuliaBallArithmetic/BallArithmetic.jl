@@ -184,41 +184,23 @@ rump_oishi_2024_triangular_bound
 BallArithmetic.upper_abs
 ```
 
-### L2 Operator Norm: Method Comparison
+### The L2 Operator Norm: What Each Bound Costs
 
-The package provides several methods for computing rigorous upper bounds on `‖A‖₂`:
+The package offers four routes to an upper bound of `‖A‖₂`, and they differ in cost:
 
-| Method | Complexity | Accuracy | Description |
-|--------|------------|----------|-------------|
-| `svd_bound_L2_opnorm` | O(n³) | Exact (~0%) | Computes rigorous SVD, returns largest σ |
-| `collatz_upper_bound_L2_opnorm` | O(k·n²) | 0-500%* | Iterative power method on \|A\|ᵀ\|A\| |
-| `sqrt(‖·‖₁·‖·‖∞)` | O(n²) | 87-564% | Uses `‖A‖₂ ≤ √(‖A‖₁·‖A‖∞)` |
-| `upper_bound_L2_opnorm` | O(k·n²) | min of above | Takes minimum of Collatz and sqrt |
+| Method | Complexity | What it bounds the norm by |
+|--------|------------|----------------------------|
+| `svd_bound_L2_opnorm` | O(n³) | the largest singular value of a verified factorisation, rounded up |
+| `collatz_upper_bound_L2_opnorm` | O(k·n²) | the Collatz-Wielandt bound after `k` iterations on \|A\|ᵀ\|A\| |
+| `sqrt(‖·‖₁·‖·‖∞)` | O(n²) | `‖A‖₂ ≤ √(‖A‖₁·‖A‖_∞)` |
+| `upper_bound_L2_opnorm` | O(k·n²) | the least of the cheap bounds, and of the singular value bound when asked for it |
 
-*Collatz accuracy depends heavily on matrix structure:
-- **Tridiagonal/banded**: ~0% overestimation (essentially exact)
-- **Hilbert-like matrices**: ~0% overestimation
-- **Diagonally dominant**: ~26% overestimation
-- **Random dense matrices**: 200-500% overestimation
-
-#### Benchmark Results (n×n matrices)
-
-```
-Matrix type               Collatz   sqrt(‖·‖₁·‖·‖∞)   SVD bound
-─────────────────────────────────────────────────────────────────
-Random (n=50)             186%      249%              0%
-Diagonally dominant       26%       36%               0%
-Tridiagonal               0.1%      0.1%              0%
-Symmetric positive def.   140%      230%              0%
-Low rank + noise          54%       143%              0%
-Hilbert-like              0%        117%              0%
-```
-
-#### Recommendations
-
-- **General use**: `upper_bound_L2_opnorm` (fast, takes best of cheap bounds)
-- **Accuracy critical**: `svd_bound_L2_opnorm` (exact but O(n³))
-- **Structured matrices**: `collatz_upper_bound_L2_opnorm` often gives near-exact results
+The first is the tightest for a general matrix, since the other three bound the spectral norm
+through quantities that do not attain it. How much tighter is a property of the matrix, and this
+page carried a table of overestimation percentages per matrix type, together with a block of
+benchmark figures, which nothing in the package measures; both were removed on 2026-11-08
+rather than left for a reader to rely on. The same claims were in the docstring of
+`svd_bound_L2_opnorm` and went with them.
 
 ## Oishi 2023 Schur Complement Bounds
 

@@ -175,10 +175,20 @@ end
 """
     set_svd_cache!(U, S, V, A_hash)
 
-Set the SVD cache with the given factors and matrix hash.
-Used for warm-starting Ogita refinement on nearby matrices.
+Put the approximate factors `U`, `S`, `V` in the module-level cache under the key `A_hash`, for
+warm-starting the Ogita refinement on a nearby matrix and for the BigFloat path of
+[`rigorous_svd`](@ref). The cache holds an approximation and takes no part in what is proved: a
+stale entry can only widen an enclosure, the residuals being measured against the input.
+
+The key is the caller's to choose and must separate everything the factors depend on;
+[`rigorous_svd`](@ref) hashes the midpoint together with `precision(BigFloat)`. None of the three
+factors may be `nothing`, which would leave the cache half set and raise inside the next
+validity check rather than miss; an `ArgumentError` is raised instead. Clear it with
+[`clear_svd_cache!`](@ref) and read the counters with [`svd_cache_stats`](@ref).
 """
 function set_svd_cache!(U, S, V, A_hash::UInt64)
+    (U === nothing || S === nothing || V === nothing) &&
+        throw(ArgumentError("the SVD cache takes three factors, none of them nothing"))
     _svd_cache_U[] = U
     _svd_cache_S[] = S
     _svd_cache_V[] = V
@@ -262,7 +272,8 @@ passed on, and has no effect here, the block refinement being skipped in BigFloa
 
 With `use_cache = true`, the default, the approximate factors are kept in the module-level cache
 ([`set_svd_cache!`](@ref), [`svd_cache_stats`](@ref), [`clear_svd_cache!`](@ref)) and reused when
-the next call has a midpoint of the same hash and factors of matching size. The cache holds an
+the next call has a midpoint of the same hash, the same working precision, and factors of
+matching size. The cache holds an
 approximation and takes no part in what is proved: a stale or wrong entry can only widen the
 enclosure, since the residuals are measured against `A`.
 
@@ -271,11 +282,16 @@ here and remains available on its own.
 """
 function _rigorous_svd_bigfloat(A::BallMatrix{BigFloat}, method::SVDMethod;
                                  apply_vbd::Bool = true, use_cache::Bool = true)
-    # Check cache first
+    # Check cache first. The key carries the working precision as well as the midpoint: the
+    # factors are computed at `precision(BigFloat)`, so a second call on the same midpoint at a
+    # higher precision must not be served the factors of the lower one, which would leave the
+    # enclosure sound, the residuals being measured against `A`, and no tighter than before.
     m, n_cols = size(A)
-    A_hash = hash(A.c)
+    A_hash = hash(precision(BigFloat), hash(A.c))
     cache_valid = use_cache &&
                   _svd_cache_U[] !== nothing &&
+                  _svd_cache_S[] !== nothing &&
+                  _svd_cache_V[] !== nothing &&
                   size(_svd_cache_U[], 1) == m &&
                   size(_svd_cache_V[], 1) == n_cols &&
                   _svd_cache_A_hash[] == A_hash

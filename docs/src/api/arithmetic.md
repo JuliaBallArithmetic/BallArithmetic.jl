@@ -51,8 +51,9 @@ The two macros rewrite a whole expression into these operations.
 `RoundingEmulator` supplies the directed operations for `Float32` and `Float64`; the methods
 below extend the same names to `BigFloat` and, where the operation is defined for them, to
 `Complex{BigFloat}`, by setting the MPFR rounding mode for the one operation. The downward
-complex methods are not defined, so a complex lower bound in extended precision has no route
-through these names.
+complex pairs are componentwise, each part bounded on its own, and say nothing about the
+modulus of the result. The three downward complex methods were missing until 2026-11-08, so a
+complex lower bound in extended precision raised a `MethodError`.
 
 ```@docs
 RoundingEmulator.add_up(::BigFloat, ::BigFloat)
@@ -66,8 +67,11 @@ RoundingEmulator.div_down(::BigFloat, ::BigFloat)
 RoundingEmulator.sqrt_up(::BigFloat)
 RoundingEmulator.sqrt_down(::BigFloat)
 RoundingEmulator.add_up(::Complex{BigFloat}, ::Complex{BigFloat})
+RoundingEmulator.add_down(::Complex{BigFloat}, ::Complex{BigFloat})
 RoundingEmulator.sub_up(::Complex{BigFloat}, ::Complex{BigFloat})
+RoundingEmulator.sub_down(::Complex{BigFloat}, ::Complex{BigFloat})
 RoundingEmulator.mul_up(::Complex{BigFloat}, ::Complex{BigFloat})
+RoundingEmulator.mul_down(::Complex{BigFloat}, ::Complex{BigFloat})
 ```
 
 ## The error-free transformations
